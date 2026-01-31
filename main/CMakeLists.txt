@@ -6,4 +6,5 @@
                             "ui_config.c"
                             "arrow_images.c"
                             "hardware/led.c"
+                            "hardware/buzzer.c"
                        INCLUDE_DIRS "." "hardware")
