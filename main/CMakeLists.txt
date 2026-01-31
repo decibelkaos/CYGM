@@ -9,4 +9,5 @@
                             "hardware/buzzer.c"
                             "hardware/battery.c"
                             "hardware/display.c"
-                       INCLUDE_DIRS "." "hardware")
+                            "features/time_system.c"
+                       INCLUDE_DIRS "." "hardware" "features")
