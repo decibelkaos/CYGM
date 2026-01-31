@@ -8,4 +8,5 @@
                             "hardware/led.c"
                             "hardware/buzzer.c"
                             "hardware/battery.c"
+                            "hardware/display.c"
                        INCLUDE_DIRS "." "hardware")
