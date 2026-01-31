@@ -7,4 +7,5 @@
                             "arrow_images.c"
                             "hardware/led.c"
                             "hardware/buzzer.c"
+                            "hardware/battery.c"
                        INCLUDE_DIRS "." "hardware")
