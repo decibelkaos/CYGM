@@ -1,0 +1,6480 @@
+﻿/*
+ * CYGM - Continuous Glucose Monitor Display
+ * ESP32-IDF with LVGL
+ *
+ * Core 0: WiFi Management
+ * Core 1: UI/Touch (LVGL)
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <sys/time.h>
+#include <math.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "driver/gpio.h"
+#include "driver/ledc.h"
+#include "driver/i2c_master.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_sleep.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "esp_sntp.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "cJSON.h"
+
+// LCD & LVGL
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_vendor.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_touch_cst820.h"
+#include "lvgl.h"
+#include "esp_lvgl_port.h"
+
+// Project modules
+#include "nvs_config.h"
+#include "wifi_manager.h"
+#include "dexcom_api.h"
+#include "web_server.h"
+#include "ui_config.h"
+#include "hardware/led.h"
+// SD card logging removed - not needed for monitoring device (use serial output for debugging)
+
+static const char *TAG = "CYGM";
+
+// ==================== Version Information ====================
+#define CYGM_VERSION "1.3.0"
+#define CYGM_STAGE "Beta"  // "Alpha", "Beta", or "Release"
+
+// ==================== Hardware Configuration ====================
+
+#define LCD_MOSI    13
+#define LCD_SCLK    14
+#define LCD_CS      15
+#define LCD_DC      2
+#define LCD_BL      27
+#define LCD_WIDTH   320  // Landscape mode
+#define LCD_HEIGHT  240
+
+#define TOUCH_I2C_NUM   I2C_NUM_0
+#define TOUCH_SDA       33
+#define TOUCH_SCL       32
+#define TOUCH_INT       GPIO_NUM_NC  // Use polling mode (WiFi conflict fix)
+#define TOUCH_RST       25
+
+#define CARDKB_I2C_NUM  I2C_NUM_1
+#define CARDKB_SDA      21
+#define CARDKB_SCL      22
+#define CARDKB_ADDR     0x5F
+
+#define LED_RED         4
+#define LED_GREEN       16
+#define LED_BLUE        17
+
+// LED PWM channels
+#define LED_RED_CHANNEL     LEDC_CHANNEL_1
+#define LED_GREEN_CHANNEL   LEDC_CHANNEL_2
+#define LED_BLUE_CHANNEL    LEDC_CHANNEL_3
+#define LED_TIMER           LEDC_TIMER_1
+
+// Speaker/Buzzer PWM (8002A amplifier on GPIO 26)
+#define BUZZER_GPIO         26
+#define BUZZER_CHANNEL      LEDC_CHANNEL_0
+#define BUZZER_TIMER        LEDC_TIMER_0
+
+// Battery Monitoring (3.7V LiPo)
+// GPIO 39 confirmed - calibrated with unplugged battery at 4.10V
+// Percentage based on under-load voltage: 4.0V=100%, 3.7V=50%, 3.2V=0% (shutdown to prevent damage)
+#define BATTERY_ADC_CHANNEL ADC_CHANNEL_3   // GPIO 39 (ADC1_CH3)
+#define BATTERY_ADC_GPIO    39
+#define BATTERY_VOLTAGE_DIVIDER 1.46        // Calibrated: shows under-load voltage
+#define BATTERY_FULL_VOLTAGE 4.0            // Fully charged under load (100%)
+#define BATTERY_NOMINAL_VOLTAGE 3.7         // Nominal voltage (50%)
+#define BATTERY_LOW_VOLTAGE 3.2             // Safe shutdown threshold (prevents damage)
+#define BATTERY_CRITICAL_PERCENT 10         // Warning threshold (10%)
+
+// Clear WiFi credentials flag
+#define CLEAR_WIFI_CREDENTIALS 0
+
+// Web server flag (DISABLE by default to save ~30KB heap for SSL)
+// Set to 1 to enable web configuration interface
+#define ENABLE_WEB_SERVER 0
+
+// SD Card Logging: REMOVED PERMANENTLY (2026-01-30)
+// Reason: This is a monitoring device, not a data logger. SD card consumed 15KB RAM constantly,
+// causing SSL allocation failures for Dexcom (life-critical). Serial output is sufficient for debugging.
+// Files removed: sd_logger.c, sd_logger.h
+// See git history to restore if needed (not recommended)
+
+// ==================== Global Handles ====================
+
+// LVGL
+static lv_disp_t *lvgl_display = NULL;
+static lv_indev_t *lvgl_touch_indev = NULL;
+
+// Hardware
+static esp_lcd_panel_handle_t lcd_panel = NULL;
+static esp_lcd_panel_io_handle_t lcd_io_handle = NULL;
+static esp_lcd_touch_handle_t touch_handle = NULL;
+static i2c_master_bus_handle_t touch_i2c_bus = NULL;
+static i2c_master_bus_handle_t cardkb_i2c_bus = NULL;
+static i2c_master_dev_handle_t cardkb_dev = NULL;
+
+// Task handles
+static TaskHandle_t wifi_task_handle = NULL;
+static TaskHandle_t ui_task_handle = NULL;
+static TaskHandle_t weather_task_handle = NULL;
+static TaskHandle_t glucose_task_handle = NULL;
+
+// LED breathing (disabled to save power - variables kept for future use)
+static volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
+
+// UI Screens
+static lv_obj_t *screen_splash = NULL;
+static lv_obj_t *screen_home = NULL;
+static lv_obj_t *screen_menu = NULL;
+static lv_obj_t *screen_wifi_list = NULL;
+static lv_obj_t *screen_wifi_password = NULL;
+static lv_obj_t *screen_time_weather_menu = NULL;
+static lv_obj_t *screen_zipcode_entry = NULL;
+static lv_obj_t *screen_cgm_menu = NULL;
+static lv_obj_t *screen_dexcom_auth = NULL;
+static lv_obj_t *screen_dexcom_login = NULL;
+static lv_obj_t *screen_dexcom_username_entry = NULL;
+static lv_obj_t *screen_dexcom_password_entry = NULL;
+static lv_obj_t *screen_dexcom_status = NULL;
+static lv_obj_t *screen_alarm_settings = NULL;
+static lv_obj_t *screen_tone_picker = NULL;
+#if 0  // Alarm preview disabled - kept for potential future use
+static lv_obj_t *screen_alarm_preview = NULL;
+#endif
+static lv_obj_t *screen_alarm_detail_editor = NULL;
+
+// Global alarm configuration
+static cgm_alarms_t current_alarm_settings;
+static alarm_config_t *editing_alarm = NULL;  // Pointer to alarm being edited
+static lv_obj_t *alarm_threshold_value_label = NULL;  // Reference to threshold value label for color updates
+
+// Alarm state tracking
+typedef enum {
+    ALARM_STATE_NONE = 0,
+    ALARM_STATE_HIGH_ALARM,
+    ALARM_STATE_HIGH_WARNING,
+    ALARM_STATE_LOW_WARNING,
+    ALARM_STATE_LOW_ALARM
+} active_alarm_state_t;
+
+static active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
+static bool alarm_acknowledged = false;
+
+// Visual alarm components
+static lv_obj_t *visual_alarm_overlay = NULL;      // White overlay for visual alarm
+static lv_obj_t *visual_alarm_slider = NULL;       // Slider to dismiss visual alarm
+static lv_obj_t *visual_alarm_slider_label = NULL; // Label for slider
+static lv_obj_t *screen_alarm_snooze = NULL;       // Snooze/dismiss screen
+static lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
+static bool visual_alarm_active = false;
+static uint8_t visual_alarm_pulse_state = 0;       // 0 = normal, 1 = white
+static int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
+
+// Audio alarm repeat
+static lv_timer_t *audio_alarm_timer = NULL;       // Timer for repeating audio
+static alarm_config_t *active_alarm_config = NULL; // Current alarm being played
+
+// Battery monitoring
+static adc_oneshot_unit_handle_t adc_handle = NULL;
+static adc_cali_handle_t adc_cali_handle = NULL;
+static float battery_voltage = 0.0f;
+static int battery_percent = 100;
+static bool battery_low_warning_shown = false;  // Track if low battery warning played
+static lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
+static lv_obj_t *battery_percent_label = NULL;  // Battery percent label
+static lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
+
+// Splash screen boot log
+static lv_obj_t *boot_log_label = NULL;
+static char boot_log_buffer[512] = {0};  // Buffer for boot messages
+
+// Dexcom login UI elements
+static lv_obj_t *dexcom_username_label = NULL;
+static lv_obj_t *dexcom_password_label = NULL;
+static char dexcom_username_buf[64] = {0};
+static char dexcom_password_buf[64] = {0};
+
+// Glucose data - "Last Known Good" approach
+// We ALWAYS display the last valid glucose reading, even if current fetch fails
+// This prevents user anxiety from seeing "---" during temporary network/API issues
+static int current_glucose = 0;
+static dexcom_trend_t current_trend = TREND_NONE;
+static time_t glucose_timestamp = 0;
+static bool glucose_data_valid = false;      // True if we've EVER received valid data
+static bool glucose_data_fresh = false;       // True only if last fetch succeeded
+static dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
+static bool first_glucose_received = false;  // Track if we've received first reading
+
+// Entry screen UI elements
+static lv_obj_t *dexcom_username_entry_label = NULL;
+static lv_obj_t *dexcom_username_entry_ta = NULL;
+static lv_obj_t *dexcom_username_entry_keyboard = NULL;
+static lv_obj_t *dexcom_password_entry_label = NULL;
+static lv_obj_t *dexcom_password_entry_ta = NULL;
+static lv_obj_t *dexcom_password_entry_keyboard = NULL;
+
+// Home screen widgets
+static lv_obj_t *label_clock = NULL;
+static lv_obj_t *label_date = NULL;
+static lv_obj_t *label_ampm = NULL;  // AM/PM indicator (12hr mode only)
+static lv_obj_t *label_glucose = NULL;
+static lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
+static lv_obj_t *label_time_ago = NULL;
+static lv_obj_t *label_wifi_status = NULL;
+
+// WiFi state
+static bool wifi_connected = false;
+static wifi_ap_record_t wifi_networks[10];
+static uint16_t wifi_network_count = 0;
+static char wifi_password[64] = {0};
+static uint8_t wifi_password_len = 0;
+static char selected_ssid[33] = {0};
+
+// WiFi password screen widgets
+static lv_obj_t *password_label = NULL;
+static lv_obj_t *password_field = NULL;
+static lv_obj_t *keyboard = NULL;
+static bool caps_lock_enabled = false;
+static uint32_t last_shift_press_time = 0;
+static bool shift_waiting_for_char = false;  // True when shift pressed but no char typed yet
+
+// Time/Date/Weather settings
+static char user_timezone[64] = "America/New_York";  // Default timezone
+static bool user_dst_enabled = true;  // Daylight Saving Time enabled
+static bool user_24hr_format = false;  // 12-hour (AM/PM) vs 24-hour format
+static char user_zipcode[11] = "";  // US zipcode (5 or 9 digits)
+static bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
+static uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
+static char user_location[64] = "";  // City, State from geocoding
+
+// Weather display data
+static int current_temp_f = 72;  // Current temperature in Fahrenheit
+static int high_temp_f = 78;      // High temperature
+static int low_temp_f = 65;       // Low temperature
+static const char *current_condition = "Partly Cloudy";  // Current weather condition
+static time_t sunrise_time = 0;   // Sunrise time (Unix timestamp)
+static time_t sunset_time = 0;    // Sunset time (Unix timestamp)
+static int current_weather_code = 1;  // 0=Clear, 1=Partly Cloudy, 2=Cloudy, 3=Rain, 4=Snow, 5=Storm, 6=Fog, 7=Ice
+static float user_latitude = 0.0f;    // User's latitude from zipcode
+static float user_longitude = 0.0f;   // User's longitude from zipcode
+
+// Weather display widgets (for updating)
+static lv_obj_t *home_temp_label = NULL;
+static lv_obj_t *home_hilo_label = NULL;
+static lv_obj_t *home_weather_canvas = NULL;
+static lv_obj_t *home_condition_label = NULL;
+static lv_obj_t *home_location_label = NULL;
+static lv_obj_t *home_sunrise_canvas = NULL;
+static lv_obj_t *home_sunrise_label = NULL;
+static lv_obj_t *home_sunset_canvas = NULL;
+static lv_obj_t *home_sunset_label = NULL;
+
+// Forward declarations
+static const char* get_weather_condition_text(int weather_code);
+static bool is_night_time(void);
+static void play_alarm_tone(alarm_tone_t tone, uint8_t volume);
+static void buzzer_stop(void);
+static void play_boot_sound(void);
+static void play_success_sound(void);
+static void battery_init(void);
+static void battery_monitor_task(void *arg);
+static void update_battery_display(void);
+static void battery_low_alert(void);
+static void battery_flash_timer_cb(lv_timer_t *timer);
+
+// ===== COLOR PALETTE - Dark Blue Theme =====
+#define COLOR_BG            0x000000  // Pure black background
+#define COLOR_CARD_BG       0x1a2332  // Dark blue-grey cards
+#define COLOR_TEXT_WHITE    0xFFFFFF  // Pure white text
+#define COLOR_TEXT_GRAY     0x9CA3AF  // Light gray for secondary
+#define COLOR_TEXT_DIM      0x6B7280  // Dimmed gray
+#define COLOR_ACCENT_BLUE   0x3B82F6  // Bright blue accent
+#define COLOR_ACCENT_LIGHT  0x60A5FA  // Lighter blue
+#define COLOR_GREEN         0x22C55E  // Green for good
+#define COLOR_ORANGE        0xF59E0B  // Orange warning
+#define COLOR_RED           0xEF4444  // Red alert
+#define COLOR_BORDER        0xFFFFFF  // White border/outline
+
+// Draw weather icon on a canvas
+static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
+    ESP_LOGI(TAG, "Drawing weather icon code: %d (%s)", weather_code, get_weather_condition_text(weather_code));
+
+    // Initialize drawing descriptors
+    lv_draw_arc_dsc_t arc_dsc;
+    lv_draw_arc_dsc_init(&arc_dsc);
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+
+    switch (weather_code) {
+        case 0: { // SUN (day) / MOON (night) - Clear sky
+            if (is_night_time()) {
+                // Draw crescent moon
+                // Draw large circle (full moon)
+                arc_dsc.color = lv_color_hex(0xF0E68C); // Pale yellow
+                arc_dsc.width = 24;
+                lv_canvas_draw_arc(canvas, 30, 25, 12, 0, 360, &arc_dsc);
+
+                // Draw smaller circle on right to create crescent
+                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);  // Same as background
+                arc_dsc.width = 20;
+                lv_canvas_draw_arc(canvas, 36, 22, 10, 0, 360, &arc_dsc);
+            } else {
+                // Draw filled sun circle
+                rect_dsc.bg_color = lv_color_hex(0xFFAA00); // Orange
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                rect_dsc.radius = LV_RADIUS_CIRCLE;
+
+                // Draw filled circle by drawing a rounded rectangle
+                // lv_canvas_draw_rect signature: (canvas, x, y, w, h, &dsc)
+                lv_canvas_draw_rect(canvas, 30 - 12, 25 - 12, 24, 24, &rect_dsc);
+
+                // Draw 8 rays around the sun
+                line_dsc.color = lv_color_hex(0xFFAA00);
+                line_dsc.width = 2;
+                lv_point_t ray_points[2];
+
+                for (int i = 0; i < 8; i++) {
+                    float angle = i * 45.0 * 3.14159 / 180.0;
+                    ray_points[0].x = 30 + (int)(18 * cos(angle));
+                    ray_points[0].y = 25 + (int)(18 * sin(angle));
+                    ray_points[1].x = 30 + (int)(26 * cos(angle));
+                    ray_points[1].y = 25 + (int)(26 * sin(angle));
+                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
+                }
+            }
+            break;
+        }
+
+        case 1: { // PARTLY CLOUDY - Sun/Moon with cloud
+            if (is_night_time()) {
+                // Draw crescent moon in upper left
+                arc_dsc.color = lv_color_hex(0xF0E68C);
+                arc_dsc.width = 14;
+                lv_canvas_draw_arc(canvas, 18, 15, 7, 0, 360, &arc_dsc);
+
+                // Create crescent effect
+                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);
+                arc_dsc.width = 12;
+                lv_canvas_draw_arc(canvas, 22, 13, 6, 0, 360, &arc_dsc);
+            } else {
+                // Draw sun in upper left
+                arc_dsc.color = lv_color_hex(0xFFAA00); // Orange
+                arc_dsc.width = 6;
+                lv_canvas_draw_arc(canvas, 18, 15, 8, 0, 360, &arc_dsc);
+
+                // Draw partial rays (only visible ones)
+                line_dsc.color = lv_color_hex(0xFFAA00);
+                line_dsc.width = 2;
+                lv_point_t ray_points[2];
+
+                // Top-left rays only (4 rays)
+                for (int i = 2; i < 6; i++) {
+                    float angle = i * 45.0 * 3.14159 / 180.0;
+                    ray_points[0].x = 18 + (int)(12 * cos(angle));
+                    ray_points[0].y = 15 + (int)(12 * sin(angle));
+                    ray_points[1].x = 18 + (int)(18 * cos(angle));
+                    ray_points[1].y = 15 + (int)(18 * sin(angle));
+                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
+                }
+            }
+
+            // Draw cloud in lower right (partially covering sun/moon)
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 14;
+            lv_canvas_draw_arc(canvas, 28, 28, 7, 0, 360, &arc_dsc);   // Left bump
+            lv_canvas_draw_arc(canvas, 38, 24, 9, 0, 360, &arc_dsc);   // Middle bump
+            lv_canvas_draw_arc(canvas, 46, 28, 7, 0, 360, &arc_dsc);   // Right bump
+            break;
+        }
+
+        case 2: { // CLOUD - Simple cloud shape
+            // Draw cloud using overlapping filled circles (arcs with thick width)
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 16;  // Thick arc creates filled circle effect
+
+            lv_canvas_draw_arc(canvas, 20, 25, 8, 0, 360, &arc_dsc);   // Left bump
+            lv_canvas_draw_arc(canvas, 30, 20, 10, 0, 360, &arc_dsc);  // Middle bump (larger)
+            lv_canvas_draw_arc(canvas, 40, 25, 8, 0, 360, &arc_dsc);   // Right bump
+            break;
+        }
+
+        case 3: { // RAIN - Cloud + rain drops
+            // Draw cloud
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 16;
+
+            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+
+            // Draw rain drops (3 vertical lines)
+            line_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
+            line_dsc.width = 2;
+            lv_point_t rain[2];
+
+            for (int i = 0; i < 3; i++) {
+                rain[0].x = 18 + i * 12;
+                rain[0].y = 32;
+                rain[1].x = 18 + i * 12;
+                rain[1].y = 44;
+                lv_canvas_draw_line(canvas, rain, 2, &line_dsc);
+            }
+            break;
+        }
+
+        case 4: { // SNOW - Cloud + snowflakes
+            // Draw cloud
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 16;
+
+            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+
+            // Draw snowflakes (small crosses)
+            line_dsc.color = lv_color_hex(COLOR_TEXT_WHITE);
+            line_dsc.width = 2;
+            lv_point_t snow[2];
+            int positions[] = {20, 30, 40};
+
+            for (int i = 0; i < 3; i++) {
+                int x = positions[i];
+                int y = 38;
+                // Vertical line
+                snow[0].x = x;
+                snow[0].y = y - 4;
+                snow[1].x = x;
+                snow[1].y = y + 4;
+                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+
+                // Horizontal line
+                snow[0].x = x - 4;
+                snow[0].y = y;
+                snow[1].x = x + 4;
+                snow[1].y = y;
+                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+            }
+            break;
+        }
+
+        case 5: { // STORM - Dark cloud + lightning
+            // Draw dark cloud
+            arc_dsc.color = lv_color_hex(0x555555); // Dark gray
+            arc_dsc.width = 16;
+
+            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+
+            // Draw lightning bolt (zigzag using connected lines)
+            line_dsc.color = lv_color_hex(0xFFFF00); // Yellow
+            line_dsc.width = 3;
+            lv_point_t bolt[2];
+
+            // First segment
+            bolt[0].x = 30; bolt[0].y = 28;
+            bolt[1].x = 28; bolt[1].y = 36;
+            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+            // Second segment
+            bolt[0].x = 28; bolt[0].y = 36;
+            bolt[1].x = 32; bolt[1].y = 36;
+            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+            // Third segment
+            bolt[0].x = 32; bolt[0].y = 36;
+            bolt[1].x = 30; bolt[1].y = 46;
+            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+            break;
+        }
+
+        case 6: { // FOG - Horizontal wavy layers
+            // Draw multiple horizontal fog layers (wavy lines)
+            line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            line_dsc.width = 3;
+            lv_point_t fog[2];
+
+            // Top fog layer
+            fog[0].x = 15; fog[0].y = 20;
+            fog[1].x = 45; fog[1].y = 20;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+
+            // Middle fog layer (slightly offset)
+            fog[0].x = 10; fog[0].y = 28;
+            fog[1].x = 50; fog[1].y = 28;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+
+            // Lower-middle fog layer
+            fog[0].x = 12; fog[0].y = 36;
+            fog[1].x = 48; fog[1].y = 36;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+
+            // Bottom fog layer
+            fog[0].x = 18; fog[0].y = 44;
+            fog[1].x = 42; fog[1].y = 44;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+            break;
+        }
+
+        case 7: { // ICE - Falling ice crystals (diagonal lines + crosses)
+            // Draw ice crystals as small diagonal crosses
+            line_dsc.color = lv_color_hex(0xAADDFF); // Light cyan/ice blue
+            line_dsc.width = 2;
+            lv_point_t ice[2];
+
+            // Three ice crystals falling at different positions
+            int positions[][2] = {{20, 20}, {35, 32}, {25, 42}};
+
+            for (int i = 0; i < 3; i++) {
+                int cx = positions[i][0];
+                int cy = positions[i][1];
+
+                // Diagonal line 1 (top-left to bottom-right)
+                ice[0].x = cx - 4; ice[0].y = cy - 4;
+                ice[1].x = cx + 4; ice[1].y = cy + 4;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+
+                // Diagonal line 2 (top-right to bottom-left)
+                ice[0].x = cx + 4; ice[0].y = cy - 4;
+                ice[1].x = cx - 4; ice[1].y = cy + 4;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+
+                // Vertical line (shorter)
+                ice[0].x = cx; ice[0].y = cy - 3;
+                ice[1].x = cx; ice[1].y = cy + 3;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+
+                // Horizontal line (shorter)
+                ice[0].x = cx - 3; ice[0].y = cy;
+                ice[1].x = cx + 3; ice[1].y = cy;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
+// Draw trend arrow on canvas (60x60 pixels)
+static void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
+    if (canvas == NULL) return;
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.round_start = 1;
+    line_dsc.round_end = 1;
+
+    lv_draw_line_dsc_t glow_dsc;
+    lv_draw_line_dsc_init(&glow_dsc);
+    glow_dsc.round_start = 1;
+    glow_dsc.round_end = 1;
+
+    lv_point_t points[10];
+
+    switch (trend) {
+        case TREND_FLAT: {
+            // Green glow - SINGLE_UP rotated 90° clockwise
+            glow_dsc.color = lv_color_hex(0x10B981);
+            glow_dsc.width = 11;
+            // Horizontal shaft (38 pixels, centered vertically)
+            points[0] = (lv_point_t){8, 30};
+            points[1] = (lv_point_t){46, 30};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Arrowhead V-shape (same proportions as SINGLE_UP)
+            points[0] = (lv_point_t){46, 30};
+            points[1] = (lv_point_t){39, 22};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){46, 30};
+            points[1] = (lv_point_t){39, 38};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrow
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            points[0] = (lv_point_t){8, 30};
+            points[1] = (lv_point_t){46, 30};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){46, 30};
+            points[1] = (lv_point_t){39, 22};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){46, 30};
+            points[1] = (lv_point_t){39, 38};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        case TREND_FORTY_FIVE_UP: {
+            // Green glow - SINGLE_UP rotated 45° counterclockwise
+            glow_dsc.color = lv_color_hex(0x10B981);
+            glow_dsc.width = 11;
+            // Diagonal shaft (30 pixels diagonal)
+            points[0] = (lv_point_t){12, 48};
+            points[1] = (lv_point_t){42, 18};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Arrowhead V-shape (rotated 45°)
+            points[0] = (lv_point_t){42, 18};
+            points[1] = (lv_point_t){31, 17};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){42, 18};
+            points[1] = (lv_point_t){43, 29};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrow
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            points[0] = (lv_point_t){12, 48};
+            points[1] = (lv_point_t){42, 18};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){42, 18};
+            points[1] = (lv_point_t){31, 17};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){42, 18};
+            points[1] = (lv_point_t){43, 29};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        case TREND_FORTY_FIVE_DOWN: {
+            // Green glow - SINGLE_UP rotated 45° clockwise
+            glow_dsc.color = lv_color_hex(0x10B981);
+            glow_dsc.width = 11;
+            // Diagonal shaft (30 pixels diagonal)
+            points[0] = (lv_point_t){12, 12};
+            points[1] = (lv_point_t){42, 42};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Arrowhead V-shape (rotated -45°)
+            points[0] = (lv_point_t){42, 42};
+            points[1] = (lv_point_t){31, 43};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){42, 42};
+            points[1] = (lv_point_t){43, 31};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrow
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            points[0] = (lv_point_t){12, 12};
+            points[1] = (lv_point_t){42, 42};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){42, 42};
+            points[1] = (lv_point_t){31, 43};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){42, 42};
+            points[1] = (lv_point_t){43, 31};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        case TREND_SINGLE_UP: {
+            // Orange glow
+            glow_dsc.color = lv_color_hex(0xFFA500);
+            glow_dsc.width = 11;
+            // Vertical shaft (36 pixels)
+            points[0] = (lv_point_t){30, 52};
+            points[1] = (lv_point_t){30, 16};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Arrowhead
+            points[0] = (lv_point_t){30, 16};
+            points[1] = (lv_point_t){22, 23};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){30, 16};
+            points[1] = (lv_point_t){38, 23};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrow
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            points[0] = (lv_point_t){30, 52};
+            points[1] = (lv_point_t){30, 16};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){30, 16};
+            points[1] = (lv_point_t){22, 23};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){30, 16};
+            points[1] = (lv_point_t){38, 23};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        case TREND_SINGLE_DOWN: {
+            // Orange glow
+            glow_dsc.color = lv_color_hex(0xFFA500);
+            glow_dsc.width = 11;
+            // Vertical shaft (38 pixels)
+            points[0] = (lv_point_t){30, 8};
+            points[1] = (lv_point_t){30, 46};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Arrowhead
+            points[0] = (lv_point_t){30, 46};
+            points[1] = (lv_point_t){22, 39};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){30, 46};
+            points[1] = (lv_point_t){38, 39};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrow
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            points[0] = (lv_point_t){30, 8};
+            points[1] = (lv_point_t){30, 46};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){30, 46};
+            points[1] = (lv_point_t){22, 39};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){30, 46};
+            points[1] = (lv_point_t){38, 39};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        case TREND_DOUBLE_UP: {
+            // Red glow
+            glow_dsc.color = lv_color_hex(0xFF4444);
+            glow_dsc.width = 11;
+            // Left arrow (36 pixels)
+            points[0] = (lv_point_t){19, 52};
+            points[1] = (lv_point_t){19, 16};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){19, 16};
+            points[1] = (lv_point_t){11, 23};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){19, 16};
+            points[1] = (lv_point_t){26, 23};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Right arrow (36 pixels)
+            points[0] = (lv_point_t){41, 52};
+            points[1] = (lv_point_t){41, 16};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){41, 16};
+            points[1] = (lv_point_t){34, 23};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){41, 16};
+            points[1] = (lv_point_t){49, 23};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrows
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            // Left arrow
+            points[0] = (lv_point_t){19, 52};
+            points[1] = (lv_point_t){19, 16};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){19, 16};
+            points[1] = (lv_point_t){11, 23};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){19, 16};
+            points[1] = (lv_point_t){26, 23};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            // Right arrow
+            points[0] = (lv_point_t){41, 52};
+            points[1] = (lv_point_t){41, 16};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){41, 16};
+            points[1] = (lv_point_t){34, 23};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){41, 16};
+            points[1] = (lv_point_t){49, 23};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        case TREND_DOUBLE_DOWN: {
+            // Red glow
+            glow_dsc.color = lv_color_hex(0xFF4444);
+            glow_dsc.width = 11;
+            // Left arrow (38 pixels)
+            points[0] = (lv_point_t){19, 8};
+            points[1] = (lv_point_t){19, 46};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){19, 46};
+            points[1] = (lv_point_t){11, 39};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){19, 46};
+            points[1] = (lv_point_t){26, 39};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            // Right arrow (38 pixels)
+            points[0] = (lv_point_t){41, 8};
+            points[1] = (lv_point_t){41, 46};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){41, 46};
+            points[1] = (lv_point_t){34, 39};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+            points[0] = (lv_point_t){41, 46};
+            points[1] = (lv_point_t){49, 39};
+            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
+
+            // Blue arrows
+            line_dsc.color = lv_color_hex(0x3B82F6);
+            line_dsc.width = 8;
+            // Left arrow
+            points[0] = (lv_point_t){19, 8};
+            points[1] = (lv_point_t){19, 46};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){19, 46};
+            points[1] = (lv_point_t){11, 39};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){19, 46};
+            points[1] = (lv_point_t){26, 39};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            // Right arrow
+            points[0] = (lv_point_t){41, 8};
+            points[1] = (lv_point_t){41, 46};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){41, 46};
+            points[1] = (lv_point_t){34, 39};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            points[0] = (lv_point_t){41, 46};
+            points[1] = (lv_point_t){49, 39};
+            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+            break;
+        }
+
+        default:
+            // No trend or unknown - draw nothing
+            break;
+    }
+}
+
+// Weather condition helper - returns description text (time-universal)
+static const char* get_weather_condition_text(int weather_code) {
+    switch (weather_code) {
+        case 0: return "Clear";           // Works for both day and night
+        case 1: return "Partly Cloudy";
+        case 2: return "Cloudy";
+        case 3: return "Rain";
+        case 4: return "Snow";
+        case 5: return "Thunderstorm";
+        case 6: return "Fog";
+        case 7: return "Freezing Rain";
+        default: return "Unknown";
+    }
+}
+
+// Major world timezones - IANA identifiers (for display)
+static const char *timezone_list[] = {
+    // US timezones
+    "America/New_York",      // Eastern
+    "America/Chicago",       // Central
+    "America/Denver",        // Mountain
+    "America/Phoenix",       // Arizona (no DST)
+    "America/Los_Angeles",   // Pacific
+    "America/Anchorage",     // Alaska
+    "Pacific/Honolulu",      // Hawaii
+    // International
+    "Europe/London",         // UK
+    "Europe/Paris",          // Central Europe
+    "Europe/Berlin",         // Germany
+    "Europe/Rome",           // Italy
+    "Europe/Madrid",         // Spain
+    "Europe/Moscow",         // Russia
+    "Asia/Tokyo",            // Japan
+    "Asia/Shanghai",         // China
+    "Asia/Hong_Kong",        // Hong Kong
+    "Asia/Singapore",        // Singapore
+    "Asia/Dubai",            // UAE
+    "Asia/Kolkata",          // India
+    "Australia/Sydney",      // Australia East
+    "Australia/Perth",       // Australia West
+    "Pacific/Auckland"       // New Zealand
+};
+
+// POSIX timezone strings (for actual timezone conversion)
+static const char *timezone_posix[] = {
+    // US timezones
+    "EST5EDT,M3.2.0,M11.1.0",     // Eastern (UTC-5/UTC-4)
+    "CST6CDT,M3.2.0,M11.1.0",     // Central (UTC-6/UTC-5)
+    "MST7MDT,M3.2.0,M11.1.0",     // Mountain (UTC-7/UTC-6)
+    "MST7",                        // Arizona (UTC-7, no DST)
+    "PST8PDT,M3.2.0,M11.1.0",     // Pacific (UTC-8/UTC-7)
+    "AKST9AKDT,M3.2.0,M11.1.0",   // Alaska (UTC-9/UTC-8)
+    "HST10",                       // Hawaii (UTC-10, no DST)
+    // International
+    "GMT0BST,M3.5.0/1,M10.5.0",   // UK (UTC+0/UTC+1)
+    "CET-1CEST,M3.5.0,M10.5.0/3", // Central Europe (UTC+1/UTC+2)
+    "CET-1CEST,M3.5.0,M10.5.0/3", // Germany (UTC+1/UTC+2)
+    "CET-1CEST,M3.5.0,M10.5.0/3", // Italy (UTC+1/UTC+2)
+    "CET-1CEST,M3.5.0,M10.5.0/3", // Spain (UTC+1/UTC+2)
+    "MSK-3",                       // Moscow (UTC+3, no DST since 2014)
+    "JST-9",                       // Japan (UTC+9, no DST)
+    "CST-8",                       // China (UTC+8, no DST)
+    "HKT-8",                       // Hong Kong (UTC+8, no DST)
+    "SGT-8",                       // Singapore (UTC+8, no DST)
+    "GST-4",                       // UAE (UTC+4, no DST)
+    "IST-5:30",                    // India (UTC+5:30, no DST)
+    "AEST-10AEDT,M10.1.0,M4.1.0/3", // Sydney (UTC+10/UTC+11)
+    "AWST-8",                      // Perth (UTC+8, no DST)
+    "NZST-12NZDT,M9.5.0,M4.1.0/3" // New Zealand (UTC+12/UTC+13)
+};
+// Note: timezone_names array removed - no longer needed (timezone is auto-detected from zipcode)
+static const int timezone_count = 22;
+
+// ==================== Time & SNTP Functions ====================
+
+// Helper function to get POSIX timezone string from IANA identifier
+static const char* get_posix_timezone(const char *iana_tz) {
+    for (int i = 0; i < timezone_count; i++) {
+        if (strcmp(iana_tz, timezone_list[i]) == 0) {
+            return timezone_posix[i];
+        }
+    }
+    // Default to PST if not found
+    ESP_LOGW(TAG, "Timezone '%s' not found, defaulting to PST", iana_tz);
+    return "PST8PDT,M3.2.0,M11.1.0";
+}
+
+static void time_sync_notification_cb(struct timeval *tv) {
+    ESP_LOGI(TAG, "=== TIME SYNCHRONIZED FROM SNTP SERVER ===");
+    time_t now = tv->tv_sec;
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    ESP_LOGI(TAG, "New system time: %04d-%02d-%02d %02d:%02d:%02d",
+             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
+    // NOTE: SD logger initialization moved to AFTER first Dexcom auth
+    // to avoid memory conflict with SSL handshake (~13KB SD + ~30KB SSL > available heap)
+}
+
+// Check if system time is synced (not 1970)
+static bool is_time_synced(void) {
+    time_t now;
+    time(&now);
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+
+    // If year is still 1970, time is not synced
+    if (timeinfo.tm_year < (2020 - 1900)) {
+        return false;
+    }
+    return true;
+}
+
+// Wait for SNTP time sync with timeout
+static bool wait_for_time_sync(uint32_t timeout_ms) {
+    ESP_LOGI(TAG, "Waiting for SNTP time sync...");
+    uint32_t start = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    int check_count = 0;
+
+    while (!is_time_synced()) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        uint32_t elapsed = (xTaskGetTickCount() * portTICK_PERIOD_MS) - start;
+        check_count++;
+
+        // Log every 5 seconds
+        if (check_count % 10 == 0) {
+            time_t now;
+            struct tm timeinfo;
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            ESP_LOGI(TAG, "Still waiting for time sync... current: %04d-%02d-%02d %02d:%02d:%02d (elapsed: %lu ms)",
+                     timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                     timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, elapsed);
+        }
+
+        if (elapsed >= timeout_ms) {
+            ESP_LOGW(TAG, "Time sync timeout after %lu ms", elapsed);
+            return false;
+        }
+    }
+
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
+    ESP_LOGI(TAG, "Time synced: %04d-%02d-%02d %02d:%02d:%02d",
+             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    return true;
+}
+
+static void initialize_sntp(void) {
+    ESP_LOGI(TAG, "Initializing SNTP");
+
+    // Check if already initialized
+    if (esp_sntp_enabled()) {
+        ESP_LOGI(TAG, "SNTP already initialized, restarting...");
+        esp_sntp_stop();
+    }
+
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.google.com");
+    esp_sntp_setservername(2, "time.nist.gov");  // Add third server for redundancy
+    esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
+    esp_sntp_init();
+
+    // Set timezone using POSIX format
+    const char *posix_tz = get_posix_timezone(user_timezone);
+    setenv("TZ", posix_tz, 1);
+    tzset();
+    ESP_LOGI(TAG, "Timezone set: %s -> %s", user_timezone, posix_tz);
+
+    ESP_LOGI(TAG, "SNTP initialized with 3 servers. Waiting for system time to be set...");
+
+    // Show current time
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    ESP_LOGI(TAG, "Current system time BEFORE sync: %04d-%02d-%02d %02d:%02d:%02d",
+             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+}
+
+static void update_time_display(void) {
+    if (label_clock == NULL || label_date == NULL) {
+        ESP_LOGW(TAG, "Clock labels not initialized yet");
+        return;  // Not initialized yet
+    }
+
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+
+    localtime_r(&now, &timeinfo);
+
+    char strftime_buf[64];
+
+    // Update clock
+    if (user_24hr_format) {
+        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M", &timeinfo);
+    } else {
+        strftime(strftime_buf, sizeof(strftime_buf), "%I:%M", &timeinfo);  // Time only (no AM/PM)
+    }
+
+    if (lvgl_port_lock(0)) {
+        lv_label_set_text(label_clock, strftime_buf);
+
+        // Update AM/PM label (12hr mode only)
+        if (!user_24hr_format && label_ampm != NULL) {
+            strftime(strftime_buf, sizeof(strftime_buf), "%p", &timeinfo);
+            lv_label_set_text(label_ampm, strftime_buf);
+            lv_obj_clear_flag(label_ampm, LV_OBJ_FLAG_HIDDEN);  // Show AM/PM
+        } else if (label_ampm != NULL) {
+            lv_obj_add_flag(label_ampm, LV_OBJ_FLAG_HIDDEN);  // Hide AM/PM in 24hr mode
+        }
+
+        // Update date
+        strftime(strftime_buf, sizeof(strftime_buf), "%a, %b %d", &timeinfo);
+        lv_label_set_text(label_date, strftime_buf);
+
+        lvgl_port_unlock();
+    }
+}
+
+static void time_update_task(void *pvParameters) {
+    while (1) {
+        update_time_display();
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Update every 10 seconds
+    }
+}
+
+// Forward declaration for timezone auto-detection function
+static const char* state_to_timezone(const char *state);
+
+static void load_time_settings(void) {
+    time_settings_t settings;
+
+    // Try to load settings from NVS
+    if (nvs_load_time_settings(&settings) == ESP_OK) {
+        // Apply loaded settings
+        strncpy(user_timezone, settings.timezone, sizeof(user_timezone) - 1);
+        user_timezone[sizeof(user_timezone) - 1] = '\0';
+        user_dst_enabled = settings.dst_enabled;
+        user_24hr_format = settings.format_24hr;
+
+        ESP_LOGI(TAG, "Loaded time settings from NVS:");
+        ESP_LOGI(TAG, "  Timezone: %s", user_timezone);
+        ESP_LOGI(TAG, "  DST: %s", user_dst_enabled ? "Enabled" : "Disabled");
+        ESP_LOGI(TAG, "  Format: %s", user_24hr_format ? "24hr" : "12hr");
+    } else {
+        ESP_LOGI(TAG, "No saved time settings, using defaults (TZ: %s)", user_timezone);
+    }
+}
+
+// Geocoded zipcode tracker (to detect when user changes zipcode)
+static char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
+
+static void load_weather_settings(void) {
+    weather_settings_t settings;
+
+    // Try to load settings from NVS
+    if (nvs_load_weather_settings(&settings) == ESP_OK) {
+        // Apply loaded settings
+        strncpy(user_zipcode, settings.zipcode, sizeof(user_zipcode) - 1);
+        user_zipcode[sizeof(user_zipcode) - 1] = '\0';
+        user_temp_celsius = settings.temp_celsius;
+        user_weather_interval_min = settings.update_interval_min;
+
+        // Load cached coordinates and location if available
+        if (settings.coords_valid) {
+            user_latitude = settings.latitude;
+            user_longitude = settings.longitude;
+            strncpy(geocoded_zipcode, settings.geocoded_zipcode, sizeof(geocoded_zipcode) - 1);
+            geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
+
+            // Load location name
+            if (strlen(settings.location) > 0) {
+                strncpy(user_location, settings.location, sizeof(user_location) - 1);
+                user_location[sizeof(user_location) - 1] = '\0';
+                ESP_LOGI(TAG, "Using cached weather location: %s (%.4f, %.4f, zipcode: %s)",
+                         user_location, user_latitude, user_longitude, geocoded_zipcode);
+
+                // Auto-detect timezone from location (in case it was changed manually before)
+                // Extract state abbreviation from location (format: "City, ST")
+                char *comma = strrchr(user_location, ',');
+                if (comma != NULL && strlen(comma) > 2) {
+                    char state_abbr[3];
+                    strncpy(state_abbr, comma + 2, 2);  // Skip comma and space
+                    state_abbr[2] = '\0';
+
+                    // Map state abbreviation to full name
+                    const char *state_full = NULL;
+                    if (strcmp(state_abbr, "WA") == 0) state_full = "Washington";
+                    else if (strcmp(state_abbr, "CA") == 0) state_full = "California";
+                    else if (strcmp(state_abbr, "OR") == 0) state_full = "Oregon";
+                    else if (strcmp(state_abbr, "TX") == 0) state_full = "Texas";
+                    else if (strcmp(state_abbr, "NY") == 0) state_full = "New York";
+                    else if (strcmp(state_abbr, "FL") == 0) state_full = "Florida";
+                    else if (strcmp(state_abbr, "ME") == 0) state_full = "Maine";
+                    else if (strcmp(state_abbr, "IL") == 0) state_full = "Illinois";
+                    else if (strcmp(state_abbr, "PA") == 0) state_full = "Pennsylvania";
+                    else if (strcmp(state_abbr, "OH") == 0) state_full = "Ohio";
+                    else if (strcmp(state_abbr, "GA") == 0) state_full = "Georgia";
+                    else if (strcmp(state_abbr, "NC") == 0) state_full = "North Carolina";
+                    else if (strcmp(state_abbr, "MI") == 0) state_full = "Michigan";
+                    else if (strcmp(state_abbr, "NJ") == 0) state_full = "New Jersey";
+                    else if (strcmp(state_abbr, "VA") == 0) state_full = "Virginia";
+                    else if (strcmp(state_abbr, "AZ") == 0) state_full = "Arizona";
+                    else if (strcmp(state_abbr, "MA") == 0) state_full = "Massachusetts";
+                    else if (strcmp(state_abbr, "IN") == 0) state_full = "Indiana";
+                    else if (strcmp(state_abbr, "TN") == 0) state_full = "Tennessee";
+                    else if (strcmp(state_abbr, "MO") == 0) state_full = "Missouri";
+                    // Add more states as needed
+
+                    if (state_full != NULL) {
+                        const char *detected_tz = state_to_timezone(state_full);
+
+                        // Check if detected timezone differs from loaded timezone
+                        if (strcmp(detected_tz, user_timezone) != 0) {
+                            ESP_LOGI(TAG, "Timezone mismatch detected! Location '%s' suggests %s, but loaded %s",
+                                     user_location, detected_tz, user_timezone);
+                            ESP_LOGI(TAG, "Updating timezone to match location...");
+
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+
+                            // Save and apply the corrected timezone
+                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                            const char *posix_tz = get_posix_timezone(user_timezone);
+                            setenv("TZ", posix_tz, 1);
+                            tzset();
+                            ESP_LOGI(TAG, "Timezone corrected to: %s", user_timezone);
+                        } else {
+                            ESP_LOGI(TAG, "Timezone matches location: %s", user_timezone);
+                        }
+                    }
+                }
+            } else {
+                ESP_LOGI(TAG, "Using cached weather coordinates: %.4f, %.4f (for zipcode: %s)",
+                         user_latitude, user_longitude, geocoded_zipcode);
+            }
+        }
+
+        ESP_LOGI(TAG, "Loaded weather settings from NVS:");
+        ESP_LOGI(TAG, "  Zipcode: %s", user_zipcode);
+        ESP_LOGI(TAG, "  Unit: %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
+        ESP_LOGI(TAG, "  Update interval: %d minutes", user_weather_interval_min);
+    } else {
+        ESP_LOGI(TAG, "No saved weather settings, using defaults");
+    }
+}
+
+// ==================== Weather API Functions ====================
+
+// HTTP response buffer for weather/geocoding (optimized to match Dexcom's 2KB)
+// Weather API responses: ~1.5KB, Geocoding: ~1KB (both fit comfortably)
+#define WEATHER_HTTP_BUFFER_SIZE 2048
+static char http_response_buffer[WEATHER_HTTP_BUFFER_SIZE];
+static int http_response_len = 0;
+
+// HTTP event handler
+static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+    switch (evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            if (http_response_len + evt->data_len < WEATHER_HTTP_BUFFER_SIZE - 1) {
+                memcpy(http_response_buffer + http_response_len, evt->data, evt->data_len);
+                http_response_len += evt->data_len;
+                http_response_buffer[http_response_len] = '\0';
+            } else {
+                // Buffer overflow protection
+                ESP_LOGE(TAG, "Weather HTTP response buffer overflow! Response too large (%d + %d >= %d)",
+                         http_response_len, evt->data_len, WEATHER_HTTP_BUFFER_SIZE);
+            }
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
+// Auto-detect timezone from US state (called during geocoding)
+// Returns the primary IANA timezone for each state
+static const char* state_to_timezone(const char *state) {
+    // Eastern Time (UTC-5/-4)
+    if (strcmp(state, "Connecticut") == 0) return "America/New_York";
+    if (strcmp(state, "Delaware") == 0) return "America/New_York";
+    if (strcmp(state, "District of Columbia") == 0) return "America/New_York";
+    if (strcmp(state, "Georgia") == 0) return "America/New_York";
+    if (strcmp(state, "Maine") == 0) return "America/New_York";
+    if (strcmp(state, "Maryland") == 0) return "America/New_York";
+    if (strcmp(state, "Massachusetts") == 0) return "America/New_York";
+    if (strcmp(state, "New Hampshire") == 0) return "America/New_York";
+    if (strcmp(state, "New Jersey") == 0) return "America/New_York";
+    if (strcmp(state, "New York") == 0) return "America/New_York";
+    if (strcmp(state, "North Carolina") == 0) return "America/New_York";
+    if (strcmp(state, "Ohio") == 0) return "America/New_York";
+    if (strcmp(state, "Pennsylvania") == 0) return "America/New_York";
+    if (strcmp(state, "Rhode Island") == 0) return "America/New_York";
+    if (strcmp(state, "South Carolina") == 0) return "America/New_York";
+    if (strcmp(state, "Vermont") == 0) return "America/New_York";
+    if (strcmp(state, "Virginia") == 0) return "America/New_York";
+    if (strcmp(state, "West Virginia") == 0) return "America/New_York";
+
+    // Central Time (UTC-6/-5)
+    if (strcmp(state, "Alabama") == 0) return "America/Chicago";
+    if (strcmp(state, "Arkansas") == 0) return "America/Chicago";
+    if (strcmp(state, "Illinois") == 0) return "America/Chicago";
+    if (strcmp(state, "Indiana") == 0) return "America/Indiana/Indianapolis";  // Most of Indiana
+    if (strcmp(state, "Iowa") == 0) return "America/Chicago";
+    if (strcmp(state, "Kansas") == 0) return "America/Chicago";  // Most of Kansas
+    if (strcmp(state, "Kentucky") == 0) return "America/Chicago";  // Western Kentucky
+    if (strcmp(state, "Louisiana") == 0) return "America/Chicago";
+    if (strcmp(state, "Minnesota") == 0) return "America/Chicago";
+    if (strcmp(state, "Mississippi") == 0) return "America/Chicago";
+    if (strcmp(state, "Missouri") == 0) return "America/Chicago";
+    if (strcmp(state, "Nebraska") == 0) return "America/Chicago";  // Eastern Nebraska
+    if (strcmp(state, "North Dakota") == 0) return "America/Chicago";  // Most of ND
+    if (strcmp(state, "Oklahoma") == 0) return "America/Chicago";
+    if (strcmp(state, "South Dakota") == 0) return "America/Chicago";  // Eastern SD
+    if (strcmp(state, "Tennessee") == 0) return "America/Chicago";  // Western TN
+    if (strcmp(state, "Texas") == 0) return "America/Chicago";  // Most of Texas
+    if (strcmp(state, "Wisconsin") == 0) return "America/Chicago";
+
+    // Mountain Time (UTC-7/-6)
+    if (strcmp(state, "Arizona") == 0) return "America/Phoenix";  // No DST
+    if (strcmp(state, "Colorado") == 0) return "America/Denver";
+    if (strcmp(state, "Idaho") == 0) return "America/Denver";  // Southern Idaho
+    if (strcmp(state, "Montana") == 0) return "America/Denver";
+    if (strcmp(state, "New Mexico") == 0) return "America/Denver";
+    if (strcmp(state, "Utah") == 0) return "America/Denver";
+    if (strcmp(state, "Wyoming") == 0) return "America/Denver";
+
+    // Pacific Time (UTC-8/-7)
+    if (strcmp(state, "California") == 0) return "America/Los_Angeles";
+    if (strcmp(state, "Nevada") == 0) return "America/Los_Angeles";
+    if (strcmp(state, "Oregon") == 0) return "America/Los_Angeles";  // Most of Oregon
+    if (strcmp(state, "Washington") == 0) return "America/Los_Angeles";
+
+    // Alaska Time (UTC-9/-8)
+    if (strcmp(state, "Alaska") == 0) return "America/Anchorage";
+
+    // Hawaii-Aleutian Time (UTC-10, no DST)
+    if (strcmp(state, "Hawaii") == 0) return "Pacific/Honolulu";
+
+    // Default fallback for unknown states
+    return "America/New_York";  // Eastern Time as default
+}
+
+// Convert zipcode to lat/lon using OpenStreetMap Nominatim API
+// Also auto-detects timezone from state
+static esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot fetch coordinates");
+        return ESP_FAIL;
+    }
+
+    char url[256];
+    // Nominatim REQUIRES HTTPS (redirects HTTP with 301) - no choice but to use SSL
+    snprintf(url, sizeof(url),
+             "https://nominatim.openstreetmap.org/search?postalcode=%s&country=us&format=json&limit=1&addressdetails=1",
+             zipcode);
+
+    http_response_len = 0;
+    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = 15000,
+        .user_agent = "CYGM/1.0",
+        .method = HTTP_METHOD_GET,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,  // HTTPS required (Nominatim redirects HTTP to HTTPS)
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
+        .buffer_size = WEATHER_HTTP_BUFFER_SIZE,
+        .buffer_size_tx = 1024  // Reduce TX buffer
+    };
+
+    ESP_LOGI(TAG, "Geocoding URL: %s", url);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client for geocoding");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "Geocoding HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Geocoding response: %s", http_response_buffer);
+
+        // Parse JSON response
+        cJSON *json = cJSON_Parse(http_response_buffer);
+        if (json != NULL) {
+            if (cJSON_GetArraySize(json) > 0) {
+                cJSON *first = cJSON_GetArrayItem(json, 0);
+                cJSON *lat_json = cJSON_GetObjectItem(first, "lat");
+                cJSON *lon_json = cJSON_GetObjectItem(first, "lon");
+
+                if (lat_json && lon_json) {
+                    *lat = atof(lat_json->valuestring);
+                    *lon = atof(lon_json->valuestring);
+
+                    bool location_found = false;
+
+                    // Try to get city/town and state from address components
+                    cJSON *address = cJSON_GetObjectItem(first, "address");
+                    if (address) {
+                        cJSON *city = cJSON_GetObjectItem(address, "city");
+                        cJSON *town = cJSON_GetObjectItem(address, "town");
+                        cJSON *village = cJSON_GetObjectItem(address, "village");
+                        cJSON *county = cJSON_GetObjectItem(address, "county");
+                        cJSON *state = cJSON_GetObjectItem(address, "state");
+
+                        // Use city, town, village, or county (in that priority order)
+                        const char *locality = NULL;
+                        if (city && cJSON_IsString(city)) {
+                            locality = city->valuestring;
+                        } else if (town && cJSON_IsString(town)) {
+                            locality = town->valuestring;
+                        } else if (village && cJSON_IsString(village)) {
+                            locality = village->valuestring;
+                        } else if (county && cJSON_IsString(county)) {
+                            // Remove " County" suffix if present
+                            static char county_name[57];
+                            strncpy(county_name, county->valuestring, sizeof(county_name) - 1);
+                            county_name[sizeof(county_name) - 1] = '\0';
+                            char *suffix = strstr(county_name, " County");
+                            if (suffix) *suffix = '\0';
+                            locality = county_name;
+                        }
+
+                        if (locality && state && cJSON_IsString(state)) {
+                            // Abbreviate state names for US
+                            const char *state_abbr = state->valuestring;
+                            if (strcmp(state->valuestring, "Washington") == 0) state_abbr = "WA";
+                            else if (strcmp(state->valuestring, "California") == 0) state_abbr = "CA";
+                            else if (strcmp(state->valuestring, "Oregon") == 0) state_abbr = "OR";
+                            else if (strcmp(state->valuestring, "Texas") == 0) state_abbr = "TX";
+                            else if (strcmp(state->valuestring, "New York") == 0) state_abbr = "NY";
+                            else if (strcmp(state->valuestring, "Florida") == 0) state_abbr = "FL";
+
+                            // Ensure locality fits with state abbreviation
+                            static char safe_locality[57];
+                            strncpy(safe_locality, locality, sizeof(safe_locality) - 1);
+                            safe_locality[sizeof(safe_locality) - 1] = '\0';
+
+                            snprintf(user_location, sizeof(user_location), "%s, %s",
+                                     safe_locality, state_abbr);
+                            location_found = true;
+
+                            // Auto-detect timezone from state
+                            const char *detected_tz = state_to_timezone(state->valuestring);
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+                            ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                                     state->valuestring, user_timezone);
+                        } else if (state && cJSON_IsString(state)) {
+                            // No city found, just use zipcode and state
+                            snprintf(user_location, sizeof(user_location), "%s, %s",
+                                     zipcode, state->valuestring);
+                            location_found = true;
+
+                            // Auto-detect timezone from state
+                            const char *detected_tz = state_to_timezone(state->valuestring);
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+                            ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                                     state->valuestring, user_timezone);
+                        }
+                    }
+
+                    // Fallback: Parse display_name if address parsing didn't work
+                    if (!location_found) {
+                        cJSON *display_name_json = cJSON_GetObjectItem(first, "display_name");
+                        if (display_name_json && cJSON_IsString(display_name_json)) {
+                            // display_name format: "98092, King County, Washington, United States"
+                            // Parse to extract locality and state
+                            static char display_name_buf[256];
+                            strncpy(display_name_buf, display_name_json->valuestring, sizeof(display_name_buf) - 1);
+                            display_name_buf[sizeof(display_name_buf) - 1] = '\0';
+
+                            // Split by comma
+                            char *parts[5] = {NULL};
+                            int part_count = 0;
+                            char *token = strtok(display_name_buf, ",");
+                            while (token && part_count < 5) {
+                                // Trim leading spaces
+                                while (*token == ' ') token++;
+                                parts[part_count++] = token;
+                                token = strtok(NULL, ",");
+                            }
+
+                            // Typically: [0]=zipcode, [1]=county, [2]=state, [3]=country
+                            if (part_count >= 3) {
+                                const char *locality = parts[1];  // Usually county
+                                const char *state = parts[2];
+
+                                // Remove " County" suffix if present (limit to 56 chars)
+                                static char locality_buf[57];
+                                strncpy(locality_buf, locality, sizeof(locality_buf) - 1);
+                                locality_buf[sizeof(locality_buf) - 1] = '\0';
+                                char *suffix = strstr(locality_buf, " County");
+                                if (suffix) *suffix = '\0';
+
+                                // Abbreviate state names
+                                const char *state_abbr = state;
+                                if (strcmp(state, "Washington") == 0) state_abbr = "WA";
+                                else if (strcmp(state, "California") == 0) state_abbr = "CA";
+                                else if (strcmp(state, "Oregon") == 0) state_abbr = "OR";
+                                else if (strcmp(state, "Texas") == 0) state_abbr = "TX";
+                                else if (strcmp(state, "New York") == 0) state_abbr = "NY";
+                                else if (strcmp(state, "Florida") == 0) state_abbr = "FL";
+
+                                snprintf(user_location, sizeof(user_location), "%s, %s",
+                                         locality_buf, state_abbr);
+                                location_found = true;
+
+                                // Auto-detect timezone from state
+                                const char *detected_tz = state_to_timezone(state);
+                                strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                                user_timezone[sizeof(user_timezone) - 1] = '\0';
+                                ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                                         state, user_timezone);
+                            }
+                        }
+                    }
+
+                    // Final fallback to just zipcode
+                    if (!location_found) {
+                        strncpy(user_location, zipcode, sizeof(user_location) - 1);
+                    }
+
+                    ESP_LOGI(TAG, "Zipcode %s -> Lat: %.4f, Lon: %.4f, Location: %s",
+                             zipcode, *lat, *lon, user_location);
+                    cJSON_Delete(json);
+                    esp_http_client_cleanup(client);
+                    return ESP_OK;
+                }
+            }
+            cJSON_Delete(json);
+        }
+    }
+
+    ESP_LOGE(TAG, "Failed to geocode zipcode: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return ESP_FAIL;
+}
+
+// Reverse geocode lat/lon to get city name
+static esp_err_t reverse_geocode(float lat, float lon) {
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot reverse geocode");
+        return ESP_FAIL;
+    }
+
+    char url[256];
+    // Nominatim REQUIRES HTTPS (redirects HTTP with 301) - no choice but to use SSL
+    snprintf(url, sizeof(url),
+             "https://nominatim.openstreetmap.org/reverse?lat=%.4f&lon=%.4f&format=json&addressdetails=1",
+             lat, lon);
+
+    http_response_len = 0;
+    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = 15000,
+        .user_agent = "CYGM/1.0",
+        .method = HTTP_METHOD_GET,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,  // HTTPS required (Nominatim redirects HTTP to HTTPS)
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
+        .buffer_size = WEATHER_HTTP_BUFFER_SIZE,
+        .buffer_size_tx = 1024  // Reduce TX buffer
+    };
+
+    ESP_LOGI(TAG, "Reverse geocoding URL: %s", url);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client for reverse geocoding");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "Reverse geocoding HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Reverse geocoding response: %s", http_response_buffer);
+
+        // Parse JSON response
+        cJSON *json = cJSON_Parse(http_response_buffer);
+        if (json != NULL) {
+            cJSON *address = cJSON_GetObjectItem(json, "address");
+            if (address) {
+                cJSON *city = cJSON_GetObjectItem(address, "city");
+                cJSON *town = cJSON_GetObjectItem(address, "town");
+                cJSON *village = cJSON_GetObjectItem(address, "village");
+                cJSON *county = cJSON_GetObjectItem(address, "county");
+                cJSON *state = cJSON_GetObjectItem(address, "state");
+
+                // Use city, town, village, or county (in that priority order)
+                const char *locality = NULL;
+                if (city && cJSON_IsString(city)) {
+                    locality = city->valuestring;
+                } else if (town && cJSON_IsString(town)) {
+                    locality = town->valuestring;
+                } else if (village && cJSON_IsString(village)) {
+                    locality = village->valuestring;
+                } else if (county && cJSON_IsString(county)) {
+                    // Remove " County" suffix if present
+                    static char county_name[57];
+                    strncpy(county_name, county->valuestring, sizeof(county_name) - 1);
+                    county_name[sizeof(county_name) - 1] = '\0';
+                    char *suffix = strstr(county_name, " County");
+                    if (suffix) *suffix = '\0';
+                    locality = county_name;
+                }
+
+                if (locality && state && cJSON_IsString(state)) {
+                    // Abbreviate state names for US
+                    const char *state_abbr = state->valuestring;
+                    if (strcmp(state->valuestring, "Washington") == 0) state_abbr = "WA";
+                    else if (strcmp(state->valuestring, "California") == 0) state_abbr = "CA";
+                    else if (strcmp(state->valuestring, "Oregon") == 0) state_abbr = "OR";
+                    else if (strcmp(state->valuestring, "Texas") == 0) state_abbr = "TX";
+                    else if (strcmp(state->valuestring, "New York") == 0) state_abbr = "NY";
+                    else if (strcmp(state->valuestring, "Florida") == 0) state_abbr = "FL";
+
+                    // Ensure locality fits with state abbreviation
+                    static char safe_locality[57];
+                    strncpy(safe_locality, locality, sizeof(safe_locality) - 1);
+                    safe_locality[sizeof(safe_locality) - 1] = '\0';
+
+                    snprintf(user_location, sizeof(user_location), "%s, %s",
+                             safe_locality, state_abbr);
+
+                    // Auto-detect timezone from state
+                    const char *detected_tz = state_to_timezone(state->valuestring);
+                    strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                    user_timezone[sizeof(user_timezone) - 1] = '\0';
+                    ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                             state->valuestring, user_timezone);
+
+                    ESP_LOGI(TAG, "Reverse geocode result: %s", user_location);
+                    cJSON_Delete(json);
+                    esp_http_client_cleanup(client);
+                    return ESP_OK;
+                }
+            }
+            cJSON_Delete(json);
+        }
+    }
+
+    ESP_LOGE(TAG, "Failed to reverse geocode: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return ESP_FAIL;
+}
+
+// Check if it's currently night time (after sunset or before sunrise)
+static bool is_night_time(void) {
+    if (sunrise_time == 0 || sunset_time == 0) {
+        return false;  // No sunrise/sunset data yet
+    }
+
+    time_t now;
+    time(&now);
+
+    // Check if current time is after sunset or before sunrise
+    return (now >= sunset_time || now < sunrise_time);
+}
+
+// Map Open-Meteo weather codes to our internal codes
+static int map_weather_code(int wmo_code) {
+    // WMO Weather interpretation codes
+    if (wmo_code == 0) return 0;  // Clear sky
+    if (wmo_code == 1 || wmo_code == 2) return 1;  // Partly cloudy
+    if (wmo_code == 3) return 2;  // Cloudy
+    if (wmo_code >= 45 && wmo_code <= 48) return 6;  // Fog
+    if ((wmo_code >= 56 && wmo_code <= 57) || (wmo_code >= 66 && wmo_code <= 67)) return 7;  // Freezing rain/drizzle (ice)
+    if (wmo_code >= 51 && wmo_code <= 65) return 3;  // Rain (excluding freezing rain)
+    if (wmo_code >= 71 && wmo_code <= 86) return 4;  // Snow (including snow showers)
+    if (wmo_code >= 95 && wmo_code <= 99) return 5;  // Thunderstorm
+    return 2;  // Default to cloudy
+}
+
+// Fetch weather from Open-Meteo API
+static esp_err_t fetch_weather(float lat, float lon) {
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot fetch weather");
+        return ESP_FAIL;
+    }
+
+    char url[512];
+    // Use HTTP for Open-Meteo (free API, no SSL needed, saves ~20KB memory)
+    snprintf(url, sizeof(url),
+             "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=%s&timezone=auto&forecast_days=1",
+             lat, lon, user_temp_celsius ? "celsius" : "fahrenheit");
+
+    http_response_len = 0;
+    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = 15000,  // Increase timeout to 15 seconds
+        .user_agent = "CYGM/1.0",
+        .method = HTTP_METHOD_GET,
+        .transport_type = HTTP_TRANSPORT_OVER_TCP,  // HTTP instead of HTTPS
+        .skip_cert_common_name_check = true,
+        .disable_auto_redirect = false
+    };
+
+    ESP_LOGI(TAG, "Weather URL: %s", url);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client for weather");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "Weather HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Weather response: %s", http_response_buffer);
+
+        // Parse JSON response
+        cJSON *json = cJSON_Parse(http_response_buffer);
+        if (json != NULL) {
+            cJSON *current = cJSON_GetObjectItem(json, "current");
+            cJSON *daily = cJSON_GetObjectItem(json, "daily");
+
+            if (current && daily) {
+                cJSON *temp = cJSON_GetObjectItem(current, "temperature_2m");
+                cJSON *weather_code = cJSON_GetObjectItem(current, "weather_code");
+                cJSON *temp_max = cJSON_GetObjectItem(daily, "temperature_2m_max");
+                cJSON *temp_min = cJSON_GetObjectItem(daily, "temperature_2m_min");
+                cJSON *sunrise = cJSON_GetObjectItem(daily, "sunrise");
+                cJSON *sunset = cJSON_GetObjectItem(daily, "sunset");
+
+                if (temp && weather_code && temp_max && temp_min) {
+                    current_temp_f = (int)temp->valuedouble;
+
+                    // Get first element of daily arrays
+                    high_temp_f = (int)cJSON_GetArrayItem(temp_max, 0)->valuedouble;
+                    low_temp_f = (int)cJSON_GetArrayItem(temp_min, 0)->valuedouble;
+
+                    // Parse sunrise/sunset times (ISO 8601 format)
+                    if (sunrise && sunset) {
+                        cJSON *sunrise_str = cJSON_GetArrayItem(sunrise, 0);
+                        cJSON *sunset_str = cJSON_GetArrayItem(sunset, 0);
+                        if (sunrise_str && cJSON_IsString(sunrise_str)) {
+                            struct tm tm_sunrise = {0};
+                            strptime(sunrise_str->valuestring, "%Y-%m-%dT%H:%M", &tm_sunrise);
+                            sunrise_time = mktime(&tm_sunrise);
+                        }
+                        if (sunset_str && cJSON_IsString(sunset_str)) {
+                            struct tm tm_sunset = {0};
+                            strptime(sunset_str->valuestring, "%Y-%m-%dT%H:%M", &tm_sunset);
+                            sunset_time = mktime(&tm_sunset);
+                        }
+                    }
+
+                    current_weather_code = map_weather_code(weather_code->valueint);
+                    current_condition = get_weather_condition_text(current_weather_code);
+
+                    ESP_LOGI(TAG, "Weather updated: %d F (Hi: %d F, Lo: %d F), Code: %d",
+                             current_temp_f, high_temp_f, low_temp_f, current_weather_code);
+
+                    cJSON_Delete(json);
+                    esp_http_client_cleanup(client);
+                    return ESP_OK;
+                }
+            }
+            cJSON_Delete(json);
+        }
+    }
+
+    ESP_LOGE(TAG, "Failed to fetch weather: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return ESP_FAIL;
+}
+
+// Update location label on home screen
+static void update_location_display(void) {
+    if (home_location_label == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+        lvgl_port_unlock();
+    }
+}
+
+// Update sunrise/sunset display on home screen
+static void update_sunrise_sunset_display(void) {
+    if (home_sunrise_label == NULL || home_sunset_label == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (sunrise_time != 0 && sunset_time != 0) {
+            struct tm tm_sunrise;
+            struct tm tm_sunset;
+            localtime_r(&sunrise_time, &tm_sunrise);
+            localtime_r(&sunset_time, &tm_sunset);
+
+            char sunrise_buf[8];
+            char sunset_buf[8];
+
+            // Format based on user preference (12hr vs 24hr)
+            if (user_24hr_format) {
+                strftime(sunrise_buf, sizeof(sunrise_buf), "%H:%M", &tm_sunrise);
+                strftime(sunset_buf, sizeof(sunset_buf), "%H:%M", &tm_sunset);
+            } else {
+                strftime(sunrise_buf, sizeof(sunrise_buf), "%I:%M", &tm_sunrise);
+                strftime(sunset_buf, sizeof(sunset_buf), "%I:%M", &tm_sunset);
+                // Remove leading zero from hour
+                if (sunrise_buf[0] == '0') {
+                    memmove(sunrise_buf, sunrise_buf + 1, strlen(sunrise_buf));
+                }
+                if (sunset_buf[0] == '0') {
+                    memmove(sunset_buf, sunset_buf + 1, strlen(sunset_buf));
+                }
+            }
+
+            lv_label_set_text(home_sunrise_label, sunrise_buf);
+            lv_label_set_text(home_sunset_label, sunset_buf);
+        } else {
+            lv_label_set_text(home_sunrise_label, "--:--");
+            lv_label_set_text(home_sunset_label, "--:--");
+        }
+        lvgl_port_unlock();
+    }
+}
+
+// Update weather display on home screen
+static void update_weather_display(void) {
+    // Check if widgets exist (home screen is loaded)
+    if (home_temp_label == NULL || home_hilo_label == NULL || home_weather_canvas == NULL ||
+        home_condition_label == NULL || home_location_label == NULL ||
+        home_sunrise_label == NULL || home_sunset_label == NULL) {
+        ESP_LOGW(TAG, "Weather widgets not available (home screen not loaded)");
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        // Update temperature label
+        char temp_buf[16];
+        if (user_temp_celsius) {
+            int temp_c = (current_temp_f - 32) * 5 / 9;
+            snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
+        } else {
+            snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
+        }
+        lv_label_set_text(home_temp_label, temp_buf);
+
+        // Update Hi/Lo label (stacked vertically)
+        char hilo_buf[32];
+        if (user_temp_celsius) {
+            int high_c = (high_temp_f - 32) * 5 / 9;
+            int low_c = (low_temp_f - 32) * 5 / 9;
+            snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
+        } else {
+            snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
+        }
+        lv_label_set_text(home_hilo_label, hilo_buf);
+
+        // Update weather condition text
+        lv_label_set_text(home_condition_label, get_weather_condition_text(current_weather_code));
+
+        // Update location label
+        lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+
+        // Update weather icon (clear canvas with fully transparent background first)
+        lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Fully transparent
+        draw_weather_icon(home_weather_canvas, current_weather_code);
+
+        ESP_LOGD(TAG, "Weather display updated: %d F (Hi: %d F, Lo: %d F) - %s",
+                 current_temp_f, high_temp_f, low_temp_f, get_weather_condition_text(current_weather_code));
+        lvgl_port_unlock();
+    }
+
+    // Update sunrise/sunset times (separate function since it has its own lock)
+    update_sunrise_sunset_display();
+}
+
+// Update glucose display on home screen
+// ============================================================================
+// Alarm Checking and Triggering
+// ============================================================================
+
+// Determine glucose text color based on alarm thresholds
+static uint32_t get_glucose_alarm_color(int glucose_mg_dl) {
+    // Urgent alarms take priority over warnings
+    if (current_alarm_settings.high_alarm.enabled &&
+        glucose_mg_dl >= current_alarm_settings.high_alarm.threshold) {
+        return current_alarm_settings.high_alarm.text_color;
+    }
+
+    if (current_alarm_settings.low_alarm.enabled &&
+        glucose_mg_dl <= current_alarm_settings.low_alarm.threshold) {
+        return current_alarm_settings.low_alarm.text_color;
+    }
+
+    // Check warnings
+    if (current_alarm_settings.high_warning.enabled &&
+        glucose_mg_dl >= current_alarm_settings.high_warning.threshold) {
+        return current_alarm_settings.high_warning.text_color;
+    }
+
+    if (current_alarm_settings.low_warning.enabled &&
+        glucose_mg_dl <= current_alarm_settings.low_warning.threshold) {
+        return current_alarm_settings.low_warning.text_color;
+    }
+
+    // No alarm triggered - use white
+    return COLOR_TEXT_WHITE;
+}
+
+// Forward declarations for visual alarm functions
+static void start_visual_alarm(void);
+static void stop_visual_alarm(void);
+static void start_audio_alarm(alarm_config_t *alarm);
+static void stop_audio_alarm(void);
+static void create_alarm_snooze_screen(void);
+
+// Trigger an alarm (audio + visual)
+static void trigger_alarm(active_alarm_state_t state) {
+    alarm_config_t *alarm = NULL;
+    const char *alarm_name = "Unknown";
+
+    switch (state) {
+        case ALARM_STATE_HIGH_ALARM:
+            alarm = &current_alarm_settings.high_alarm;
+            alarm_name = "High Alarm";
+            break;
+        case ALARM_STATE_HIGH_WARNING:
+            alarm = &current_alarm_settings.high_warning;
+            alarm_name = "High Warning";
+            break;
+        case ALARM_STATE_LOW_WARNING:
+            alarm = &current_alarm_settings.low_warning;
+            alarm_name = "Low Warning";
+            break;
+        case ALARM_STATE_LOW_ALARM:
+            alarm = &current_alarm_settings.low_alarm;
+            alarm_name = "Low Alarm";
+            break;
+        default:
+            return;
+    }
+
+    if (alarm == NULL) return;
+
+    ESP_LOGW(TAG, "🚨 ALARM TRIGGERED: %s (threshold: %d mg/dL)",
+             alarm_name, alarm->threshold);
+
+    // Check if snooze is active
+    time_t now;
+    time(&now);
+    if (alarm_snooze_until > 0 && now < alarm_snooze_until) {
+        ESP_LOGI(TAG, "Alarm snoozed until %lld (current: %ld)", alarm_snooze_until, (long)now);
+        return;
+    }
+
+    // Audio alert (if enabled and not acknowledged)
+    if (alarm->audio_enabled && !alarm_acknowledged) {
+        start_audio_alarm(alarm);
+    }
+
+    // Visual alert (pulsing white screen)
+    if (alarm->visual_enabled && !alarm_acknowledged) {
+        start_visual_alarm();
+    }
+}
+
+// Check glucose against alarm thresholds and trigger if needed
+static void check_glucose_alarms(int glucose_mg_dl) {
+    if (!glucose_data_valid) {
+        return;  // Don't check alarms without valid data
+    }
+
+    // Determine which alarm should trigger (urgent takes priority over warnings)
+    active_alarm_state_t new_state = ALARM_STATE_NONE;
+
+    if (current_alarm_settings.high_alarm.enabled &&
+        glucose_mg_dl >= current_alarm_settings.high_alarm.threshold) {
+        new_state = ALARM_STATE_HIGH_ALARM;
+    } else if (current_alarm_settings.low_alarm.enabled &&
+               glucose_mg_dl <= current_alarm_settings.low_alarm.threshold) {
+        new_state = ALARM_STATE_LOW_ALARM;
+    } else if (current_alarm_settings.high_warning.enabled &&
+               glucose_mg_dl >= current_alarm_settings.high_warning.threshold) {
+        new_state = ALARM_STATE_HIGH_WARNING;
+    } else if (current_alarm_settings.low_warning.enabled &&
+               glucose_mg_dl <= current_alarm_settings.low_warning.threshold) {
+        new_state = ALARM_STATE_LOW_WARNING;
+    }
+
+    // Check if snooze has expired (even if state hasn't changed)
+    if (new_state != ALARM_STATE_NONE && alarm_snooze_until > 0) {
+        time_t now;
+        time(&now);
+        if (now >= alarm_snooze_until) {
+            ESP_LOGI(TAG, "Snooze expired! Re-triggering alarm (state: %d)", new_state);
+            alarm_snooze_until = 0;  // Clear snooze
+            alarm_acknowledged = false;  // Reset acknowledgment
+            trigger_alarm(new_state);
+            return;  // Don't process state change logic below
+        }
+    }
+
+    // State changed?
+    if (new_state != current_alarm_state) {
+        ESP_LOGI(TAG, "Alarm state changed: %d -> %d", current_alarm_state, new_state);
+        current_alarm_state = new_state;
+        alarm_acknowledged = false;  // Reset acknowledgment on state change
+
+        if (new_state != ALARM_STATE_NONE) {
+            trigger_alarm(new_state);
+        } else {
+            ESP_LOGI(TAG, "Glucose returned to normal range");
+            stop_visual_alarm();
+            stop_audio_alarm();
+        }
+    }
+}
+
+// ============================================================================
+// Visual Alarm - Pulsing White Screen
+// ============================================================================
+
+// Timer callback for pulsing white overlay (2 times per second = 250ms per phase)
+static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
+    if (!visual_alarm_active || visual_alarm_overlay == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (visual_alarm_pulse_state == 0) {
+            // Fade to white
+            lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_90, 0);
+            visual_alarm_pulse_state = 1;
+            ESP_LOGD(TAG, "Visual alarm: WHITE");
+        } else {
+            // Fade to transparent
+            lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_TRANSP, 0);
+            visual_alarm_pulse_state = 0;
+            ESP_LOGD(TAG, "Visual alarm: transparent");
+        }
+        lv_obj_invalidate(visual_alarm_overlay);  // Force redraw
+        lvgl_port_unlock();
+    }
+}
+
+// Timer callback for repeating audio alarm (every 3 seconds)
+static void audio_alarm_repeat_timer_cb(lv_timer_t *timer) {
+    if (active_alarm_config != NULL && active_alarm_config->audio_enabled) {
+        ESP_LOGI(TAG, "Repeating alarm tone: %d at volume %d%%", active_alarm_config->tone, active_alarm_config->volume);
+        play_alarm_tone(active_alarm_config->tone, active_alarm_config->volume);
+    }
+}
+
+// Start audio alarm (with optional repeat)
+static void start_audio_alarm(alarm_config_t *alarm) {
+    if (alarm == NULL || !alarm->audio_enabled) {
+        return;
+    }
+
+    // Stop any existing audio alarm
+    stop_audio_alarm();
+
+    // Save reference to alarm config
+    active_alarm_config = alarm;
+
+    // Play initial tone
+    ESP_LOGI(TAG, "Playing alarm tone: %d at volume %d%%", alarm->tone, alarm->volume);
+    play_alarm_tone(alarm->tone, alarm->volume);
+
+    // Start repeat timer if enabled
+    if (alarm->audio_repeat) {
+        ESP_LOGI(TAG, "Starting audio alarm repeat timer (every 3 seconds)");
+        audio_alarm_timer = lv_timer_create(audio_alarm_repeat_timer_cb, 3000, NULL);
+    }
+}
+
+// Stop audio alarm
+static void stop_audio_alarm(void) {
+    if (audio_alarm_timer != NULL) {
+        ESP_LOGI(TAG, "Stopping audio alarm repeat timer");
+        lv_timer_del(audio_alarm_timer);
+        audio_alarm_timer = NULL;
+    }
+    active_alarm_config = NULL;
+    buzzer_stop();  // Ensure buzzer is stopped
+}
+
+// Event handler for visual alarm slider (dismiss)
+static void visual_alarm_slider_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *slider = lv_event_get_target(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        int32_t value = lv_slider_get_value(slider);
+
+        // Slider must be moved to 100 to dismiss
+        if (value >= 100) {
+            ESP_LOGI(TAG, "Visual alarm slider activated - showing snooze/dismiss screen");
+            stop_visual_alarm();
+            stop_audio_alarm();  // Stop audio alarm when slider is dismissed
+
+            // Show snooze/dismiss screen
+            if (lvgl_port_lock(0)) {
+                if (screen_alarm_snooze != NULL) {
+                    lv_obj_del(screen_alarm_snooze);
+                    screen_alarm_snooze = NULL;
+                }
+                create_alarm_snooze_screen();
+                lv_scr_load(screen_alarm_snooze);
+                lvgl_port_unlock();
+            }
+        }
+    } else if (code == LV_EVENT_RELEASED) {
+        // If slider released before reaching 100, snap back to 0
+        int32_t value = lv_slider_get_value(slider);
+        if (value < 100) {
+            lv_slider_set_value(slider, 0, LV_ANIM_ON);
+            ESP_LOGI(TAG, "Slider released before 100%% - snapping back");
+        }
+    }
+}
+
+// Start visual alarm (pulsing white screen with slider)
+static void start_visual_alarm(void) {
+    if (visual_alarm_active) {
+        return;  // Already active
+    }
+
+    ESP_LOGI(TAG, "Starting visual alarm");
+    visual_alarm_active = true;
+    visual_alarm_pulse_state = 0;
+
+    if (lvgl_port_lock(0)) {
+        // Create white overlay that covers entire screen
+        visual_alarm_overlay = lv_obj_create(lv_scr_act());
+        lv_obj_set_size(visual_alarm_overlay, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_pos(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_bg_color(visual_alarm_overlay, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_TRANSP, 0);  // Start transparent
+        lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_pad_all(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_radius(visual_alarm_overlay, 0, 0);
+        lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_move_foreground(visual_alarm_overlay);  // Move to front
+
+        // Create slider to dismiss (on top of overlay)
+        visual_alarm_slider = lv_slider_create(lv_scr_act());
+        lv_obj_set_size(visual_alarm_slider, 280, 40);  // Increased height to fit label inside
+        lv_obj_align(visual_alarm_slider, LV_ALIGN_BOTTOM_MID, 0, -10);
+        lv_slider_set_range(visual_alarm_slider, 0, 100);
+        lv_slider_set_value(visual_alarm_slider, 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0xFF0000), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_KNOB);
+        lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_RELEASED, NULL);
+        lv_obj_move_foreground(visual_alarm_slider);  // Ensure slider is on top
+
+        // Slider label INSIDE slider (white text)
+        visual_alarm_slider_label = lv_label_create(visual_alarm_slider);
+        lv_label_set_text(visual_alarm_slider_label, "Slide to disarm");
+        lv_obj_set_style_text_color(visual_alarm_slider_label, lv_color_white(), 0);
+        lv_obj_set_style_text_font(visual_alarm_slider_label, &lv_font_montserrat_14, 0);
+        lv_obj_align(visual_alarm_slider_label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_move_foreground(visual_alarm_slider_label);  // Ensure label is on top
+
+        lvgl_port_unlock();
+    }
+
+    // Start pulse timer (250ms = 4 times per second, alternating white/normal = 2 pulses per second)
+    visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, 250, NULL);
+}
+
+// Stop visual alarm
+static void stop_visual_alarm(void) {
+    if (!visual_alarm_active) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Stopping visual alarm");
+    visual_alarm_active = false;
+
+    if (visual_alarm_timer != NULL) {
+        lv_timer_del(visual_alarm_timer);
+        visual_alarm_timer = NULL;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (visual_alarm_overlay != NULL) {
+            lv_obj_del(visual_alarm_overlay);
+            visual_alarm_overlay = NULL;
+        }
+        if (visual_alarm_slider != NULL) {
+            // Label is a child of slider, so it gets deleted automatically
+            visual_alarm_slider_label = NULL;  // Set to NULL before deleting parent
+            lv_obj_del(visual_alarm_slider);
+            visual_alarm_slider = NULL;
+        }
+        lvgl_port_unlock();
+    }
+}
+
+// ============================================================================
+// Glucose Display Update
+// ============================================================================
+
+static void update_glucose_display(void) {
+    // Check if widgets exist (home screen is loaded)
+    if (label_glucose == NULL || trend_canvas == NULL || label_time_ago == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (glucose_data_valid) {
+            // "Last Known Good" approach - always show last valid glucose reading
+            // This prevents user anxiety from seeing "---" during temporary failures
+
+            // Update glucose value
+            char glucose_str[16];
+            snprintf(glucose_str, sizeof(glucose_str), "%d", current_glucose);
+            lv_label_set_text(label_glucose, glucose_str);
+
+            // Color code based on alarm thresholds (configured by user)
+            uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
+            lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
+
+            // Update trend arrow canvas
+            lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear canvas
+            draw_trend_arrow(trend_canvas, current_trend);
+
+            // Calculate minutes ago
+            time_t now;
+            time(&now);
+            int minutes_ago = (int)difftime(now, glucose_timestamp) / 60;
+
+            char time_ago_str[32];
+            if (minutes_ago < 1) {
+                snprintf(time_ago_str, sizeof(time_ago_str), "Just now");
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            } else if (minutes_ago == 1) {
+                snprintf(time_ago_str, sizeof(time_ago_str), "1 min ago");
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            } else if (minutes_ago >= 15) {
+                // Very stale data - show warning but keep displaying value
+                snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);  // Stale data warning
+            } else if (!glucose_data_fresh) {
+                // Data is not fresh (last fetch failed) - indicate staleness
+                snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);  // Stale but not critical
+            } else {
+                // Fresh data - normal display
+                snprintf(time_ago_str, sizeof(time_ago_str), "%d mins ago", minutes_ago);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            }
+            lv_label_set_text(label_time_ago, time_ago_str);
+
+            // Glucose display updated (reduced logging to save serial bandwidth)
+            ESP_LOGD(TAG, "Glucose display updated: %d mg/dL, %s, %d mins ago, fresh: %s",
+                     current_glucose, dexcom_trend_description(current_trend), minutes_ago,
+                     glucose_data_fresh ? "yes" : "no");
+        } else {
+            // No data available (never received or not authenticated) - show status-specific message
+            lv_label_set_text(label_glucose, "---");
+            lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear arrow
+
+            switch (glucose_status) {
+                case GLUCOSE_STATUS_WARMUP:
+                    lv_label_set_text(label_time_ago, "Sensor warmup");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ORANGE), 0);  // Orange
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
+                    break;
+
+                case GLUCOSE_STATUS_SIGNAL_LOSS:
+                    lv_label_set_text(label_time_ago, "Signal loss");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
+                    break;
+
+                case GLUCOSE_STATUS_NOT_AUTHENTICATED:
+                    lv_label_set_text(label_time_ago, "Not logged in");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    break;
+
+                case GLUCOSE_STATUS_NO_DATA:
+                default:
+                    lv_label_set_text(label_time_ago, "No sensor data");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+                    break;
+            }
+        }
+        lvgl_port_unlock();
+    }
+}
+
+// Weather update task - fetches weather periodically
+static void weather_update_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Weather update task started");
+
+    // Wait for initial WiFi connection and Dexcom auth to complete
+    // Short delay since we're using HTTP (no SSL overhead)
+    ESP_LOGI(TAG, "Waiting 15 seconds before first weather attempt...");
+    vTaskDelay(pdMS_TO_TICKS(15000));  // 15 seconds - gives Dexcom time to authenticate
+    ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
+
+    while (1) {
+        bool dexcom_was_closed = false;  // Track if we closed Dexcom (so we know to reopen it)
+
+        if (wifi_manager_is_connected() && strlen(user_zipcode) > 0) {
+            // Only geocode if:
+            // 1. No cached coordinates exist, OR
+            // 2. Current zipcode != geocoded zipcode (user changed it)
+            bool need_geocode = (user_latitude == 0.0f && user_longitude == 0.0f) ||
+                                (strcmp(user_zipcode, geocoded_zipcode) != 0);
+
+            if (need_geocode) {
+                if (strcmp(user_zipcode, geocoded_zipcode) != 0) {
+                    ESP_LOGI(TAG, "Zipcode changed (%s -> %s), re-geocoding...", geocoded_zipcode, user_zipcode);
+                } else {
+                    ESP_LOGI(TAG, "No cached coordinates - need to geocode zipcode: %s", user_zipcode);
+                }
+
+                // CRITICAL: Verify time is synced before attempting SSL connections
+                if (!is_time_synced()) {
+                    ESP_LOGW(TAG, "Time not synced, waiting for SNTP before geocoding...");
+                    if (!wait_for_time_sync(10000)) {
+                        ESP_LOGE(TAG, "Time sync timeout - skipping geocoding (SSL will fail)");
+                        // Wait configured interval and try again
+                        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
+                        continue;
+                    }
+                }
+
+                // MEMORY OPTIMIZATION: Close Dexcom client ONLY when geocoding (HTTPS needs memory)
+                ESP_LOGI(TAG, "Closing Dexcom client to free memory for geocoding SSL...");
+                dexcom_close_persistent_client();
+                dexcom_was_closed = true;
+                vTaskDelay(pdMS_TO_TICKS(1000));  // Let memory stabilize
+
+                // Retry logic for geocoding (may fail due to HTTP connection pool or SSL issues)
+                esp_err_t geocode_result = ESP_FAIL;
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    ESP_LOGI(TAG, "Free heap before geocoding attempt %d: %lu bytes", attempt, esp_get_free_heap_size());
+                    geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
+                    ESP_LOGI(TAG, "Free heap after geocoding attempt %d: %lu bytes", attempt, esp_get_free_heap_size());
+
+                    if (geocode_result == ESP_OK) {
+                        ESP_LOGI(TAG, "Location found: %.4f, %.4f", user_latitude, user_longitude);
+                        break;
+                    } else {
+                        ESP_LOGW(TAG, "Geocoding attempt %d/3 failed: %s", attempt, esp_err_to_name(geocode_result));
+                        if (attempt < 3) {
+                            ESP_LOGI(TAG, "Retrying in 5 seconds...");
+                            vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay between retries
+                        }
+                    }
+                }
+
+                if (geocode_result == ESP_OK) {
+                    // Save auto-detected timezone to NVS (timezone was set during geocoding)
+                    nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                    ESP_LOGI(TAG, "Auto-detected timezone saved to NVS: %s", user_timezone);
+
+                    // Apply timezone to system immediately
+                    const char *posix_tz = get_posix_timezone(user_timezone);
+                    setenv("TZ", posix_tz, 1);
+                    tzset();
+
+                    // Force immediate time display update to reflect new timezone
+                    update_time_display();
+                    ESP_LOGI(TAG, "Time display updated with new timezone: %s", user_timezone);
+
+                    // Update geocoded zipcode tracker
+                    strncpy(geocoded_zipcode, user_zipcode, sizeof(geocoded_zipcode) - 1);
+                    geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
+
+                    ESP_LOGI(TAG, "Coordinates and location for zipcode: %s", geocoded_zipcode);
+
+                    // Wait a bit before reverse geocoding to let HTTP connections close
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+
+                    // Do reverse geocoding to get actual city name (more accurate than postal code lookup)
+                    // Retry this too
+                    ESP_LOGI(TAG, "Free heap before reverse geocoding: %lu bytes", esp_get_free_heap_size());
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        if (reverse_geocode(user_latitude, user_longitude) == ESP_OK) {
+                            ESP_LOGI(TAG, "Reverse geocoding successful");
+                            ESP_LOGI(TAG, "Free heap after reverse geocoding: %lu bytes", esp_get_free_heap_size());
+
+                            // Save location and coordinates to NVS (now that we have both)
+                            nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
+                            break;
+                        } else {
+                            ESP_LOGW(TAG, "Reverse geocoding attempt %d/3 failed", attempt);
+                            if (attempt < 3) {
+                                vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
+                            }
+                        }
+                    }
+
+                    // Update location label immediately after geocoding
+                    update_location_display();
+                } else {
+                    ESP_LOGW(TAG, "Geocoding failed after 3 attempts - skipping weather update this cycle");
+                }
+            } else {
+                // Using cached coordinates - no geocoding needed
+                ESP_LOGI(TAG, "Using cached coordinates for zipcode %s (no geocoding needed)", geocoded_zipcode);
+
+                // If location name is not set, do reverse geocoding to populate it
+                // reverse_geocode() also auto-detects and sets the timezone
+                if (strlen(user_location) == 0) {
+                    ESP_LOGI(TAG, "Location name not set, doing reverse geocoding to get city name and timezone...");
+                    ESP_LOGI(TAG, "Closing Dexcom client to free memory for reverse geocoding SSL...");
+                    dexcom_close_persistent_client();
+                    dexcom_was_closed = true;
+                    ESP_LOGI(TAG, "Free heap before reverse geocoding: %lu bytes", esp_get_free_heap_size());
+
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        if (reverse_geocode(user_latitude, user_longitude) == ESP_OK) {
+                            ESP_LOGI(TAG, "Reverse geocoding successful: %s", user_location);
+
+                            // Save location and coordinates to NVS
+                            nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
+
+                            // Save and apply the auto-detected timezone
+                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                            const char *posix_tz = get_posix_timezone(user_timezone);
+                            setenv("TZ", posix_tz, 1);
+                            tzset();
+                            update_time_display();
+                            ESP_LOGI(TAG, "Timezone applied from reverse geocoding: %s", user_timezone);
+
+                            update_location_display();
+                            break;
+                        } else {
+                            ESP_LOGW(TAG, "Reverse geocoding attempt %d/3 failed", attempt);
+                            if (attempt < 3) {
+                                vTaskDelay(pdMS_TO_TICKS(5000));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fetch weather if we have coordinates
+            if (user_latitude != 0.0f && user_longitude != 0.0f) {
+                // Wait a bit before weather fetch to let HTTP connections close
+                vTaskDelay(pdMS_TO_TICKS(2000));
+
+                ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
+                ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
+
+                // Retry logic for weather fetch (may fail due to HTTP connection pool exhaustion)
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    if (fetch_weather(user_latitude, user_longitude) == ESP_OK) {
+                        ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
+                        update_weather_display();
+                        break;
+                    } else {
+                        ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
+                        ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
+                        if (attempt < 3) {
+                            ESP_LOGI(TAG, "Retrying in 5 seconds...");
+                            vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
+                        }
+                    }
+                }
+            }
+
+            // MEMORY OPTIMIZATION: Re-open Dexcom persistent client ONLY if we closed it
+            if (dexcom_was_closed) {
+                ESP_LOGI(TAG, "Weather operations complete, re-opening Dexcom client...");
+                dexcom_reopen_persistent_client();
+            }
+        } else {
+            ESP_LOGD(TAG, "Skipping weather update (WiFi: %d, Zipcode: %s)",
+                    wifi_manager_is_connected(), user_zipcode);
+        }
+
+        // Wait for configured interval or until notified to update immediately
+        // ulTaskNotifyTake clears notification and returns immediately if notified
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
+    }
+}
+
+// Glucose update task - fetches glucose periodically (every 90 seconds)
+static void glucose_update_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Glucose update task started (90 second interval)");
+
+    // Wait 90 seconds before first fetch (initial fetch already done during auth)
+    // This prevents rate limiting (Dexcom allows 1 fetch per 90 seconds)
+    vTaskDelay(pdMS_TO_TICKS(90000));  // 90 seconds
+
+    while (1) {
+        // Only fetch if authenticated
+        if (dexcom_is_authenticated()) {
+            dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
+            ESP_LOGI(TAG, "Fetching periodic glucose reading...");
+            esp_err_t ret = dexcom_fetch_glucose(&glucose);
+
+            if (ret == ESP_OK && glucose.valid) {
+                // Update glucose data - "Last Known Good" approach
+                current_glucose = glucose.value;
+                current_trend = glucose.trend;
+                glucose_timestamp = glucose.timestamp;
+                glucose_data_valid = true;    // We've received valid data at least once
+                glucose_data_fresh = true;    // This fetch succeeded
+                glucose_status = glucose.status;
+
+                ESP_LOGI(TAG, "Glucose updated: %d mg/dL, trend: %s",
+                         glucose.value, dexcom_trend_description(glucose.trend));
+
+                // SD logging removed: sd_log(TAG, "Glucose update SUCCESS: %d mg/dL, trend: %s, heap: %lu bytes", ...);
+
+                // Play success sound on first glucose reading
+                if (!first_glucose_received) {
+                    first_glucose_received = true;
+                    ESP_LOGI(TAG, "First glucose reading received - playing success sound");
+                    play_success_sound();
+                }
+
+                // Check alarms
+                check_glucose_alarms(current_glucose);
+
+                // Update display
+                update_glucose_display();
+            } else {
+                // Fetch failed - mark data as stale but keep displaying last known good value
+                glucose_data_fresh = false;   // This fetch failed
+                glucose_status = glucose.status;
+
+                // Only clear glucose_data_valid if we're not authenticated (need re-login)
+                if (glucose.status == GLUCOSE_STATUS_NOT_AUTHENTICATED) {
+                    glucose_data_valid = false;
+                }
+
+                update_glucose_display();
+                ESP_LOGW(TAG, "Periodic glucose fetch failed: %s", esp_err_to_name(ret));
+                // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
+            }
+        } else {
+            ESP_LOGW(TAG, "Not authenticated - skipping glucose fetch");
+        }
+
+        // Wait 90 seconds before next fetch
+        vTaskDelay(pdMS_TO_TICKS(90000));
+    }
+}
+
+// ==================== LED PWM Functions ====================
+
+// LED functions moved to hardware/led.c
+
+// ==================== Buzzer/Speaker PWM Functions ====================
+
+static void buzzer_init(void) {
+    // Initialize LEDC timer for buzzer
+    ledc_timer_config_t timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .timer_num = BUZZER_TIMER,
+        .freq_hz = 1000,  // Will be changed when playing tones
+        .clk_cfg = LEDC_AUTO_CLK
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&timer));
+
+    // Initialize LEDC channel for buzzer
+    ledc_channel_config_t channel = {
+        .gpio_num = BUZZER_GPIO,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = BUZZER_CHANNEL,
+        .timer_sel = BUZZER_TIMER,
+        .duty = 0,  // Start silent
+        .hpoint = 0
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&channel));
+
+    ESP_LOGI(TAG, "Buzzer PWM initialized (GPIO %d)", BUZZER_GPIO);
+}
+
+static void buzzer_tone(uint32_t frequency, uint8_t volume) {
+    if (frequency == 0 || volume == 0) {
+        // Silence - set duty to 0
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, 0);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
+        return;
+    }
+
+    // Clamp volume to 0-100
+    if (volume > 100) volume = 100;
+
+    // Set frequency
+    ledc_set_freq(LEDC_LOW_SPEED_MODE, BUZZER_TIMER, frequency);
+
+    // Set duty cycle based on volume (0-100% -> 0-1023 duty)
+    // Use 50% duty cycle for clearest tone, scaled by volume
+    uint32_t duty = (512 * volume) / 100;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
+}
+
+static void buzzer_stop(void) {
+    buzzer_tone(0, 0);
+}
+
+// Play alarm tone based on type
+// Play boot-up sequence: 5 ascending beeps, 5 descending beeps
+static void play_boot_sound(void) {
+    const uint8_t volume = 50;  // Medium volume
+    const int beep_duration = 80;  // Short beeps
+    const int pause_duration = 40;
+
+    // Ascending beeps (C5, D5, E5, F5, G5)
+    const uint32_t ascending[] = {523, 587, 659, 698, 784};
+    for (int i = 0; i < 5; i++) {
+        buzzer_tone(ascending[i], volume);
+        vTaskDelay(pdMS_TO_TICKS(beep_duration));
+        buzzer_tone(0, 0);  // Silence between beeps
+        vTaskDelay(pdMS_TO_TICKS(pause_duration));
+    }
+
+    // Short pause between sequences
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // Descending beeps (G5, F5, E5, D5, C5)
+    for (int i = 4; i >= 0; i--) {
+        buzzer_tone(ascending[i], volume);
+        vTaskDelay(pdMS_TO_TICKS(beep_duration));
+        buzzer_tone(0, 0);  // Silence between beeps
+        if (i > 0) {
+            vTaskDelay(pdMS_TO_TICKS(pause_duration));
+        }
+    }
+
+    buzzer_tone(0, 0);  // Ensure buzzer is off
+}
+
+// Play success sound when Dexcom connects and first glucose reading arrives
+static void play_success_sound(void) {
+    const uint8_t volume = 60;  // Medium-high volume
+
+    // Happy ascending arpeggio: C5, E5, G5, C6
+    buzzer_tone(523, volume);  // C5
+    vTaskDelay(pdMS_TO_TICKS(100));
+    buzzer_tone(659, volume);  // E5
+    vTaskDelay(pdMS_TO_TICKS(100));
+    buzzer_tone(784, volume);  // G5
+    vTaskDelay(pdMS_TO_TICKS(100));
+    buzzer_tone(1047, volume);  // C6
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    buzzer_tone(0, 0);  // Silence
+}
+
+static void play_alarm_tone(alarm_tone_t tone, uint8_t volume) {
+    switch (tone) {
+        case ALARM_TONE_BEEP_1:
+            // Single 800Hz beep, 200ms
+            buzzer_tone(800, volume);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_BEEP_2:
+            // Double beep
+            buzzer_tone(800, volume);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_stop();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            buzzer_tone(800, volume);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_BEEP_3:
+            // Triple beep
+            for (int i = 0; i < 3; i++) {
+                buzzer_tone(800, volume);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                buzzer_stop();
+                if (i < 2) vTaskDelay(pdMS_TO_TICKS(100));
+            }
+            break;
+
+        case ALARM_TONE_CHIME:
+            // Rising chime: 600Hz -> 800Hz
+            buzzer_tone(600, volume);
+            vTaskDelay(pdMS_TO_TICKS(150));
+            buzzer_tone(700, volume);
+            vTaskDelay(pdMS_TO_TICKS(150));
+            buzzer_tone(800, volume);
+            vTaskDelay(pdMS_TO_TICKS(150));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_ALERT:
+            // Rapid pulsing alert: 1000Hz, 3 pulses
+            for (int i = 0; i < 3; i++) {
+                buzzer_tone(1000, volume);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                buzzer_stop();
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
+            break;
+
+        default:
+            ESP_LOGW(TAG, "Unknown alarm tone: %d", tone);
+            buzzer_tone(800, volume);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_stop();
+            break;
+    }
+}
+
+// ==================== Battery Monitoring ====================
+
+static void battery_init(void) {
+    ESP_LOGI(TAG, "Initializing battery monitoring");
+
+    // Configure ADC for battery voltage reading
+    adc_oneshot_unit_init_cfg_t adc_config = {
+        .unit_id = ADC_UNIT_1,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&adc_config, &adc_handle));
+
+    adc_oneshot_chan_cfg_t chan_config = {
+        .atten = ADC_ATTEN_DB_12,  // 0-3.3V range
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, BATTERY_ADC_CHANNEL, &chan_config));
+
+    // Initialize ADC calibration
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    esp_err_t ret = adc_cali_create_scheme_line_fitting(&cali_config, &adc_cali_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "ADC calibration initialized");
+    } else {
+        ESP_LOGW(TAG, "ADC calibration failed, using raw values");
+        adc_cali_handle = NULL;
+    }
+
+    ESP_LOGI(TAG, "Battery monitoring initialized (GPIO %d)", BATTERY_ADC_GPIO);
+}
+
+static float battery_read_voltage(void) {
+    // Take multiple readings and average for better precision
+    const int num_samples = 10;
+    int adc_sum = 0;
+
+    for (int i = 0; i < num_samples; i++) {
+        int adc_raw = 0;
+        esp_err_t ret = adc_oneshot_read(adc_handle, BATTERY_ADC_CHANNEL, &adc_raw);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "ADC read failed: %s", esp_err_to_name(ret));
+            return 0.0f;
+        }
+        adc_sum += adc_raw;
+        vTaskDelay(pdMS_TO_TICKS(2));  // Small delay between samples
+    }
+
+    int adc_avg = adc_sum / num_samples;
+
+    int voltage_mv = 0;
+    if (adc_cali_handle != NULL) {
+        // Use calibrated value
+        adc_cali_raw_to_voltage(adc_cali_handle, adc_avg, &voltage_mv);
+    } else {
+        // Fallback: approximate linear conversion (3.3V / 4096 for 12-bit ADC)
+        voltage_mv = (adc_avg * 3300) / 4096;
+    }
+
+    // Account for voltage divider
+    float battery_volts = (voltage_mv / 1000.0f) * BATTERY_VOLTAGE_DIVIDER;
+
+    // Diagnostic logging for calibration (3 decimal places)
+    ESP_LOGI(TAG, "Battery ADC: raw=%d, voltage_mv=%d, calculated=%.3fV (divider=%.2fx)",
+             adc_avg, voltage_mv, battery_volts, BATTERY_VOLTAGE_DIVIDER);
+
+    return battery_volts;
+}
+
+static int battery_voltage_to_percent(float voltage) {
+    // LiPo discharge curve adjusted for under-load voltage:
+    // 4.0V = 100%, 3.9V = 90%, 3.8V = 80%, 3.7V = 65%, 3.6V = 40%
+    // 3.5V = 20%, 3.4V = 10%, 3.2V = 0%
+
+    if (voltage >= 4.0f) return 100;
+    if (voltage >= 3.9f) return 90 + (int)((voltage - 3.9f) * 100.0f); // 90-100%
+    if (voltage >= 3.8f) return 80 + (int)((voltage - 3.8f) * 100.0f); // 80-90%
+    if (voltage >= 3.7f) return 65 + (int)((voltage - 3.7f) * 150.0f); // 65-80%
+    if (voltage >= 3.6f) return 40 + (int)((voltage - 3.6f) * 250.0f); // 40-65%
+    if (voltage >= 3.5f) return 20 + (int)((voltage - 3.5f) * 200.0f); // 20-40%
+    if (voltage >= 3.4f) return 10 + (int)((voltage - 3.4f) * 100.0f); // 10-20%
+    if (voltage >= 3.2f) return (int)((voltage - 3.2f) * 50.0f);       // 0-10%
+    return 0;
+}
+
+static void battery_low_alert(void) {
+    // Play 3 beeps (250ms apart) to warn of low battery
+    const uint8_t volume = 70;
+    for (int i = 0; i < 3; i++) {
+        buzzer_tone(800, volume);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        buzzer_stop();
+        if (i < 2) {
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+    }
+    ESP_LOGW(TAG, "Low battery alert played (10%% warning)");
+}
+
+static void battery_flash_timer_cb(lv_timer_t *timer) {
+    // Flash battery icon red when battery is at 10%
+    static bool flash_state = false;
+
+    if (battery_icon != NULL && lvgl_port_lock(0)) {
+        if (flash_state) {
+            lv_obj_set_style_text_color(battery_icon, lv_color_hex(COLOR_RED), 0);
+        } else {
+            lv_obj_set_style_text_color(battery_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        }
+        flash_state = !flash_state;
+        lvgl_port_unlock();
+    }
+}
+
+static void update_battery_display(void) {
+    if (battery_icon == NULL || battery_percent_label == NULL) {
+        return;  // UI not initialized yet
+    }
+
+    if (!lvgl_port_lock(0)) {
+        return;
+    }
+
+    // Update battery percent label
+    char percent_str[8];
+    snprintf(percent_str, sizeof(percent_str), "%d%%", battery_percent);
+    lv_label_set_text(battery_percent_label, percent_str);
+
+    // Update battery icon based on level
+    const char *icon;
+    uint32_t color;
+
+    if (battery_percent >= 90) {
+        icon = LV_SYMBOL_BATTERY_FULL;
+        color = COLOR_GREEN;
+    } else if (battery_percent >= 60) {
+        icon = LV_SYMBOL_BATTERY_3;
+        color = COLOR_TEXT_WHITE;
+    } else if (battery_percent >= 30) {
+        icon = LV_SYMBOL_BATTERY_2;
+        color = COLOR_ORANGE;
+    } else if (battery_percent >= 10) {
+        icon = LV_SYMBOL_BATTERY_1;
+        color = COLOR_ORANGE;
+    } else {
+        icon = LV_SYMBOL_BATTERY_EMPTY;
+        color = COLOR_RED;  // Will flash via timer
+    }
+
+    lv_label_set_text(battery_icon, icon);
+
+    // Only set color if not flashing (< 10%)
+    if (battery_percent >= 10) {
+        lv_obj_set_style_text_color(battery_icon, lv_color_hex(color), 0);
+    }
+
+    lvgl_port_unlock();
+}
+
+static void battery_monitor_task(void *arg) {
+    ESP_LOGI(TAG, "Battery monitor task started");
+
+    while (1) {
+        // Read battery voltage
+        battery_voltage = battery_read_voltage();
+
+        // Calculate battery percentage
+        battery_percent = battery_voltage_to_percent(battery_voltage);
+
+        ESP_LOGI(TAG, "Battery: %.3fV, %d%%", battery_voltage, battery_percent);
+
+        // Update display
+        update_battery_display();
+
+        // Check for critical low battery (3.2V or below) - shut down to prevent damage
+        if (battery_voltage <= BATTERY_LOW_VOLTAGE) {
+            ESP_LOGE(TAG, "CRITICAL: Battery voltage %.3fV <= %.3fV - SHUTTING DOWN",
+                     battery_voltage, BATTERY_LOW_VOLTAGE);
+
+            // Show critical battery message on display
+            if (lvgl_port_lock(0)) {
+                // Create full-screen message
+                lv_obj_t *shutdown_screen = lv_obj_create(NULL);
+                lv_obj_set_style_bg_color(shutdown_screen, lv_color_black(), 0);
+
+                lv_obj_t *label = lv_label_create(shutdown_screen);
+                lv_label_set_text(label, "CRITICAL LOW BATTERY\n\nShutting down...\n\nPlease charge device");
+                lv_obj_set_style_text_color(label, lv_color_hex(COLOR_RED), 0);
+                lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+                lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+                lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+
+                lv_scr_load(shutdown_screen);
+                lvgl_port_unlock();
+            }
+
+            // Play shutdown tone
+            buzzer_tone(400, 80);
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_stop();
+
+            // Wait a moment for user to see message
+            vTaskDelay(pdMS_TO_TICKS(3000));
+
+            // Deep sleep until external wake (USB plug-in)
+            ESP_LOGI(TAG, "Entering deep sleep...");
+            esp_deep_sleep_start();
+        }
+
+        // Check for 10% battery warning
+        if (battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
+            battery_low_warning_shown = true;
+
+            // Play warning beeps
+            battery_low_alert();
+
+            // Start flashing timer
+            if (battery_flash_timer == NULL) {
+                battery_flash_timer = lv_timer_create(battery_flash_timer_cb, 500, NULL);  // Flash every 500ms
+            }
+        } else if (battery_percent > BATTERY_CRITICAL_PERCENT) {
+            // Reset warning flag when battery recovers
+            battery_low_warning_shown = false;
+
+            // Stop flashing timer
+            if (battery_flash_timer != NULL) {
+                lv_timer_del(battery_flash_timer);
+                battery_flash_timer = NULL;
+            }
+        }
+
+        // Update every 30 seconds
+        vTaskDelay(pdMS_TO_TICKS(30000));
+    }
+}
+
+// ==================== Display Initialization ====================
+
+static esp_err_t display_init(void) {
+    ESP_LOGI(TAG, "Initializing LCD backlight");
+    gpio_set_direction(LCD_BL, GPIO_MODE_OUTPUT);
+    gpio_set_level(LCD_BL, 1);
+
+    ESP_LOGI(TAG, "Initializing SPI bus");
+    spi_bus_config_t buscfg = {
+        .mosi_io_num = LCD_MOSI,
+        .miso_io_num = -1,
+        .sclk_io_num = LCD_SCLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = LCD_WIDTH * 80 * 2,
+    };
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+
+    ESP_LOGI(TAG, "Initializing LCD panel IO");
+    // Use global lcd_io_handle
+    esp_lcd_panel_io_spi_config_t io_config = {
+        .dc_gpio_num = LCD_DC,
+        .cs_gpio_num = LCD_CS,
+        .pclk_hz = 26000000,
+        .lcd_cmd_bits = 8,
+        .lcd_param_bits = 8,
+        .spi_mode = 0,
+        .trans_queue_depth = 10,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &io_config, &lcd_io_handle));
+
+    ESP_LOGI(TAG, "Initializing LCD panel (ST7789)");
+    esp_lcd_panel_dev_config_t panel_config = {
+        .reset_gpio_num = -1,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,  // Changed from BGR to RGB for correct colors
+        .bits_per_pixel = 16,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(lcd_io_handle, &panel_config, &lcd_panel));
+
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(lcd_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(lcd_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(lcd_panel, false));
+    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(lcd_panel, true));  // Landscape rotation
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(lcd_panel, false, true));  // Mirror Y for landscape
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(lcd_panel, true));
+
+    ESP_LOGI(TAG, "LCD initialized successfully");
+    return ESP_OK;
+}
+
+// ==================== Touch Initialization (Core 1) ====================
+
+static esp_err_t touch_init_core1(void) {
+    ESP_LOGI(TAG, "Initializing touch I2C bus on Core 1");
+
+    i2c_master_bus_config_t touch_bus_config = {
+        .i2c_port = TOUCH_I2C_NUM,
+        .sda_io_num = TOUCH_SDA,
+        .scl_io_num = TOUCH_SCL,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = false,  // GPIO 32/33 don't have internal pullups - use external
+    };
+
+    esp_err_t ret = i2c_new_master_bus(&touch_bus_config, &touch_i2c_bus);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Touch I2C bus init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Initializing CST820 touch controller (polling mode)");
+
+    esp_lcd_touch_config_t touch_cfg = {
+        .x_max = 240,  // Native touch panel width (before rotation)
+        .y_max = 320,  // Native touch panel height (before rotation)
+        .rst_gpio_num = TOUCH_RST,
+        .int_gpio_num = TOUCH_INT,  // GPIO_NUM_NC for polling mode
+        .levels = {
+            .reset = 0,
+            .interrupt = 0,
+        },
+        .flags = {
+            .swap_xy = 1,      // Rotate to landscape
+            .mirror_x = 0,     // From demo code
+            .mirror_y = 1,     // From demo code
+        },
+    };
+
+    esp_lcd_panel_io_handle_t touch_io_handle = NULL;
+    esp_lcd_panel_io_i2c_config_t touch_io_config = ESP_LCD_TOUCH_IO_I2C_CST820_CONFIG();
+    touch_io_config.scl_speed_hz = 400000;
+
+    ret = esp_lcd_new_panel_io_i2c_v2(touch_i2c_bus, &touch_io_config, &touch_io_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Touch panel IO init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = esp_lcd_touch_new_i2c_cst820(touch_io_handle, &touch_cfg, &touch_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Touch initialized successfully (Core 1, polling mode)");
+    } else {
+        ESP_LOGE(TAG, "Touch init failed: %s", esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
+// ==================== CardKB Initialization (Core 1) ====================
+
+static esp_err_t cardkb_init(void) {
+    ESP_LOGI(TAG, "Initializing CardKB I2C bus");
+
+    i2c_master_bus_config_t bus_config = {
+        .i2c_port = CARDKB_I2C_NUM,
+        .sda_io_num = CARDKB_SDA,
+        .scl_io_num = CARDKB_SCL,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+
+    esp_err_t ret = i2c_new_master_bus(&bus_config, &cardkb_i2c_bus);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "CardKB I2C bus init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    i2c_device_config_t dev_config = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = CARDKB_ADDR,
+        .scl_speed_hz = 100000,
+    };
+
+    ret = i2c_master_bus_add_device(cardkb_i2c_bus, &dev_config, &cardkb_dev);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "CardKB initialized");
+    } else {
+        ESP_LOGE(TAG, "CardKB device add failed: %s", esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
+// CardKB read function (will be used for keyboard input in WiFi setup)
+__attribute__((unused))
+static uint8_t cardkb_read(void) {
+    uint8_t data = 0;
+    i2c_master_receive(cardkb_dev, &data, 1, 100);
+    return data;
+}
+
+// Note: LVGL touch handling is done automatically by esp_lvgl_port
+// when using lvgl_port_add_touch(). No custom callback needed.
+
+// ==================== LVGL Initialization ====================
+
+static esp_err_t lvgl_init(void) {
+    ESP_LOGI(TAG, "Initializing LVGL");
+
+    const lvgl_port_cfg_t lvgl_cfg = {
+        .task_priority = 4,
+        .task_stack = 8192,
+        .task_affinity = 1,  // Pin LVGL task to Core 1
+        .task_max_sleep_ms = 500,
+        .timer_period_ms = 5
+    };
+    ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
+
+    // Add LCD display
+    const lvgl_port_display_cfg_t disp_cfg = {
+        .panel_handle = lcd_panel,
+        .io_handle = lcd_io_handle,
+        .buffer_size = LCD_WIDTH * 60,
+        .double_buffer = true,
+        .hres = LCD_WIDTH,
+        .vres = LCD_HEIGHT,
+        .monochrome = false,
+        .rotation = {
+            .swap_xy = true,    // Landscape rotation
+            .mirror_x = false,
+            .mirror_y = true,   // Mirror Y for landscape
+        },
+        .flags = {
+            .buff_dma = true,
+        }
+    };
+    lvgl_display = lvgl_port_add_disp(&disp_cfg);
+
+    // Add touch input
+    const lvgl_port_touch_cfg_t touch_cfg = {
+        .disp = lvgl_display,
+        .handle = touch_handle,
+    };
+    lvgl_touch_indev = lvgl_port_add_touch(&touch_cfg);
+
+    ESP_LOGI(TAG, "LVGL initialized successfully");
+    return ESP_OK;
+}
+
+
+
+// ==================== UI Screens ====================
+
+// Global styles
+static lv_style_t style_bg;
+static lv_style_t style_card;
+
+static void init_styles(void) {
+    // Background style - pure black
+    lv_style_init(&style_bg);
+    lv_style_set_bg_color(&style_bg, lv_color_hex(COLOR_BG));
+    lv_style_set_bg_opa(&style_bg, LV_OPA_COVER);
+    
+    // Card style - clean dark blue-grey
+    lv_style_init(&style_card);
+    lv_style_set_bg_color(&style_card, lv_color_hex(COLOR_CARD_BG));
+    lv_style_set_bg_opa(&style_card, LV_OPA_COVER);
+    lv_style_set_radius(&style_card, 12);
+    lv_style_set_border_width(&style_card, 0);
+    lv_style_set_pad_all(&style_card, 10);
+}
+
+// ===== EVENT HANDLERS =====
+
+// Forward declarations for WiFi functions
+static void wifi_scan_and_show_networks(void);
+static void create_wifi_password_screen(void);
+static void create_time_weather_settings_screen(void);
+static void create_zipcode_entry_screen(void);
+
+// Forward declaration for event handlers
+static void temp_toggle_event_cb(lv_event_t *e);
+static void create_cgm_menu_screen(void);
+static void create_dexcom_auth_screen(void);
+static void create_dexcom_login_screen(void);
+static void create_dexcom_username_entry_screen(void);
+static void create_dexcom_password_entry_screen(void);
+static void create_dexcom_status_screen(void);
+static void create_alarm_settings_screen(void);
+static void create_tone_picker_screen(alarm_config_t *alarm);
+#if 0
+static void create_alarm_preview_screen(void);
+#endif
+static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
+
+// Alarm event handlers
+static void alarm_settings_back_event_cb(lv_event_t *e);
+static void tone_picker_back_event_cb(lv_event_t *e);
+#if 0
+static void alarm_preview_back_event_cb(lv_event_t *e);
+#endif
+static void alarm_toggle_event_cb(lv_event_t *e);
+static void alarm_edit_btn_event_cb(lv_event_t *e);
+// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
+static void tone_select_btn_event_cb(lv_event_t *e);
+static void tone_preview_btn_event_cb(lv_event_t *e);
+static void alarm_detail_editor_back_event_cb(lv_event_t *e);
+static void alarm_threshold_slider_event_cb(lv_event_t *e);
+static void alarm_volume_slider_event_cb(lv_event_t *e);
+static void alarm_audio_toggle_event_cb(lv_event_t *e);
+static void alarm_visual_toggle_event_cb(lv_event_t *e);
+static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
+static void alarm_tone_btn_event_cb(lv_event_t *e);
+
+// Alarm helper functions
+static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
+                              int y_pos, int height);
+#if 0
+static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
+                                      uint32_t text_color, int y_pos);
+#endif
+static void wifi_scan_task(void *pvParameters);
+
+static void menu_btn_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_menu);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void back_btn_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Back button clicked - returning to home screen");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_home);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Event handler for tapping time label to toggle 12hr/24hr format
+static void clock_label_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Clock label clicked - toggling time format");
+
+        // Toggle format
+        user_24hr_format = !user_24hr_format;
+
+        // Save to NVS
+        esp_err_t ret = nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Time format saved: %s", user_24hr_format ? "24hr" : "12hr");
+        } else {
+            ESP_LOGW(TAG, "Failed to save time format to NVS");
+        }
+
+        // Update display immediately
+        update_time_display();
+
+        // Also update sunrise/sunset times to reflect new format
+        update_sunrise_sunset_display();
+    }
+}
+
+// Animation callback wrapper for lv_bar_set_value
+static void anim_bar_set_value(void *bar, int32_t value) {
+    lv_bar_set_value((lv_obj_t *)bar, value, LV_ANIM_OFF);
+}
+
+static void menu_item_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        int item_index = (int)(intptr_t)lv_event_get_user_data(e);
+        ESP_LOGI(TAG, "Menu item %d clicked", item_index);
+
+        switch (item_index) {
+            case 0:  // CGM Settings
+                ESP_LOGI(TAG, "Launching CGM Settings...");
+                if (lvgl_port_lock(0)) {
+                    if (screen_cgm_menu != NULL) {
+                        lv_obj_del(screen_cgm_menu);
+                        screen_cgm_menu = NULL;
+                    }
+                    create_cgm_menu_screen();
+                    lv_scr_load(screen_cgm_menu);
+                    lvgl_port_unlock();
+                }
+                break;
+            case 1:  // WiFi Setup
+                ESP_LOGI(TAG, "Launching WiFi setup...");
+
+                // Show scanning message with animated loading bar
+                if (lvgl_port_lock(0)) {
+                    lv_scr_load(screen_wifi_list);
+                    lv_obj_clean(screen_wifi_list);
+
+                    // "Scanning..." text
+                    lv_obj_t *scanning = lv_label_create(screen_wifi_list);
+                    lv_label_set_text(scanning, "Scanning...");
+                    lv_obj_set_style_text_font(scanning, &lv_font_montserrat_24, 0);
+                    lv_obj_set_style_text_color(scanning, lv_color_hex(COLOR_TEXT_WHITE), 0);
+                    lv_obj_align(scanning, LV_ALIGN_CENTER, 0, -30);
+
+                    // Animated loading bar below text
+                    lv_obj_t *bar = lv_bar_create(screen_wifi_list);
+                    lv_obj_set_size(bar, 200, 8);
+                    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 20);
+                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_CARD_BG), LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                    lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
+                    lv_bar_set_range(bar, 0, 100);
+                    lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+
+                    // Create animation for the bar
+                    lv_anim_t a;
+                    lv_anim_init(&a);
+                    lv_anim_set_var(&a, bar);
+                    lv_anim_set_values(&a, 0, 100);
+                    lv_anim_set_time(&a, 2000);
+                    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+                    lv_anim_set_exec_cb(&a, anim_bar_set_value);
+                    lv_anim_start(&a);
+
+                    lvgl_port_unlock();
+                }
+
+                // Start WiFi scan in background task so animation can run
+                xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
+                break;
+            case 2:  // Time/Date/Weather Settings (combined)
+                ESP_LOGI(TAG, "Launching Time/Date/Weather settings...");
+                if (lvgl_port_lock(0)) {
+                    // Always recreate settings screen
+                    if (screen_time_weather_menu != NULL) {
+                        lv_obj_del(screen_time_weather_menu);
+                        screen_time_weather_menu = NULL;
+                    }
+                    create_time_weather_settings_screen();
+                    lv_scr_load(screen_time_weather_menu);
+                    lvgl_port_unlock();
+                }
+                break;
+            case 3:  // Alarm Settings
+                ESP_LOGI(TAG, "Launching Alarm settings...");
+                if (lvgl_port_lock(0)) {
+                    if (screen_alarm_settings != NULL) {
+                        lv_obj_del(screen_alarm_settings);
+                        screen_alarm_settings = NULL;
+                    }
+                    create_alarm_settings_screen();
+                    lv_scr_load(screen_alarm_settings);
+                    lvgl_port_unlock();
+                }
+                break;
+            default:
+                ESP_LOGI(TAG, "Menu item not implemented yet");
+                break;
+        }
+    }
+}
+
+// Function to add message to boot log
+static void add_boot_log(const char *msg) {
+    // Always append to buffer (even if LVGL not ready yet)
+    size_t current_len = strlen(boot_log_buffer);
+    size_t remaining = sizeof(boot_log_buffer) - current_len - 1;
+
+    if (remaining > strlen(msg) + 1) {
+        if (current_len > 0) {
+            strncat(boot_log_buffer, "\n", remaining);
+            remaining--;
+        }
+        strncat(boot_log_buffer, msg, remaining);
+    }
+
+    // Update label if it exists and LVGL is ready
+    if (boot_log_label != NULL) {
+        if (lvgl_port_lock(0)) {
+            lv_label_set_text(boot_log_label, boot_log_buffer);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Draw small sunrise icon (12x12)
+static void draw_sunrise_icon(lv_obj_t *canvas) {
+    lv_draw_arc_dsc_t arc_dsc;
+    lv_draw_arc_dsc_init(&arc_dsc);
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+
+    // Draw small sun
+    arc_dsc.color = lv_color_hex(0xFFAA00);
+    arc_dsc.width = 4;
+    lv_canvas_draw_arc(canvas, 6, 6, 3, 0, 360, &arc_dsc);
+
+    // Draw 4 rays (top, right, bottom, left)
+    line_dsc.color = lv_color_hex(0xFFAA00);
+    line_dsc.width = 1;
+    lv_point_t ray[2];
+
+    // Top ray
+    ray[0].x = 6; ray[0].y = 0;
+    ray[1].x = 6; ray[1].y = 2;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+
+    // Right ray
+    ray[0].x = 10; ray[0].y = 6;
+    ray[1].x = 12; ray[1].y = 6;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+
+    // Bottom ray (shorter, suggesting horizon)
+    ray[0].x = 6; ray[0].y = 10;
+    ray[1].x = 6; ray[1].y = 11;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+
+    // Left ray
+    ray[0].x = 0; ray[0].y = 6;
+    ray[1].x = 2; ray[1].y = 6;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+}
+
+// Draw small sunset icon (12x12)
+static void draw_sunset_icon(lv_obj_t *canvas) {
+    lv_draw_arc_dsc_t arc_dsc;
+    lv_draw_arc_dsc_init(&arc_dsc);
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+
+    // Draw small sun (lower position for sunset)
+    arc_dsc.color = lv_color_hex(0xFF6600);  // More orange/red for sunset
+    arc_dsc.width = 4;
+    lv_canvas_draw_arc(canvas, 6, 8, 3, 0, 360, &arc_dsc);
+
+    // Draw horizon line
+    line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+    line_dsc.width = 1;
+    lv_point_t horizon[2];
+    horizon[0].x = 0; horizon[0].y = 11;
+    horizon[1].x = 12; horizon[1].y = 11;
+    lv_canvas_draw_line(canvas, horizon, 2, &line_dsc);
+
+    // Draw rays above horizon only
+    line_dsc.color = lv_color_hex(0xFF6600);
+    lv_point_t ray[2];
+
+    // Top-left ray
+    ray[0].x = 2; ray[0].y = 4;
+    ray[1].x = 4; ray[1].y = 6;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+
+    // Top ray
+    ray[0].x = 6; ray[0].y = 3;
+    ray[1].x = 6; ray[1].y = 5;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+
+    // Top-right ray
+    ray[0].x = 8; ray[0].y = 6;
+    ray[1].x = 10; ray[1].y = 4;
+    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+}
+
+// ===== SPLASH SCREEN =====
+static void create_splash_screen(void) {
+    screen_splash = lv_obj_create(NULL);
+    lv_obj_add_style(screen_splash, &style_bg, 0);
+
+    // App name (top half)
+    lv_obj_t *title = lv_label_create(screen_splash);
+    lv_label_set_text(title, "CYGM");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
+
+    // Tagline
+    lv_obj_t *sub = lv_label_create(screen_splash);
+    lv_label_set_text(sub, "Glucose Monitor");
+    lv_obj_set_style_text_font(sub, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 85);
+
+    // Attribution
+    lv_obj_t *author = lv_label_create(screen_splash);
+    lv_label_set_text(author, "Carl Brothers\ndecibelkaos@gmail.com");
+    lv_obj_set_style_text_font(author, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(author, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(author, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(author, LV_ALIGN_TOP_MID, 0, 110);
+
+    // Version info
+    lv_obj_t *version = lv_label_create(screen_splash);
+    char version_str[32];
+    snprintf(version_str, sizeof(version_str), "v%s %s", CYGM_VERSION, CYGM_STAGE);
+    lv_label_set_text(version, version_str);
+    lv_obj_set_style_text_font(version, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(version, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_set_style_text_align(version, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(version, LV_ALIGN_TOP_MID, 0, 150);
+
+    // Boot log (bottom half) - scrollable text area
+    boot_log_label = lv_label_create(screen_splash);
+    lv_label_set_text(boot_log_label, "Initializing...");
+    lv_label_set_long_mode(boot_log_label, LV_LABEL_LONG_WRAP);  // Wrap long lines
+    lv_obj_set_width(boot_log_label, 300);  // Set width for wrapping
+    lv_obj_set_style_text_font(boot_log_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(boot_log_label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_align(boot_log_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);  // Bottom left corner
+
+    // Clear buffer
+    memset(boot_log_buffer, 0, sizeof(boot_log_buffer));
+}
+
+// ===== HOME SCREEN =====
+static void create_home_screen(void) {
+    screen_home = lv_obj_create(NULL);
+    lv_obj_add_style(screen_home, &style_bg, 0);
+    
+    // --- LEFT CARD: Time, Weather & WiFi Status ---
+    lv_obj_t *left_card = lv_obj_create(screen_home);
+    lv_obj_set_size(left_card, 150, 220);
+    lv_obj_set_pos(left_card, 6, 10);
+    lv_obj_add_style(left_card, &style_card, 0);
+    lv_obj_clear_flag(left_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // WiFi status icon (very top left corner)
+    label_wifi_status = lv_label_create(left_card);
+    lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
+    lv_obj_set_style_text_font(label_wifi_status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(label_wifi_status, LV_ALIGN_TOP_LEFT, 2, 2);
+
+    // Time (large, white, centered at top, clickable to toggle format)
+    label_clock = lv_label_create(left_card);
+    lv_label_set_text(label_clock, "00:00");
+    lv_obj_set_style_text_font(label_clock, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(label_clock, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(label_clock, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_add_flag(label_clock, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(label_clock, clock_label_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // AM/PM label (small, in top right corner like WiFi icon, 12hr mode only)
+    label_ampm = lv_label_create(left_card);
+    lv_label_set_text(label_ampm, "AM");
+    lv_obj_set_style_text_font(label_ampm, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(label_ampm, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(label_ampm, LV_ALIGN_TOP_RIGHT, -2, 2);
+    lv_obj_add_flag(label_ampm, LV_OBJ_FLAG_HIDDEN);
+
+    // Date (below time, just 2px spacing)
+    label_date = lv_label_create(left_card);
+    lv_label_set_text(label_date, "Mon, Jan 1");
+    lv_obj_set_style_text_font(label_date, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(label_date, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(label_date, LV_ALIGN_TOP_MID, 0, 66);  // Time at 16, 48pt font + 2px spacing = 66
+
+    // Weather icon (positioned below date, moved down another 6px)
+    static lv_color_t weather_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(60, 50)];
+    home_weather_canvas = lv_canvas_create(left_card);
+    lv_canvas_set_buffer(home_weather_canvas, weather_buf, 60, 50, LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_obj_align(home_weather_canvas, LV_ALIGN_CENTER, 0, 11);  // Was 5, now 11 (+6px)
+    lv_obj_set_style_bg_opa(home_weather_canvas, LV_OPA_TRANSP, 0);
+    lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    draw_weather_icon(home_weather_canvas, current_weather_code);
+
+    // Temperature (below weather icon, moved down 16px total, moved left)
+    home_temp_label = lv_label_create(left_card);
+    char temp_buf[16];
+    if (user_temp_celsius) {
+        int temp_c = (current_temp_f - 32) * 5 / 9;
+        snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
+    } else {
+        snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
+    }
+    lv_label_set_text(home_temp_label, temp_buf);
+    lv_obj_set_style_text_font(home_temp_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(home_temp_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(home_temp_label, LV_ALIGN_CENTER, -35, 50);  // Was (-20, 34), now (-35, 50) = left 15px, down 16px
+    // Make temperature label clickable to toggle F/C
+    lv_obj_add_flag(home_temp_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(home_temp_label, temp_toggle_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Hi/Lo temperatures (stacked vertically to the right)
+    home_hilo_label = lv_label_create(left_card);
+    char hilo_buf[32];
+    if (user_temp_celsius) {
+        int high_c = (high_temp_f - 32) * 5 / 9;
+        int low_c = (low_temp_f - 32) * 5 / 9;
+        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
+    } else {
+        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
+    }
+    lv_label_set_text(home_hilo_label, hilo_buf);
+    lv_obj_set_style_text_font(home_hilo_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(home_hilo_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(home_hilo_label, LV_ALIGN_CENTER, 35, 50);  // Was (25, 34), now (35, 50) = stacked vertically
+
+    // Weather condition text (below temperature, moved down 10px)
+    home_condition_label = lv_label_create(left_card);
+    lv_label_set_text(home_condition_label, get_weather_condition_text(current_weather_code));
+    lv_obj_set_style_text_font(home_condition_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(home_condition_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(home_condition_label, LV_ALIGN_CENTER, 0, 72);  // Was (0, 54), now (0, 72) = down 18px (10+8 for temp move)
+
+    // Location (above sunrise/sunset, centered, closer to bottom)
+    home_location_label = lv_label_create(left_card);
+    lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+    lv_label_set_long_mode(home_location_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(home_location_label, 130);
+    lv_obj_set_style_text_font(home_location_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(home_location_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(home_location_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(home_location_label, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    // Sunrise time with icon (very bottom left)
+    static lv_color_t canvas_buf_sunrise[LV_CANVAS_BUF_SIZE_TRUE_COLOR(12, 12)];
+    home_sunrise_canvas = lv_canvas_create(left_card);
+    lv_canvas_set_buffer(home_sunrise_canvas, canvas_buf_sunrise, 12, 12, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(home_sunrise_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    draw_sunrise_icon(home_sunrise_canvas);
+    lv_obj_align(home_sunrise_canvas, LV_ALIGN_BOTTOM_LEFT, 8, 6);
+
+    home_sunrise_label = lv_label_create(left_card);
+    lv_label_set_text(home_sunrise_label, "--:--");
+    lv_obj_set_style_text_font(home_sunrise_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(home_sunrise_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(home_sunrise_label, LV_ALIGN_BOTTOM_LEFT, 22, 6);
+
+    // Sunset time with icon (very bottom right, icon closer to time)
+    static lv_color_t canvas_buf_sunset[LV_CANVAS_BUF_SIZE_TRUE_COLOR(12, 12)];
+    home_sunset_canvas = lv_canvas_create(left_card);
+    lv_canvas_set_buffer(home_sunset_canvas, canvas_buf_sunset, 12, 12, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(home_sunset_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    draw_sunset_icon(home_sunset_canvas);
+    lv_obj_align(home_sunset_canvas, LV_ALIGN_BOTTOM_RIGHT, -34, 6);
+
+    home_sunset_label = lv_label_create(left_card);
+    lv_label_set_text(home_sunset_label, "--:--");
+    lv_obj_set_style_text_font(home_sunset_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(home_sunset_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(home_sunset_label, LV_ALIGN_BOTTOM_RIGHT, -8, 6);
+    
+    // --- RIGHT CARD: Glucose ---
+    lv_obj_t *right_card = lv_obj_create(screen_home);
+    lv_obj_set_size(right_card, 150, 220);
+    lv_obj_set_pos(right_card, 164, 10);
+    lv_obj_add_style(right_card, &style_card, 0);
+    lv_obj_clear_flag(right_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Battery icon (top left corner)
+    battery_icon = lv_label_create(right_card);
+    lv_label_set_text(battery_icon, LV_SYMBOL_BATTERY_FULL);
+    lv_obj_set_style_text_font(battery_icon, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(battery_icon, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_align(battery_icon, LV_ALIGN_TOP_LEFT, 2, 2);
+
+    // Battery percent (to the right of icon, 4px spacing)
+    battery_percent_label = lv_label_create(right_card);
+    lv_label_set_text(battery_percent_label, "100%");
+    lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
+
+    // Glucose value (huge, bright blue)
+    label_glucose = lv_label_create(right_card);
+    lv_label_set_text(label_glucose, "---");
+    lv_obj_set_style_text_font(label_glucose, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
+    
+    // Unit
+    lv_obj_t *unit = lv_label_create(right_card);
+    lv_label_set_text(unit, "mg/dL");
+    lv_obj_set_style_text_font(unit, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(unit, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(unit, LV_ALIGN_TOP_MID, 0, 75);
+    
+    // Trend arrow
+    // Trend arrow (canvas for custom drawing, 60x60 for memory optimization)
+    static lv_color_t canvas_buf_trend[LV_CANVAS_BUF_SIZE_TRUE_COLOR(60, 60)];
+    trend_canvas = lv_canvas_create(right_card);
+    lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
+    lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
+    
+    // Time ago
+    label_time_ago = lv_label_create(right_card);
+    lv_label_set_text(label_time_ago, "-- min ago");
+    lv_obj_set_style_text_font(label_time_ago, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -10);
+    
+    // --- MENU BUTTON (top right) - transparent, just icon ---
+    lv_obj_t *menu_btn = lv_btn_create(screen_home);
+    lv_obj_set_size(menu_btn, 36, 36);
+    lv_obj_align(menu_btn, LV_ALIGN_TOP_RIGHT, -10, 10);
+    lv_obj_set_style_bg_opa(menu_btn, LV_OPA_TRANSP, 0);  // Transparent background
+    lv_obj_set_style_border_width(menu_btn, 0, 0);
+    lv_obj_set_style_shadow_width(menu_btn, 0, 0);
+    lv_obj_set_style_pad_all(menu_btn, 0, 0);
+
+    lv_obj_t *menu_icon = lv_label_create(menu_btn);
+    lv_label_set_text(menu_icon, LV_SYMBOL_SETTINGS);
+    lv_obj_set_style_text_color(menu_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(menu_icon);
+
+    // Attach event handler
+    lv_obj_add_event_cb(menu_btn, menu_btn_event_cb, LV_EVENT_CLICKED, NULL);
+}
+
+// ===== MENU SCREEN =====
+static void create_menu_screen(void) {
+    screen_menu = lv_obj_create(NULL);
+    lv_obj_add_style(screen_menu, &style_bg, 0);
+    
+    // Header
+    lv_obj_t *header = lv_label_create(screen_menu);
+    lv_label_set_text(header, "Settings");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+    
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_menu);
+    lv_obj_set_size(back_btn, 50, 30);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 8);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+
+    // Attach event handler
+    lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Menu list container
+    lv_obj_t *list = lv_obj_create(screen_menu);
+    lv_obj_set_size(list, 300, 180);
+    lv_obj_align(list, LV_ALIGN_CENTER, 0, 10);
+    lv_obj_set_style_bg_color(list, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(list, 12, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_style_pad_all(list, 0, 0);
+    lv_obj_set_style_pad_top(list, 5, 0);  // Add top padding to center items vertically
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+    
+    // Menu items
+    const char *items[] = {"CGM Settings", "WiFi Setup", "Time/Date/Weather", "Alarm"};
+    const char *icons[] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_WIFI, LV_SYMBOL_SETTINGS, LV_SYMBOL_BELL};
+
+    for (int i = 0; i < 4; i++) {
+        lv_obj_t *row = lv_btn_create(list);
+        lv_obj_set_size(row, 300, 36);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x2C2C2E), LV_STATE_PRESSED);
+        lv_obj_set_style_radius(row, 0, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_shadow_width(row, 0, 0);
+        lv_obj_set_style_pad_left(row, 15, 0);
+        lv_obj_set_style_pad_right(row, 15, 0);
+        
+        // Icon
+        lv_obj_t *icon = lv_label_create(row);
+        lv_label_set_text(icon, icons[i]);
+        lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
+        
+        // Label
+        lv_obj_t *label = lv_label_create(row);
+        lv_label_set_text(label, items[i]);
+        lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 30, 0);
+        
+        // Arrow
+        lv_obj_t *arrow = lv_label_create(row);
+        lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
+        lv_obj_set_style_text_color(arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, 0, 0);
+
+        // Add click handler with index as user data
+        lv_obj_add_event_cb(row, menu_item_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+    }
+}
+
+// ===== WIFI SCREENS =====
+
+// Network item click handler
+static void network_item_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        const char *ssid = (const char *)lv_event_get_user_data(e);
+        ESP_LOGI(TAG, "Selected network: %s", ssid);
+
+        // Copy SSID and reset password
+        strncpy(selected_ssid, ssid, sizeof(selected_ssid) - 1);
+        wifi_password_len = 0;
+        wifi_password[0] = '\0';
+
+        // Create and load password screen
+        if (lvgl_port_lock(0)) {
+            // Create password screen if it doesn't exist
+            if (screen_wifi_password == NULL) {
+                create_wifi_password_screen();
+            }
+
+            // Clear password field and display
+            lv_textarea_set_text(password_field, "");
+            lv_label_set_text(password_label, "");
+
+            // Reset keyboard state
+            caps_lock_enabled = false;
+            last_shift_press_time = 0;
+            shift_waiting_for_char = false;
+            lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+
+            lv_scr_load(screen_wifi_password);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// WiFi scan task (runs in background to allow animation)
+static void wifi_scan_task(void *pvParameters) {
+    wifi_scan_and_show_networks();
+    vTaskDelete(NULL);  // Delete task when done
+}
+
+// WiFi scan and populate network list
+static void wifi_scan_and_show_networks(void) {
+    ESP_LOGI(TAG, "Scanning for WiFi networks...");
+
+    // Scan for networks
+    wifi_network_count = wifi_manager_scan_networks(wifi_networks, 10);
+    ESP_LOGI(TAG, "Found %d networks", wifi_network_count);
+
+    if (wifi_network_count == 0) {
+        ESP_LOGW(TAG, "No networks found");
+        return;
+    }
+
+    // Create network list UI
+    if (lvgl_port_lock(0)) {
+        // Remove any existing network list
+        lv_obj_clean(screen_wifi_list);
+
+        // Recreate header and back button
+        lv_obj_t *header = lv_label_create(screen_wifi_list);
+        lv_label_set_text(header, "WiFi Networks");
+        lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+        lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+        lv_obj_t *back_btn = lv_btn_create(screen_wifi_list);
+        lv_obj_set_size(back_btn, 50, 30);
+        lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 8);
+        lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+        lv_obj_set_style_radius(back_btn, 8, 0);
+        lv_obj_set_style_border_width(back_btn, 0, 0);
+        lv_obj_set_style_shadow_width(back_btn, 0, 0);
+
+        lv_obj_t *back_lbl = lv_label_create(back_btn);
+        lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+        lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_center(back_lbl);
+        lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+        // Create scrollable list
+        lv_obj_t *list = lv_obj_create(screen_wifi_list);
+        lv_obj_set_size(list, 300, 180);
+        lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -10);
+        lv_obj_set_style_bg_color(list, lv_color_hex(COLOR_CARD_BG), 0);
+        lv_obj_set_style_radius(list, 12, 0);
+        lv_obj_set_style_border_width(list, 0, 0);
+        lv_obj_set_style_pad_all(list, 5, 0);
+        lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+
+        // Add network items (up to 5)
+        int max_networks = wifi_network_count < 5 ? wifi_network_count : 5;
+        for (int i = 0; i < max_networks; i++) {
+            lv_obj_t *row = lv_btn_create(list);
+            lv_obj_set_width(row, 290);
+            lv_obj_set_height(row, 35);
+            lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_bg_color(row, lv_color_hex(0x2C2C2E), LV_STATE_PRESSED);
+            lv_obj_set_style_radius(row, 0, 0);
+            lv_obj_set_style_border_width(row, 0, 0);
+            lv_obj_set_style_shadow_width(row, 0, 0);
+
+            // Signal strength bars (based on RSSI)
+            int8_t rssi = wifi_networks[i].rssi;
+            int bars = 0;
+            if (rssi > -50) bars = 3;
+            else if (rssi > -60) bars = 2;
+            else if (rssi > -70) bars = 1;
+
+            // Draw signal bars (3 vertical bars of increasing heights, bottom-aligned with text baseline)
+            for (int b = 0; b < 3; b++) {
+                lv_obj_t *bar = lv_obj_create(row);
+                int bar_height = 6 + (b * 4);  // 6px, 10px, 14px
+                lv_obj_set_size(bar, 4, bar_height);  // 4px wide vertical bars
+
+                // Position: x increases, y positioned so all bars bottom-align at y=16 (text baseline)
+                int bar_x = 8 + (b * 5);  // Space bars 5px apart
+                int bar_y = 16 - bar_height;  // All bars bottom-align at y=16
+                lv_obj_set_pos(bar, bar_x, bar_y);
+
+                if (b < bars) {
+                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+                } else {
+                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_TEXT_DIM), 0);
+                }
+                lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+                lv_obj_set_style_border_width(bar, 0, 0);
+                lv_obj_set_style_radius(bar, 1, 0);  // Slight rounding
+                lv_obj_set_style_pad_all(bar, 0, 0);
+            }
+
+            // SSID
+            lv_obj_t *label = lv_label_create(row);
+            lv_label_set_text(label, (const char *)wifi_networks[i].ssid);
+            lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+            lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+            lv_obj_align(label, LV_ALIGN_LEFT_MID, 25, 0);
+
+            // Arrow
+            lv_obj_t *arrow = lv_label_create(row);
+            lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
+            lv_obj_set_style_text_color(arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+            lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -5, 0);
+
+            // Add click handler with SSID as user data
+            lv_obj_add_event_cb(row, network_item_event_cb, LV_EVENT_CLICKED, (void*)wifi_networks[i].ssid);
+        }
+
+        // Load the WiFi list screen
+        lv_scr_load(screen_wifi_list);
+        lvgl_port_unlock();
+    }
+}
+
+// WiFi network list screen
+static void create_wifi_list_screen(void) {
+    screen_wifi_list = lv_obj_create(NULL);
+    lv_obj_add_style(screen_wifi_list, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_wifi_list);
+    lv_label_set_text(header, "WiFi Networks");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_wifi_list);
+    lv_obj_set_size(back_btn, 50, 30);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 8);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Network list will be populated dynamically by wifi_scan_and_show_networks()
+}
+
+// Password field event handler - handles masking and auto-lowercase
+static void password_field_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        const char *txt = lv_textarea_get_text(password_field);
+
+        // Copy to password buffer
+        strncpy(wifi_password, txt, sizeof(wifi_password) - 1);
+        wifi_password[sizeof(wifi_password) - 1] = '\0';
+        wifi_password_len = strlen(wifi_password);
+
+        // Create masked display (only last typed character visible, rest as stars)
+        if (wifi_password_len == 0) {
+            lv_label_set_text(password_label, "");
+        } else if (wifi_password_len == 1) {
+            char display[2] = {wifi_password[0], '\0'};
+            lv_label_set_text(password_label, display);
+        } else {
+            char display[65];
+            // All chars except last are stars
+            for (int i = 0; i < wifi_password_len - 1; i++) {
+                display[i] = '*';
+            }
+            // Last char is visible
+            display[wifi_password_len - 1] = wifi_password[wifi_password_len - 1];
+            display[wifi_password_len] = '\0';
+            lv_label_set_text(password_label, display);
+        }
+
+        // Character was typed - check if this was a long press (caps lock) or short press (single char)
+        if (shift_waiting_for_char) {
+            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            uint32_t elapsed = now - last_shift_press_time;
+
+            if (elapsed >= 2000) {
+                // Long press (>= 2000ms) - enable caps lock
+                caps_lock_enabled = true;
+                shift_waiting_for_char = false;
+                ESP_LOGI(TAG, "Caps lock enabled (long press detected: %lu ms)", elapsed);
+            } else {
+                // Short press (< 2000ms) - single uppercase character, then auto-lowercase
+                caps_lock_enabled = false;
+                shift_waiting_for_char = false;
+                lv_keyboard_mode_t curr_mode = lv_keyboard_get_mode(keyboard);
+                if (curr_mode == LV_KEYBOARD_MODE_TEXT_UPPER) {
+                    ESP_LOGI(TAG, "Auto-switching to lowercase after single uppercase char (elapsed: %lu ms)", elapsed);
+                    lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+                }
+            }
+        }
+    }
+}
+
+// Keyboard event handler - detects shift/caps and handles special buttons
+static void keyboard_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    static lv_keyboard_mode_t prev_mode = LV_KEYBOARD_MODE_TEXT_LOWER;
+
+    // Safety check
+    if (keyboard == NULL) {
+        return;
+    }
+
+    // Handle cancel/close button
+    if (code == LV_EVENT_CANCEL) {
+        ESP_LOGI(TAG, "Password entry cancelled, returning to network list");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_wifi_list);
+            lvgl_port_unlock();
+        }
+        return;
+    }
+
+    // Handle OK/Ready button
+    if (code == LV_EVENT_READY) {
+        // OK button pressed - connect to WiFi
+        ESP_LOGI(TAG, "Connecting to WiFi: %s with password: %s", selected_ssid, wifi_password);
+
+        // Save credentials to NVS
+        esp_err_t ret = nvs_save_wifi_credentials(selected_ssid, wifi_password);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save WiFi credentials: %s", esp_err_to_name(ret));
+            return;
+        }
+        ESP_LOGI(TAG, "WiFi credentials saved to NVS");
+
+        // Show connecting message
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_home);
+            lvgl_port_unlock();
+        }
+
+        // Update LED to yellow (connecting)
+        led_set_breathing_color(127, 127, 0);
+
+        // Attempt connection in background (this blocks until connected or failed)
+        ret = wifi_manager_connect();
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "WiFi connected successfully!");
+            wifi_connected = true;
+            led_set_breathing_color(0, 127, 0);  // Green = connected
+
+            // Initialize SNTP for time sync
+            initialize_sntp();
+
+            // Start time update task (check if not already running)
+            static TaskHandle_t time_task_handle = NULL;
+            if (time_task_handle == NULL) {
+                ESP_LOGI(TAG, "Starting time update task");
+                xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, &time_task_handle);
+            }
+
+            // Start weather update task (uses HTTP - no SSL overhead!)
+            if (weather_task_handle == NULL) {
+                ESP_LOGI(TAG, "Starting weather update task (HTTP mode)");
+                xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 1, &weather_task_handle);
+            }
+
+            // Update WiFi status icon color (with delay to ensure screen is loaded)
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (lvgl_port_lock(0)) {
+                ESP_LOGI(TAG, "Updating WiFi status icon to Connected");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
+                lvgl_port_unlock();
+            } else {
+                ESP_LOGW(TAG, "Failed to acquire LVGL lock for WiFi status update");
+            }
+        } else {
+            ESP_LOGE(TAG, "WiFi connection failed");
+            led_set_breathing_color(127, 0, 0);  // Red = failed
+
+            // Update WiFi status on home screen
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (lvgl_port_lock(0)) {
+                ESP_LOGI(TAG, "Updating WiFi status label to Failed");
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " Failed");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_RED), 0);
+                lvgl_port_unlock();
+            } else {
+                ESP_LOGW(TAG, "Failed to acquire LVGL lock for WiFi status update");
+            }
+        }
+        return;
+    }
+
+    // Detect shift/caps button presses by monitoring mode changes
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        lv_keyboard_mode_t curr_mode = lv_keyboard_get_mode(keyboard);
+
+        // Check if mode changed (shift button pressed)
+        if (curr_mode != prev_mode) {
+            if (curr_mode == LV_KEYBOARD_MODE_TEXT_UPPER) {
+                // Shift pressed - record time and wait for character or timeout
+                last_shift_press_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                shift_waiting_for_char = true;
+                ESP_LOGI(TAG, "Shift pressed, waiting for character or long press (2000ms for caps lock)");
+            } else if (curr_mode == LV_KEYBOARD_MODE_TEXT_LOWER) {
+                // Mode changed to lowercase - disable caps lock if it was on
+                if (caps_lock_enabled) {
+                    caps_lock_enabled = false;
+                    shift_waiting_for_char = false;
+                    ESP_LOGI(TAG, "Caps lock disabled");
+                }
+            }
+            prev_mode = curr_mode;
+        }
+    }
+}
+
+static void create_wifi_password_screen(void) {
+    screen_wifi_password = lv_obj_create(NULL);
+    lv_obj_add_style(screen_wifi_password, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_wifi_password);
+    lv_label_set_text(header, "Enter Password");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Password display (masked)
+    lv_obj_t *display_container = lv_obj_create(screen_wifi_password);
+    lv_obj_set_size(display_container, 300, 35);
+    lv_obj_align(display_container, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_add_style(display_container, &style_card, 0);
+
+    password_label = lv_label_create(display_container);
+    lv_label_set_text(password_label, "");
+    lv_obj_set_style_text_font(password_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(password_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(password_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Hidden textarea for keyboard input
+    password_field = lv_textarea_create(screen_wifi_password);
+    lv_obj_set_size(password_field, 1, 1);  // Hidden
+    lv_obj_set_pos(password_field, -100, -100);  // Off screen
+    lv_textarea_set_one_line(password_field, true);
+    lv_textarea_set_password_mode(password_field, false);  // We handle masking ourselves
+    lv_textarea_set_max_length(password_field, 63);
+
+    // LVGL keyboard
+    keyboard = lv_keyboard_create(screen_wifi_password);
+    lv_obj_set_size(keyboard, 320, 165);
+    lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_textarea(keyboard, password_field);
+    lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+
+    // Style keyboard
+    lv_obj_set_style_bg_color(keyboard, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(keyboard, LV_OPA_COVER, 0);
+
+    // Add event handlers
+    lv_obj_add_event_cb(keyboard, keyboard_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(password_field, password_field_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+// Note: timezone_dropdown_event_cb removed - timezone is now auto-detected from zipcode
+
+// Note: DST handled automatically by timezone - no manual switch needed
+// Note: format_24hr_switch_event_cb removed - tap clock on home screen to toggle format
+// Note: temp_unit_switch_event_cb removed - tap temperature on home screen to toggle unit
+
+// Event handler for zipcode edit button
+static void zipcode_edit_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Zipcode edit clicked");
+
+        // Create zipcode entry screen
+        create_zipcode_entry_screen();
+        lv_scr_load(screen_zipcode_entry);
+    }
+}
+
+// Event handler for temperature label tap - toggle F/C
+static void temp_toggle_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        // Toggle temperature unit
+        user_temp_celsius = !user_temp_celsius;
+        ESP_LOGI(TAG, "Temperature unit toggled to: %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
+
+        // Save to NVS
+        nvs_save_weather_settings(user_zipcode, user_temp_celsius, user_weather_interval_min);
+
+        // Update display
+        update_weather_display();
+    }
+}
+
+// Event handler for weather interval slider
+static lv_obj_t *weather_interval_value_label = NULL;  // Reference to interval value label
+
+static void weather_interval_slider_event_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    user_weather_interval_min = (uint8_t)lv_slider_get_value(slider);
+
+    if (weather_interval_value_label != NULL) {
+        lv_label_set_text_fmt(weather_interval_value_label, "%d min", user_weather_interval_min);
+    }
+}
+
+// Event handler for back button on Time & Weather settings screen (saves and returns to home)
+static void time_weather_back_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Saving time & weather settings to NVS...");
+
+        // Save time settings to NVS (DST handled automatically by timezone)
+        esp_err_t time_ret = nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+        if (time_ret == ESP_OK) {
+            ESP_LOGI(TAG, "Time settings saved successfully");
+
+            // Apply timezone to system immediately using POSIX format
+            const char *posix_tz = get_posix_timezone(user_timezone);
+            setenv("TZ", posix_tz, 1);
+            tzset();
+            ESP_LOGI(TAG, "Timezone applied: %s -> %s", user_timezone, posix_tz);
+
+            // Force immediate time display update
+            update_time_display();
+        } else {
+            ESP_LOGE(TAG, "Failed to save time settings");
+        }
+
+        // Save weather settings to NVS
+        esp_err_t weather_ret = nvs_save_weather_settings(user_zipcode, user_temp_celsius, user_weather_interval_min);
+        if (weather_ret == ESP_OK) {
+            ESP_LOGI(TAG, "Weather settings saved successfully");
+
+            // Reset coordinates to trigger re-geocoding on next weather update
+            user_latitude = 0.0f;
+            user_longitude = 0.0f;
+
+            // Trigger immediate weather update
+            if (weather_task_handle != NULL) {
+                xTaskNotifyGive(weather_task_handle);
+                ESP_LOGI(TAG, "Triggered immediate weather update");
+            } else {
+                ESP_LOGW(TAG, "Cannot trigger weather update - task handle is NULL");
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to save weather settings");
+        }
+
+        // Return to home screen
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_home);
+            screen_time_weather_menu = NULL;
+            lvgl_port_unlock();
+        }
+    }
+}
+
+
+// Combined Time/Date/Weather Settings Screen (merged from 2 separate screens)
+static void create_time_weather_settings_screen(void) {
+    screen_time_weather_menu = lv_obj_create(NULL);
+    lv_obj_add_style(screen_time_weather_menu, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_time_weather_menu);
+    lv_label_set_text(header, "Time & Weather");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button (saves settings and returns to home)
+    lv_obj_t *back_btn = lv_btn_create(screen_time_weather_menu);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, time_weather_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Timezone (auto-detected from zipcode, read-only, DST handled automatically)
+    lv_obj_t *tz_label = lv_label_create(screen_time_weather_menu);
+    lv_label_set_text(tz_label, "Timezone (auto):");
+    lv_obj_set_style_text_font(tz_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(tz_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(tz_label, LV_ALIGN_TOP_LEFT, 20, 55);
+
+    lv_obj_t *tz_value = lv_label_create(screen_time_weather_menu);
+    if (strlen(user_timezone) > 0) {
+        lv_label_set_text(tz_value, user_timezone);
+    } else {
+        lv_label_set_text(tz_value, "Set zipcode below");
+    }
+    lv_obj_set_style_text_font(tz_value, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(tz_value, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(tz_value, LV_ALIGN_TOP_LEFT, 20, 73);
+
+    // Zipcode field
+    lv_obj_t *zip_label = lv_label_create(screen_time_weather_menu);
+    lv_label_set_text(zip_label, "Zipcode:");
+    lv_obj_set_style_text_font(zip_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(zip_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(zip_label, LV_ALIGN_TOP_LEFT, 20, 105);
+
+    lv_obj_t *zip_btn = lv_btn_create(screen_time_weather_menu);
+    lv_obj_set_size(zip_btn, 280, 35);
+    lv_obj_align(zip_btn, LV_ALIGN_TOP_LEFT, 20, 125);
+    lv_obj_add_style(zip_btn, &style_card, 0);
+
+    lv_obj_t *zip_value = lv_label_create(zip_btn);
+    if (strlen(user_zipcode) > 0) {
+        lv_label_set_text(zip_value, user_zipcode);
+    } else {
+        lv_label_set_text(zip_value, "Tap to enter zipcode");
+    }
+    lv_obj_set_style_text_font(zip_value, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(zip_value, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(zip_value);
+    lv_obj_add_event_cb(zip_btn, zipcode_edit_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Warning message below zipcode
+    lv_obj_t *zip_warning = lv_label_create(screen_time_weather_menu);
+    lv_label_set_text(zip_warning, "May take up to 3 minutes to update");
+    lv_obj_set_style_text_font(zip_warning, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(zip_warning, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(zip_warning, LV_ALIGN_TOP_LEFT, 20, 163);
+
+    // Update interval label
+    lv_obj_t *interval_label = lv_label_create(screen_time_weather_menu);
+    lv_label_set_text(interval_label, "Update Interval:");
+    lv_obj_set_style_text_font(interval_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(interval_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(interval_label, LV_ALIGN_TOP_LEFT, 20, 185);
+
+    // Interval value label
+    weather_interval_value_label = lv_label_create(screen_time_weather_menu);
+    lv_label_set_text_fmt(weather_interval_value_label, "%d min", user_weather_interval_min);
+    lv_obj_set_style_text_font(weather_interval_value_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(weather_interval_value_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(weather_interval_value_label, LV_ALIGN_TOP_RIGHT, -20, 185);
+
+    // Interval slider (5-90 minutes)
+    lv_obj_t *interval_slider = lv_slider_create(screen_time_weather_menu);
+    lv_obj_set_size(interval_slider, 280, 10);
+    lv_obj_align(interval_slider, LV_ALIGN_TOP_LEFT, 20, 210);
+    lv_slider_set_range(interval_slider, 5, 90);
+    lv_slider_set_value(interval_slider, user_weather_interval_min, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(interval_slider, lv_color_hex(COLOR_CARD_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(interval_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(interval_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_KNOB);
+    lv_obj_add_event_cb(interval_slider, weather_interval_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+
+// Zipcode Entry Screen
+static void zipcode_field_update_event_cb(lv_event_t *e) {
+    lv_obj_t *display = (lv_obj_t*)lv_event_get_user_data(e);
+    lv_obj_t *ta = lv_event_get_target(e);
+    const char *txt = lv_textarea_get_text(ta);
+    lv_label_set_text(display, strlen(txt) > 0 ? txt : "00000");
+}
+
+// Keyboard event handler for zipcode entry
+static void zipcode_keyboard_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *ta = (lv_obj_t*)lv_event_get_user_data(e);
+
+    if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+        const char *zip = lv_textarea_get_text(ta);
+        int len = strlen(zip);
+
+        if (code == LV_EVENT_READY) {
+            // ENTER pressed - validate and save
+            if (len == 5 || len == 9) {
+                strncpy(user_zipcode, zip, sizeof(user_zipcode) - 1);
+                user_zipcode[sizeof(user_zipcode) - 1] = '\0';
+                ESP_LOGI(TAG, "Zipcode entered: %s", user_zipcode);
+
+                // Reset coordinates to trigger re-geocoding
+                user_latitude = 0.0f;
+                user_longitude = 0.0f;
+
+                // Trigger immediate weather update
+                if (weather_task_handle != NULL) {
+                    xTaskNotifyGive(weather_task_handle);
+                    ESP_LOGI(TAG, "Triggered immediate weather update after zipcode entry");
+                } else {
+                    ESP_LOGW(TAG, "Cannot trigger weather update - task handle is NULL");
+                }
+
+                // Return to combined time/weather settings screen
+                create_time_weather_settings_screen();
+                lv_scr_load(screen_time_weather_menu);
+                screen_zipcode_entry = NULL;
+            } else {
+                ESP_LOGW(TAG, "Invalid zipcode length: %d (expected 5 or 9 digits)", len);
+            }
+        } else {
+            // CANCEL/Close pressed - return without saving
+            ESP_LOGI(TAG, "Zipcode entry cancelled");
+
+            // Return to combined time/weather settings screen
+            create_time_weather_settings_screen();
+            lv_scr_load(screen_time_weather_menu);
+            screen_zipcode_entry = NULL;
+        }
+    }
+}
+
+static void create_zipcode_entry_screen(void) {
+    if (screen_zipcode_entry != NULL) {
+        lv_obj_del(screen_zipcode_entry);
+        screen_zipcode_entry = NULL;
+    }
+
+    screen_zipcode_entry = lv_obj_create(NULL);
+    lv_obj_add_style(screen_zipcode_entry, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_zipcode_entry);
+    lv_label_set_text(header, "Enter Zipcode");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Hidden textarea for keyboard input
+    lv_obj_t *zipcode_field = lv_textarea_create(screen_zipcode_entry);
+    lv_obj_set_size(zipcode_field, 1, 1);  // Hidden
+    lv_obj_set_pos(zipcode_field, -100, -100);
+    lv_textarea_set_one_line(zipcode_field, true);
+    lv_textarea_set_max_length(zipcode_field, 9);
+    lv_textarea_set_text(zipcode_field, user_zipcode);
+    lv_obj_add_flag(zipcode_field, LV_OBJ_FLAG_HIDDEN);
+
+    // Display label showing current input
+    lv_obj_t *display_label = lv_label_create(screen_zipcode_entry);
+    lv_label_set_text(display_label, strlen(user_zipcode) > 0 ? user_zipcode : "00000");
+    lv_obj_set_style_text_font(display_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(display_label, LV_ALIGN_TOP_MID, 0, 35);
+
+    // LVGL keyboard (numeric mode)
+    lv_obj_t *kbd = lv_keyboard_create(screen_zipcode_entry);
+    lv_obj_set_size(kbd, 320, 165);
+    lv_obj_align(kbd, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_textarea(kbd, zipcode_field);
+    lv_keyboard_set_mode(kbd, LV_KEYBOARD_MODE_NUMBER);
+
+    // Style keyboard
+    lv_obj_set_style_bg_color(kbd, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(kbd, LV_OPA_COVER, 0);
+
+    // Update display label when typing
+    lv_obj_add_event_cb(zipcode_field, zipcode_field_update_event_cb, LV_EVENT_VALUE_CHANGED, display_label);
+
+    // Add keyboard event handler for ENTER (done) and CANCEL (close) keys
+    lv_obj_add_event_cb(kbd, zipcode_keyboard_event_cb, LV_EVENT_ALL, zipcode_field);
+}
+
+// ==================== CGM Menu Screen ====================
+
+static void cgm_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        lv_scr_load(screen_menu);
+    }
+}
+
+static void dexcom_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Dexcom selected");
+        if (lvgl_port_lock(0)) {
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
+            create_dexcom_auth_screen();
+            lv_scr_load(screen_dexcom_auth);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void librelinkup_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "LibreLinkUp selected - NOT YET IMPLEMENTED");
+        // TODO: Implement LibreLinkUp configuration
+    }
+}
+
+static void create_cgm_menu_screen(void) {
+    screen_cgm_menu = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(screen_cgm_menu, lv_color_hex(COLOR_BG), 0);
+
+    // Title
+    lv_obj_t *title = lv_label_create(screen_cgm_menu);
+    lv_label_set_text(title, "CGM Data Source");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_cgm_menu);
+    lv_obj_set_size(back_btn, 60, 30);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_t *back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
+    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(back_label);
+    lv_obj_add_event_cb(back_btn, cgm_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Dexcom button (active)
+    lv_obj_t *dexcom_btn = lv_btn_create(screen_cgm_menu);
+    lv_obj_set_size(dexcom_btn, 280, 50);
+    lv_obj_align(dexcom_btn, LV_ALIGN_TOP_MID, 0, 50);
+    lv_obj_set_style_bg_color(dexcom_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_t *dexcom_label = lv_label_create(dexcom_btn);
+    lv_label_set_text(dexcom_label, "Dexcom");
+    lv_obj_set_style_text_font(dexcom_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(dexcom_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(dexcom_label);
+    lv_obj_add_event_cb(dexcom_btn, dexcom_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // LibreLinkUp button (placeholder)
+    lv_obj_t *libre_btn = lv_btn_create(screen_cgm_menu);
+    lv_obj_set_size(libre_btn, 280, 50);
+    lv_obj_align(libre_btn, LV_ALIGN_TOP_MID, 0, 110);
+    lv_obj_set_style_bg_color(libre_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(libre_btn, LV_OPA_50, 0);
+    lv_obj_t *libre_label = lv_label_create(libre_btn);
+    lv_label_set_text(libre_label, "LibreLinkUp (Coming Soon)");
+    lv_obj_set_style_text_font(libre_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(libre_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(libre_label);
+    lv_obj_add_event_cb(libre_btn, librelinkup_btn_event_cb, LV_EVENT_CLICKED, NULL);
+}
+
+// ==================== Dexcom Auth Screen ====================
+
+static void dexcom_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        lv_scr_load(screen_cgm_menu);
+    }
+}
+
+static void dexcom_open_login_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Opening Dexcom login screen");
+        if (lvgl_port_lock(0)) {
+            // Create login screen if it doesn't exist
+            if (screen_dexcom_login != NULL) {
+                lv_obj_del(screen_dexcom_login);
+                screen_dexcom_login = NULL;
+            }
+            create_dexcom_login_screen();
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Logout button event handler
+static void dexcom_logout_btn_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Dexcom logout requested");
+
+        // Clear credentials from NVS
+        nvs_clear_dexcom_credentials();
+
+        // Logout from API
+        dexcom_logout();
+
+        // Clear local buffers
+        memset(dexcom_username_buf, 0, sizeof(dexcom_username_buf));
+        memset(dexcom_password_buf, 0, sizeof(dexcom_password_buf));
+
+        // Clear glucose data
+        glucose_data_valid = false;
+        current_glucose = 0;
+        glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
+        first_glucose_received = false;  // Reset so success sound plays on next login
+        update_glucose_display();
+
+        ESP_LOGI(TAG, "Dexcom logout complete");
+
+        // Recreate auth screen to show login option
+        if (lvgl_port_lock(0)) {
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
+            create_dexcom_auth_screen();
+            lv_scr_load(screen_dexcom_auth);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// View status button event handler
+static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Opening Dexcom status screen");
+        if (lvgl_port_lock(0)) {
+            if (screen_dexcom_status != NULL) {
+                lv_obj_del(screen_dexcom_status);
+                screen_dexcom_status = NULL;
+            }
+            create_dexcom_status_screen();
+            lv_scr_load(screen_dexcom_status);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void create_dexcom_auth_screen(void) {
+    screen_dexcom_auth = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(screen_dexcom_auth, lv_color_hex(COLOR_BG), 0);
+
+    // Title
+    lv_obj_t *title = lv_label_create(screen_dexcom_auth);
+    lv_label_set_text(title, "Dexcom CGM");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_dexcom_auth);
+    lv_obj_set_size(back_btn, 60, 30);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_t *back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
+    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(back_label);
+    lv_obj_add_event_cb(back_btn, dexcom_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Status check
+    bool authenticated = dexcom_is_authenticated();
+
+    if (authenticated) {
+        // Show connected status (moved up 20px)
+        lv_obj_t *status = lv_label_create(screen_dexcom_auth);
+        lv_label_set_text(status, LV_SYMBOL_OK " Connected to Dexcom");
+        lv_obj_set_style_text_font(status, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_color(status, lv_color_hex(COLOR_GREEN), 0);
+        lv_obj_align(status, LV_ALIGN_CENTER, 0, -60);
+
+        // Show username
+        lv_obj_t *username_label = lv_label_create(screen_dexcom_auth);
+        char username_text[96];
+        snprintf(username_text, sizeof(username_text), "Account: %s", dexcom_username_buf);
+        lv_label_set_text(username_label, username_text);
+        lv_obj_set_style_text_font(username_label, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(username_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+        lv_obj_align(username_label, LV_ALIGN_CENTER, 0, -30);
+
+        // View Status button (settings moved to main Settings > Alarm)
+        lv_obj_t *status_btn = lv_btn_create(screen_dexcom_auth);
+        lv_obj_set_size(status_btn, 220, 45);
+        lv_obj_align(status_btn, LV_ALIGN_CENTER, 0, 15);
+        lv_obj_add_style(status_btn, &style_card, 0);
+        lv_obj_set_style_bg_color(status_btn, lv_color_hex(COLOR_ACCENT_BLUE), LV_STATE_PRESSED);
+
+        lv_obj_t *status_lbl = lv_label_create(status_btn);
+        lv_label_set_text(status_lbl, "View Account Status");
+        lv_obj_set_style_text_font(status_lbl, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(status_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_center(status_lbl);
+        lv_obj_add_event_cb(status_btn, dexcom_view_status_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    } else {
+        // Not connected - show login prompt
+        lv_obj_t *info = lv_label_create(screen_dexcom_auth);
+        lv_label_set_text(info, "Connect your Dexcom Share account");
+        lv_obj_set_style_text_font(info, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(info, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(info, LV_ALIGN_CENTER, 0, -40);
+
+        lv_obj_t *info2 = lv_label_create(screen_dexcom_auth);
+        lv_label_set_text(info2, "Use your Dexcom app credentials");
+        lv_obj_set_style_text_font(info2, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(info2, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align(info2, LV_ALIGN_CENTER, 0, -10);
+
+        // Login button
+        lv_obj_t *login_btn = lv_btn_create(screen_dexcom_auth);
+        lv_obj_set_size(login_btn, 220, 50);
+        lv_obj_align(login_btn, LV_ALIGN_CENTER, 0, 40);
+        lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_t *login_label = lv_label_create(login_btn);
+        lv_label_set_text(login_label, "Login with Username");
+        lv_obj_set_style_text_font(login_label, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(login_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_center(login_label);
+        lv_obj_add_event_cb(login_btn, dexcom_open_login_event_cb, LV_EVENT_CLICKED, NULL);
+
+        lv_obj_t *note = lv_label_create(screen_dexcom_auth);
+        lv_label_set_text(note, "Requires Dexcom Share enabled");
+        lv_obj_set_style_text_font(note, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(note, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align(note, LV_ALIGN_BOTTOM_MID, 0, -15);
+    }
+}
+
+// Username entry screen event handlers
+static void dexcom_username_entry_field_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        const char *txt = lv_textarea_get_text(dexcom_username_entry_ta);
+        strncpy(dexcom_username_buf, txt, sizeof(dexcom_username_buf) - 1);
+        dexcom_username_buf[sizeof(dexcom_username_buf) - 1] = '\0';
+
+        // Update visible label on entry screen
+        lv_label_set_text(dexcom_username_entry_label, dexcom_username_buf);
+    }
+}
+
+static void dexcom_username_entry_keyboard_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    // Handle cancel button - return to login screen without saving
+    if (code == LV_EVENT_CANCEL) {
+        ESP_LOGI(TAG, "Username entry cancelled");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+        return;
+    }
+
+    // Handle OK/Ready button - save and return to login screen
+    if (code == LV_EVENT_READY) {
+        ESP_LOGI(TAG, "Username entry completed: %s", dexcom_username_buf);
+
+        // Update the main login screen label
+        if (dexcom_username_label != NULL) {
+            lv_label_set_text(dexcom_username_label, dexcom_username_buf);
+        }
+
+        // Return to login screen
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Password entry screen event handlers
+static void dexcom_password_entry_field_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        const char *txt = lv_textarea_get_text(dexcom_password_entry_ta);
+        strncpy(dexcom_password_buf, txt, sizeof(dexcom_password_buf) - 1);
+        dexcom_password_buf[sizeof(dexcom_password_buf) - 1] = '\0';
+
+        int len = strlen(dexcom_password_buf);
+
+        // Create masked display (only last typed character visible, rest as stars)
+        if (len == 0) {
+            lv_label_set_text(dexcom_password_entry_label, "");
+        } else if (len == 1) {
+            char display[2] = {dexcom_password_buf[0], '\0'};
+            lv_label_set_text(dexcom_password_entry_label, display);
+        } else {
+            char display[65];
+            // All chars except last are stars
+            for (int i = 0; i < len - 1; i++) {
+                display[i] = '*';
+            }
+            // Last char is visible
+            display[len - 1] = dexcom_password_buf[len - 1];
+            display[len] = '\0';
+            lv_label_set_text(dexcom_password_entry_label, display);
+        }
+    }
+}
+
+static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    // Handle cancel button - return to login screen without saving
+    if (code == LV_EVENT_CANCEL) {
+        ESP_LOGI(TAG, "Password entry cancelled");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+        return;
+    }
+
+    // Handle OK/Ready button - save and return to login screen
+    if (code == LV_EVENT_READY) {
+        ESP_LOGI(TAG, "Password entry completed (masked)");
+
+        // Update the main login screen label with masked password
+        if (dexcom_password_label != NULL) {
+            int len = strlen(dexcom_password_buf);
+            if (len == 0) {
+                lv_label_set_text(dexcom_password_label, "");
+            } else {
+                char display[65];
+                for (int i = 0; i < len; i++) {
+                    display[i] = '*';
+                }
+                display[len] = '\0';
+                lv_label_set_text(dexcom_password_label, display);
+            }
+        }
+
+        // Return to login screen
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+
+// Event handler for tapping username field - opens entry screen
+static void dexcom_username_tap_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Username field tapped - opening entry screen");
+
+        if (lvgl_port_lock(0)) {
+            // Create/recreate the entry screen to ensure fresh state
+            if (screen_dexcom_username_entry != NULL) {
+                lv_obj_del(screen_dexcom_username_entry);
+                screen_dexcom_username_entry = NULL;
+            }
+            create_dexcom_username_entry_screen();
+            lv_scr_load(screen_dexcom_username_entry);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Event handler for tapping password field - opens entry screen
+static void dexcom_password_tap_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Password field tapped - opening entry screen");
+
+        if (lvgl_port_lock(0)) {
+            // Create/recreate the entry screen to ensure fresh state
+            if (screen_dexcom_password_entry != NULL) {
+                lv_obj_del(screen_dexcom_password_entry);
+                screen_dexcom_password_entry = NULL;
+            }
+            create_dexcom_password_entry_screen();
+            lv_scr_load(screen_dexcom_password_entry);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Event handler for Login button
+static void dexcom_login_btn_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Dexcom login button clicked");
+
+        // Validate inputs
+        if (strlen(dexcom_username_buf) == 0 || strlen(dexcom_password_buf) == 0) {
+            ESP_LOGW(TAG, "Username or password empty");
+            // TODO: Show error message to user
+            return;
+        }
+
+        ESP_LOGI(TAG, "Dexcom login attempt - username: %s", dexcom_username_buf);
+
+        // CRITICAL: Check if time is synced (required for SSL certificate validation)
+        if (!is_time_synced()) {
+            ESP_LOGW(TAG, "System time not synced yet - waiting for SNTP...");
+            if (!wait_for_time_sync(10000)) {  // 10 second timeout
+                ESP_LOGE(TAG, "Time sync timeout - cannot authenticate (SSL will fail)");
+                // TODO: Show error message to user
+                return;
+            }
+        }
+
+        // Return to home screen and show connecting status
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_home);
+            lvgl_port_unlock();
+        }
+
+        // Verify actual time before authentication
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+
+        ESP_LOGI(TAG, "=== PRE-AUTH TIME CHECK ===");
+        ESP_LOGI(TAG, "Current system time: %04d-%02d-%02d %02d:%02d:%02d",
+                 timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
+        if (timeinfo.tm_year < (2020 - 1900)) {
+            ESP_LOGE(TAG, "ERROR: System time is STILL wrong! Year is %d (needs >= 2020)",
+                     timeinfo.tm_year + 1900);
+            ESP_LOGE(TAG, "SSL will fail! Time sync did NOT actually work!");
+            // Continue anyway to see the error
+        } else {
+            ESP_LOGI(TAG, "System time looks correct (year >= 2020), proceeding...");
+        }
+
+        // Attempt authentication (this may take a few seconds)
+        ESP_LOGI(TAG, "Calling dexcom_authenticate...");
+        esp_err_t ret = dexcom_authenticate(dexcom_username_buf, dexcom_password_buf);
+
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Dexcom authentication successful!");
+
+            // Save credentials to NVS for auto-login on reboot
+            esp_err_t nvs_ret = nvs_set_dexcom_credentials(dexcom_username_buf, dexcom_password_buf);
+            if (nvs_ret == ESP_OK) {
+                ESP_LOGI(TAG, "Dexcom credentials saved to NVS");
+            } else {
+                ESP_LOGW(TAG, "Failed to save Dexcom credentials to NVS: %s", esp_err_to_name(nvs_ret));
+            }
+
+            // Fetch initial glucose reading
+            dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
+            ESP_LOGI(TAG, "Fetching initial glucose reading...");
+            esp_err_t fetch_ret = dexcom_fetch_glucose(&glucose);
+
+            if (fetch_ret == ESP_OK && glucose.valid) {
+                // Store glucose data
+                current_glucose = glucose.value;
+                current_trend = glucose.trend;
+                glucose_timestamp = glucose.timestamp;
+                glucose_data_valid = true;
+                glucose_status = glucose.status;
+
+                ESP_LOGI(TAG, "Glucose data received: %d mg/dL, trend: %s",
+                         glucose.value, dexcom_trend_description(glucose.trend));
+
+                // Play success sound on first glucose reading
+                if (!first_glucose_received) {
+                    first_glucose_received = true;
+                    ESP_LOGI(TAG, "First glucose reading received - playing success sound");
+                    play_success_sound();
+                }
+
+                // Check alarms
+                check_glucose_alarms(current_glucose);
+
+                // Update display
+                update_glucose_display();
+            } else {
+                ESP_LOGW(TAG, "Failed to fetch glucose data");
+                glucose_data_valid = false;
+                glucose_status = glucose.status;
+                update_glucose_display();
+            }
+
+            // TODO: Start periodic glucose fetch task
+        } else {
+            ESP_LOGE(TAG, "Dexcom authentication failed!");
+            // TODO: Show error message to user
+        }
+    }
+}
+
+static void create_dexcom_login_screen(void) {
+    screen_dexcom_login = lv_obj_create(NULL);
+    lv_obj_add_style(screen_dexcom_login, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_dexcom_login);
+    lv_label_set_text(header, "Dexcom Login");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_dexcom_login);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Username label
+    lv_obj_t *username_title = lv_label_create(screen_dexcom_login);
+    lv_label_set_text(username_title, "Username:");
+    lv_obj_set_style_text_font(username_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(username_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(username_title, LV_ALIGN_TOP_LEFT, 10, 50);
+
+    // Username container (tappable)
+    lv_obj_t *username_container = lv_obj_create(screen_dexcom_login);
+    lv_obj_set_size(username_container, 300, 35);
+    lv_obj_align(username_container, LV_ALIGN_TOP_MID, 0, 68);
+    lv_obj_add_style(username_container, &style_card, 0);
+    lv_obj_add_flag(username_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(username_container, dexcom_username_tap_event_cb, LV_EVENT_CLICKED, NULL);
+
+    dexcom_username_label = lv_label_create(username_container);
+    lv_label_set_text(dexcom_username_label, dexcom_username_buf);  // Show existing value
+    lv_obj_set_style_text_font(dexcom_username_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(dexcom_username_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(dexcom_username_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Placeholder text if empty
+    if (strlen(dexcom_username_buf) == 0) {
+        lv_label_set_text(dexcom_username_label, "Tap to enter");
+        lv_obj_set_style_text_color(dexcom_username_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    }
+
+    // Password label
+    lv_obj_t *password_title = lv_label_create(screen_dexcom_login);
+    lv_label_set_text(password_title, "Password:");
+    lv_obj_set_style_text_font(password_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(password_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(password_title, LV_ALIGN_TOP_LEFT, 10, 110);
+
+    // Password container (tappable)
+    lv_obj_t *password_container = lv_obj_create(screen_dexcom_login);
+    lv_obj_set_size(password_container, 300, 35);
+    lv_obj_align(password_container, LV_ALIGN_TOP_MID, 0, 128);
+    lv_obj_add_style(password_container, &style_card, 0);
+    lv_obj_add_flag(password_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(password_container, dexcom_password_tap_event_cb, LV_EVENT_CLICKED, NULL);
+
+    dexcom_password_label = lv_label_create(password_container);
+    // Show masked password if exists
+    if (strlen(dexcom_password_buf) > 0) {
+        int len = strlen(dexcom_password_buf);
+        char display[65];
+        for (int i = 0; i < len; i++) {
+            display[i] = '*';
+        }
+        display[len] = '\0';
+        lv_label_set_text(dexcom_password_label, display);
+        lv_obj_set_style_text_color(dexcom_password_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    } else {
+        lv_label_set_text(dexcom_password_label, "Tap to enter");
+        lv_obj_set_style_text_color(dexcom_password_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    }
+    lv_obj_set_style_text_font(dexcom_password_label, &lv_font_montserrat_16, 0);
+    lv_obj_align(dexcom_password_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Login button
+    lv_obj_t *login_btn = lv_btn_create(screen_dexcom_login);
+    lv_obj_set_size(login_btn, 200, 45);
+    lv_obj_align(login_btn, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_obj_add_style(login_btn, &style_card, 0);
+    lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), LV_STATE_PRESSED);
+
+    lv_obj_t *login_lbl = lv_label_create(login_btn);
+    lv_label_set_text(login_lbl, "Login");
+    lv_obj_set_style_text_font(login_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(login_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(login_lbl);
+    lv_obj_add_event_cb(login_btn, dexcom_login_btn_event_cb, LV_EVENT_CLICKED, NULL);
+}
+
+// Username entry screen - dedicated screen for entering username
+static void create_dexcom_username_entry_screen(void) {
+    screen_dexcom_username_entry = lv_obj_create(NULL);
+    lv_obj_add_style(screen_dexcom_username_entry, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_dexcom_username_entry);
+    lv_label_set_text(header, "Enter Username");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Username display
+    lv_obj_t *display_container = lv_obj_create(screen_dexcom_username_entry);
+    lv_obj_set_size(display_container, 300, 35);
+    lv_obj_align(display_container, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_add_style(display_container, &style_card, 0);
+
+    dexcom_username_entry_label = lv_label_create(display_container);
+    lv_label_set_text(dexcom_username_entry_label, dexcom_username_buf);  // Show existing value
+    lv_obj_set_style_text_font(dexcom_username_entry_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(dexcom_username_entry_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(dexcom_username_entry_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Hidden textarea for keyboard input
+    dexcom_username_entry_ta = lv_textarea_create(screen_dexcom_username_entry);
+    lv_obj_set_size(dexcom_username_entry_ta, 1, 1);  // Hidden
+    lv_obj_set_pos(dexcom_username_entry_ta, -100, -100);  // Off screen
+    lv_textarea_set_one_line(dexcom_username_entry_ta, true);
+    lv_textarea_set_max_length(dexcom_username_entry_ta, 63);
+    lv_textarea_set_text(dexcom_username_entry_ta, dexcom_username_buf);  // Load existing value
+
+    // LVGL keyboard
+    dexcom_username_entry_keyboard = lv_keyboard_create(screen_dexcom_username_entry);
+    lv_obj_set_size(dexcom_username_entry_keyboard, 320, 165);
+    lv_obj_align(dexcom_username_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_textarea(dexcom_username_entry_keyboard, dexcom_username_entry_ta);
+    lv_keyboard_set_mode(dexcom_username_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+
+    // Style keyboard
+    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(dexcom_username_entry_keyboard, LV_OPA_COVER, 0);
+
+    // Add event handlers
+    lv_obj_add_event_cb(dexcom_username_entry_keyboard, dexcom_username_entry_keyboard_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(dexcom_username_entry_ta, dexcom_username_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+// Password entry screen - dedicated screen for entering password
+static void create_dexcom_password_entry_screen(void) {
+    screen_dexcom_password_entry = lv_obj_create(NULL);
+    lv_obj_add_style(screen_dexcom_password_entry, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_dexcom_password_entry);
+    lv_label_set_text(header, "Enter Password");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Password display (masked)
+    lv_obj_t *display_container = lv_obj_create(screen_dexcom_password_entry);
+    lv_obj_set_size(display_container, 300, 35);
+    lv_obj_align(display_container, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_add_style(display_container, &style_card, 0);
+
+    dexcom_password_entry_label = lv_label_create(display_container);
+    // Show masked password
+    int len = strlen(dexcom_password_buf);
+    if (len > 0) {
+        char display[65];
+        for (int i = 0; i < len; i++) {
+            display[i] = '*';
+        }
+        display[len] = '\0';
+        lv_label_set_text(dexcom_password_entry_label, display);
+    } else {
+        lv_label_set_text(dexcom_password_entry_label, "");
+    }
+    lv_obj_set_style_text_font(dexcom_password_entry_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(dexcom_password_entry_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(dexcom_password_entry_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Hidden textarea for keyboard input
+    dexcom_password_entry_ta = lv_textarea_create(screen_dexcom_password_entry);
+    lv_obj_set_size(dexcom_password_entry_ta, 1, 1);  // Hidden
+    lv_obj_set_pos(dexcom_password_entry_ta, -100, -100);  // Off screen
+    lv_textarea_set_one_line(dexcom_password_entry_ta, true);
+    lv_textarea_set_password_mode(dexcom_password_entry_ta, false);  // We handle masking ourselves
+    lv_textarea_set_max_length(dexcom_password_entry_ta, 63);
+    lv_textarea_set_text(dexcom_password_entry_ta, dexcom_password_buf);  // Load existing value
+
+    // LVGL keyboard
+    dexcom_password_entry_keyboard = lv_keyboard_create(screen_dexcom_password_entry);
+    lv_obj_set_size(dexcom_password_entry_keyboard, 320, 165);
+    lv_obj_align(dexcom_password_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_textarea(dexcom_password_entry_keyboard, dexcom_password_entry_ta);
+    lv_keyboard_set_mode(dexcom_password_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+
+    // Style keyboard
+    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(dexcom_password_entry_keyboard, LV_OPA_COVER, 0);
+
+    // Add event handlers
+    lv_obj_add_event_cb(dexcom_password_entry_keyboard, dexcom_password_entry_keyboard_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(dexcom_password_entry_ta, dexcom_password_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+// Generic CGM Account Status Screen
+// NOTE: This screen is designed to be REUSABLE for all CGM types:
+//       - Dexcom Share (current)
+//       - LibreLinkUp (future)
+//       - Nightscout (future)
+// Only the header title changes ("Dexcom Account", "Libre Account", "Nightscout")
+// All CGM implementations should use this same layout to minimize screen count.
+//
+// LAYOUT (320x240 screen):
+// - Header: Y=0-42
+// - Status Card: Y=45-115 (70px height)
+// - Info Section: Y=125-185 (2 fields, 30px each)
+// - Logout Button: Y=195-235 (40px height)
+static void create_dexcom_status_screen(void) {
+    screen_dexcom_status = lv_obj_create(NULL);
+    lv_obj_add_style(screen_dexcom_status, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_dexcom_status);
+    lv_label_set_text(header, "Dexcom Account");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_dexcom_status);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, dexcom_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Status Card Container (Y=45, height=70)
+    lv_obj_t *status_card = lv_obj_create(screen_dexcom_status);
+    lv_obj_set_size(status_card, 280, 70);
+    lv_obj_align(status_card, LV_ALIGN_TOP_MID, 0, 45);
+    lv_obj_add_style(status_card, &style_card, 0);
+    lv_obj_set_style_bg_color(status_card, lv_color_hex(0x1a3d1a), 0);  // Dark green
+    lv_obj_set_style_border_width(status_card, 0, 0);
+
+    // Status icon inside card
+    lv_obj_t *status_icon = lv_label_create(status_card);
+    lv_label_set_text(status_icon, LV_SYMBOL_OK);
+    lv_obj_set_style_text_font(status_icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(status_icon, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_align(status_icon, LV_ALIGN_LEFT_MID, 18, 0);
+
+    // Connected status text
+    lv_obj_t *connected_label = lv_label_create(status_card);
+    lv_label_set_text(connected_label, "Connected");
+    lv_obj_set_style_text_font(connected_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(connected_label, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_align(connected_label, LV_ALIGN_CENTER, 12, 0);
+
+    // Info Section starts at Y=125, each field is 30px tall
+    // CGM Type (Y=125-155)
+    lv_obj_t *cgm_title = lv_label_create(screen_dexcom_status);
+    lv_label_set_text(cgm_title, "CGM Type");
+    lv_obj_set_style_text_font(cgm_title, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cgm_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(cgm_title, LV_ALIGN_TOP_LEFT, 25, 125);
+
+    lv_obj_t *cgm_value = lv_label_create(screen_dexcom_status);
+    lv_label_set_text(cgm_value, "Dexcom Share");
+    lv_obj_set_style_text_font(cgm_value, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(cgm_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(cgm_value, LV_ALIGN_TOP_LEFT, 25, 141);
+
+    // Account (Y=160-190)
+    lv_obj_t *user_title = lv_label_create(screen_dexcom_status);
+    lv_label_set_text(user_title, "Account");
+    lv_obj_set_style_text_font(user_title, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(user_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(user_title, LV_ALIGN_TOP_LEFT, 25, 160);
+
+    lv_obj_t *user_value = lv_label_create(screen_dexcom_status);
+    lv_label_set_text(user_value, dexcom_username_buf);
+    lv_obj_set_style_text_font(user_value, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(user_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(user_value, LV_ALIGN_TOP_LEFT, 25, 176);
+
+    // Logout button (Y=195, height=40, smaller and positioned absolutely)
+    lv_obj_t *logout_btn = lv_btn_create(screen_dexcom_status);
+    lv_obj_set_size(logout_btn, 160, 38);
+    lv_obj_align(logout_btn, LV_ALIGN_TOP_MID, 0, 197);
+    lv_obj_add_style(logout_btn, &style_card, 0);
+    lv_obj_set_style_bg_color(logout_btn, lv_color_hex(COLOR_RED), 0);
+
+    lv_obj_t *logout_lbl = lv_label_create(logout_btn);
+    lv_label_set_text(logout_lbl, "Logout");
+    lv_obj_set_style_text_font(logout_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(logout_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(logout_lbl);
+    lv_obj_add_event_cb(logout_btn, dexcom_logout_btn_event_cb, LV_EVENT_CLICKED, NULL);
+}
+
+
+// ==================== Alarm Settings ====================
+
+// Event handler for alarm settings button
+// Event handler for back button on alarm settings
+static void alarm_settings_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Saving alarm settings and returning");
+
+        // Save settings to NVS
+        nvs_save_alarm_settings(&current_alarm_settings);
+
+        // Return to settings menu
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_menu);
+            screen_alarm_settings = NULL;
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Create the main alarm settings screen
+static void create_alarm_settings_screen(void) {
+    screen_alarm_settings = lv_obj_create(NULL);
+    lv_obj_add_style(screen_alarm_settings, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_alarm_settings);
+    lv_label_set_text(header, "Alarm Settings");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_alarm_settings);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, alarm_settings_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Alarm cards - 4 alarms stacked vertically
+    int card_y = 50;
+    int card_height = 42;
+    int card_spacing = 4;
+
+    // High Alarm
+    create_alarm_card(screen_alarm_settings, "High Alarm", &current_alarm_settings.high_alarm,
+                      card_y, card_height);
+    card_y += card_height + card_spacing;
+
+    // High Warning
+    create_alarm_card(screen_alarm_settings, "High Warning", &current_alarm_settings.high_warning,
+                      card_y, card_height);
+    card_y += card_height + card_spacing;
+
+    // Low Warning
+    create_alarm_card(screen_alarm_settings, "Low Warning", &current_alarm_settings.low_warning,
+                      card_y, card_height);
+    card_y += card_height + card_spacing;
+
+    // Low Alarm
+    create_alarm_card(screen_alarm_settings, "Low Alarm", &current_alarm_settings.low_alarm,
+                      card_y, card_height);
+}
+
+// Helper function to create an alarm configuration card
+static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
+                              int y_pos, int height) {
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "create_alarm_card: alarm is NULL!");
+        return;
+    }
+
+    // Card container
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_set_size(card, 310, height);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y_pos);
+    lv_obj_add_style(card, &style_card, 0);
+    lv_obj_set_style_pad_all(card, 8, 0);
+
+    // IMPORTANT: Disable scrolling on the card to prevent scrollbars
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Enable/Disable toggle (left)
+    lv_obj_t *toggle = lv_switch_create(card);
+    lv_obj_set_size(toggle, 40, 20);
+    lv_obj_align(toggle, LV_ALIGN_LEFT_MID, 0, 0);
+    if (alarm->enabled) {
+        lv_obj_add_state(toggle, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(toggle, alarm_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    // Title (left-center)
+    lv_obj_t *label = lv_label_create(card);
+    lv_label_set_text(label, title);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 50, -8);
+
+    // Threshold value (below title) - displayed in the alarm's configured color
+    char threshold_text[32];
+    snprintf(threshold_text, sizeof(threshold_text), "%d mg/dL", alarm->threshold);
+    lv_obj_t *threshold_lbl = lv_label_create(card);
+    lv_label_set_text(threshold_lbl, threshold_text);
+    lv_obj_set_style_text_font(threshold_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(threshold_lbl, lv_color_hex(alarm->text_color), 0);  // Use alarm color!
+    lv_obj_align(threshold_lbl, LV_ALIGN_LEFT_MID, 50, 8);
+
+    // Edit button (right)
+    lv_obj_t *edit_btn = lv_btn_create(card);
+    lv_obj_set_size(edit_btn, 60, 30);
+    lv_obj_align(edit_btn, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_add_style(edit_btn, &style_card, 0);
+    lv_obj_set_style_bg_color(edit_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+
+    lv_obj_t *edit_lbl = lv_label_create(edit_btn);
+    lv_label_set_text(edit_lbl, "Edit");
+    lv_obj_set_style_text_font(edit_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(edit_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(edit_lbl);
+    lv_obj_add_event_cb(edit_btn, alarm_edit_btn_event_cb, LV_EVENT_CLICKED, alarm);
+}
+
+// Event handlers for alarm cards
+static void alarm_toggle_event_cb(lv_event_t *e) {
+    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "alarm_toggle_event_cb: alarm is NULL!");
+        return;
+    }
+
+    lv_obj_t *toggle = lv_event_get_target(e);
+    alarm->enabled = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+    ESP_LOGI(TAG, "Alarm enabled: %d", alarm->enabled);
+}
+
+static void alarm_edit_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+        if (alarm == NULL) {
+            ESP_LOGE(TAG, "alarm_edit_btn_event_cb: alarm is NULL!");
+            return;
+        }
+
+        ESP_LOGI(TAG, "Edit alarm clicked - threshold: %d, color: 0x%06X", alarm->threshold, alarm->text_color);
+        ESP_LOGI(TAG, "Free heap before screen delete: %lu bytes", esp_get_free_heap_size());
+
+        // Open detailed alarm editor screen
+        editing_alarm = alarm;
+
+        // No need to lock - we're already in LVGL event callback context
+        if (screen_alarm_detail_editor != NULL) {
+            ESP_LOGI(TAG, "Deleting old detail editor screen");
+            lv_obj_del(screen_alarm_detail_editor);
+            screen_alarm_detail_editor = NULL;
+        }
+
+        ESP_LOGI(TAG, "Free heap before screen create: %lu bytes", esp_get_free_heap_size());
+        create_alarm_detail_editor_screen(alarm);
+
+        if (screen_alarm_detail_editor != NULL) {
+            ESP_LOGI(TAG, "Loading detail editor screen");
+            lv_scr_load(screen_alarm_detail_editor);
+
+            // Now safe to delete alarm settings screen (no longer active)
+            if (screen_alarm_settings != NULL) {
+                lv_obj_del(screen_alarm_settings);
+                screen_alarm_settings = NULL;
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to create detail editor screen!");
+        }
+    }
+}
+
+// Alarm preview function - currently unused since preview button was removed
+// Kept for potential future debugging/testing use
+#if 0
+static void alarm_preview_open_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Opening alarm preview");
+
+        if (lvgl_port_lock(0)) {
+            if (screen_alarm_preview != NULL) {
+                lv_obj_del(screen_alarm_preview);
+                screen_alarm_preview = NULL;
+            }
+            create_alarm_preview_screen();
+            lv_scr_load(screen_alarm_preview);
+            lvgl_port_unlock();
+        }
+    }
+}
+#endif
+
+// Tone Picker Screen
+static void tone_picker_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        // Return to detail editor screen (already in LVGL context)
+        if (editing_alarm != NULL) {
+            // Delete old detail editor if it exists
+            if (screen_alarm_detail_editor != NULL) {
+                lv_obj_del(screen_alarm_detail_editor);
+                screen_alarm_detail_editor = NULL;
+            }
+
+            // Create and load new detail editor
+            create_alarm_detail_editor_screen(editing_alarm);
+            lv_scr_load(screen_alarm_detail_editor);
+
+            // Now safe to delete tone picker (no longer active screen)
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+        }
+    }
+}
+
+static void create_tone_picker_screen(alarm_config_t *alarm) {
+    screen_tone_picker = lv_obj_create(NULL);
+    if (screen_tone_picker == NULL) {
+        ESP_LOGE(TAG, "Failed to create tone picker screen - LVGL out of memory!");
+        return;
+    }
+    lv_obj_add_style(screen_tone_picker, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_tone_picker);
+    lv_label_set_text(header, "Select Tone");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_tone_picker);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, tone_picker_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Tone options - 5 tones
+    const char *tone_names[] = {
+        "Beep 1 (Single)",
+        "Beep 2 (Double)",
+        "Beep 3 (Triple)",
+        "Chime (Gentle)",
+        "Alert (Urgent)"
+    };
+
+    int y_start = 60;
+    int button_height = 45;
+    int button_spacing = 8;
+
+    for (int i = 0; i < ALARM_TONE_COUNT; i++) {
+        lv_obj_t *tone_btn = lv_btn_create(screen_tone_picker);
+        lv_obj_set_size(tone_btn, 280, button_height);
+        lv_obj_align(tone_btn, LV_ALIGN_TOP_MID, 0, y_start + i * (button_height + button_spacing));
+        lv_obj_add_style(tone_btn, &style_card, 0);
+
+        // Highlight if this is the current tone
+        if (alarm->tone == i) {
+            lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        }
+
+        lv_obj_t *tone_lbl = lv_label_create(tone_btn);
+        lv_label_set_text(tone_lbl, tone_names[i]);
+        lv_obj_set_style_text_font(tone_lbl, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(tone_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(tone_lbl, LV_ALIGN_LEFT_MID, 15, 0);
+
+        // Preview button (play icon)
+        lv_obj_t *play_btn = lv_btn_create(tone_btn);
+        lv_obj_set_size(play_btn, 35, 35);
+        lv_obj_align(play_btn, LV_ALIGN_RIGHT_MID, -5, 0);
+        lv_obj_add_style(play_btn, &style_card, 0);
+        lv_obj_set_style_bg_color(play_btn, lv_color_hex(0x00AA00), 0);
+
+        lv_obj_t *play_lbl = lv_label_create(play_btn);
+        lv_label_set_text(play_lbl, LV_SYMBOL_PLAY);
+        lv_obj_set_style_text_font(play_lbl, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(play_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_center(play_lbl);
+        lv_obj_add_event_cb(play_btn, tone_preview_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+
+        // Select this tone when button clicked
+        lv_obj_add_event_cb(tone_btn, tone_select_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+}
+
+static void tone_select_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        int tone_id = (int)(intptr_t)lv_event_get_user_data(e);
+
+        if (editing_alarm != NULL) {
+            editing_alarm->tone = (alarm_tone_t)tone_id;
+            ESP_LOGI(TAG, "Tone selected: %d", tone_id);
+
+            // Return to detail editor screen with updated tone (already in LVGL context)
+            if (screen_alarm_detail_editor != NULL) {
+                lv_obj_del(screen_alarm_detail_editor);
+                screen_alarm_detail_editor = NULL;
+            }
+            create_alarm_detail_editor_screen(editing_alarm);
+            lv_scr_load(screen_alarm_detail_editor);
+
+            // Now safe to delete tone picker (no longer active screen)
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+        }
+    }
+}
+
+static void tone_preview_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        alarm_tone_t tone_id = (alarm_tone_t)(intptr_t)lv_event_get_user_data(e);
+
+        // Play tone preview at configured volume
+        if (editing_alarm != NULL) {
+            play_alarm_tone(tone_id, editing_alarm->volume);
+        }
+    }
+}
+
+// Alarm Preview Screen (dummy home screen) - unused, preview button removed
+#if 0
+static void alarm_preview_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        lv_scr_load(screen_alarm_settings);
+    }
+}
+#endif
+
+// Detailed Alarm Editor Event Handlers
+
+static void alarm_detail_editor_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Saving alarm settings and returning to alarm settings screen");
+
+        // Save all alarm settings to NVS
+        esp_err_t ret = nvs_save_alarm_settings(&current_alarm_settings);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Alarm settings saved successfully");
+        } else {
+            ESP_LOGE(TAG, "Failed to save alarm settings: %s", esp_err_to_name(ret));
+        }
+
+        // Reload alarm settings screen to reflect changes (already in LVGL context)
+        if (screen_alarm_settings != NULL) {
+            lv_obj_del(screen_alarm_settings);
+            screen_alarm_settings = NULL;
+        }
+        create_alarm_settings_screen();
+        lv_scr_load(screen_alarm_settings);
+
+        // Now safe to delete detail editor (no longer active screen)
+        if (screen_alarm_detail_editor != NULL) {
+            lv_obj_del(screen_alarm_detail_editor);
+            screen_alarm_detail_editor = NULL;
+        }
+    }
+}
+
+static void alarm_threshold_slider_event_cb(lv_event_t *e) {
+    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "alarm_threshold_slider_event_cb: alarm is NULL!");
+        return;
+    }
+
+    lv_obj_t *slider = lv_event_get_target(e);
+    int32_t value = lv_slider_get_value(slider);
+    alarm->threshold = (int)value;
+
+    // Update threshold value label
+    lv_obj_t *threshold_value = (lv_obj_t *)lv_obj_get_user_data(slider);
+    if (threshold_value != NULL) {
+        char threshold_text[16];
+        snprintf(threshold_text, sizeof(threshold_text), "%d mg/dL", (int)value);
+        lv_label_set_text(threshold_value, threshold_text);
+    }
+
+    ESP_LOGI(TAG, "Threshold changed: %d mg/dL", (int)value);
+}
+
+static void alarm_volume_slider_event_cb(lv_event_t *e) {
+    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "alarm_volume_slider_event_cb: alarm is NULL!");
+        return;
+    }
+
+    lv_obj_t *slider = lv_event_get_target(e);
+    int32_t value = lv_slider_get_value(slider);
+    alarm->volume = (uint8_t)value;
+
+    // Update volume value label
+    lv_obj_t *volume_value = (lv_obj_t *)lv_obj_get_user_data(slider);
+    if (volume_value != NULL) {
+        char volume_text[8];
+        snprintf(volume_text, sizeof(volume_text), "%d%%", (int)value);
+        lv_label_set_text(volume_value, volume_text);
+    }
+
+    // Volume changed (don't log - too frequent)
+}
+
+static void alarm_audio_toggle_event_cb(lv_event_t *e) {
+    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "alarm_audio_toggle_event_cb: alarm is NULL!");
+        return;
+    }
+
+    lv_obj_t *toggle = lv_event_get_target(e);
+    alarm->audio_enabled = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+    ESP_LOGI(TAG, "Audio enabled: %d", alarm->audio_enabled);
+}
+
+static void alarm_visual_toggle_event_cb(lv_event_t *e) {
+    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "alarm_visual_toggle_event_cb: alarm is NULL!");
+        return;
+    }
+
+    lv_obj_t *toggle = lv_event_get_target(e);
+    alarm->visual_enabled = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+    ESP_LOGI(TAG, "Visual enabled: %d", alarm->visual_enabled);
+}
+
+static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e) {
+    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "alarm_audio_repeat_toggle_event_cb: alarm is NULL!");
+        return;
+    }
+
+    lv_obj_t *toggle = lv_event_get_target(e);
+    alarm->audio_repeat = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+    ESP_LOGI(TAG, "Audio repeat enabled: %d", alarm->audio_repeat);
+}
+
+static void alarm_tone_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+        if (alarm == NULL) {
+            ESP_LOGE(TAG, "alarm_tone_btn_event_cb: alarm is NULL!");
+            return;
+        }
+
+        ESP_LOGI(TAG, "Opening tone picker from detail editor");
+
+        // Delete old tone picker if it exists
+        if (screen_tone_picker != NULL) {
+            lv_obj_del(screen_tone_picker);
+            screen_tone_picker = NULL;
+        }
+
+        // Create new tone picker screen
+        create_tone_picker_screen(alarm);
+
+        if (screen_tone_picker != NULL) {
+            // Load new screen FIRST (this switches away from detail editor)
+            lv_scr_load(screen_tone_picker);
+
+            // NOW safe to delete detail editor (no longer active screen)
+            if (screen_alarm_detail_editor != NULL) {
+                lv_obj_del(screen_alarm_detail_editor);
+                screen_alarm_detail_editor = NULL;
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to create tone picker screen - out of memory");
+        }
+    }
+}
+
+// Alarm preview screens - currently unused since preview button was removed
+// Kept for potential future debugging/testing use
+#if 0
+static void create_alarm_preview_screen(void) {
+    screen_alarm_preview = lv_obj_create(NULL);
+    lv_obj_add_style(screen_alarm_preview, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_alarm_preview);
+    lv_label_set_text(header, "Alarm Preview");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Back button
+    lv_obj_t *back_btn = lv_btn_create(screen_alarm_preview);
+    lv_obj_set_size(back_btn, 50, 30);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_RIGHT, -5, 3);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, alarm_preview_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Dummy home screen preview
+    // Show 4 glucose values demonstrating each alarm state
+    int card_y = 35;
+    int card_height = 45;
+    int card_spacing = 5;
+
+    // High Alarm demo
+    create_alarm_preview_card(screen_alarm_preview, "High Alarm", 280,
+                              current_alarm_settings.high_alarm.text_color, card_y);
+    card_y += card_height + card_spacing;
+
+    // High Warning demo
+    create_alarm_preview_card(screen_alarm_preview, "High Warning", 190,
+                              current_alarm_settings.high_warning.text_color, card_y);
+    card_y += card_height + card_spacing;
+
+    // Low Warning demo
+    create_alarm_preview_card(screen_alarm_preview, "Low Warning", 75,
+                              current_alarm_settings.low_warning.text_color, card_y);
+    card_y += card_height + card_spacing;
+
+    // Low Alarm demo
+    create_alarm_preview_card(screen_alarm_preview, "Low Alarm", 48,
+                              current_alarm_settings.low_alarm.text_color, card_y);
+}
+
+static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
+                                      uint32_t text_color, int y_pos) {
+    // Card container
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_set_size(card, 310, 45);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y_pos);
+    lv_obj_add_style(card, &style_card, 0);
+
+    // Title
+    lv_obj_t *title_lbl = lv_label_create(card);
+    lv_label_set_text(title_lbl, title);
+    lv_obj_set_style_text_font(title_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(title_lbl, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(title_lbl, LV_ALIGN_TOP_LEFT, 10, 5);
+
+    // Glucose value (colored)
+    char glucose_text[32];
+    snprintf(glucose_text, sizeof(glucose_text), "%d mg/dL", glucose_value);
+    lv_obj_t *glucose_lbl = lv_label_create(card);
+    lv_label_set_text(glucose_lbl, glucose_text);
+    lv_obj_set_style_text_font(glucose_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(glucose_lbl, lv_color_hex(text_color), 0);
+    lv_obj_align(glucose_lbl, LV_ALIGN_LEFT_MID, 10, 5);
+}
+#endif
+
+// ============================================================================
+// Alarm Snooze/Dismiss Screen
+// ============================================================================
+
+// Event handler for snooze buttons
+static void alarm_snooze_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        int snooze_minutes = (int)(intptr_t)lv_event_get_user_data(e);
+
+        if (snooze_minutes > 0) {
+            // Set snooze timer
+            time_t now;
+            time(&now);
+            alarm_snooze_until = now + (snooze_minutes * 60);
+            ESP_LOGI(TAG, "Alarm snoozed for %d minutes (until %lld)", snooze_minutes, alarm_snooze_until);
+        } else {
+            // Dismiss alarm completely
+            alarm_acknowledged = true;
+            alarm_snooze_until = 0;
+            current_alarm_state = ALARM_STATE_NONE;
+            ESP_LOGI(TAG, "Alarm dismissed");
+        }
+
+        // Return to home screen
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_home);
+            if (screen_alarm_snooze != NULL) {
+                lv_obj_del(screen_alarm_snooze);
+                screen_alarm_snooze = NULL;
+            }
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Create the snooze/dismiss screen
+static void create_alarm_snooze_screen(void) {
+    screen_alarm_snooze = lv_obj_create(NULL);
+    lv_obj_add_style(screen_alarm_snooze, &style_bg, 0);
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_alarm_snooze);
+    lv_label_set_text(header, "Alarm Alert");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Current glucose value
+    lv_obj_t *glucose_label = lv_label_create(screen_alarm_snooze);
+    char glucose_text[32];
+    snprintf(glucose_text, sizeof(glucose_text), "%d mg/dL", current_glucose);
+    lv_label_set_text(glucose_label, glucose_text);
+    lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(glucose_label, lv_color_hex(COLOR_RED), 0);
+    lv_obj_align(glucose_label, LV_ALIGN_TOP_MID, 0, 40);
+
+    // Snooze label
+    lv_obj_t *snooze_label = lv_label_create(screen_alarm_snooze);
+    lv_label_set_text(snooze_label, "Snooze for:");
+    lv_obj_set_style_text_font(snooze_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(snooze_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(snooze_label, LV_ALIGN_TOP_MID, 0, 100);
+
+    // Snooze buttons in a row
+    int snooze_times[] = {5, 10, 15, 30};
+    for (int i = 0; i < 4; i++) {
+        lv_obj_t *btn = lv_btn_create(screen_alarm_snooze);
+        lv_obj_set_size(btn, 70, 35);
+        lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + (i * 75), 125);
+        lv_obj_add_style(btn, &style_card, 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x007AFF), 0);  // Blue
+
+        lv_obj_t *label = lv_label_create(btn);
+        char text[16];
+        snprintf(text, sizeof(text), "%d min", snooze_times[i]);
+        lv_label_set_text(label, text);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_center(label);
+
+        lv_obj_add_event_cb(btn, alarm_snooze_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)snooze_times[i]);
+    }
+
+    // Disarm button (snooze for 3 hours)
+    lv_obj_t *dismiss_btn = lv_btn_create(screen_alarm_snooze);
+    lv_obj_set_size(dismiss_btn, 300, 35);
+    lv_obj_align(dismiss_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_add_style(dismiss_btn, &style_card, 0);
+    lv_obj_set_style_bg_color(dismiss_btn, lv_color_hex(COLOR_RED), 0);
+
+    lv_obj_t *dismiss_label = lv_label_create(dismiss_btn);
+    lv_label_set_text(dismiss_label, "Disarm All Alarms (3 Hours)");
+    lv_obj_set_style_text_font(dismiss_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(dismiss_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(dismiss_label);
+
+    lv_obj_add_event_cb(dismiss_btn, alarm_snooze_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)180);  // 180 minutes = 3 hours
+}
+
+// Detailed Alarm Editor Screen
+static void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
+    if (alarm == NULL) {
+        ESP_LOGE(TAG, "create_alarm_detail_editor_screen: alarm is NULL!");
+        return;
+    }
+
+    screen_alarm_detail_editor = lv_obj_create(NULL);
+    if (screen_alarm_detail_editor == NULL) {
+        ESP_LOGE(TAG, "Failed to create alarm detail editor screen - out of memory?");
+        return;
+    }
+    lv_obj_add_style(screen_alarm_detail_editor, &style_bg, 0);
+
+    // Determine alarm name for header
+    const char *alarm_name = "Alarm Configuration";
+    if (alarm == &current_alarm_settings.high_alarm) {
+        alarm_name = "High Alarm";
+    } else if (alarm == &current_alarm_settings.high_warning) {
+        alarm_name = "High Warning";
+    } else if (alarm == &current_alarm_settings.low_warning) {
+        alarm_name = "Low Warning";
+    } else if (alarm == &current_alarm_settings.low_alarm) {
+        alarm_name = "Low Alarm";
+    }
+
+    // Header
+    lv_obj_t *header = lv_label_create(screen_alarm_detail_editor);
+    lv_label_set_text(header, alarm_name);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Back button (saves settings)
+    lv_obj_t *back_btn = lv_btn_create(screen_alarm_detail_editor);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(back_lbl);
+    lv_obj_add_event_cb(back_btn, alarm_detail_editor_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Threshold Section (Y=50)
+    lv_obj_t *threshold_label = lv_label_create(screen_alarm_detail_editor);
+    lv_label_set_text(threshold_label, "Threshold");
+    lv_obj_set_style_text_font(threshold_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(threshold_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(threshold_label, LV_ALIGN_TOP_LEFT, 15, 50);
+
+    // Threshold value display
+    lv_obj_t *threshold_value = lv_label_create(screen_alarm_detail_editor);
+    char threshold_text[16];
+    snprintf(threshold_text, sizeof(threshold_text), "%d mg/dL", alarm->threshold);
+    lv_label_set_text(threshold_value, threshold_text);
+    lv_obj_set_style_text_font(threshold_value, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(threshold_value, lv_color_hex(alarm->text_color), 0);
+    lv_obj_align(threshold_value, LV_ALIGN_TOP_RIGHT, -15, 50);
+
+    // Store reference globally for color updates
+    alarm_threshold_value_label = threshold_value;
+
+    // Threshold slider (50-400 mg/dL)
+    lv_obj_t *threshold_slider = lv_slider_create(screen_alarm_detail_editor);
+    lv_obj_set_size(threshold_slider, 290, 10);
+    lv_obj_align(threshold_slider, LV_ALIGN_TOP_MID, 0, 75);
+    lv_slider_set_range(threshold_slider, 50, 400);
+    lv_slider_set_value(threshold_slider, alarm->threshold, LV_ANIM_OFF);
+    lv_obj_add_event_cb(threshold_slider, alarm_threshold_slider_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    // Store threshold value label as user data so slider can update it
+    lv_obj_set_user_data(threshold_slider, threshold_value);
+
+    // Audio Settings Section (Y=95, colors are fixed: red for urgent, amber for warnings)
+    lv_obj_t *audio_label = lv_label_create(screen_alarm_detail_editor);
+    lv_label_set_text(audio_label, "Audio Alert");
+    lv_obj_set_style_text_font(audio_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(audio_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(audio_label, LV_ALIGN_TOP_LEFT, 15, 95);
+
+    // Audio toggle
+    lv_obj_t *audio_toggle = lv_switch_create(screen_alarm_detail_editor);
+    lv_obj_set_size(audio_toggle, 40, 20);
+    lv_obj_align(audio_toggle, LV_ALIGN_TOP_RIGHT, -15, 92);
+    if (alarm->audio_enabled) {
+        lv_obj_add_state(audio_toggle, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(audio_toggle, alarm_audio_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    // Tone selection button (Y=120)
+    lv_obj_t *tone_btn = lv_btn_create(screen_alarm_detail_editor);
+    lv_obj_set_size(tone_btn, 150, 30);
+    lv_obj_align(tone_btn, LV_ALIGN_TOP_LEFT, 15, 120);
+    lv_obj_add_style(tone_btn, &style_card, 0);
+    lv_obj_set_style_bg_color(tone_btn, lv_color_hex(0x444444), 0);
+
+    // Get tone name
+    const char *tone_names[] = {
+        "Beep 1", "Beep 2", "Beep 3", "Chime", "Alert"
+    };
+    char tone_text[32];
+    snprintf(tone_text, sizeof(tone_text), "Tone: %s", tone_names[alarm->tone]);
+
+    lv_obj_t *tone_lbl = lv_label_create(tone_btn);
+    lv_label_set_text(tone_lbl, tone_text);
+    lv_obj_set_style_text_font(tone_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(tone_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(tone_lbl);
+    lv_obj_add_event_cb(tone_btn, alarm_tone_btn_event_cb, LV_EVENT_CLICKED, alarm);
+
+    // Volume label and value
+    lv_obj_t *volume_label = lv_label_create(screen_alarm_detail_editor);
+    lv_label_set_text(volume_label, "Volume");
+    lv_obj_set_style_text_font(volume_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(volume_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(volume_label, LV_ALIGN_TOP_LEFT, 175, 120);
+
+    lv_obj_t *volume_value = lv_label_create(screen_alarm_detail_editor);
+    char volume_text[8];
+    snprintf(volume_text, sizeof(volume_text), "%d%%", alarm->volume);
+    lv_label_set_text(volume_value, volume_text);
+    lv_obj_set_style_text_font(volume_value, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(volume_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(volume_value, LV_ALIGN_TOP_RIGHT, -15, 120);
+
+    // Volume slider (Y=140)
+    lv_obj_t *volume_slider = lv_slider_create(screen_alarm_detail_editor);
+    lv_obj_set_size(volume_slider, 135, 8);
+    lv_obj_align(volume_slider, LV_ALIGN_TOP_RIGHT, -15, 140);
+    lv_slider_set_range(volume_slider, 0, 100);
+    lv_slider_set_value(volume_slider, alarm->volume, LV_ANIM_OFF);
+    lv_obj_add_event_cb(volume_slider, alarm_volume_slider_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    // Store volume value label as user data
+    lv_obj_set_user_data(volume_slider, volume_value);
+
+    // Visual Alert Section (Y=180) - kept at original position
+    lv_obj_t *visual_label = lv_label_create(screen_alarm_detail_editor);
+    lv_label_set_text(visual_label, "Visual Alert");
+    lv_obj_set_style_text_font(visual_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(visual_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(visual_label, LV_ALIGN_TOP_LEFT, 15, 180);
+
+    // Visual toggle
+    lv_obj_t *visual_toggle = lv_switch_create(screen_alarm_detail_editor);
+    lv_obj_set_size(visual_toggle, 40, 20);
+    lv_obj_align(visual_toggle, LV_ALIGN_TOP_RIGHT, -15, 177);
+    if (alarm->visual_enabled) {
+        lv_obj_add_state(visual_toggle, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(visual_toggle, alarm_visual_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    // Audio Repeat Section (Y=205) - moved below Visual Alert
+    lv_obj_t *repeat_label = lv_label_create(screen_alarm_detail_editor);
+    lv_label_set_text(repeat_label, "Repeat Until Dismissed");
+    lv_obj_set_style_text_font(repeat_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(repeat_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(repeat_label, LV_ALIGN_TOP_LEFT, 30, 207);
+
+    // Audio repeat toggle
+    lv_obj_t *repeat_toggle = lv_switch_create(screen_alarm_detail_editor);
+    lv_obj_set_size(repeat_toggle, 40, 20);
+    lv_obj_align(repeat_toggle, LV_ALIGN_TOP_RIGHT, -15, 204);
+    if (alarm->audio_repeat) {
+        lv_obj_add_state(repeat_toggle, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(repeat_toggle, alarm_audio_repeat_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+}
+
+// ==================== Touch Debug ====================
+
+// ==================== UI Task (Core 1) ====================
+
+static void ui_task_core1(void *pvParameters) {
+    ESP_LOGI(TAG, "UI Task started on Core 1");
+
+    // Initialize touch and keyboard on Core 1
+    add_boot_log("Init touch screen");
+    ESP_ERROR_CHECK(touch_init_core1());
+    add_boot_log("Init keyboard");
+    ESP_ERROR_CHECK(cardkb_init());
+
+    // Initialize LVGL
+    add_boot_log("Init LVGL");
+    ESP_ERROR_CHECK(lvgl_init());
+
+    // Initialize LVGL styles
+    init_styles();
+
+    // Create UI screens
+    add_boot_log("Create UI screens");
+    create_splash_screen();
+    create_home_screen();
+    create_menu_screen();
+    create_wifi_list_screen();
+    // Don't create password screen yet - create on demand
+    // create_wifi_password_screen();
+
+    // Show splash screen with all buffered boot messages
+    lv_scr_load(screen_splash);
+    add_boot_log("Display ready");
+
+    // Update boot log with any buffered messages
+    if (boot_log_label != NULL && lvgl_port_lock(0)) {
+        lv_label_set_text(boot_log_label, boot_log_buffer);
+        lvgl_port_unlock();
+    }
+
+    // Show splash screen for 5 seconds
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    // Switch to home screen
+    lv_scr_load(screen_home);
+
+    // Start battery monitoring task NOW (after LVGL is fully initialized)
+    ESP_LOGI(TAG, "Starting battery monitor task");
+    xTaskCreatePinnedToCore(
+        battery_monitor_task,
+        "battery_mon",
+        3072,
+        NULL,
+        2,  // Low priority
+        NULL,
+        0   // Core 0
+    );
+
+    // UI task complete - time updates handled by time_update_task()
+    // Just keep task alive
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+// ==================== WiFi Task (Core 0) ====================
+
+static void wifi_task_core0(void *pvParameters) {
+    ESP_LOGI(TAG, "WiFi Task started on Core 0");
+
+    // Initialize WiFi manager
+    add_boot_log("Init WiFi");
+    ESP_ERROR_CHECK(wifi_manager_init());
+
+    // Check for saved credentials
+    wifi_credentials_t creds;
+    bool has_credentials = (nvs_load_wifi_credentials(&creds) == ESP_OK);
+
+    if (!has_credentials) {
+        ESP_LOGI(TAG, "No saved WiFi credentials - setup required");
+        add_boot_log("WiFi: Setup needed");
+        led_set_breathing_color(127, 127, 0);  // Yellow = setup needed
+        // TODO: Implement WiFi setup UI
+    } else {
+        ESP_LOGI(TAG, "Connecting to WiFi: %s", creds.ssid);
+        add_boot_log("Connecting WiFi...");
+        led_set_breathing_color(127, 127, 0);  // Yellow = connecting
+
+        if (wifi_manager_connect() == ESP_OK) {
+            ESP_LOGI(TAG, "WiFi connected successfully");
+            add_boot_log("WiFi connected!");
+            wifi_connected = true;
+            led_set_breathing_color(0, 127, 0);  // Green = connected
+
+            // Update WiFi status icon color
+            if (lvgl_port_lock(0)) {
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
+                lvgl_port_unlock();
+            }
+
+            // SD card logger will be initialized after time sync (needs correct timestamp for filename)
+
+#if ENABLE_WEB_SERVER
+            // Start web server (DISABLED by default to save ~30KB heap for SSL)
+            ESP_LOGI(TAG, "Starting web server...");
+            if (start_webserver() == ESP_OK) {
+                ESP_LOGI(TAG, "Web server started successfully");
+                add_boot_log("Web server started");
+            } else {
+                ESP_LOGE(TAG, "Failed to start web server");
+            }
+#endif
+
+            // Initialize SNTP for time sync
+            initialize_sntp();
+
+            // Start time update task
+            xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, NULL);
+
+            // Delay weather task until after Dexcom connects (SSL memory priority)
+            // Will be started after Dexcom auth completes
+
+            // Auto-login to Dexcom if credentials saved (CRITICAL: Wait for time sync first!)
+            if (nvs_has_dexcom_credentials()) {
+                ESP_LOGI(TAG, "Found saved Dexcom credentials, will attempt auto-login after time sync");
+                char username[64], password[64];
+                if (nvs_get_dexcom_credentials(username, sizeof(username), password, sizeof(password)) == ESP_OK) {
+                    // Copy to buffers
+                    strncpy(dexcom_username_buf, username, sizeof(dexcom_username_buf) - 1);
+                    strncpy(dexcom_password_buf, password, sizeof(dexcom_password_buf) - 1);
+
+                    // CRITICAL: Wait for SNTP time sync (SSL certificates require accurate time!)
+                    ESP_LOGI(TAG, "Waiting for SNTP time sync before Dexcom auth (required for SSL)...");
+
+                    // Check current time before waiting
+                    time_t now;
+                    struct tm timeinfo;
+                    time(&now);
+                    localtime_r(&now, &timeinfo);
+                    ESP_LOGI(TAG, "Current system time: %04d-%02d-%02d %02d:%02d:%02d",
+                             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
+                    if (!wait_for_time_sync(60000)) {  // Increased to 60 seconds
+                        ESP_LOGE(TAG, "Time sync failed after 60s - CANNOT attempt Dexcom auth (SSL will fail)");
+                        ESP_LOGE(TAG, "System time is still: %04d-%02d-%02d (needs to be >= 2020)",
+                                 timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+                    } else {
+                        // Time is synced, now safe to authenticate
+                        ESP_LOGI(TAG, "Time synced successfully, proceeding with Dexcom auto-login");
+
+                        // Retry logic with exponential backoff (life-critical - never give up!)
+                        int max_retries = 5;
+                        int retry_delay_ms = 2000;  // Start with 2 seconds
+
+                        for (int attempt = 1; attempt <= max_retries; attempt++) {
+                            ESP_LOGI(TAG, "Dexcom auth attempt %d/%d...", attempt, max_retries);
+
+                            esp_err_t ret = dexcom_authenticate(username, password);
+                            if (ret == ESP_OK) {
+                                ESP_LOGI(TAG, "Dexcom auto-login successful on attempt %d!", attempt);
+
+                                // Fetch initial glucose reading
+                                dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
+                                if (dexcom_fetch_glucose(&glucose) == ESP_OK && glucose.valid) {
+                                    current_glucose = glucose.value;
+                                    current_trend = glucose.trend;
+                                    glucose_timestamp = glucose.timestamp;
+                                    glucose_data_valid = true;
+                                    glucose_status = glucose.status;
+                                    ESP_LOGI(TAG, "Initial glucose: %d mg/dL, trend: %s",
+                                             glucose.value, dexcom_trend_description(glucose.trend));
+
+                                    // Play success sound on first glucose reading
+                                    if (!first_glucose_received) {
+                                        first_glucose_received = true;
+                                        ESP_LOGI(TAG, "First glucose reading received - playing success sound");
+                                        play_success_sound();
+                                    }
+
+                                    // Check alarms
+                                    check_glucose_alarms(current_glucose);
+
+                                    update_glucose_display();
+                                } else {
+                                    // No data yet - update status
+                                    glucose_data_valid = false;
+                                    glucose_status = glucose.status;
+                                    update_glucose_display();
+                                }
+
+                                // Start weather task (uses HTTP - no SSL overhead!)
+                                if (weather_task_handle == NULL) {
+                                    ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
+                                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 1, &weather_task_handle);
+                                }
+
+                                // Start glucose update task (90 second periodic fetches)
+                                if (glucose_task_handle == NULL) {
+                                    ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
+                                    xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+                                }
+
+                                break;  // Success - exit retry loop
+                            } else {
+                                ESP_LOGW(TAG, "Dexcom auth attempt %d failed: %s", attempt, esp_err_to_name(ret));
+
+                                if (attempt < max_retries) {
+                                    ESP_LOGI(TAG, "Retrying in %d ms...", retry_delay_ms);
+                                    vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
+                                    retry_delay_ms *= 2;  // Exponential backoff: 2s, 4s, 8s, 16s
+                                } else {
+                                    ESP_LOGE(TAG, "Dexcom auto-login failed after %d attempts", max_retries);
+                                    ESP_LOGE(TAG, "CRITICAL: Will continue trying in background task");
+                                    // TODO: Create background retry task for life-critical reconnection
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // No Dexcom credentials - start weather task immediately
+                ESP_LOGI(TAG, "No Dexcom credentials found, starting weather task (HTTP mode)...");
+                if (weather_task_handle == NULL) {
+                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 1, &weather_task_handle);
+                }
+            }
+        } else {
+            ESP_LOGE(TAG, "WiFi connection failed");
+            led_set_breathing_color(127, 0, 0);  // Red = failed
+
+            // Update WiFi status on home screen
+            if (lvgl_port_lock(0)) {
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " Failed");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_RED), 0);
+                lvgl_port_unlock();
+            }
+        }
+    }
+
+    // Monitor WiFi connection
+    while (1) {
+        // TODO: Periodic WiFi health check
+        vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+}
+
+// ==================== Main Application ====================
+
+void app_main(void) {
+    ESP_LOGI(TAG, "=== CYGM - Continuous Glucose Monitor ===");
+    ESP_LOGI(TAG, "Hardware: JC2432W328 (ESP32-D0WD)");
+    ESP_LOGI(TAG, "Core 0: WiFi | Core 1: UI/Touch");
+
+    add_boot_log("CYGM Starting...");
+
+    // Initialize NVS
+    add_boot_log("Init NVS storage");
+    ESP_ERROR_CHECK(nvs_config_init());
+
+    // Initialize UI configuration system
+    add_boot_log("Init UI config");
+    ESP_ERROR_CHECK(ui_config_init());
+
+#if CLEAR_WIFI_CREDENTIALS
+    nvs_clear_wifi_credentials();
+    ESP_LOGI(TAG, "WiFi credentials cleared");
+#endif
+
+    // Load time settings from NVS
+    add_boot_log("Load settings");
+    load_time_settings();
+
+    // Load weather settings from NVS
+    load_weather_settings();
+
+    // Load alarm settings from NVS (or use defaults if not found)
+    esp_err_t alarm_ret = nvs_load_alarm_settings(&current_alarm_settings);
+    if (alarm_ret != ESP_OK) {
+        ESP_LOGI(TAG, "No alarm settings found, using defaults");
+        nvs_get_default_alarm_settings(&current_alarm_settings);
+    } else {
+        ESP_LOGI(TAG, "Alarm settings loaded from NVS");
+    }
+
+    // Initialize display (before LVGL)
+    add_boot_log("Init display");
+    ESP_ERROR_CHECK(display_init());
+
+    // Initialize LED
+    add_boot_log("Init LED");
+    led_init();
+    led_set_breathing_color(127, 0, 0);  // Red = initializing
+
+    // Initialize Buzzer/Speaker
+    add_boot_log("Init buzzer");
+    buzzer_init();
+
+    // Initialize Battery Monitoring
+    add_boot_log("Init battery");
+    battery_init();
+
+    // LED breathing task disabled - LED off
+    // xTaskCreate(led_breathing_task, "led_breathe", 2048, NULL, 1, NULL);
+    led_set_color(0, 0, 0);  // Turn LED off completely
+
+    // Create Core 1 task: UI + Touch
+    add_boot_log("Start UI task");
+    xTaskCreatePinnedToCore(
+        ui_task_core1,
+        "ui_task",
+        8192,
+        NULL,
+        5,  // Higher priority
+        &ui_task_handle,
+        1   // Core 1
+    );
+
+    // Create Core 0 task: WiFi
+    add_boot_log("Start WiFi task");
+    xTaskCreatePinnedToCore(
+        wifi_task_core0,
+        "wifi_task",
+        4096,
+        NULL,
+        4,  // Medium priority
+        &wifi_task_handle,
+        0   // Core 0
+    );
+
+    add_boot_log("System ready!");
+    ESP_LOGI(TAG, "System initialized - tasks running");
+
+    // Play boot-up sound to indicate device is ready
+    vTaskDelay(pdMS_TO_TICKS(500));  // Small delay to let everything settle
+    play_boot_sound();
+}

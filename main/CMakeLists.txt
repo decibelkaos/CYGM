@@ -1,0 +1,9 @@
+﻿idf_component_register(SRCS "main.c"
+                            "nvs_config.c"
+                            "wifi_manager.c"
+                            "dexcom_api.c"
+                            "web_server.c"
+                            "ui_config.c"
+                            "arrow_images.c"
+                            "hardware/led.c"
+                       INCLUDE_DIRS "." "hardware")
