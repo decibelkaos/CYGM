@@ -11,4 +11,9 @@
                             "hardware/display.c"
                             "features/time_system.c"
                             "features/weather_system.c"
-                       INCLUDE_DIRS "." "hardware" "features")
+                            "ui/menu_screen.c"
+                            "ui/home_screen.c"
+                            "ui/wifi_screens.c"
+                            "ui/cgm_screens.c"
+                            "ui/alarm_screens.c"
+                       INCLUDE_DIRS "." "hardware" "features" "ui")
