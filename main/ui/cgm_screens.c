@@ -14,6 +14,14 @@
 
 static const char *TAG = "CGM_SCREENS";
 
+// Forward declarations for functions in main.c
+extern void update_glucose_display(void);
+extern void create_dexcom_auth_screen(void);
+
+// Forward declarations for event handlers
+static void dexcom_back_event_cb(lv_event_t *e);
+static void dexcom_logout_btn_event_cb(lv_event_t *e);
+
 void create_cgm_menu_screen(void);
 static void create_dexcom_auth_screen(void);
 static void create_dexcom_login_screen(void);
@@ -65,6 +73,52 @@ static void menu_btn_event_cb(lv_event_t *e) {
         }
     }
 }
+
+// Dexcom back button event handler
+static void dexcom_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        lv_scr_load(screen_cgm_menu);
+    }
+}
+
+// Dexcom logout button event handler
+static void dexcom_logout_btn_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Dexcom logout requested");
+
+        // Clear credentials from NVS
+        nvs_clear_dexcom_credentials();
+
+        // Logout from API
+        dexcom_logout();
+
+        // Clear local buffers
+        memset(dexcom_username_buf, 0, sizeof(dexcom_username_buf));
+        memset(dexcom_password_buf, 0, sizeof(dexcom_password_buf));
+
+        // Clear glucose data
+        glucose_data_valid = false;
+        current_glucose = 0;
+        glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
+        first_glucose_received = false;  // Reset so success sound plays on next login
+        update_glucose_display();
+
+        ESP_LOGI(TAG, "Dexcom logout complete");
+
+        // Recreate auth screen to show login option
+        if (lvgl_port_lock(0)) {
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
+            create_dexcom_auth_screen();
+            lv_scr_load(screen_dexcom_auth);
+            lvgl_port_unlock();
+        }
+    }
+}
+
 static void create_cgm_menu_screen(void) {
     screen_cgm_menu = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen_cgm_menu, lv_color_hex(COLOR_BG), 0);

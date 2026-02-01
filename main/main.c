@@ -172,15 +172,7 @@ cgm_alarms_t current_alarm_settings;
 alarm_config_t *editing_alarm = NULL;  // Pointer to alarm being edited
 lv_obj_t *alarm_threshold_value_label = NULL;  // Reference to threshold value label for color updates
 
-// Alarm state tracking
-typedef enum {
-    ALARM_STATE_NONE = 0,
-    ALARM_STATE_HIGH_ALARM,
-    ALARM_STATE_HIGH_WARNING,
-    ALARM_STATE_LOW_WARNING,
-    ALARM_STATE_LOW_ALARM
-} active_alarm_state_t;
-
+// Alarm state tracking (enum defined in shared_state.h)
 active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
 bool alarm_acknowledged = false;
 
@@ -1347,9 +1339,9 @@ static void glucose_update_task(void *pvParameters) {
 
 // ==================== UI Screens ====================
 
-// Global styles
-static lv_style_t style_bg;
-static lv_style_t style_card;
+// Global styles (accessible from UI modules)
+lv_style_t style_bg;
+lv_style_t style_card;
 
 static void init_styles(void) {
     // Background style - pure black

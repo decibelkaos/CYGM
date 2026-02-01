@@ -276,6 +276,11 @@ extern lv_obj_t *home_sunrise_label;
 extern lv_obj_t *home_sunset_canvas;
 extern lv_obj_t *home_sunset_label;
 
+// ==================== Global LVGL Styles ====================
+
+extern lv_style_t style_bg;
+extern lv_style_t style_card;
+
 #ifdef __cplusplus
 }
 #endif
