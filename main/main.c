@@ -37,6 +37,7 @@
 #include "esp_lvgl_port.h"
 
 // Project modules
+#include "shared_state.h"
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
@@ -125,51 +126,51 @@ static const char *TAG = "CYGM";
 // ==================== Global Handles ====================
 
 // LVGL
-static lv_disp_t *lvgl_display = NULL;
-static lv_indev_t *lvgl_touch_indev = NULL;
+lv_disp_t *lvgl_display = NULL;
+lv_indev_t *lvgl_touch_indev = NULL;
 
 // Hardware
-static esp_lcd_panel_handle_t lcd_panel = NULL;
-static esp_lcd_panel_io_handle_t lcd_io_handle = NULL;
-static esp_lcd_touch_handle_t touch_handle = NULL;
-static i2c_master_bus_handle_t touch_i2c_bus = NULL;
-static i2c_master_bus_handle_t cardkb_i2c_bus = NULL;
-static i2c_master_dev_handle_t cardkb_dev = NULL;
+esp_lcd_panel_handle_t lcd_panel = NULL;
+esp_lcd_panel_io_handle_t lcd_io_handle = NULL;
+esp_lcd_touch_handle_t touch_handle = NULL;
+i2c_master_bus_handle_t touch_i2c_bus = NULL;
+i2c_master_bus_handle_t cardkb_i2c_bus = NULL;
+i2c_master_dev_handle_t cardkb_dev = NULL;
 
 // Task handles
-static TaskHandle_t wifi_task_handle = NULL;
-static TaskHandle_t ui_task_handle = NULL;
-static TaskHandle_t weather_task_handle = NULL;
-static TaskHandle_t glucose_task_handle = NULL;
+TaskHandle_t wifi_task_handle = NULL;
+TaskHandle_t ui_task_handle = NULL;
+TaskHandle_t weather_task_handle = NULL;
+TaskHandle_t glucose_task_handle = NULL;
 
 // LED breathing (disabled to save power - variables kept for future use)
-static volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
+volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
 
 // UI Screens
-static lv_obj_t *screen_splash = NULL;
-static lv_obj_t *screen_home = NULL;
-static lv_obj_t *screen_menu = NULL;
-static lv_obj_t *screen_wifi_list = NULL;
-static lv_obj_t *screen_wifi_password = NULL;
-static lv_obj_t *screen_time_weather_menu = NULL;
-static lv_obj_t *screen_zipcode_entry = NULL;
-static lv_obj_t *screen_cgm_menu = NULL;
-static lv_obj_t *screen_dexcom_auth = NULL;
-static lv_obj_t *screen_dexcom_login = NULL;
-static lv_obj_t *screen_dexcom_username_entry = NULL;
-static lv_obj_t *screen_dexcom_password_entry = NULL;
-static lv_obj_t *screen_dexcom_status = NULL;
-static lv_obj_t *screen_alarm_settings = NULL;
-static lv_obj_t *screen_tone_picker = NULL;
+lv_obj_t *screen_splash = NULL;
+lv_obj_t *screen_home = NULL;
+lv_obj_t *screen_menu = NULL;
+lv_obj_t *screen_wifi_list = NULL;
+lv_obj_t *screen_wifi_password = NULL;
+lv_obj_t *screen_time_weather_menu = NULL;
+lv_obj_t *screen_zipcode_entry = NULL;
+lv_obj_t *screen_cgm_menu = NULL;
+lv_obj_t *screen_dexcom_auth = NULL;
+lv_obj_t *screen_dexcom_login = NULL;
+lv_obj_t *screen_dexcom_username_entry = NULL;
+lv_obj_t *screen_dexcom_password_entry = NULL;
+lv_obj_t *screen_dexcom_status = NULL;
+lv_obj_t *screen_alarm_settings = NULL;
+lv_obj_t *screen_tone_picker = NULL;
 #if 0  // Alarm preview disabled - kept for potential future use
-static lv_obj_t *screen_alarm_preview = NULL;
+lv_obj_t *screen_alarm_preview = NULL;
 #endif
-static lv_obj_t *screen_alarm_detail_editor = NULL;
+lv_obj_t *screen_alarm_detail_editor = NULL;
 
 // Global alarm configuration
-static cgm_alarms_t current_alarm_settings;
-static alarm_config_t *editing_alarm = NULL;  // Pointer to alarm being edited
-static lv_obj_t *alarm_threshold_value_label = NULL;  // Reference to threshold value label for color updates
+cgm_alarms_t current_alarm_settings;
+alarm_config_t *editing_alarm = NULL;  // Pointer to alarm being edited
+lv_obj_t *alarm_threshold_value_label = NULL;  // Reference to threshold value label for color updates
 
 // Alarm state tracking
 typedef enum {
@@ -180,42 +181,42 @@ typedef enum {
     ALARM_STATE_LOW_ALARM
 } active_alarm_state_t;
 
-static active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
-static bool alarm_acknowledged = false;
+active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
+bool alarm_acknowledged = false;
 
 // Visual alarm components
-static lv_obj_t *visual_alarm_overlay = NULL;      // White overlay for visual alarm
-static lv_obj_t *visual_alarm_slider = NULL;       // Slider to dismiss visual alarm
-static lv_obj_t *visual_alarm_slider_label = NULL; // Label for slider
-static lv_obj_t *screen_alarm_snooze = NULL;       // Snooze/dismiss screen
-static lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
-static bool visual_alarm_active = false;
-static uint8_t visual_alarm_pulse_state = 0;       // 0 = normal, 1 = white
-static int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
+lv_obj_t *visual_alarm_overlay = NULL;      // White overlay for visual alarm
+lv_obj_t *visual_alarm_slider = NULL;       // Slider to dismiss visual alarm
+lv_obj_t *visual_alarm_slider_label = NULL; // Label for slider
+lv_obj_t *screen_alarm_snooze = NULL;       // Snooze/dismiss screen
+lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
+bool visual_alarm_active = false;
+uint8_t visual_alarm_pulse_state = 0;       // 0 = normal, 1 = white
+int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
 
 // Audio alarm repeat
-static lv_timer_t *audio_alarm_timer = NULL;       // Timer for repeating audio
-static alarm_config_t *active_alarm_config = NULL; // Current alarm being played
+lv_timer_t *audio_alarm_timer = NULL;       // Timer for repeating audio
+alarm_config_t *active_alarm_config = NULL; // Current alarm being played
 
 // Battery monitoring
-static adc_oneshot_unit_handle_t adc_handle = NULL;
-static adc_cali_handle_t adc_cali_handle = NULL;
-static float battery_voltage = 0.0f;
-static int battery_percent = 100;
-static bool battery_low_warning_shown = false;  // Track if low battery warning played
-static lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
-static lv_obj_t *battery_percent_label = NULL;  // Battery percent label
-static lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
+adc_oneshot_unit_handle_t adc_handle = NULL;
+adc_cali_handle_t adc_cali_handle = NULL;
+float battery_voltage = 0.0f;
+int battery_percent = 100;
+bool battery_low_warning_shown = false;  // Track if low battery warning played
+lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
+lv_obj_t *battery_percent_label = NULL;  // Battery percent label
+lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
 
 // Splash screen boot log
 static lv_obj_t *boot_log_label = NULL;
 static char boot_log_buffer[512] = {0};  // Buffer for boot messages
 
 // Dexcom login UI elements
-static lv_obj_t *dexcom_username_label = NULL;
-static lv_obj_t *dexcom_password_label = NULL;
-static char dexcom_username_buf[64] = {0};
-static char dexcom_password_buf[64] = {0};
+lv_obj_t *dexcom_username_label = NULL;
+lv_obj_t *dexcom_password_label = NULL;
+char dexcom_username_buf[64] = {0};
+char dexcom_password_buf[64] = {0};
 
 // Glucose data - "Last Known Good" approach
 // We ALWAYS display the last valid glucose reading, even if current fetch fails
@@ -229,68 +230,68 @@ static dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
 static bool first_glucose_received = false;  // Track if we've received first reading
 
 // Entry screen UI elements
-static lv_obj_t *dexcom_username_entry_label = NULL;
-static lv_obj_t *dexcom_username_entry_ta = NULL;
-static lv_obj_t *dexcom_username_entry_keyboard = NULL;
-static lv_obj_t *dexcom_password_entry_label = NULL;
-static lv_obj_t *dexcom_password_entry_ta = NULL;
-static lv_obj_t *dexcom_password_entry_keyboard = NULL;
+lv_obj_t *dexcom_username_entry_label = NULL;
+lv_obj_t *dexcom_username_entry_ta = NULL;
+lv_obj_t *dexcom_username_entry_keyboard = NULL;
+lv_obj_t *dexcom_password_entry_label = NULL;
+lv_obj_t *dexcom_password_entry_ta = NULL;
+lv_obj_t *dexcom_password_entry_keyboard = NULL;
 
 // Home screen widgets
-static lv_obj_t *label_clock = NULL;
-static lv_obj_t *label_date = NULL;
-static lv_obj_t *label_ampm = NULL;  // AM/PM indicator (12hr mode only)
-static lv_obj_t *label_glucose = NULL;
-static lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
-static lv_obj_t *label_time_ago = NULL;
-static lv_obj_t *label_wifi_status = NULL;
+lv_obj_t *label_clock = NULL;
+lv_obj_t *label_date = NULL;
+lv_obj_t *label_ampm = NULL;  // AM/PM indicator (12hr mode only)
+lv_obj_t *label_glucose = NULL;
+lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
+lv_obj_t *label_time_ago = NULL;
+lv_obj_t *label_wifi_status = NULL;
 
 // WiFi state
-static bool wifi_connected = false;
-static wifi_ap_record_t wifi_networks[10];
-static uint16_t wifi_network_count = 0;
-static char wifi_password[64] = {0};
-static uint8_t wifi_password_len = 0;
-static char selected_ssid[33] = {0};
+bool wifi_connected = false;
+wifi_ap_record_t wifi_networks[10];
+uint16_t wifi_network_count = 0;
+char wifi_password[64] = {0};
+uint8_t wifi_password_len = 0;
+char selected_ssid[33] = {0};
 
 // WiFi password screen widgets
-static lv_obj_t *password_label = NULL;
-static lv_obj_t *password_field = NULL;
-static lv_obj_t *keyboard = NULL;
-static bool caps_lock_enabled = false;
-static uint32_t last_shift_press_time = 0;
-static bool shift_waiting_for_char = false;  // True when shift pressed but no char typed yet
+lv_obj_t *password_label = NULL;
+lv_obj_t *password_field = NULL;
+lv_obj_t *keyboard = NULL;
+bool caps_lock_enabled = false;
+uint32_t last_shift_press_time = 0;
+bool shift_waiting_for_char = false;  // True when shift pressed but no char typed yet
 
 // Time/Date/Weather settings
 static char user_timezone[64] = "America/New_York";  // Default timezone
 static bool user_dst_enabled = true;  // Daylight Saving Time enabled
 static bool user_24hr_format = false;  // 12-hour (AM/PM) vs 24-hour format
-static char user_zipcode[11] = "";  // US zipcode (5 or 9 digits)
-static bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
-static uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
-static char user_location[64] = "";  // City, State from geocoding
+char user_zipcode[11] = "";  // US zipcode (5 or 9 digits)
+bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
+uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
+char user_location[64] = "";  // City, State from geocoding
 
 // Weather display data
-static int current_temp_f = 72;  // Current temperature in Fahrenheit
-static int high_temp_f = 78;      // High temperature
-static int low_temp_f = 65;       // Low temperature
-static const char *current_condition = "Partly Cloudy";  // Current weather condition
-static time_t sunrise_time = 0;   // Sunrise time (Unix timestamp)
-static time_t sunset_time = 0;    // Sunset time (Unix timestamp)
-static int current_weather_code = 1;  // 0=Clear, 1=Partly Cloudy, 2=Cloudy, 3=Rain, 4=Snow, 5=Storm, 6=Fog, 7=Ice
-static float user_latitude = 0.0f;    // User's latitude from zipcode
-static float user_longitude = 0.0f;   // User's longitude from zipcode
+int current_temp_f = 72;  // Current temperature in Fahrenheit
+int high_temp_f = 78;      // High temperature
+int low_temp_f = 65;       // Low temperature
+const char *current_condition = "Partly Cloudy";  // Current weather condition
+time_t sunrise_time = 0;   // Sunrise time (Unix timestamp)
+time_t sunset_time = 0;    // Sunset time (Unix timestamp)
+int current_weather_code = 1;  // 0=Clear, 1=Partly Cloudy, 2=Cloudy, 3=Rain, 4=Snow, 5=Storm, 6=Fog, 7=Ice
+float user_latitude = 0.0f;    // User's latitude from zipcode
+float user_longitude = 0.0f;   // User's longitude from zipcode
 
 // Weather display widgets (for updating)
-static lv_obj_t *home_temp_label = NULL;
-static lv_obj_t *home_hilo_label = NULL;
-static lv_obj_t *home_weather_canvas = NULL;
-static lv_obj_t *home_condition_label = NULL;
-static lv_obj_t *home_location_label = NULL;
-static lv_obj_t *home_sunrise_canvas = NULL;
-static lv_obj_t *home_sunrise_label = NULL;
-static lv_obj_t *home_sunset_canvas = NULL;
-static lv_obj_t *home_sunset_label = NULL;
+lv_obj_t *home_temp_label = NULL;
+lv_obj_t *home_hilo_label = NULL;
+lv_obj_t *home_weather_canvas = NULL;
+lv_obj_t *home_condition_label = NULL;
+lv_obj_t *home_location_label = NULL;
+lv_obj_t *home_sunrise_canvas = NULL;
+lv_obj_t *home_sunrise_label = NULL;
+lv_obj_t *home_sunset_canvas = NULL;
+lv_obj_t *home_sunset_label = NULL;
 
 // ===== HELPER FUNCTIONS =====
 
