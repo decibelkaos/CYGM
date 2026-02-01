@@ -857,7 +857,425 @@ static void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
 // ==================== Weather Functions ====================
 // Moved to features/weather_system.c
 
+// ==================== Alarm Functions ====================
 
+// Forward declarations for alarm helpers
+static void start_visual_alarm(void);
+static void stop_visual_alarm(void);
+static void start_audio_alarm(alarm_config_t *alarm);
+static void stop_audio_alarm(void);
+static void trigger_alarm(active_alarm_state_t state);
+static void visual_alarm_pulse_timer_cb(lv_timer_t *timer);
+static void audio_alarm_repeat_timer_cb(lv_timer_t *timer);
+
+static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
+static void check_glucose_alarms(int glucose_mg_dl);
+static void update_glucose_display(void);
+static void visual_alarm_slider_event_cb(lv_event_t *e);
+static void create_alarm_snooze_screen(void);
+
+// Get alarm color based on glucose value and alarm thresholds
+static uint32_t get_glucose_alarm_color(int glucose_mg_dl) {
+    // Urgent alarms take priority over warnings
+    if (current_alarm_settings.high_alarm.enabled &&
+        glucose_mg_dl >= current_alarm_settings.high_alarm.threshold) {
+        return current_alarm_settings.high_alarm.text_color;
+    }
+
+    if (current_alarm_settings.low_alarm.enabled &&
+        glucose_mg_dl <= current_alarm_settings.low_alarm.threshold) {
+        return current_alarm_settings.low_alarm.text_color;
+    }
+
+    // Check warnings
+    if (current_alarm_settings.high_warning.enabled &&
+        glucose_mg_dl >= current_alarm_settings.high_warning.threshold) {
+        return current_alarm_settings.high_warning.text_color;
+    }
+
+    if (current_alarm_settings.low_warning.enabled &&
+        glucose_mg_dl <= current_alarm_settings.low_warning.threshold) {
+        return current_alarm_settings.low_warning.text_color;
+    }
+
+    // No alarm triggered - use white
+    return COLOR_TEXT_WHITE;
+}
+
+// Trigger an alarm (audio + visual)
+static void trigger_alarm(active_alarm_state_t state) {
+    alarm_config_t *alarm = NULL;
+    const char *alarm_name = "Unknown";
+
+    switch (state) {
+        case ALARM_STATE_HIGH_ALARM:
+            alarm = &current_alarm_settings.high_alarm;
+            alarm_name = "High Alarm";
+            break;
+        case ALARM_STATE_HIGH_WARNING:
+            alarm = &current_alarm_settings.high_warning;
+            alarm_name = "High Warning";
+            break;
+        case ALARM_STATE_LOW_WARNING:
+            alarm = &current_alarm_settings.low_warning;
+            alarm_name = "Low Warning";
+            break;
+        case ALARM_STATE_LOW_ALARM:
+            alarm = &current_alarm_settings.low_alarm;
+            alarm_name = "Low Alarm";
+            break;
+        default:
+            return;
+    }
+
+    if (alarm == NULL) return;
+
+    ESP_LOGW(TAG, "🚨 ALARM TRIGGERED: %s (threshold: %d mg/dL)",
+             alarm_name, alarm->threshold);
+
+    // Check if snooze is active
+    time_t now;
+    time(&now);
+    if (alarm_snooze_until > 0 && now < alarm_snooze_until) {
+        ESP_LOGI(TAG, "Alarm snoozed until %lld (current: %ld)", alarm_snooze_until, (long)now);
+        return;
+    }
+
+    // Audio alert (if enabled and not acknowledged)
+    if (alarm->audio_enabled && !alarm_acknowledged) {
+        start_audio_alarm(alarm);
+    }
+
+    // Visual alert (pulsing white screen)
+    if (alarm->visual_enabled && !alarm_acknowledged) {
+        start_visual_alarm();
+    }
+}
+
+// Check glucose against alarm thresholds and trigger if needed
+static void check_glucose_alarms(int glucose_mg_dl) {
+    if (!glucose_data_valid) {
+        return;  // Don't check alarms without valid data
+    }
+
+    // Determine which alarm should trigger (urgent takes priority over warnings)
+    active_alarm_state_t new_state = ALARM_STATE_NONE;
+
+    if (current_alarm_settings.high_alarm.enabled &&
+        glucose_mg_dl >= current_alarm_settings.high_alarm.threshold) {
+        new_state = ALARM_STATE_HIGH_ALARM;
+    } else if (current_alarm_settings.low_alarm.enabled &&
+               glucose_mg_dl <= current_alarm_settings.low_alarm.threshold) {
+        new_state = ALARM_STATE_LOW_ALARM;
+    } else if (current_alarm_settings.high_warning.enabled &&
+               glucose_mg_dl >= current_alarm_settings.high_warning.threshold) {
+        new_state = ALARM_STATE_HIGH_WARNING;
+    } else if (current_alarm_settings.low_warning.enabled &&
+               glucose_mg_dl <= current_alarm_settings.low_warning.threshold) {
+        new_state = ALARM_STATE_LOW_WARNING;
+    }
+
+    // Check if snooze has expired (even if state hasn't changed)
+    if (new_state != ALARM_STATE_NONE && alarm_snooze_until > 0) {
+        time_t now;
+        time(&now);
+        if (now >= alarm_snooze_until) {
+            ESP_LOGI(TAG, "Snooze expired! Re-triggering alarm (state: %d)", new_state);
+            alarm_snooze_until = 0;  // Clear snooze
+            alarm_acknowledged = false;  // Reset acknowledgment
+            trigger_alarm(new_state);
+            return;  // Don't process state change logic below
+        }
+    }
+
+    // State changed?
+    if (new_state != current_alarm_state) {
+        ESP_LOGI(TAG, "Alarm state changed: %d -> %d", current_alarm_state, new_state);
+        current_alarm_state = new_state;
+        alarm_acknowledged = false;  // Reset acknowledgment on state change
+
+        if (new_state != ALARM_STATE_NONE) {
+            trigger_alarm(new_state);
+        } else {
+            ESP_LOGI(TAG, "Glucose returned to normal range");
+            stop_visual_alarm();
+            stop_audio_alarm();
+        }
+    }
+}
+
+// Timer callback for pulsing white overlay (2 times per second = 250ms per phase)
+static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
+    if (!visual_alarm_active || visual_alarm_overlay == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (visual_alarm_pulse_state == 0) {
+            // Fade to white
+            lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_90, 0);
+            visual_alarm_pulse_state = 1;
+            ESP_LOGD(TAG, "Visual alarm: WHITE");
+        } else {
+            // Fade to transparent
+            lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_TRANSP, 0);
+            visual_alarm_pulse_state = 0;
+            ESP_LOGD(TAG, "Visual alarm: transparent");
+        }
+        lv_obj_invalidate(visual_alarm_overlay);  // Force redraw
+        lvgl_port_unlock();
+    }
+}
+
+// Timer callback for repeating audio alarm (every 3 seconds)
+static void audio_alarm_repeat_timer_cb(lv_timer_t *timer) {
+    if (active_alarm_config != NULL && active_alarm_config->audio_enabled) {
+        ESP_LOGI(TAG, "Repeating alarm tone: %d at volume %d%%", active_alarm_config->tone, active_alarm_config->volume);
+        play_alarm_tone(active_alarm_config->tone, active_alarm_config->volume);
+    }
+}
+
+// Start audio alarm (with optional repeat)
+static void start_audio_alarm(alarm_config_t *alarm) {
+    if (alarm == NULL || !alarm->audio_enabled) {
+        return;
+    }
+
+    // Stop any existing audio alarm
+    stop_audio_alarm();
+
+    // Save reference to alarm config
+    active_alarm_config = alarm;
+
+    // Play initial tone
+    ESP_LOGI(TAG, "Playing alarm tone: %d at volume %d%%", alarm->tone, alarm->volume);
+    play_alarm_tone(alarm->tone, alarm->volume);
+
+    // Start repeat timer if enabled
+    if (alarm->audio_repeat) {
+        ESP_LOGI(TAG, "Starting audio alarm repeat timer (every 3 seconds)");
+        audio_alarm_timer = lv_timer_create(audio_alarm_repeat_timer_cb, 3000, NULL);
+    }
+}
+
+// Stop audio alarm
+static void stop_audio_alarm(void) {
+    if (audio_alarm_timer != NULL) {
+        ESP_LOGI(TAG, "Stopping audio alarm repeat timer");
+        lv_timer_del(audio_alarm_timer);
+        audio_alarm_timer = NULL;
+    }
+    active_alarm_config = NULL;
+    buzzer_stop();  // Ensure buzzer is stopped
+}
+
+// Event handler for visual alarm slider (dismiss)
+static void visual_alarm_slider_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *slider = lv_event_get_target(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        int32_t value = lv_slider_get_value(slider);
+
+        // Slider must be moved to 100 to dismiss
+        if (value >= 100) {
+            ESP_LOGI(TAG, "Visual alarm slider activated - showing snooze/dismiss screen");
+            stop_visual_alarm();
+            stop_audio_alarm();  // Stop audio alarm when slider is dismissed
+
+            // Show snooze/dismiss screen
+            if (lvgl_port_lock(0)) {
+                if (screen_alarm_snooze != NULL) {
+                    lv_obj_del(screen_alarm_snooze);
+                    screen_alarm_snooze = NULL;
+                }
+                create_alarm_snooze_screen();
+                lv_scr_load(screen_alarm_snooze);
+                lvgl_port_unlock();
+            }
+        }
+    } else if (code == LV_EVENT_RELEASED) {
+        // If slider released before reaching 100, snap back to 0
+        int32_t value = lv_slider_get_value(slider);
+        if (value < 100) {
+            lv_slider_set_value(slider, 0, LV_ANIM_ON);
+            ESP_LOGI(TAG, "Slider released before 100%% - snapping back");
+        }
+    }
+}
+
+// Start visual alarm (pulsing white screen with slider)
+static void start_visual_alarm(void) {
+    if (visual_alarm_active) {
+        return;  // Already active
+    }
+
+    ESP_LOGI(TAG, "Starting visual alarm");
+    visual_alarm_active = true;
+    visual_alarm_pulse_state = 0;
+
+    if (lvgl_port_lock(0)) {
+        // Create white overlay that covers entire screen
+        visual_alarm_overlay = lv_obj_create(lv_scr_act());
+        lv_obj_set_size(visual_alarm_overlay, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_pos(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_bg_color(visual_alarm_overlay, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_TRANSP, 0);  // Start transparent
+        lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_pad_all(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_radius(visual_alarm_overlay, 0, 0);
+        lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_move_foreground(visual_alarm_overlay);  // Move to front
+
+        // Create slider to dismiss (on top of overlay)
+        visual_alarm_slider = lv_slider_create(lv_scr_act());
+        lv_obj_set_size(visual_alarm_slider, 280, 40);  // Increased height to fit label inside
+        lv_obj_align(visual_alarm_slider, LV_ALIGN_BOTTOM_MID, 0, -10);
+        lv_slider_set_range(visual_alarm_slider, 0, 100);
+        lv_slider_set_value(visual_alarm_slider, 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0xFF0000), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_KNOB);
+        lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_RELEASED, NULL);
+        lv_obj_move_foreground(visual_alarm_slider);  // Ensure slider is on top
+
+        // Slider label INSIDE slider (white text)
+        visual_alarm_slider_label = lv_label_create(visual_alarm_slider);
+        lv_label_set_text(visual_alarm_slider_label, "Slide to disarm");
+        lv_obj_set_style_text_color(visual_alarm_slider_label, lv_color_white(), 0);
+        lv_obj_set_style_text_font(visual_alarm_slider_label, &lv_font_montserrat_14, 0);
+        lv_obj_align(visual_alarm_slider_label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_move_foreground(visual_alarm_slider_label);  // Ensure label is on top
+
+        lvgl_port_unlock();
+    }
+
+    // Start pulse timer (250ms = 4 times per second, alternating white/normal = 2 pulses per second)
+    visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, 250, NULL);
+}
+
+// Stop visual alarm
+static void stop_visual_alarm(void) {
+    if (!visual_alarm_active) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Stopping visual alarm");
+    visual_alarm_active = false;
+
+    if (visual_alarm_timer != NULL) {
+        lv_timer_del(visual_alarm_timer);
+        visual_alarm_timer = NULL;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (visual_alarm_overlay != NULL) {
+            lv_obj_del(visual_alarm_overlay);
+            visual_alarm_overlay = NULL;
+        }
+        if (visual_alarm_slider != NULL) {
+            // Label is a child of slider, so it gets deleted automatically
+            visual_alarm_slider_label = NULL;  // Set to NULL before deleting parent
+            lv_obj_del(visual_alarm_slider);
+            visual_alarm_slider = NULL;
+        }
+        lvgl_port_unlock();
+    }
+}
+
+// Update glucose display on home screen
+static void update_glucose_display(void) {
+    // Check if widgets exist (home screen is loaded)
+    if (label_glucose == NULL || trend_canvas == NULL || label_time_ago == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (glucose_data_valid) {
+            // "Last Known Good" approach - always show last valid glucose reading
+            // This prevents user anxiety from seeing "---" during temporary failures
+
+            // Update glucose value
+            char glucose_str[16];
+            snprintf(glucose_str, sizeof(glucose_str), "%d", current_glucose);
+            lv_label_set_text(label_glucose, glucose_str);
+
+            // Color code based on alarm thresholds (configured by user)
+            uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
+            lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
+
+            // Update trend arrow canvas
+            lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear canvas
+            draw_trend_arrow(trend_canvas, current_trend);
+
+            // Calculate minutes ago
+            time_t now;
+            time(&now);
+            int minutes_ago = (int)difftime(now, glucose_timestamp) / 60;
+
+            char time_ago_str[32];
+            if (minutes_ago < 1) {
+                snprintf(time_ago_str, sizeof(time_ago_str), "Just now");
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            } else if (minutes_ago == 1) {
+                snprintf(time_ago_str, sizeof(time_ago_str), "1 min ago");
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            } else if (minutes_ago >= 15) {
+                // Very stale data - show warning but keep displaying value
+                snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);  // Stale data warning
+            } else if (!glucose_data_fresh) {
+                // Data is not fresh (last fetch failed) - indicate staleness
+                snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);  // Stale but not critical
+            } else {
+                // Fresh data - normal display
+                snprintf(time_ago_str, sizeof(time_ago_str), "%d mins ago", minutes_ago);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            }
+            lv_label_set_text(label_time_ago, time_ago_str);
+
+            // Glucose display updated (reduced logging to save serial bandwidth)
+            ESP_LOGD(TAG, "Glucose display updated: %d mg/dL, %s, %d mins ago, fresh: %s",
+                     current_glucose, dexcom_trend_description(current_trend), minutes_ago,
+                     glucose_data_fresh ? "yes" : "no");
+        } else {
+            // No data available (never received or not authenticated) - show status-specific message
+            lv_label_set_text(label_glucose, "---");
+            lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear arrow
+
+            switch (glucose_status) {
+                case GLUCOSE_STATUS_WARMUP:
+                    lv_label_set_text(label_time_ago, "Sensor warmup");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ORANGE), 0);  // Orange
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
+                    break;
+
+                case GLUCOSE_STATUS_SIGNAL_LOSS:
+                    lv_label_set_text(label_time_ago, "Signal loss");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
+                    break;
+
+                case GLUCOSE_STATUS_NOT_AUTHENTICATED:
+                    lv_label_set_text(label_time_ago, "Not logged in");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    break;
+
+                case GLUCOSE_STATUS_NO_DATA:
+                default:
+                    lv_label_set_text(label_time_ago, "No sensor data");
+                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+                    break;
+            }
+        }
+        lvgl_port_unlock();
+    }
+}
 
 // Glucose update task - fetches glucose periodically (every 90 seconds)
 static void glucose_update_task(void *pvParameters) {
@@ -961,54 +1379,10 @@ static void init_styles(void) {
 
 // ===== EVENT HANDLERS =====
 
-// Forward declarations for WiFi functions
-static void wifi_scan_and_show_networks(void);
-static void create_wifi_password_screen(void);
+// Forward declarations for functions remaining in main.c
 static void create_time_weather_settings_screen(void);
 static void create_zipcode_entry_screen(void);
-
-// Forward declaration for event handlers
 static void temp_toggle_event_cb(lv_event_t *e);
-static void create_cgm_menu_screen(void);
-static void create_dexcom_auth_screen(void);
-static void create_dexcom_login_screen(void);
-static void create_dexcom_username_entry_screen(void);
-static void create_dexcom_password_entry_screen(void);
-static void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
 
 static void menu_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
