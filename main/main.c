@@ -292,10 +292,6 @@ static lv_obj_t *home_sunrise_label = NULL;
 static lv_obj_t *home_sunset_canvas = NULL;
 static lv_obj_t *home_sunset_label = NULL;
 
-// Forward declarations
-static const char* get_weather_condition_text(int weather_code);
-static bool is_night_time(void);
-
 // ===== COLOR PALETTE - Dark Blue Theme =====
 #define COLOR_BG            0x000000  // Pure black background
 #define COLOR_CARD_BG       0x1a2332  // Dark blue-grey cards
@@ -855,27 +851,11 @@ static void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
     }
 }
 
-// Weather condition helper - returns description text (time-universal)
-static const char* get_weather_condition_text(int weather_code) {
-    switch (weather_code) {
-        case 0: return "Clear";           // Works for both day and night
-        case 1: return "Partly Cloudy";
-        case 2: return "Cloudy";
-        case 3: return "Rain";
-        case 4: return "Snow";
-        case 5: return "Thunderstorm";
-        case 6: return "Fog";
-        case 7: return "Freezing Rain";
-        default: return "Unknown";
-    }
-}
-
-// Major world timezones - IANA identifiers (for display)
 // ==================== Time & SNTP Functions ====================
 // Moved to features/time_system.c
 
-// Forward declaration for timezone auto-detection function
-static const char* state_to_timezone(const char *state);
+// ==================== Weather Functions ====================
+// Moved to features/weather_system.c
 
 
 

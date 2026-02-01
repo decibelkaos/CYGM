@@ -18,6 +18,7 @@
 #include "esp_lvgl_port.h"
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 static const char *TAG = "WEATHER_SYSTEM";
 
@@ -49,10 +50,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 }
 static const char* state_to_timezone(const char *state);
 
-// Geocoded zipcode tracker (to detect when user changes zipcode)
-static char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
-
-static void load_weather_settings(void) {
+void load_weather_settings(void) {
     weather_settings_t settings;
 
     // Try to load settings from NVS
@@ -520,7 +518,6 @@ esp_err_t reverse_geocode(float lat, float lon) {
     esp_http_client_cleanup(client);
     return ESP_FAIL;
 }
-bool is_night_time(void);
 
 // ===== COLOR PALETTE - Dark Blue Theme =====
 #define COLOR_BG            0x000000  // Pure black background
@@ -800,7 +797,7 @@ static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
             break;
     }
 }
-static bool is_night_time(void) {
+bool is_night_time(void) {
     if (sunrise_time == 0 || sunset_time == 0) {
         return false;  // No sunrise/sunset data yet
     }
@@ -811,6 +808,73 @@ static bool is_night_time(void) {
     // Check if current time is after sunset or before sunrise
     return (now >= sunset_time || now < sunrise_time);
 }
+
+const char* get_weather_condition_text(int weather_code) {
+    switch (weather_code) {
+        case 0: return "Clear";           // Works for both day and night
+        case 1: return "Partly Cloudy";
+        case 2: return "Cloudy";
+        case 3: return "Rain";
+        case 4: return "Snow";
+        case 5: return "Thunderstorm";
+        case 6: return "Fog";
+        case 7: return "Freezing Rain";
+        default: return "Unknown";
+    }
+}
+
+void update_location_display(void) {
+    if (home_location_label == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+        lvgl_port_unlock();
+    }
+}
+
+void update_sunrise_sunset_display(void) {
+    if (home_sunrise_label == NULL || home_sunset_label == NULL) {
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (sunrise_time != 0 && sunset_time != 0) {
+            struct tm tm_sunrise;
+            struct tm tm_sunset;
+            localtime_r(&sunrise_time, &tm_sunrise);
+            localtime_r(&sunset_time, &tm_sunset);
+
+            char sunrise_buf[8];
+            char sunset_buf[8];
+
+            // Format based on user preference (12hr vs 24hr)
+            if (user_24hr_format) {
+                strftime(sunrise_buf, sizeof(sunrise_buf), "%H:%M", &tm_sunrise);
+                strftime(sunset_buf, sizeof(sunset_buf), "%H:%M", &tm_sunset);
+            } else {
+                strftime(sunrise_buf, sizeof(sunrise_buf), "%I:%M", &tm_sunrise);
+                strftime(sunset_buf, sizeof(sunset_buf), "%I:%M", &tm_sunset);
+                // Remove leading zero from hour
+                if (sunrise_buf[0] == '0') {
+                    memmove(sunrise_buf, sunrise_buf + 1, strlen(sunrise_buf));
+                }
+                if (sunset_buf[0] == '0') {
+                    memmove(sunset_buf, sunset_buf + 1, strlen(sunset_buf));
+                }
+            }
+
+            lv_label_set_text(home_sunrise_label, sunrise_buf);
+            lv_label_set_text(home_sunset_label, sunset_buf);
+        } else {
+            lv_label_set_text(home_sunrise_label, "--:--");
+            lv_label_set_text(home_sunset_label, "--:--");
+        }
+        lvgl_port_unlock();
+    }
+}
+
 static int map_weather_code(int wmo_code) {
     // WMO Weather interpretation codes
     if (wmo_code == 0) return 0;  // Clear sky
@@ -1155,99 +1219,5 @@ void weather_update_task(void *pvParameters) {
         // Wait for configured interval or until notified to update immediately
         // ulTaskNotifyTake clears notification and returns immediately if notified
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
-    }
-}
-void load_weather_settings(void) {
-    weather_settings_t settings;
-
-    // Try to load settings from NVS
-    if (nvs_load_weather_settings(&settings) == ESP_OK) {
-        // Apply loaded settings
-        strncpy(user_zipcode, settings.zipcode, sizeof(user_zipcode) - 1);
-        user_zipcode[sizeof(user_zipcode) - 1] = '\0';
-        user_temp_celsius = settings.temp_celsius;
-        user_weather_interval_min = settings.update_interval_min;
-
-        // Load cached coordinates and location if available
-        if (settings.coords_valid) {
-            user_latitude = settings.latitude;
-            user_longitude = settings.longitude;
-            strncpy(geocoded_zipcode, settings.geocoded_zipcode, sizeof(geocoded_zipcode) - 1);
-            geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
-
-            // Load location name
-            if (strlen(settings.location) > 0) {
-                strncpy(user_location, settings.location, sizeof(user_location) - 1);
-                user_location[sizeof(user_location) - 1] = '\0';
-                ESP_LOGI(TAG, "Using cached weather location: %s (%.4f, %.4f, zipcode: %s)",
-                         user_location, user_latitude, user_longitude, geocoded_zipcode);
-
-                // Auto-detect timezone from location (in case it was changed manually before)
-                // Extract state abbreviation from location (format: "City, ST")
-                char *comma = strrchr(user_location, ',');
-                if (comma != NULL && strlen(comma) > 2) {
-                    char state_abbr[3];
-                    strncpy(state_abbr, comma + 2, 2);  // Skip comma and space
-                    state_abbr[2] = '\0';
-
-                    // Map state abbreviation to full name
-                    const char *state_full = NULL;
-                    if (strcmp(state_abbr, "WA") == 0) state_full = "Washington";
-                    else if (strcmp(state_abbr, "CA") == 0) state_full = "California";
-                    else if (strcmp(state_abbr, "OR") == 0) state_full = "Oregon";
-                    else if (strcmp(state_abbr, "TX") == 0) state_full = "Texas";
-                    else if (strcmp(state_abbr, "NY") == 0) state_full = "New York";
-                    else if (strcmp(state_abbr, "FL") == 0) state_full = "Florida";
-                    else if (strcmp(state_abbr, "ME") == 0) state_full = "Maine";
-                    else if (strcmp(state_abbr, "IL") == 0) state_full = "Illinois";
-                    else if (strcmp(state_abbr, "PA") == 0) state_full = "Pennsylvania";
-                    else if (strcmp(state_abbr, "OH") == 0) state_full = "Ohio";
-                    else if (strcmp(state_abbr, "GA") == 0) state_full = "Georgia";
-                    else if (strcmp(state_abbr, "NC") == 0) state_full = "North Carolina";
-                    else if (strcmp(state_abbr, "MI") == 0) state_full = "Michigan";
-                    else if (strcmp(state_abbr, "NJ") == 0) state_full = "New Jersey";
-                    else if (strcmp(state_abbr, "VA") == 0) state_full = "Virginia";
-                    else if (strcmp(state_abbr, "AZ") == 0) state_full = "Arizona";
-                    else if (strcmp(state_abbr, "MA") == 0) state_full = "Massachusetts";
-                    else if (strcmp(state_abbr, "IN") == 0) state_full = "Indiana";
-                    else if (strcmp(state_abbr, "TN") == 0) state_full = "Tennessee";
-                    else if (strcmp(state_abbr, "MO") == 0) state_full = "Missouri";
-                    // Add more states as needed
-
-                    if (state_full != NULL) {
-                        const char *detected_tz = state_to_timezone(state_full);
-
-                        // Check if detected timezone differs from loaded timezone
-                        if (strcmp(detected_tz, user_timezone) != 0) {
-                            ESP_LOGI(TAG, "Timezone mismatch detected! Location '%s' suggests %s, but loaded %s",
-                                     user_location, detected_tz, user_timezone);
-                            ESP_LOGI(TAG, "Updating timezone to match location...");
-
-                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
-                            user_timezone[sizeof(user_timezone) - 1] = '\0';
-
-                            // Save and apply the corrected timezone
-                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
-                            const char *posix_tz = get_posix_timezone(user_timezone);
-                            setenv("TZ", posix_tz, 1);
-                            tzset();
-                            ESP_LOGI(TAG, "Timezone corrected to: %s", user_timezone);
-                        } else {
-                            ESP_LOGI(TAG, "Timezone matches location: %s", user_timezone);
-                        }
-                    }
-                }
-            } else {
-                ESP_LOGI(TAG, "Using cached weather coordinates: %.4f, %.4f (for zipcode: %s)",
-                         user_latitude, user_longitude, geocoded_zipcode);
-            }
-        }
-
-        ESP_LOGI(TAG, "Loaded weather settings from NVS:");
-        ESP_LOGI(TAG, "  Zipcode: %s", user_zipcode);
-        ESP_LOGI(TAG, "  Unit: %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
-        ESP_LOGI(TAG, "  Update interval: %d minutes", user_weather_interval_min);
-    } else {
-        ESP_LOGI(TAG, "No saved weather settings, using defaults");
     }
 }

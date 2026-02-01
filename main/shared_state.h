@@ -22,6 +22,7 @@
 #include "lvgl.h"
 #include "nvs_config.h"
 #include "dexcom_api.h"
+#include "esp_wifi.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -55,6 +55,25 @@ esp_err_t fetch_weather(float lat, float lon);
 void update_weather_display(void);
 
 /**
+ * Update location label on home screen
+ * Safe to call before UI is initialized (will return early)
+ */
+void update_location_display(void);
+
+/**
+ * Update sunrise/sunset time labels on home screen
+ * Safe to call before UI is initialized (will return early)
+ */
+void update_sunrise_sunset_display(void);
+
+/**
+ * Get text description for weather code
+ * @param weather_code Mapped weather code (0-7)
+ * @return Human-readable weather condition string
+ */
+const char* get_weather_condition_text(int weather_code);
+
+/**
  * Weather update task - fetches weather at configured interval
  * @param pvParameters Task parameter (unused)
  */

@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "cygm",
-    "project_version":    "1",
+    "project_version":    "86697d2-dirty",
     "project_path":       "C:/Projects/CYGM",
     "idf_path":           "C:/Espressif/frameworks/esp-idf-v5.5.2",
     "build_dir":          "C:/Projects/CYGM/build",
@@ -1300,8 +1300,8 @@
             "managed_reqs": [],
             "managed_priv_reqs": [ "espressif__esp_lvgl_port", "kodediy__esp_lcd_touch_cst820", "lvgl__lvgl" ],
             "file": "C:/Projects/CYGM/build/esp-idf/main/libmain.a",
-            "sources": [ "C:/Projects/CYGM/main/main.c", "C:/Projects/CYGM/main/nvs_config.c", "C:/Projects/CYGM/main/wifi_manager.c", "C:/Projects/CYGM/main/dexcom_api.c", "C:/Projects/CYGM/main/web_server.c", "C:/Projects/CYGM/main/ui_config.c", "C:/Projects/CYGM/main/arrow_images.c" ],
-            "include_dirs": [ "." ]
+            "sources": [ "C:/Projects/CYGM/main/main.c", "C:/Projects/CYGM/main/nvs_config.c", "C:/Projects/CYGM/main/wifi_manager.c", "C:/Projects/CYGM/main/dexcom_api.c", "C:/Projects/CYGM/main/web_server.c", "C:/Projects/CYGM/main/ui_config.c", "C:/Projects/CYGM/main/arrow_images.c", "C:/Projects/CYGM/main/hardware/led.c", "C:/Projects/CYGM/main/hardware/buzzer.c", "C:/Projects/CYGM/main/hardware/battery.c", "C:/Projects/CYGM/main/hardware/display.c", "C:/Projects/CYGM/main/features/time_system.c", "C:/Projects/CYGM/main/features/weather_system.c", "C:/Projects/CYGM/main/ui/menu_screen.c", "C:/Projects/CYGM/main/ui/home_screen.c", "C:/Projects/CYGM/main/ui/wifi_screens.c", "C:/Projects/CYGM/main/ui/cgm_screens.c", "C:/Projects/CYGM/main/ui/alarm_screens.c", "C:/Projects/CYGM/main/tasks/background_tasks.c" ],
+            "include_dirs": [ ".", "hardware", "features", "ui", "tasks" ]
         },
         "mbedtls": {
             "alias": "idf::mbedtls",
@@ -2986,7 +2986,7 @@
             "priv_reqs": [ "espressif__esp_lvgl_port", "kodediy__esp_lcd_touch_cst820", "lvgl__lvgl" ],
             "managed_reqs": [],
             "managed_priv_reqs": [ "espressif__esp_lvgl_port", "kodediy__esp_lcd_touch_cst820", "lvgl__lvgl" ],
-            "include_dirs": [ "." ]
+            "include_dirs": [ ".", "hardware", "features", "ui", "tasks" ]
         },
         "espressif__cmake_utilities": {
             "alias": "idf::espressif__cmake_utilities",
