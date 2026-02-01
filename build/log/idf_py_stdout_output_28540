@@ -1,0 +1,325 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00210000 00100000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=68494h (427156) map[0m
+[0;32mI (239) esp_image: segment 1: paddr=000784bc vaddr=3ffb0000 size=0424ch ( 16972) load[0m
+[0;32mI (245) esp_image: segment 2: paddr=0007c710 vaddr=40080000 size=03908h ( 14600) load[0m
+[0;32mI (251) esp_image: segment 3: paddr=00080020 vaddr=400d0020 size=e28b8h (927928) map[0m
+[0;32mI (568) esp_image: segment 4: paddr=001628e0 vaddr=40083908 size=16df0h ( 93680) load[0m
+[0;32mI (605) esp_image: segment 5: paddr=001796d8 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (618) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (618) boot: Disabling RNG early entropy source...[0m
+[0;32mI (629) cpu_start: Multicore app[0m
+[0;32mI (637) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (637) cpu_start: Pro cpu start user code[0m
+[0;32mI (637) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (639) app_init: Application information:[0m
+[0;32mI (643) app_init: Project name:     cygm[0m
+[0;32mI (647) app_init: App version:      1[0m
+[0;32mI (650) app_init: Compile time:     Jan 27 2026 21:15:36[0m
+[0;32mI (655) app_init: ELF file SHA256:  8c1ebe696...[0m
+[0;32mI (659) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (663) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (667) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (671) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (675) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (681) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (686) heap_init: At 3FFCA8C8 len 00015738 (85 KiB): DRAM[0m
+[0;32mI (692) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (697) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (702) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (709) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (721) spi_flash: detected chip: generic[0m
+[0;32mI (724) spi_flash: flash io: dio[0m
+[0;32mI (728) main_task: Started on CPU0[0m
+[0;32mI (731) main_task: Calling app_main()[0m
+[0;32mI (733) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (738) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (742) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (774) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (774) UIConfig: Initializing UI configuration system[0m
+[0;32mI (776) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (781) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (784) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (789) CYGM:   DST: Enabled[0m
+[0;32mI (791) CYGM:   Format: 12hr[0m
+[0;32mI (795) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F, Interval: 5 min)[0m
+[0;32mI (802) CYGM: Loaded weather settings from NVS:[0m
+[0;32mI (806) CYGM:   Zipcode: 98092[0m
+[0;32mI (809) CYGM:   Unit: Fahrenheit[0m
+[0;32mI (812) CYGM:   Update interval: 5 minutes[0m
+[0;32mI (817) NVS_CONFIG: Alarm settings loaded from NVS[0m
+[0;32mI (821) CYGM: Alarm settings loaded from NVS[0m
+[0;32mI (824) CYGM: Initializing LCD backlight[0m
+[0;32mI (828) CYGM: Initializing SPI bus[0m
+[0;32mI (832) CYGM: Initializing LCD panel IO[0m
+[0;32mI (836) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (959) CYGM: LCD initialized successfully[0m
+[0;32mI (960) CYGM: LED PWM initialized[0m
+[0;32mI (960) CYGM: Buzzer PWM initialized (GPIO 26)[0m
+[0;32mI (961) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (961) CYGM: UI Task started on Core 1[0m
+[0;32mI (966) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (968) wifi:wifi driver task: 3ffd6c98, prio:23, stack:6656, core=0W (971) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+
+[0;32mI (994) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (1007) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (1008) wifi:wifi certification version: v7.0[0m
+[0;32mI (1008) wifi:config NVS flash: enabled[0m
+[0;32mI (1010) wifi:config nano formatting: disabled[0m
+[0;32mI (1014) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1019) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1023) wifi:Init management short buffer num: 32[0m
+[0;32mI (1028) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1032) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1036) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1040) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1045) wifi_init: rx ba win: 6[0m
+[0;32mI (1047) wifi_init: accept mbox: 6[0m
+[0;32mI (1050) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1053) wifi_init: udp mbox: 6[0m
+[0;32mI (1056) wifi_init: tcp mbox: 6[0m
+[0;32mI (1059) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1062) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1065) wifi_init: tcp mss: 1440[0m
+[0;32mI (1068) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1072) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1077) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1161) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
+[0;32mI (967) CYGM: System initialized - tasks running[0m
+[0;32mI (1223) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1224) wifi:enable tsf[0m
+[0;32mI (1226) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1227) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1229) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1234) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1240) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1246) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (1256) main_task: Returned from app_main()[0m
+[0;32mI (1317) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1318) wifi:state: init -> auth (0xb0)[0m
+[0;33mW (1412) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1412) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1414) CST820 Driver: IC id: 183[0m
+[0;32mI (1417) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1422) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1428) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1433) CYGM: CardKB initialized[0m
+[0;32mI (1435) CYGM: Initializing LVGL[0m
+[0;32mI (1444) CYGM: LVGL initialized successfully[0m
+[0;32mI (1469) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1566) LVGL: Starting LVGL task[0m
+[0;32mI (2320) wifi:state: auth -> init (0x200)[0m
+[0;32mI (2324) wifi:new:<6,0>, old:<6,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (2329) WIFI_MGR: Retrying WiFi connection (1/5)[0m
+[0;32mI (2375) wifi:new:<6,0>, old:<6,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (2376) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (2389) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (2396) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (2410) wifi:connected with Look Ma, No Wires!, aid = 2, channel 6, BW20, bssid = f8:bb:bf:78:61:c6[0m
+[0;32mI (2411) wifi:security: WPA2-PSK, phy: bgn, rssi: -31[0m
+[0;32mI (2417) wifi:pm start, type: 1[0m
+
+[0;32mI (2417) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (2441) wifi:<ba-add>idx:0 (ifx:0, f8:bb:bf:78:61:c6), tid:0, ssn:0, winSize:64[0m
+[0;32mI (2475) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (2475) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (4519) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (4520) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (4521) CYGM: WiFi connected successfully[0m
+[0;32mI (4526) CYGM: Web server DISABLED (to save memory for SSL). Set ENABLE_WEB_SERVER=1 to enable.[0m
+[0;32mI (4533) CYGM: Initializing SNTP[0m
+[0;32mI (4539) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4543) CYGM: SNTP initialized with 3 servers. Waiting for system time to be set...[0m
+[0;32mI (4550) CYGM: Current system time BEFORE sync: 1969-12-31 16:00:03[0m
+[0;32mI (4558) CYGM: Found saved Dexcom credentials, will attempt auto-login after time sync[0m
+[0;32mI (4565) CYGM: Waiting for SNTP time sync before Dexcom auth (required for SSL)...[0m
+[0;32mI (4571) CYGM: Current system time: 1969-12-31 16:00:03[0m
+[0;32mI (4576) CYGM: Waiting for SNTP time sync...[0m
+[0;32mI (6302) CYGM: === TIME SYNCHRONIZED FROM SNTP SERVER ===[0m
+[0;32mI (6303) CYGM: New system time: 2026-01-28 20:39:47[0m
+[0;32mI (6580) CYGM: Time synced: 2026-01-28 20:39:47[0m
+[0;32mI (6581) CYGM: Time synced successfully, proceeding with Dexcom auto-login[0m
+[0;32mI (6581) CYGM: Dexcom auth attempt 1/5...[0m
+[0;32mI (6584) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (6589) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (6593) DEXCOM: System time at auth: 2026-01-28 20:39:47[0m
+[0;32mI (6598) DEXCOM: Trying US region...[0m
+[0;32mI (6602) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (6606) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (6616) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (6622) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (6627) DEXCOM: Performing request...[0m
+[0;32mI (8526) DEXCOM: Result: ESP_OK (status 200)[0m
+[0;32mI (8527) DEXCOM: Got account ID: 0052f8e5...[0m
+[0;32mI (9027) DEXCOM: Getting session ID...[0m
+[0;32mI (9656) DEXCOM: Got session ID: 8b5b9e5a...[0m
+[0;32mI (9659) NVS_CONFIG: Dexcom credentials saved to NVS[0m
+[0;32mI (9659) DEXCOM: Dexcom authentication successful on US region![0m
+[0;32mI (9660) DEXCOM: Keeping persistent HTTP client alive for glucose fetches[0m
+[0;32mI (9667) CYGM: Dexcom auto-login successful on attempt 1![0m
+[0;32mI (9673) DEXCOM: Fetching glucose data...[0m
+[0;32mI (9675) DEXCOM: Free heap before glucose fetch: 26460 bytes[0m
+[0;32mI (9681) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (9837) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (9838) CYGM: Initial glucose: 179 mg/dL, trend: Rising[0m
+[0;32mI (9847) CYGM: Starting weather task (after Dexcom, HTTP mode)...[0m
+[0;32mI (9848) CYGM: Starting glucose update task (90 second interval)...[0m
+[0;32mI (9848) CYGM: Weather update task started[0m
+[0;32mI (9854) CYGM: Waiting 15 seconds before first weather attempt...[0m
+[0;32mI (9851) CYGM: Glucose update task started (90 second interval)[0m
+[0;32mI (19866) CYGM: Fetching periodic glucose reading...[0m
+[0;33mW (19866) DEXCOM: Rate limited - wait 79 seconds[0m
+[0;33mW (19866) CYGM: Periodic glucose fetch failed: ESP_ERR_INVALID_STATE[0m
+[0;32mI (24860) CYGM: Free heap before weather geocoding: 17624 bytes[0m
+[0;32mI (24861) CYGM: Geocoding zipcode: 98092 (time is synced)[0m
+[0;32mI (24861) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (40932) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (40933) transport_base: Failed to open a new connection[0m
+[1;31mE (40939) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (40940) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (40944) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (40950) CYGM: Geocoding attempt 1/3 failed: ESP_FAIL[0m
+[0;32mI (40954) CYGM: Retrying in 5 seconds...[0m
+[0;32mI (45958) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (61937) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (61938) transport_base: Failed to open a new connection[0m
+[1;31mE (61943) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (61944) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (61949) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (61955) CYGM: Geocoding attempt 2/3 failed: ESP_FAIL[0m
+[0;32mI (61959) CYGM: Retrying in 5 seconds...[0m
+[0;32mI (66963) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (82943) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (82944) transport_base: Failed to open a new connection[0m
+[1;31mE (82949) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (82950) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (82955) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (82961) CYGM: Geocoding attempt 3/3 failed: ESP_FAIL[0m
+[0;32mI (109870) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (109871) DEXCOM: Fetching glucose data...[0m
+[0;32mI (109871) DEXCOM: Free heap before glucose fetch: 16120 bytes[0m
+[0;32mI (109873) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (110216) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (110217) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (200226) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (200227) DEXCOM: Fetching glucose data...[0m
+[0;32mI (200227) DEXCOM: Free heap before glucose fetch: 17260 bytes[0m
+[0;32mI (200229) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (200532) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (200533) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (290540) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (290541) DEXCOM: Fetching glucose data...[0m
+[0;32mI (290541) DEXCOM: Free heap before glucose fetch: 17260 bytes[0m
+[0;32mI (290543) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (290848) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (290849) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (380857) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (380858) DEXCOM: Fetching glucose data...[0m
+[0;32mI (380858) DEXCOM: Free heap before glucose fetch: 17260 bytes[0m
+[0;32mI (380860) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (381166) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (381167) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (382965) CYGM: Geocoding zipcode: 98092 (time is synced)[0m
+[0;32mI (382966) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (399013) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (399014) transport_base: Failed to open a new connection[0m
+[1;31mE (399019) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (399020) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (399025) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (399031) CYGM: Geocoding attempt 1/3 failed: ESP_FAIL[0m
+[0;32mI (399036) CYGM: Retrying in 5 seconds...[0m
+[0;32mI (404040) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (420019) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (420020) transport_base: Failed to open a new connection[0m
+[1;31mE (420025) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (420026) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (420031) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (420037) CYGM: Geocoding attempt 2/3 failed: ESP_FAIL[0m
+[0;32mI (420042) CYGM: Retrying in 5 seconds...[0m
+[0;32mI (425046) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (441023) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (441024) transport_base: Failed to open a new connection[0m
+[1;31mE (441029) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (441030) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (441035) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (441041) CYGM: Geocoding attempt 3/3 failed: ESP_FAIL[0m
+[0;32mI (471174) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (471175) DEXCOM: Fetching glucose data...[0m
+[0;32mI (471175) DEXCOM: Free heap before glucose fetch: 15988 bytes[0m
+[0;32mI (471177) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (471483) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (471484) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (561491) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (561492) DEXCOM: Fetching glucose data...[0m
+[0;32mI (561492) DEXCOM: Free heap before glucose fetch: 17260 bytes[0m
+[0;32mI (561494) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (561801) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (561802) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (651809) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (651810) DEXCOM: Fetching glucose data...[0m
+[0;32mI (651810) DEXCOM: Free heap before glucose fetch: 17288 bytes[0m
+[0;32mI (651812) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (652116) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (652117) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (741046) CYGM: Geocoding zipcode: 98092 (time is synced)[0m
+[0;32mI (741047) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;32mI (742126) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (742127) DEXCOM: Fetching glucose data...[0m
+[0;32mI (742128) DEXCOM: Free heap before glucose fetch: 1700 bytes[0m
+[0;32mI (742129) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;33mW (757095) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (757096) transport_base: Failed to open a new connection[0m
+[1;31mE (757101) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (757103) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (757107) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (757113) CYGM: Geocoding attempt 1/3 failed: ESP_FAIL[0m
+[0;32mI (757118) CYGM: Retrying in 5 seconds...[0m
+[0;32mI (757791) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (757792) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m
+[0;32mI (762122) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (778100) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (778101) transport_base: Failed to open a new connection[0m
+[1;31mE (778106) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (778107) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (778112) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (778118) CYGM: Geocoding attempt 2/3 failed: ESP_FAIL[0m
+[0;32mI (778123) CYGM: Retrying in 5 seconds...[0m
+[0;32mI (783127) CYGM: Geocoding URL: http://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;33mW (799107) esp-tls: Failed to open new connection in specified timeout[0m
+[1;31mE (799108) transport_base: Failed to open a new connection[0m
+[1;31mE (799113) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (799114) CYGM: Geocoding HTTP result: ESP_ERR_HTTP_CONNECT (status: 301)[0m
+[1;31mE (799119) CYGM: Failed to geocode zipcode: ESP_ERR_HTTP_CONNECT[0m
+[0;33mW (799125) CYGM: Geocoding attempt 3/3 failed: ESP_FAIL[0m
+[0;32mI (847800) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (847801) DEXCOM: Fetching glucose data...[0m
+[0;32mI (847801) DEXCOM: Free heap before glucose fetch: 15988 bytes[0m
+[0;32mI (847803) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (848211) DEXCOM: Glucose: 179 mg/dL, Trend: Rising[0m
+[0;32mI (848212) CYGM: Glucose updated: 179 mg/dL, trend: Rising[0m

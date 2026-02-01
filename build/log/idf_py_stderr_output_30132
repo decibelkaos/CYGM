@@ -1,0 +1,130 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+[0;33m--- Warning: GDB cannot open serial ports accessed as COMx[0m
+[0;33m--- Using \\.\COM40 instead...[0m
+[0;33m--- esp-idf-monitor 1.9.0 on \\.\COM40 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4000c344: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x40000000: [0;33m_WindowOverflow4[0m[0m in [0;32mROM[0m
+[0m--- 0x400014fd: [0;33mstrlen[0m[0m in [0;32mROM[0m
+[0m--- 0x4000150d: [0;33mstrlen[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c341: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x40191110: [0;33mesp_transport_set_errors[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport.c[0m[0m:[1;31m296[0m
+[0m--- 0x40191661: [0;33mssl_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport_ssl.c[0m[0m:[1;31m121[0m
+[0m--- 0x401b42fd: [0;33mesp_transport_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport.c[0m[0m:[1;31m123[0m
+[0m--- 0x40135ea5: [0;33mesp_http_client_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1606[0m
+[0m--- 0x40136aec: [0;33mesp_http_client_perform[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1401[0m
+[0m--- 0x400e2f28: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m702[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x40138341: [0;33mmbedtls_ssl_get_input_max_frag_len[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m3234[0m
+[0m--- 0x4000c46c: [0;33mmemset[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c477: [0;33mmemset[0m[0m in [0;32mROM[0m
+[0m--- 0x4013833e: [0;33mmbedtls_ssl_get_input_max_frag_len[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m3234[0m
+[0m--- 0x40138505: [0;33mmbedtls_ssl_get_input_buflen[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_misc.h[0m[0m:[1;31m481[0m
+[0m--- (inlined by) [0;33mmbedtls_ssl_handshake_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m4979[0m
+[0m--- 0x4013876e: [0;33mmbedtls_ssl_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m5618[0m
+[0m--- 0x40190a4d: [0;33mesp_mbedtls_cleanup[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls_mbedtls.c[0m[0m:[1;31m533[0m
+[0m--- 0x40190f06: [0;33mesp_create_mbedtls_handle[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls_mbedtls.c[0m[0m:[1;31m203[0m
+[0m--- 0x401900c9: [0;33mcreate_ssl_handle[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls.c[0m[0m:[1;31m117[0m
+[0m--- 0x401902ac: [0;33mesp_tls_low_level_conn[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls.c[0m[0m:[1;31m519[0m
+[0m--- 0x4019042d: [0;33mesp_tls_conn_new_sync[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls.c[0m[0m:[1;31m563[0m
+[0m--- 0x40191636: [0;33mssl_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport_ssl.c[0m[0m:[1;31m117[0m
+[0m--- 0x401b42fd: [0;33mesp_transport_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport.c[0m[0m:[1;31m123[0m
+[0m--- 0x40135ea5: [0;33mesp_http_client_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1606[0m
+[0m--- 0x40136aec: [0;33mesp_http_client_perform[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1401[0m
+[0m--- 0x400e2f28: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m702[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x40138341: [0;33mmbedtls_ssl_get_input_max_frag_len[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m3234[0m
+[0m--- 0x4000c46c: [0;33mmemset[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c477: [0;33mmemset[0m[0m in [0;32mROM[0m
+[0m--- 0x4013833e: [0;33mmbedtls_ssl_get_input_max_frag_len[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m3234[0m
+[0m--- 0x40138505: [0;33mmbedtls_ssl_get_input_buflen[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_misc.h[0m[0m:[1;31m481[0m
+[0m--- (inlined by) [0;33mmbedtls_ssl_handshake_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m4979[0m
+[0m--- 0x4013876e: [0;33mmbedtls_ssl_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/mbedtls/mbedtls/library/ssl_tls.c[0m[0m:[1;31m5618[0m
+[0m--- 0x40190a4d: [0;33mesp_mbedtls_cleanup[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls_mbedtls.c[0m[0m:[1;31m533[0m
+[0m--- 0x40190f06: [0;33mesp_create_mbedtls_handle[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls_mbedtls.c[0m[0m:[1;31m203[0m
+[0m--- 0x401900c9: [0;33mcreate_ssl_handle[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls.c[0m[0m:[1;31m117[0m
+[0m--- 0x401902ac: [0;33mesp_tls_low_level_conn[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls.c[0m[0m:[1;31m519[0m
+[0m--- 0x4019042d: [0;33mesp_tls_conn_new_sync[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp-tls/esp_tls.c[0m[0m:[1;31m563[0m
+[0m--- 0x40191636: [0;33mssl_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport_ssl.c[0m[0m:[1;31m117[0m
+[0m--- 0x401b42fd: [0;33mesp_transport_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport.c[0m[0m:[1;31m123[0m
+[0m--- 0x40135ea5: [0;33mesp_http_client_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1606[0m
+[0m--- 0x40136aec: [0;33mesp_http_client_perform[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1401[0m
+[0m--- 0x400e2f28: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m702[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x401b1743: [0;33mesp_http_client_get_status_code[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1863[0m
+[0m--- 0x4000c2e0: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c2f6: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x401b1740: [0;33mesp_http_client_get_status_code[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1862[0m
+[0m--- 0x400e2f32: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m703[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x401b1743: [0;33mesp_http_client_get_status_code[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1863[0m
+[0m--- 0x4000c2e0: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c2f6: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x401b1740: [0;33mesp_http_client_get_status_code[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1862[0m
+[0m--- 0x400e2f32: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m703[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4000c344: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x40000000: [0;33m_WindowOverflow4[0m[0m in [0;32mROM[0m
+[0m--- 0x400014fd: [0;33mstrlen[0m[0m in [0;32mROM[0m
+[0m--- 0x4000150d: [0;33mstrlen[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c341: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x40191110: [0;33mesp_transport_set_errors[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport.c[0m[0m:[1;31m296[0m
+[0m--- 0x40191661: [0;33mssl_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport_ssl.c[0m[0m:[1;31m121[0m
+[0m--- 0x401b42fd: [0;33mesp_transport_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/tcp_transport/transport.c[0m[0m:[1;31m123[0m
+[0m--- 0x40135ea5: [0;33mesp_http_client_connect[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1606[0m
+[0m--- 0x40136aec: [0;33mesp_http_client_perform[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1401[0m
+[0m--- 0x400e2f28: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m702[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x401b1743: [0;33mesp_http_client_get_status_code[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1863[0m
+[0m--- 0x4000c2e0: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c2f6: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x401b1740: [0;33mesp_http_client_get_status_code[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1862[0m
+[0m--- 0x400e2f32: [0;33mdexcom_fetch_glucose[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m703[0m
+[0m--- 0x400dbccc: [0;33mglucose_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1839[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4009080a: [0;33mremove_free_block[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf_control_functions.h[0m[0m:[1;31m374[0m
+[0m--- (inlined by) [0;33mblock_remove[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf_control_functions.h[0m[0m:[1;31m422[0m
+[0m--- (inlined by) [0;33mblock_merge_next[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf_control_functions.h[0m[0m:[1;31m538[0m
+[0m--- (inlined by) [0;33mtlsf_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf.c[0m[0m:[1;31m633[0m
+[0m--- 0x4000c2e0: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000c2f6: [0;33mmemcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x40090807: [0;33mremove_free_block[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf_control_functions.h[0m[0m:[1;31m373[0m
+[0m--- (inlined by) [0;33mblock_remove[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf_control_functions.h[0m[0m:[1;31m422[0m
+[0m--- (inlined by) [0;33mblock_merge_next[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf_control_functions.h[0m[0m:[1;31m538[0m
+[0m--- (inlined by) [0;33mtlsf_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/tlsf/tlsf.c[0m[0m:[1;31m633[0m
+[0m--- 0x4009044c: [0;33mmulti_heap_free_impl[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/multi_heap.c[0m[0m:[1;31m240[0m
+[0m--- 0x4008208b: [0;33mheap_caps_free[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/heap/heap_caps_base.c[0m[0m:[1;31m86[0m
+[0m--- 0x400932cd: [0;33mfree[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/heap.c[0m[0m:[1;31m34[0m
+[0m--- 0x4013728d: [0;33mhttp_header_clean[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/lib/http_header.c[0m[0m:[1;31m221[0m
+[0m--- 0x401372b7: [0;33mhttp_header_destroy[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/lib/http_header.c[0m[0m:[1;31m44[0m
+[0m--- 0x40135f75: [0;33mesp_http_client_cleanup[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_http_client/esp_http_client.c[0m[0m:[1;31m1030[0m
+[0m--- 0x400e32df: [0;33mdexcom_close_persistent_client[0m[0m at [0;32mC:/Projects/CYGM/main/dexcom_api.c[0m[0m:[1;31m919[0m
+[0m--- 0x400db392: [0;33mweather_update_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m1736[0m
+[0m--- 0x4008b2c1: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m

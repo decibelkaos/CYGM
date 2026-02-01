@@ -1,0 +1,26 @@
+# Build artifacts
+build/
+*.tmp
+*.backup
+*.before_*
+
+# ESP-IDF
+.vscode/
+managed_components/
+dependencies.lock
+
+# Logs
+*.log
+*.txt
+
+# Temporary files
+NUL
+temp_*
+
+# Large directories
+Documents/
+.claude/
+
+# Backups
+*.tar.gz
+savepoints/

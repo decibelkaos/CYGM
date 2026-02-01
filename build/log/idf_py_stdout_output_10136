@@ -1,0 +1,228 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=51f98h (335768) map[0m
+[0;32mI (201) esp_image: segment 1: paddr=00061fc0 vaddr=3ffb0000 size=0421ch ( 16924) load[0m
+[0;32mI (207) esp_image: segment 2: paddr=000661e4 vaddr=40080000 size=09e34h ( 40500) load[0m
+[0;32mI (223) esp_image: segment 3: paddr=00070020 vaddr=400d0020 size=c46d8h (804568) map[0m
+[0;32mI (498) esp_image: segment 4: paddr=00134700 vaddr=40089e34 size=108c4h ( 67780) load[0m
+[0;32mI (525) esp_image: segment 5: paddr=00144fcc vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (538) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (538) boot: Disabling RNG early entropy source...[0m
+[0;32mI (549) cpu_start: Multicore app[0m
+[0;32mI (557) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (557) cpu_start: Pro cpu start user code[0m
+[0;32mI (557) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (559) app_init: Application information:[0m
+[0;32mI (563) app_init: Project name:     cygm[0m
+[0;32mI (567) app_init: App version:      1[0m
+[0;32mI (570) app_init: Compile time:     Jan 17 2026 19:57:25[0m
+[0;32mI (575) app_init: ELF file SHA256:  b00817a31...[0m
+[0;32mI (579) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (583) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (587) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (591) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (595) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (601) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (606) heap_init: At 3FFC1490 len 0001EB70 (122 KiB): DRAM[0m
+[0;32mI (611) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (617) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (622) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (629) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (641) spi_flash: detected chip: generic[0m
+[0;32mI (644) spi_flash: flash io: dio[0m
+[0;32mI (648) main_task: Started on CPU0[0m
+[0;32mI (651) main_task: Calling app_main()[0m
+[0;32mI (653) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (658) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (662) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (676) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (677) CYGM: Initializing LCD backlight[0m
+[0;32mI (677) CYGM: Initializing SPI bus[0m
+[0;32mI (678) CYGM: Initializing LCD panel IO[0m
+[0;32mI (682) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (805) CYGM: LCD initialized successfully[0m
+[0;32mI (806) CYGM: LED PWM initialized[0m
+[0;32mI (808) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (808) CYGM: UI Task started on Core 1[0m
+[0;32mI (809) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;33mW (813) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+[0;32mI (814) wifi:wifi driver task: 3ffcd9cc, prio:23, stack:6656, core=0[0m
+[0;32mI (830) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (839) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (844) wifi:wifi certification version: v7.0[0m
+[0;32mI (848) wifi:config NVS flash: enabled[0m
+[0;32mI (851) wifi:config nano formatting: disabled[0m
+[0;32mI (856) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (860) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (864) wifi:Init management short buffer num: 32[0m
+[0;32mI (869) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (873) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (877) wifi:Init static rx buffer num: 10[0m
+[0;32mI (881) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (886) wifi_init: rx ba win: 6[0m
+[0;32mI (887) wifi_init: accept mbox: 6[0m
+[0;32mI (890) wifi_init: tcpip mbox: 32[0m
+[0;32mI (893) wifi_init: udp mbox: 6[0m
+[0;32mI (896) wifi_init: tcp mbox: 6[0m
+[0;32mI (899) wifi_init: tcp tx win: 5760[0m
+[0;32mI (902) wifi_init: tcp rx win: 5760[0m
+[0;32mI (905) wifi_init: tcp mss: 1440[0m
+[0;32mI (908) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (912) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (918) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;33mW (922) phy_init: failed to load RF calibration data (0x1102), falling back to full calibration[0m
+[0;32mI (999) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(2)[0m
+[0;32mI (1015) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1016) wifi:enable tsf[0m
+[0;32mI (1019) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1020) WIFI_MGR: WiFi started, connecting...[0m
+[0;32mI (1021) CYGM: No saved WiFi credentials - setup required[0m
+[0;32mI (813) CYGM: System initialized - tasks running[0m
+[0;32mI (1028) main_task: Returned from app_main()[0m
+[0;33mW (1242) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1242) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1244) CST820 Driver: IC id: 183[0m
+[0;32mI (1246) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1252) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1258) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1263) CYGM: CardKB initialized[0m
+[0;32mI (1265) CYGM: Initializing LVGL[0m
+[0;32mI (1276) CYGM: LVGL initialized successfully[0m
+[0;32mI (1346) LVGL: Starting LVGL task[0m
+[0;32mI (1348) CYGM: Touch debug task started[0m
+[0;32mI (13125) CYGM: TOUCH DETECTED: x=298, y=43[0m
+[0;32mI (13168) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (14173) CYGM: TOUCH DETECTED: x=179, y=190[0m
+[0;32mI (14251) CYGM: Menu item 3 clicked[0m
+[0;32mI (14252) CYGM: Launching Time/Date/Weather settings...[0m
+[0;32mI (14729) CYGM: TOUCH DETECTED: x=208, y=143[0m
+[0;32mI (14824) CYGM: WiFi Setup button clicked from Time Settings[0m
+[0;32mI (14831) CYGM: Scanning for WiFi networks...[0m
+[0;32mI (14831) WIFI_MGR: Starting WiFi scan...[0m
+[0;32mI (17438) WIFI_MGR: Found 5 WiFi networks[0m
+[0;32mI (17438) CYGM: Found 5 networks[0m
+[0;32mI (19537) CYGM: TOUCH DETECTED: x=169, y=67[0m
+[0;32mI (19636) CYGM: Selected network: Look Ma, No Wires![0m
+[0;32mI (20673) CYGM: TOUCH DETECTED: x=37, y=130[0m
+[0;32mI (20710) CYGM: Shift pressed, waiting for character or long press (2000ms for caps lock)[0m
+[0;32mI (21872) CYGM: Auto-switching to lowercase after single uppercase char (elapsed: 1162 ms)[0m
+[0;32mI (21955) CYGM: TOUCH DETECTED: x=203, y=169[0m
+[0;32mI (23084) CYGM: TOUCH DETECTED: x=247, y=101[0m
+[0;32mI (25112) CYGM: TOUCH DETECTED: x=311, y=103[0m
+[0;32mI (26795) CYGM: TOUCH DETECTED: x=35, y=130[0m
+[0;32mI (26901) CYGM: Shift pressed, waiting for character or long press (2000ms for caps lock)[0m
+[0;32mI (27971) CYGM: Auto-switching to lowercase after single uppercase char (elapsed: 1070 ms)[0m
+[0;32mI (28862) CYGM: TOUCH DETECTED: x=99, y=89[0m
+[0;32mI (30057) CYGM: TOUCH DETECTED: x=199, y=177[0m
+[0;32mI (31844) CYGM: TOUCH DETECTED: x=93, y=138[0m
+[0;32mI (33563) CYGM: TOUCH DETECTED: x=311, y=217[0m
+[0;32mI (33600) CYGM: Connecting to WiFi: Look Ma, No Wires! with password: NotPenis[0m
+[0;32mI (33603) NVS_CONFIG: WiFi credentials saved to NVS[0m
+[0;32mI (33604) CYGM: WiFi credentials saved to NVS[0m
+[0;32mI (33606) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (33612) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (34520) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (34522) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (34644) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (34653) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (34688) wifi:connected with Look Ma, No Wires!, aid = 7, channel 6, BW20, bssid = 50:27:a9:75:07:45[0m
+[0;32mI (34689) wifi:security: WPA2-PSK, phy: bgn, rssi: -36[0m
+[0;32mI (34699) wifi:pm start, type: 1[0m
+
+[0;32mI (34700) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (34794) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (34795) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (35223) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:75:07:45), tid:0, ssn:0, winSize:64[0m
+[0;32mI (38755) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (38756) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (38757) CYGM: WiFi connected successfully![0m
+[0;32mI (38761) CYGM: Initializing SNTP[0m
+[0;32mI (38765) CYGM: Waiting for system time to be set via SNTP...[0m
+[0;32mI (43708) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (54900) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (56614) CYGM: TOUCH DETECTED: x=132, y=192[0m
+[0;32mI (56691) CYGM: Menu item 3 clicked[0m
+[0;32mI (56692) CYGM: Launching Time/Date/Weather settings...[0m
+[0;32mI (58108) CYGM: TOUCH DETECTED: x=269, y=95[0m
+[0;32mI (60286) CYGM: TOUCH DETECTED: x=132, y=184[0m
+[0;32mI (60433) CYGM: TOUCH DETECTED: x=134, y=165[0m
+[0;32mI (60546) CYGM: TOUCH DETECTED: x=143, y=135[0m
+[0;32mI (60653) CYGM: TOUCH DETECTED: x=151, y=117[0m
+[0;32mI (60760) CYGM: TOUCH DETECTED: x=160, y=100[0m
+[0;32mI (60869) CYGM: TOUCH DETECTED: x=165, y=89[0m
+[0;32mI (60978) CYGM: TOUCH DETECTED: x=170, y=80[0m
+[0;32mI (61086) CYGM: TOUCH DETECTED: x=174, y=76[0m
+[0;32mI (61193) CYGM: TOUCH DETECTED: x=174, y=72[0m
+[0;32mI (62116) CYGM: TOUCH DETECTED: x=138, y=202[0m
+[0;32mI (62227) CYGM: TOUCH DETECTED: x=145, y=171[0m
+[0;32mI (62336) CYGM: TOUCH DETECTED: x=154, y=138[0m
+[0;32mI (62445) CYGM: TOUCH DETECTED: x=164, y=109[0m
+[0;32mI (62553) CYGM: TOUCH DETECTED: x=172, y=89[0m
+[0;32mI (62664) CYGM: TOUCH DETECTED: x=182, y=64[0m
+[0;32mI (62776) CYGM: TOUCH DETECTED: x=188, y=49[0m
+[0;32mI (62889) CYGM: TOUCH DETECTED: x=192, y=42[0m
+[0;32mI (62991) CYGM: TOUCH DETECTED: x=192, y=42[0m
+[0;32mI (63120) CYGM: TOUCH DETECTED: x=192, y=72[0m
+[0;32mI (63229) CYGM: TOUCH DETECTED: x=192, y=136[0m
+[0;32mI (63336) CYGM: TOUCH DETECTED: x=192, y=174[0m
+[0;32mI (63444) CYGM: TOUCH DETECTED: x=192, y=196[0m
+[0;32mI (63551) CYGM: TOUCH DETECTED: x=192, y=206[0m
+[0;32mI (63658) CYGM: TOUCH DETECTED: x=192, y=211[0m
+[0;32mI (63767) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (63868) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (63969) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64070) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64171) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64272) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64373) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64474) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64575) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64676) CYGM: TOUCH DETECTED: x=192, y=213[0m
+[0;32mI (64801) CYGM: TOUCH DETECTED: x=194, y=199[0m
+[0;32mI (64910) CYGM: TOUCH DETECTED: x=196, y=184[0m
+[0;32mI (65019) CYGM: TOUCH DETECTED: x=196, y=177[0m
+[0;32mI (65125) CYGM: TOUCH DETECTED: x=196, y=173[0m
+[0;32mI (65227) CYGM: TOUCH DETECTED: x=196, y=173[0m
+[0;32mI (65347) CYGM: TOUCH DETECTED: x=196, y=179[0m
+[0;32mI (65456) CYGM: TOUCH DETECTED: x=196, y=190[0m
+[0;32mI (65564) CYGM: TOUCH DETECTED: x=196, y=207[0m
+[0;32mI (65672) CYGM: TOUCH DETECTED: x=196, y=216[0m
+[0;32mI (65781) CYGM: TOUCH DETECTED: x=196, y=225[0m
+[0;32mI (66814) CYGM: TOUCH DETECTED: x=119, y=187[0m
+[0;32mI (66915) CYGM: TOUCH DETECTED: x=119, y=187[0m
+[0;32mI (66974) CYGM: Timezone changed to: US Pacific (PT) (America/Los_Angeles)[0m
+[0;32mI (72567) CYGM: TOUCH DETECTED: x=171, y=170[0m
+[0;32mI (72668) CYGM: TOUCH DETECTED: x=171, y=160[0m
+[0;32mI (72769) CYGM: TOUCH DETECTED: x=171, y=135[0m
+[0;32mI (72870) CYGM: TOUCH DETECTED: x=172, y=103[0m
+[0;32mI (72972) CYGM: TOUCH DETECTED: x=176, y=79[0m
+[0;32mI (73074) CYGM: TOUCH DETECTED: x=181, y=64[0m
+[0;32mI (76839) CYGM: TOUCH DETECTED: x=123, y=134[0m
+[0;32mI (76871) CYGM: Timezone changed to: US Pacific (PT) (America/Los_Angeles)[0m
+[0;32mI (80065) CYGM: TOUCH DETECTED: x=33, y=21[0m
+[0;32mI (80101) CYGM: Back button clicked - returning to home screen[0m

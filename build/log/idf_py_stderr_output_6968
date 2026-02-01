@@ -1,0 +1,24 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+[0;33m--- Warning: GDB cannot open serial ports accessed as COMx[0m
+[0;33m--- Using \\.\COM40 instead...[0m
+[0;33m--- esp-idf-monitor 1.9.0 on \\.\COM40 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4009a583: [0;33m_xt_context_save[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_context.S[0m[0m:[1;31m167[0m
+[0m--- 0x400818b1: [0;33mxt_unhandled_exception[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/panic_handler.c[0m[0m:[1;31m309[0m
+[0m--- 0x4008c6fa: [0;33mxTaskIncrementTick[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/tasks.c[0m[0m:[1;31m3295[0m
+[0m--- 0x4008c6f7: [0;33mxTaskIncrementTick[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/tasks.c[0m[0m:[1;31m3295[0m
+[0m--- 0x4008b94b: [0;33mxPortSysTickHandler[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/port_systick.c[0m[0m:[1;31m224[0m
+[0m--- 0x4008b685: [0;33m_frxt_timer_int[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/portasm.S[0m[0m:[1;31m344[0m
+[0m--- 0x400830fe: [0;33m_xt_lowint1[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m1240[0m
+[0m--- 0x40088dcf: [0;33mxt_utils_wait_for_intr[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/include/xt_utils.h[0m[0m:[1;31m82[0m
+[0m--- (inlined by) [0;33mesp_cpu_wait_for_intr[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_hw_support/cpu.c[0m[0m:[1;31m55[0m
+[0m--- 0x4018ee6a: [0;33mesp_vApplicationIdleHook[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/freertos_hooks.c[0m[0m:[1;31m58[0m
+[0m--- 0x4008c27d: [0;33mprvIdleTask[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/tasks.c[0m[0m:[1;31m4350[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m

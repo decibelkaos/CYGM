@@ -1,0 +1,30 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py'
+[0;33m--- Warning: GDB cannot open serial ports accessed as COMx[0m
+[0;33m--- Using \\.\COM40 instead...[0m
+[0;33m--- esp-idf-monitor 1.9.0 on \\.\COM40 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400e5ef9: [0;33mlv_obj_add_style[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_style.c[0m[0m:[1;31m96[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400e5ef6: [0;33mlv_obj_add_style[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_style.c[0m[0m:[1;31m96[0m
+[0m--- 0x400fcba6: [0;33mtheme_apply[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/extra/themes/default/lv_theme_default.c[0m[0m:[1;31m1034[0m
+[0m--- 0x401a48d9: [0;33mapply_theme[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_theme.c[0m[0m:[1;31m117[0m
+[0m--- 0x400e7c61: [0;33mlv_theme_apply[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_theme.c[0m[0m:[1;31m54[0m
+[0m--- 0x400e1bb0: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m109[0m
+[0m--- 0x400ec0d7: [0;33mlv_keyboard_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/extra/widgets/keyboard/lv_keyboard.c[0m[0m:[1;31m141[0m
+[0m--- 0x400da965: [0;33mcreate_zipcode_entry_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2505[0m
+[0m--- 0x400dbd42: [0;33mzipcode_edit_event_cb[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2011[0m
+[0m--- 0x400dead9: [0;33mevent_send_core[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_event.c[0m[0m:[1;31m461[0m
+[0m--- 0x400deb86: [0;33mlv_event_send[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_event.c[0m[0m:[1;31m74[0m
+[0m--- 0x400deffe: [0;33mindev_proc_release[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_indev.c[0m[0m:[1;31m979[0m
+[0m--- 0x400dfc7a: [0;33mindev_pointer_proc[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_indev.c[0m[0m:[1;31m383[0m
+[0m--- 0x400dfd81: [0;33mlv_indev_read_timer_cb[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_indev.c[0m[0m:[1;31m101[0m
+[0m--- 0x400ee8f1: [0;33mlv_timer_exec[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/misc/lv_timer.c[0m[0m:[1;31m313[0m
+[0m--- 0x400ee99e: [0;33mlv_timer_handler[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/misc/lv_timer.c[0m[0m:[1;31m109[0m
+[0m--- 0x400ddc68: [0;33mlvgl_port_task[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m171[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m

@@ -1,0 +1,255 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00210000 00100000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=7d054h (512084) map[0m
+[0;32mI (268) esp_image: segment 1: paddr=0008d07c vaddr=3ffb0000 size=02f9ch ( 12188) load[0m
+[0;32mI (272) esp_image: segment 2: paddr=00090020 vaddr=400d0020 size=ed4fch (972028) map[0m
+[0;32mI (605) esp_image: segment 3: paddr=0017d524 vaddr=3ffb2f9c size=012d4h (  4820) load[0m
+[0;32mI (607) esp_image: segment 4: paddr=0017e800 vaddr=40080000 size=1a7d4h (108500) load[0m
+[0;32mI (651) esp_image: segment 5: paddr=00198fdc vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (664) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (664) boot: Disabling RNG early entropy source...[0m
+[0;32mI (675) cpu_start: Multicore app[0m
+[0;32mI (683) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (683) cpu_start: Pro cpu start user code[0m
+[0;32mI (683) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (685) app_init: Application information:[0m
+[0;32mI (689) app_init: Project name:     cygm[0m
+[0;32mI (692) app_init: App version:      1[0m
+[0;32mI (696) app_init: Compile time:     Jan 27 2026 21:15:36[0m
+[0;32mI (701) app_init: ELF file SHA256:  c50f2ad95...[0m
+[0;32mI (705) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (709) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (713) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (717) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (721) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (727) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (732) heap_init: At 3FFCAA18 len 000155E8 (85 KiB): DRAM[0m
+[0;32mI (737) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (743) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (748) heap_init: At 4009A7D4 len 0000582C (22 KiB): IRAM[0m
+[0;33mW (755) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (766) spi_flash: detected chip: generic[0m
+[0;32mI (770) spi_flash: flash io: dio[0m
+[0;32mI (774) main_task: Started on CPU0[0m
+[0;32mI (777) main_task: Calling app_main()[0m
+[0;32mI (779) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (784) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (788) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (820) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (820) UIConfig: Initializing UI configuration system[0m
+[0;32mI (822) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (827) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (830) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (834) CYGM:   DST: Enabled[0m
+[0;32mI (837) CYGM:   Format: 12hr[0m
+[0;32mI (841) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F, Interval: 5 min)[0m
+[0;32mI (848) CYGM: Loaded weather settings from NVS:[0m
+[0;32mI (852) CYGM:   Zipcode: 98092[0m
+[0;32mI (855) CYGM:   Unit: Fahrenheit[0m
+[0;32mI (858) CYGM:   Update interval: 5 minutes[0m
+[0;32mI (863) NVS_CONFIG: Alarm settings loaded from NVS[0m
+[0;32mI (866) CYGM: Alarm settings loaded from NVS[0m
+[0;32mI (870) CYGM: Initializing LCD backlight[0m
+[0;32mI (874) CYGM: Initializing SPI bus[0m
+[0;32mI (878) CYGM: Initializing LCD panel IO[0m
+[0;32mI (882) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (1005) CYGM: LCD initialized successfully[0m
+[0;32mI (1006) CYGM: LED PWM initialized[0m
+[0;32mI (1006) CYGM: Buzzer PWM initialized (GPIO 26)[0m
+[0;32mI (1008) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (1008) CYGM: UI Task started on Core 1[0m
+[0;32mI (1013) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (1014) wifi:wifi driver task: 3ffd6de8, prio:23, stack:6656, core=0W (1018) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+
+[0;32mI (1041) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (1054) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (1054) wifi:wifi certification version: v7.0[0m
+[0;32mI (1055) wifi:config NVS flash: enabled[0m
+[0;32mI (1057) wifi:config nano formatting: disabled[0m
+[0;32mI (1061) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1066) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1070) wifi:Init management short buffer num: 32[0m
+[0;32mI (1074) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1079) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1083) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1087) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1092) wifi_init: rx ba win: 6[0m
+[0;32mI (1093) wifi_init: accept mbox: 6[0m
+[0;32mI (1097) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1100) wifi_init: udp mbox: 6[0m
+[0;32mI (1103) wifi_init: tcp mbox: 6[0m
+[0;32mI (1105) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1109) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1112) wifi_init: tcp mss: 1440[0m
+[0;32mI (1115) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1119) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1124) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1204) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
+[0;32mI (1013) CYGM: System initialized - tasks running[0m
+[0;32mI (1262) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1263) wifi:enable tsf[0m
+[0;32mI (1266) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1267) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1268) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1274) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1279) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1286) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (1311) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1312) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1431) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1439) wifi:state: assoc -> run (0x10)[0m
+[0;33mW (1452) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1452) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1454) CST820 Driver: IC id: 183[0m
+[0;32mI (1456) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1462) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1468) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1473) CYGM: CardKB initialized[0m
+[0;32mI (1475) CYGM: Initializing LVGL[0m
+[0;32mI (1484) CYGM: LVGL initialized successfully[0m
+[0;32mI (1512) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1555) wifi:connected with Look Ma, No Wires!, aid = 6, channel 6, BW20, bssid = 50:27:a9:83:72:25[0m
+[0;32mI (1556) wifi:security: WPA2-PSK, phy: bgn, rssi: -70[0m
+[0;32mI (1562) wifi:pm start, type: 1[0m
+
+[0;32mI (1563) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1626) LVGL: Starting LVGL task[0m
+[0;32mI (1716) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1717) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (2087) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:83:72:25), tid:0, ssn:0, winSize:64[0m
+[0;32mI (3014) main_task: Returned from app_main()[0m
+[0;32mI (4108) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (4109) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (4110) CYGM: WiFi connected successfully[0m
+[0;32mI (4115) CYGM: Web server DISABLED (to save memory for SSL). Set ENABLE_WEB_SERVER=1 to enable.[0m
+[0;32mI (4122) CYGM: Initializing SNTP[0m
+[0;32mI (4127) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4132) CYGM: SNTP initialized with 3 servers. Waiting for system time to be set...[0m
+[0;32mI (4139) CYGM: Current system time BEFORE sync: 1969-12-31 16:00:03[0m
+[0;32mI (4147) CYGM: Found saved Dexcom credentials, will attempt auto-login after time sync[0m
+[0;32mI (4154) CYGM: Waiting for SNTP time sync before Dexcom auth (required for SSL)...[0m
+[0;32mI (4160) CYGM: Current system time: 1969-12-31 16:00:03[0m
+[0;32mI (4165) CYGM: Waiting for SNTP time sync...[0m
+[0;32mI (6168) CYGM: === TIME SYNCHRONIZED FROM SNTP SERVER ===[0m
+[0;32mI (6169) CYGM: New system time: 2026-01-29 22:09:04[0m
+[0;32mI (6170) CYGM: Time synced: 2026-01-29 22:09:04[0m
+[0;32mI (6172) CYGM: Time synced successfully, proceeding with Dexcom auto-login[0m
+[0;32mI (6178) CYGM: Dexcom auth attempt 1/5...[0m
+[0;32mI (6182) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (6187) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (6191) DEXCOM: System time at auth: 2026-01-29 22:09:04[0m
+[0;32mI (6196) DEXCOM: Trying US region...[0m
+[0;32mI (6200) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (6204) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (6214) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (6221) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (6225) DEXCOM: Performing request...[0m
+[0;32mI (8080) DEXCOM: Result: ESP_OK (status 200)[0m
+[0;32mI (8081) DEXCOM: Got account ID: 0052f8e5...[0m
+[0;32mI (8581) DEXCOM: Getting session ID...[0m
+[0;32mI (9308) DEXCOM: Got session ID: 8b193bac...[0m
+[0;32mI (9310) NVS_CONFIG: Dexcom credentials saved to NVS[0m
+[0;32mI (9310) DEXCOM: Dexcom authentication successful on US region![0m
+[0;32mI (9312) DEXCOM: Keeping persistent HTTP client alive for glucose fetches[0m
+[0;32mI (9318) CYGM: Dexcom auto-login successful on attempt 1![0m
+[0;32mI (9325) DEXCOM: Fetching glucose data...[0m
+[0;32mI (9327) DEXCOM: Free heap before glucose fetch: 26128 bytes[0m
+[0;32mI (9333) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (9516) DEXCOM: Glucose: 284 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (9517) CYGM: Initial glucose: 284 mg/dL, trend: Steady[0m
+[0;32mI (9517) CYGM: First glucose reading received - playing success sound[0m
+[0;32mI (10023) CYGM: Alarm state changed: 0 -> 2[0m
+[0;33mW (10023) CYGM: 🚨 ALARM TRIGGERED: High Warning (threshold: 200 mg/dL)[0m
+[0;32mI (10023) CYGM: Playing alarm tone: 2 at volume 60%[0m
+[0;32mI (10834) CYGM: Initializing SD card logger (after Dexcom auth for memory)...[0m
+[0;32mI (10835) CYGM: Free heap before closing Dexcom: 26208 bytes[0m
+[0;32mI (10836) DEXCOM: Closing persistent HTTP client to free memory (~30KB)[0m
+[0;32mI (10851) DEXCOM: Free heap after closing Dexcom client: 44416 bytes[0m
+[0;32mI (10852) CYGM: Free heap after closing Dexcom: 44416 bytes[0m
+[0;32mI (10853) SD_LOGGER: Initializing SD card logger (SPI mode)[0m
+[0;32mI (10859) SD_LOGGER: Pins: MISO=19, MOSI=23, CLK=18, CS=5[0m
+[0;32mI (10865) SD_LOGGER: Free heap after SPI bus init: 44248 bytes[0m
+[0;32mI (10872) sdspi_transaction: cmd=52, R1 response: command not supported[0m
+[0;32mI (10918) sdspi_transaction: cmd=5, R1 response: command not supported[0m
+[1;31mE (10942) spi_master: check_trans_valid(1094): txdata transfer > host maximum[0m
+[1;31mE (10942) sdmmc_cmd: sdmmc_read_sectors_dma: sdmmc_send_cmd returned 0x102, status 0xff04[0m
+[1;31mE (10945) diskio_sdmmc: sdmmc_read_blocks failed (0x102)[0m
+[0;33mW (10951) vfs_fat_sdmmc: failed to mount card (1)[0m
+[1;31mE (10955) vfs_fat_sdmmc: mount_to_vfs failed (0xffffffff).[0m
+[1;31mE (10961) SD_LOGGER: Failed to mount filesystem. Card not formatted or not inserted.[0m
+[0;33mW (10968) CYGM: SD card logger failed to initialize (SD card may not be inserted)[0m
+[0;32mI (10975) CYGM: Reopening Dexcom client after SD init...[0m
+[0;32mI (10980) DEXCOM: Re-opening persistent HTTP client for Dexcom[0m
+[0;32mI (10987) DEXCOM: Persistent HTTP client re-opened successfully[0m
+[0;32mI (10991) DEXCOM: Free heap after reopening Dexcom client: 41792 bytes[0m
+[0;32mI (10997) CYGM: Free heap after reopening Dexcom: 41792 bytes[0m
+[0;32mI (11003) CYGM: Starting weather task (after Dexcom, HTTP mode)...[0m
+[0;32mI (11009) CYGM: Starting glucose update task (90 second interval)...[0m
+[0;32mI (11009) CYGM: Weather update task started[0m
+[0;32mI (11015) CYGM: Glucose update task started (90 second interval)[0m
+[0;32mI (11019) CYGM: Waiting 15 seconds before first weather attempt...[0m
+[0;32mI (21024) CYGM: Fetching periodic glucose reading...[0m
+[0;33mW (21024) DEXCOM: Rate limited - wait 78 seconds[0m
+[0;33mW (21031) CYGM: Periodic glucose fetch failed: ESP_ERR_INVALID_STATE[0m
+[0;32mI (26030) CYGM: Free heap before weather geocoding: 33076 bytes[0m
+[0;32mI (26031) CYGM: Suspending SD logger to free memory for weather operations...[0m
+[0;32mI (26032) CYGM: Closing Dexcom client to free memory for weather operations...[0m
+[0;32mI (26038) DEXCOM: Closing persistent HTTP client to free memory (~30KB)[0m
+[0;32mI (26045) DEXCOM: Free heap after closing Dexcom client: 35388 bytes[0m
+[0;32mI (27051) CYGM: Geocoding zipcode: 98092 (time is synced)[0m
+[0;32mI (27051) CYGM: Free heap before geocoding attempt 1: 35388 bytes[0m
+[0;32mI (27052) CYGM: Geocoding URL: https://nominatim.openstreetmap.org/search?postalcode=98092&country=us&format=json&limit=1&addressdetails=1[0m
+[0;32mI (28139) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (29377) CYGM: Geocoding HTTP result: ESP_OK (status: 200)[0m
+[0;32mI (29378) CYGM: Geocoding response: [{"place_id":353663216,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","lat":"47.2927623","lon":"-122.1707181","class":"place","type":"postcode","place_rank":21,"importance":0.12000999999999995,"addresstype":"postcode","name":"98092","display_name":"98092, King County, Washington, United States","address":{"postcode":"98092","county":"King County","state":"Washington","ISO3166-2-lvl4":"US-WA","country":"United States","country_code":"us"},"boundingbox":["47.2427623","47.3427623","-122.2207181","-122.1207181"]}][0m
+[0;32mI (29427) CYGM: Zipcode 98092 -> Lat: 47.2928, Lon: -122.1707, Location: King, WA[0m
+[0;32mI (29436) CYGM: Free heap after geocoding attempt 1: 34020 bytes[0m
+[0;32mI (29437) CYGM: Location found: 47.2928, -122.1707[0m
+[0;32mI (31441) CYGM: Free heap before reverse geocoding: 34460 bytes[0m
+[0;32mI (31442) CYGM: Reverse geocoding URL: https://nominatim.openstreetmap.org/reverse?lat=47.2928&lon=-122.1707&format=json&addressdetails=1[0m
+[0;32mI (32474) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (33682) CYGM: Reverse geocoding HTTP result: ESP_OK (status: 200)[0m
+[0;32mI (33683) CYGM: Reverse geocoding response: {"place_id":303768711,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","osm_type":"way","osm_id":655459109,"lat":"47.2898098","lon":"-122.1714386","class":"building","type":"yes","place_rank":30,"importance":5.881818875405535e-05,"addresstype":"building","name":"","display_name":"12754, Southeast Green Valley Road, Muckleshoot, Auburn, King County, Washington, 98092, United States","address":{"house_number":"12754","road":"Southeast Green Valley Road","suburb":"Muckleshoot","town":"Auburn","county":"King County","state":"Washington","ISO3166-2-lvl4":"US-WA","postcode":"98092","country":"United States","country_code":"us"},"boundingbox":["47.2895569","47.2900618","-122.1716274","-122.1712504"]}[0m
+[0;32mI (33749) CYGM: Reverse geocode result: Auburn, WA[0m
+[0;32mI (33756) CYGM: Reverse geocoding successful[0m
+[0;32mI (33757) CYGM: Free heap after reverse geocoding: 33832 bytes[0m
+[0;32mI (35761) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (35762) CYGM: Free heap before weather fetch: 34160 bytes[0m
+[0;32mI (35763) CYGM: Weather URL: http://api.open-meteo.com/v1/forecast?latitude=47.2928&longitude=-122.1707&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1[0m
+[0;32mI (36747) CYGM: Weather HTTP result: ESP_OK (status: 200)[0m
+[0;32mI (36748) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.1538991928100586,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-29T22:00","interval":900,"temperature_2m":48.6,"weather_code":3},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F","sunrise":"iso8601","sunset":"iso8601"},"daily":{"time":["2026-01-29"],"temperature_2m_max":[50.8],"temperature_2m_min":[47.8],"sunrise":["2026-01-29T07:37"],"sunset":["2026-01-29T17:05"]}}[0m
+[0;32mI (36807) CYGM: Weather updated: 48 F (Hi: 50 F, Lo: 47 F), Code: 2[0m
+[0;32mI (36813) CYGM: Free heap after weather fetch: 33632 bytes[0m
+[0;32mI (36821) CYGM: Drawing weather icon code: 2 (Cloudy)[0m
+[0;32mI (36826) CYGM: Weather operations complete, re-opening Dexcom client...[0m
+[0;32mI (36827) DEXCOM: Re-opening persistent HTTP client for Dexcom[0m
+[0;32mI (36833) DEXCOM: Persistent HTTP client re-opened successfully[0m
+[0;32mI (36837) DEXCOM: Free heap after reopening Dexcom client: 31504 bytes[0m
+[0;32mI (36843) CYGM: Resuming SD logger after weather operations...[0m
+[0;33mW (36848) SD_LOGGER: SD logger not initialized, cannot resume[0m

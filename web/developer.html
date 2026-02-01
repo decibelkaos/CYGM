@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYGM - Developer Tools</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .dev-container {
+            max-width: 100%;
+            padding: 10px;
+        }
+        .tool-section {
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Developer Tools</h1>
+            <p class="subtitle">UI Editor & Icon Designer</p>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="settings.html">Settings</a></li>
+                <li><a href="developer.html">Developer Tools</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="dev-container">
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab" data-tab="tab-ui-editor">UI Layout Editor</button>
+            <button class="tab" data-tab="tab-icon-editor">Icon Editor</button>
+        </div>
+
+        <!-- UI Editor Tab -->
+        <div id="tab-ui-editor" class="tab-content">
+            <div class="dev-layout">
+                <!-- Live Preview Panel -->
+                <div class="preview-panel">
+                    <h3>Live Preview</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 10px;">
+                        320x240 Display
+                    </p>
+                    <canvas id="ui-preview-canvas" class="preview-canvas" width="320" height="240"></canvas>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-secondary" style="width: 100%;" onclick="refreshUIPreview()">
+                            Refresh Preview
+                        </button>
+                    </div>
+                    <div id="selection-box" style="margin-top: 10px; padding: 10px; background: var(--dark-bg); border-radius: 4px; display: none;">
+                        <strong>Selected:</strong> <span id="selected-element-name">--</span>
+                    </div>
+                </div>
+
+                <!-- Element Editor Panel -->
+                <div class="editor-panel">
+                    <h3>Element Properties</h3>
+                    <div id="element-editor">
+                        <p style="color: var(--text-secondary);">Select an element from the list below to edit its properties.</p>
+
+                        <div class="form-group">
+                            <label for="elem-x">X Position</label>
+                            <input type="number" id="elem-x" min="0" max="320">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="elem-y">Y Position</label>
+                            <input type="number" id="elem-y" min="0" max="240">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="elem-width">Width</label>
+                            <input type="number" id="elem-width" min="1" max="320">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="elem-height">Height</label>
+                            <input type="number" id="elem-height" min="1" max="240">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="elem-color">Color</label>
+                            <input type="color" id="elem-color">
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button class="btn btn-primary" onclick="applyElementChanges()">Apply</button>
+                            <button class="btn btn-secondary" onclick="cancelElementEdit()">Cancel</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 30px;">
+                        <h3>UI Elements</h3>
+                        <ul class="element-list" id="element-list">
+                            <!-- Populated by JavaScript -->
+                        </ul>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <button class="btn btn-danger" onclick="resetLayout()">Reset to Default Layout</button>
+                    </div>
+                </div>
+
+                <!-- Tools Panel -->
+                <div class="tools-panel">
+                    <h3>Quick Info</h3>
+                    <div style="padding: 10px; background: var(--dark-bg); border-radius: 4px; margin-bottom: 15px;">
+                        <p style="font-size: 0.85rem; color: var(--text-secondary);">
+                            <strong>Display Size:</strong> 320x240 pixels<br>
+                            <strong>Click</strong> element in list to select<br>
+                            <strong>Edit</strong> properties and click Apply<br>
+                            <strong>Reset</strong> to restore defaults
+                        </p>
+                    </div>
+
+                    <h3>Actions</h3>
+                    <button class="btn btn-success" style="width: 100%; margin-bottom: 10px;" onclick="saveCurrentLayout()">
+                        Save Layout
+                    </button>
+                    <button class="btn btn-secondary" style="width: 100%;" onclick="exportLayout()">
+                        Export as JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Icon Editor Tab -->
+        <div id="tab-icon-editor" class="tab-content">
+            <div class="card">
+                <h2>Icon Designer</h2>
+
+                <div class="form-group">
+                    <label for="icon-mode">Icon Type</label>
+                    <select id="icon-mode" onchange="changeIconMode()">
+                        <option value="trend">Trend Arrow</option>
+                        <option value="weather">Weather Icon</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="icon-selector">
+                    <label for="icon-id">Icon ID</label>
+                    <select id="icon-id" onchange="loadIconDesign()">
+                        <!-- Populated based on mode -->
+                    </select>
+                </div>
+
+                <div style="text-align: center; margin: 20px 0;">
+                    <canvas id="icon-canvas" class="icon-canvas" width="200" height="200"></canvas>
+                </div>
+
+                <div class="tool-section">
+                    <h3>Drawing Tools</h3>
+                    <div class="tool-buttons">
+                        <button class="tool-btn active" data-tool="pen" onclick="selectTool('pen')">Pen</button>
+                        <button class="tool-btn" data-tool="line" onclick="selectTool('line')">Line</button>
+                        <button class="tool-btn" data-tool="arc" onclick="selectTool('arc')">Arc</button>
+                        <button class="tool-btn" data-tool="rect" onclick="selectTool('rect')">Rectangle</button>
+                    </div>
+                </div>
+
+                <div class="tool-section">
+                    <h3>Tool Settings</h3>
+                    <div class="form-group">
+                        <label for="stroke-color">Color</label>
+                        <input type="color" id="stroke-color" value="#3B82F6">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="stroke-width">Line Width: <span id="stroke-width-value">4</span>px</label>
+                        <input type="range" id="stroke-width" min="1" max="20" value="4" oninput="updateStrokeWidth()">
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="round-caps" checked> Rounded line caps
+                        </label>
+                    </div>
+                </div>
+
+                <div class="tool-section">
+                    <h3>Paths</h3>
+                    <ul id="path-list" class="element-list">
+                        <!-- Populated by JavaScript -->
+                    </ul>
+                </div>
+
+                <div class="tool-section">
+                    <button class="btn btn-success" onclick="saveIconDesign()">Save Icon</button>
+                    <button class="btn btn-secondary" onclick="clearCanvas()">Clear Canvas</button>
+                    <button class="btn btn-secondary" onclick="undoPath()">Undo Last Path</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script src="/js/ui-editor.js"></script>
+    <script src="/js/icon-editor.js"></script>
+</body>
+</html>

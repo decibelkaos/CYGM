@@ -1,0 +1,309 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00210000 00100000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=7ae1ch (503324) map[0m
+[0;32mI (265) esp_image: segment 1: paddr=0008ae44 vaddr=3ffb0000 size=0427ch ( 17020) load[0m
+[0;32mI (271) esp_image: segment 2: paddr=0008f0c8 vaddr=40080000 size=00f50h (  3920) load[0m
+[0;32mI (273) esp_image: segment 3: paddr=00090020 vaddr=400d0020 size=e5de8h (941544) map[0m
+[0;32mI (598) esp_image: segment 4: paddr=00175e10 vaddr=40080f50 size=1abc8h (109512) load[0m
+[0;32mI (640) esp_image: segment 5: paddr=001909e0 vaddr=50000000 size=00098h (   152) load[0m
+[0;32mI (654) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (654) boot: Disabling RNG early entropy source...[0m
+[0;32mI (665) cpu_start: Multicore app[0m
+[0;32mI (673) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (674) cpu_start: Pro cpu start user code[0m
+[0;32mI (674) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (675) app_init: Application information:[0m
+[0;32mI (679) app_init: Project name:     cygm[0m
+[0;32mI (683) app_init: App version:      1[0m
+[0;32mI (686) app_init: Compile time:     Jan 27 2026 21:15:36[0m
+[0;32mI (691) app_init: ELF file SHA256:  25cb350c2...[0m
+[0;32mI (696) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (699) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (703) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (707) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (711) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (718) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (722) heap_init: At 3FFCC0B8 len 00013F48 (79 KiB): DRAM[0m
+[0;32mI (728) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (733) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (739) heap_init: At 4009BB18 len 000044E8 (17 KiB): IRAM[0m
+[0;33mW (745) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (757) spi_flash: detected chip: generic[0m
+[0;32mI (760) spi_flash: flash io: dio[0m
+[0;32mI (764) main_task: Started on CPU0[0m
+[0;32mI (767) main_task: Calling app_main()[0m
+[0;32mI (769) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (774) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (778) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (812) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (813) UIConfig: Initializing UI configuration system[0m
+[0;32mI (814) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (819) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (823) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (827) CYGM:   DST: Enabled[0m
+[0;32mI (830) CYGM:   Format: 12hr[0m
+[0;32mI (835) NVS_CONFIG: Cached location loaded: Auburn, WA (47.2928, -122.1707, zipcode: 98092)[0m
+[0;32mI (840) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F, Interval: 30 min)[0m
+[0;32mI (849) CYGM: Using cached weather location: Auburn, WA (47.2928, -122.1707, zipcode: 98092)[0m
+[0;32mI (857) CYGM: Timezone matches location: America/Los_Angeles[0m
+[0;32mI (862) CYGM: Loaded weather settings from NVS:[0m
+[0;32mI (866) CYGM:   Zipcode: 98092[0m
+[0;32mI (869) CYGM:   Unit: Fahrenheit[0m
+[0;32mI (872) CYGM:   Update interval: 30 minutes[0m
+[0;32mI (877) NVS_CONFIG: Alarm settings loaded from NVS[0m
+[0;32mI (881) CYGM: Alarm settings loaded from NVS[0m
+[0;32mI (885) CYGM: Initializing LCD backlight[0m
+[0;32mI (888) CYGM: Initializing SPI bus[0m
+[0;32mI (892) CYGM: Initializing LCD panel IO[0m
+[0;32mI (896) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (1019) CYGM: LCD initialized successfully[0m
+[0;32mI (1020) CYGM: LED PWM initialized[0m
+[0;32mI (1020) CYGM: Buzzer PWM initialized (GPIO 26)[0m
+[0;32mI (1021) CYGM: Initializing battery monitoring[0m
+[0;32mI (1024) CYGM: ADC calibration initialized[0m
+[0;32mI (1027) CYGM: Battery monitoring initialized (GPIO 39)[0m
+[0;32mI (1032) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (1032) CYGM: UI Task started on Core 1[0m
+[0;32mI (1040) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (1041) wifi:I (1040) CYGM: System initialized - tasks running[0m
+[0;33mW (1045) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+wifi driver task: 3ffd7c7c, prio:23, stack:6656, core=0
+[0;32mI (1067) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (1084) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (1085) wifi:wifi certification version: v7.0[0m
+[0;32mI (1085) wifi:config NVS flash: enabled[0m
+[0;32mI (1088) wifi:config nano formatting: disabled[0m
+[0;32mI (1092) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1097) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1101) wifi:Init management short buffer num: 32[0m
+[0;32mI (1106) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1110) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1114) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1118) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1123) wifi_init: rx ba win: 6[0m
+[0;32mI (1125) wifi_init: accept mbox: 6[0m
+[0;32mI (1128) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1131) wifi_init: udp mbox: 6[0m
+[0;32mI (1134) wifi_init: tcp mbox: 6[0m
+[0;32mI (1137) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1140) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1143) wifi_init: tcp mss: 1440[0m
+[0;32mI (1146) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1150) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1155) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1241) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1242) wifi:enable tsf[0m
+[0;32mI (1245) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1246) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1247) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1253) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1259) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1265) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (1291) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1293) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1326) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1344) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1391) wifi:connected with Look Ma, No Wires!, aid = 9, channel 6, BW20, bssid = 50:27:a9:75:07:45[0m
+[0;32mI (1392) wifi:security: WPA2-PSK, phy: bgn, rssi: -49[0m
+[0;32mI (1398) wifi:pm start, type: 1[0m
+
+[0;32mI (1398) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1433) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1434) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;33mW (1480) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1480) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1482) CST820 Driver: IC id: 183[0m
+[0;32mI (1485) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1490) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1497) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1501) CYGM: CardKB initialized[0m
+[0;32mI (1503) CYGM: Initializing LVGL[0m
+[0;32mI (1512) CYGM: LVGL initialized successfully[0m
+[0;32mI (1537) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1621) LVGL: Starting LVGL task[0m
+[0;32mI (1924) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:75:07:45), tid:0, ssn:0, winSize:64[0m
+[0;32mI (2813) main_task: Returned from app_main()[0m
+[0;32mI (5612) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (5613) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (5614) CYGM: WiFi connected successfully[0m
+[0;32mI (5619) CYGM: Initializing SNTP[0m
+[0;32mI (5622) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5627) CYGM: SNTP initialized with 3 servers. Waiting for system time to be set...[0m
+[0;32mI (5635) CYGM: Current system time BEFORE sync: 1969-12-31 16:00:04[0m
+[0;32mI (5643) CYGM: Found saved Dexcom credentials, will attempt auto-login after time sync[0m
+[0;32mI (5649) CYGM: Waiting for SNTP time sync before Dexcom auth (required for SSL)...[0m
+[0;32mI (5656) CYGM: Current system time: 1969-12-31 16:00:04[0m
+[0;32mI (5661) CYGM: Waiting for SNTP time sync...[0m
+[0;32mI (6622) CYGM: Starting battery monitor task[0m
+[0;32mI (6623) CYGM: Battery monitor task started[0m
+[0;32mI (6644) CYGM: Battery ADC: raw=3499, voltage_mv=2848, calculated=4.158V (divider=1.46x)[0m
+[0;32mI (6645) CYGM: Battery: 4.158V, 100%[0m
+[0;32mI (7883) CYGM: === TIME SYNCHRONIZED FROM SNTP SERVER ===[0m
+[0;32mI (7884) CYGM: New system time: 2026-01-31 02:06:34[0m
+[0;32mI (8165) CYGM: Time synced: 2026-01-31 02:06:34[0m
+[0;32mI (8166) CYGM: Time synced successfully, proceeding with Dexcom auto-login[0m
+[0;32mI (8166) CYGM: Dexcom auth attempt 1/5...[0m
+[0;32mI (8169) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (8174) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (8178) DEXCOM: System time at auth: 2026-01-31 02:06:34[0m
+[0;32mI (8183) DEXCOM: Trying US region...[0m
+[0;32mI (8187) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (8191) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (8201) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (8207) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (8212) DEXCOM: Performing request...[0m
+[0;32mI (10148) DEXCOM: Result: ESP_OK (status 200)[0m
+[0;32mI (10149) DEXCOM: Got account ID: 0052f8e5...[0m
+[0;32mI (10649) DEXCOM: Getting session ID...[0m
+[0;32mI (11176) DEXCOM: Got session ID: 3395dfec...[0m
+[0;32mI (11179) NVS_CONFIG: Dexcom credentials saved to NVS[0m
+[0;32mI (11179) DEXCOM: Dexcom authentication successful on US region![0m
+[0;32mI (11180) DEXCOM: Keeping persistent HTTP client alive for glucose fetches[0m
+[0;32mI (11187) CYGM: Dexcom auto-login successful on attempt 1![0m
+[0;32mI (11193) DEXCOM: Fetching glucose data...[0m
+[0;32mI (11196) DEXCOM: Free heap before glucose fetch: 18772 bytes[0m
+[0;32mI (11201) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (11384) DEXCOM: Glucose: 234 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (11385) CYGM: Initial glucose: 234 mg/dL, trend: Steady[0m
+[0;32mI (11385) CYGM: First glucose reading received - playing success sound[0m
+[0;32mI (11891) CYGM: Alarm state changed: 0 -> 2[0m
+[0;33mW (11891) CYGM: 🚨 ALARM TRIGGERED: High Warning (threshold: 226 mg/dL)[0m
+[0;32mI (11902) CYGM: Starting weather task (after Dexcom, HTTP mode)...[0m
+[0;32mI (11903) CYGM: Starting glucose update task (90 second interval)...[0m
+[0;32mI (11903) CYGM: Weather update task started[0m
+[0;32mI (11905) CYGM: Glucose update task started (90 second interval)[0m
+[0;32mI (11909) CYGM: Waiting 15 seconds before first weather attempt...[0m
+[0;32mI (26920) CYGM: Free heap before weather geocoding: 9940 bytes[0m
+[0;32mI (26920) CYGM: Using cached coordinates for zipcode 98092 (no geocoding needed)[0m
+[0;32mI (28922) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (28923) CYGM: Free heap before weather fetch: 9712 bytes[0m
+[0;32mI (28924) CYGM: Weather URL: http://api.open-meteo.com/v1/forecast?latitude=47.2928&longitude=-122.1707&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1[0m
+[0;32mI (29810) CYGM: Weather HTTP result: ESP_OK (status: 200)[0m
+[0;32mI (29811) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.12242794036865234,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-31T02:00","interval":900,"temperature_2m":46.4,"weather_code":3},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F","sunrise":"iso8601","sunset":"iso8601"},"daily":{"time":["2026-01-31"],"temperature_2m_max":[59.2],"temperature_2m_min":[45.5],"sunrise":["2026-01-31T07:34"],"sunset":["2026-01-31T17:09"]}}[0m
+[0;32mI (29871) CYGM: Weather updated: 46 F (Hi: 59 F, Lo: 45 F), Code: 2[0m
+[0;32mI (29877) CYGM: Free heap after weather fetch: 8700 bytes[0m
+[0;32mI (29885) CYGM: Drawing weather icon code: 2 (Cloudy)[0m
+[0;32mI (36747) CYGM: Battery ADC: raw=3501, voltage_mv=2849, calculated=4.160V (divider=1.46x)[0m
+[0;32mI (36748) CYGM: Battery: 4.160V, 100%[0m
+[0;32mI (66770) CYGM: Battery ADC: raw=3491, voltage_mv=2844, calculated=4.152V (divider=1.46x)[0m
+[0;32mI (66771) CYGM: Battery: 4.152V, 100%[0m
+[0;32mI (96794) CYGM: Battery ADC: raw=3501, voltage_mv=2849, calculated=4.160V (divider=1.46x)[0m
+[0;32mI (96795) CYGM: Battery: 4.160V, 100%[0m
+[0;32mI (101914) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (101915) DEXCOM: Fetching glucose data...[0m
+[0;32mI (101916) DEXCOM: Free heap before glucose fetch: 8924 bytes[0m
+[0;32mI (101917) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (102111) DEXCOM: Glucose: 233 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (102112) CYGM: Glucose updated: 233 mg/dL, trend: Steady[0m
+[0;32mI (126817) CYGM: Battery ADC: raw=3506, voltage_mv=2852, calculated=4.164V (divider=1.46x)[0m
+[0;32mI (126818) CYGM: Battery: 4.164V, 100%[0m
+[0;32mI (156840) CYGM: Battery ADC: raw=3500, voltage_mv=2849, calculated=4.160V (divider=1.46x)[0m
+[0;32mI (156841) CYGM: Battery: 4.160V, 100%[0m
+[0;32mI (186863) CYGM: Battery ADC: raw=3491, voltage_mv=2844, calculated=4.152V (divider=1.46x)[0m
+[0;32mI (186864) CYGM: Battery: 4.152V, 100%[0m
+[0;32mI (192123) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (192124) DEXCOM: Fetching glucose data...[0m
+[0;32mI (192125) DEXCOM: Free heap before glucose fetch: 8992 bytes[0m
+[0;32mI (192126) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (192425) DEXCOM: Glucose: 233 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (192426) CYGM: Glucose updated: 233 mg/dL, trend: Steady[0m
+[0;32mI (216886) CYGM: Battery ADC: raw=3430, voltage_mv=2809, calculated=4.101V (divider=1.46x)[0m
+[0;32mI (216887) CYGM: Battery: 4.101V, 100%[0m
+[0;32mI (246909) CYGM: Battery ADC: raw=3419, voltage_mv=2802, calculated=4.091V (divider=1.46x)[0m
+[0;32mI (246910) CYGM: Battery: 4.091V, 100%[0m
+[0;32mI (276932) CYGM: Battery ADC: raw=3413, voltage_mv=2799, calculated=4.087V (divider=1.46x)[0m
+[0;32mI (276933) CYGM: Battery: 4.087V, 100%[0m
+[0;32mI (282437) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (282438) DEXCOM: Fetching glucose data...[0m
+[0;32mI (282439) DEXCOM: Free heap before glucose fetch: 8992 bytes[0m
+[0;32mI (282440) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (282650) DEXCOM: Glucose: 233 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (282651) CYGM: Glucose updated: 233 mg/dL, trend: Steady[0m
+[0;32mI (306955) CYGM: Battery ADC: raw=3409, voltage_mv=2797, calculated=4.084V (divider=1.46x)[0m
+[0;32mI (306956) CYGM: Battery: 4.084V, 100%[0m
+[0;32mI (336978) CYGM: Battery ADC: raw=3408, voltage_mv=2796, calculated=4.082V (divider=1.46x)[0m
+[0;32mI (336979) CYGM: Battery: 4.082V, 100%[0m
+[0;32mI (367001) CYGM: Battery ADC: raw=3407, voltage_mv=2795, calculated=4.081V (divider=1.46x)[0m
+[0;32mI (367003) CYGM: Battery: 4.081V, 100%[0m
+[0;32mI (372662) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (372663) DEXCOM: Fetching glucose data...[0m
+[0;32mI (372664) DEXCOM: Free heap before glucose fetch: 9020 bytes[0m
+[0;32mI (372665) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (372854) DEXCOM: Glucose: 231 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (372855) CYGM: Glucose updated: 231 mg/dL, trend: Steady[0m
+[0;32mI (397026) CYGM: Battery ADC: raw=3406, voltage_mv=2795, calculated=4.081V (divider=1.46x)[0m
+[0;32mI (397027) CYGM: Battery: 4.081V, 100%[0m
+[0;32mI (427049) CYGM: Battery ADC: raw=3405, voltage_mv=2794, calculated=4.079V (divider=1.46x)[0m
+[0;32mI (427050) CYGM: Battery: 4.079V, 100%[0m
+[0;32mI (457072) CYGM: Battery ADC: raw=3404, voltage_mv=2794, calculated=4.079V (divider=1.46x)[0m
+[0;32mI (457073) CYGM: Battery: 4.079V, 100%[0m
+[0;32mI (462866) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (462868) DEXCOM: Fetching glucose data...[0m
+[0;32mI (462868) DEXCOM: Free heap before glucose fetch: 9020 bytes[0m
+[0;32mI (462869) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (463072) DEXCOM: Glucose: 231 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (463073) CYGM: Glucose updated: 231 mg/dL, trend: Steady[0m
+[0;32mI (487095) CYGM: Battery ADC: raw=3403, voltage_mv=2793, calculated=4.078V (divider=1.46x)[0m
+[0;32mI (487096) CYGM: Battery: 4.078V, 100%[0m
+[0;32mI (517118) CYGM: Battery ADC: raw=3404, voltage_mv=2794, calculated=4.079V (divider=1.46x)[0m
+[0;32mI (517119) CYGM: Battery: 4.079V, 100%[0m
+[0;32mI (547144) CYGM: Battery ADC: raw=3405, voltage_mv=2794, calculated=4.079V (divider=1.46x)[0m
+[0;32mI (547145) CYGM: Battery: 4.079V, 100%[0m
+[0;32mI (553084) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (553085) DEXCOM: Fetching glucose data...[0m
+[0;32mI (553086) DEXCOM: Free heap before glucose fetch: 9020 bytes[0m
+[0;32mI (553087) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (553289) DEXCOM: Glucose: 231 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (553289) CYGM: Glucose updated: 231 mg/dL, trend: Steady[0m
+[0;32mI (577167) CYGM: Battery ADC: raw=3400, voltage_mv=2791, calculated=4.075V (divider=1.46x)[0m
+[0;32mI (577168) CYGM: Battery: 4.075V, 100%[0m
+[0;32mI (607190) CYGM: Battery ADC: raw=3402, voltage_mv=2793, calculated=4.078V (divider=1.46x)[0m
+[0;32mI (607191) CYGM: Battery: 4.078V, 100%[0m
+[0;32mI (637213) CYGM: Battery ADC: raw=3399, voltage_mv=2791, calculated=4.075V (divider=1.46x)[0m
+[0;32mI (637214) CYGM: Battery: 4.075V, 100%[0m
+[0;32mI (643300) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (643301) DEXCOM: Fetching glucose data...[0m
+[0;32mI (643302) DEXCOM: Free heap before glucose fetch: 9020 bytes[0m
+[0;32mI (643303) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (643600) DEXCOM: Glucose: 227 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (643601) CYGM: Glucose updated: 227 mg/dL, trend: Steady[0m
+[0;32mI (667236) CYGM: Battery ADC: raw=3398, voltage_mv=2790, calculated=4.073V (divider=1.46x)[0m
+[0;32mI (667237) CYGM: Battery: 4.073V, 100%[0m
+[0;32mI (697261) CYGM: Battery ADC: raw=3397, voltage_mv=2790, calculated=4.073V (divider=1.46x)[0m
+[0;32mI (697262) CYGM: Battery: 4.073V, 100%[0m
+[0;32mI (727284) CYGM: Battery ADC: raw=3397, voltage_mv=2790, calculated=4.073V (divider=1.46x)[0m
+[0;32mI (727285) CYGM: Battery: 4.073V, 100%[0m
+[0;32mI (733613) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (733614) DEXCOM: Fetching glucose data...[0m
+[0;32mI (733615) DEXCOM: Free heap before glucose fetch: 9020 bytes[0m
+[0;32mI (733616) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (733916) DEXCOM: Glucose: 227 mg/dL, Trend: Steady (Status: 0)[0m
+[0;32mI (733916) CYGM: Glucose updated: 227 mg/dL, trend: Steady[0m
+[0;32mI (757307) CYGM: Battery ADC: raw=3396, voltage_mv=2789, calculated=4.072V (divider=1.46x)[0m
+[0;32mI (757308) CYGM: Battery: 4.072V, 100%[0m

@@ -1,0 +1,2044 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=6bb2ch (441132) map[0m
+[0;32mI (237) esp_image: segment 1: paddr=0007bb54 vaddr=3ffb0000 size=0424ch ( 16972) load[0m
+[0;32mI (243) esp_image: segment 2: paddr=0007fda8 vaddr=40080000 size=00270h (   624) load[0m
+[0;32mI (244) esp_image: segment 3: paddr=00080020 vaddr=400d0020 size=e36cch (931532) map[0m
+[0;32mI (566) esp_image: segment 4: paddr=001636f4 vaddr=40080270 size=1a488h (107656) load[0m
+[0;32mI (609) esp_image: segment 5: paddr=0017db84 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (622) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (622) boot: Disabling RNG early entropy source...[0m
+[0;32mI (632) cpu_start: Multicore app[0m
+[0;32mI (641) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (641) cpu_start: Pro cpu start user code[0m
+[0;32mI (641) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (643) app_init: Application information:[0m
+[0;32mI (647) app_init: Project name:     cygm[0m
+[0;32mI (650) app_init: App version:      1[0m
+[0;32mI (654) app_init: Compile time:     Jan 19 2026 08:48:52[0m
+[0;32mI (659) app_init: ELF file SHA256:  31dc0c466...[0m
+[0;32mI (663) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (667) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (671) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (675) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (679) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (685) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (690) heap_init: At 3FFC6C58 len 000193A8 (100 KiB): DRAM[0m
+[0;32mI (695) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (701) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (706) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (713) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (724) spi_flash: detected chip: generic[0m
+[0;32mI (728) spi_flash: flash io: dio[0m
+[0;32mI (732) main_task: Started on CPU0[0m
+[0;32mI (735) main_task: Calling app_main()[0m
+[0;32mI (737) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (742) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (746) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (773) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (774) CYGM: No saved time settings, using defaults (TZ: America/New_York)[0m
+[0;32mI (774) CYGM: No saved weather settings, using defaults[0m
+[0;32mI (778) CYGM: Initializing LCD backlight[0m
+[0;32mI (782) CYGM: Initializing SPI bus[0m
+[0;32mI (786) CYGM: Initializing LCD panel IO[0m
+[0;32mI (790) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (913) CYGM: LCD initialized successfully[0m
+[0;32mI (914) CYGM: LED PWM initialized[0m
+[0;32mI (916) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (916) CYGM: UI Task started on Core 1[0m
+[0;32mI (917) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (921) wifi:W (921) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+wifi driver task: 3ffd2fac, prio:23, stack:6656, core=0
+[0;32mI (938) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (955) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (955) wifi:wifi certification version: v7.0[0m
+[0;32mI (956) wifi:config NVS flash: enabled[0m
+[0;32mI (959) wifi:config nano formatting: disabled[0m
+[0;32mI (964) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (968) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (972) wifi:Init management short buffer num: 32[0m
+[0;32mI (977) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (981) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (985) wifi:Init static rx buffer num: 10[0m
+[0;32mI (989) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (994) wifi_init: rx ba win: 6[0m
+[0;32mI (995) wifi_init: accept mbox: 6[0m
+[0;32mI (998) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1001) wifi_init: udp mbox: 6[0m
+[0;32mI (1004) wifi_init: tcp mbox: 6[0m
+[0;32mI (1007) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1011) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1014) wifi_init: tcp mss: 1440[0m
+[0;32mI (1017) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1020) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1026) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;33mW (1031) phy_init: failed to load RF calibration data (0xffffffff), falling back to full calibration[0m
+[0;32mI (1106) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(2)[0m
+[0;32mI (920) CYGM: System initialized - tasks running[0m
+[0;32mI (1124) wifi:mode : sta (78:42:1c:94:e8:c0)[0m
+[0;32mI (1125) wifi:enable tsf[0m
+[0;32mI (1128) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1129) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1132) CYGM: No saved WiFi credentials - setup required[0m
+[0;32mI (1138) main_task: Returned from app_main()[0m
+[0;33mW (1351) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1351) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1353) CST820 Driver: IC id: 183[0m
+[0;32mI (1355) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1361) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1367) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1372) CYGM: CardKB initialized[0m
+[0;32mI (1374) CYGM: Initializing LVGL[0m
+[0;32mI (1385) CYGM: LVGL initialized successfully[0m
+[0;32mI (1402) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1465) LVGL: Starting LVGL task[0m
+[0;32mI (1467) CYGM: Touch debug task started[0m
+[0;32mI (15996) CYGM: TOUCH DETECTED: x=295, y=31[0m
+[0;32mI (16049) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (23600) CYGM: TOUCH DETECTED: x=131, y=187[0m
+[0;32mI (23648) CYGM: Menu item 3 clicked[0m
+[0;32mI (23649) CYGM: Launching Time/Date/Weather menu...[0m
+[0;32mI (24432) CYGM: TOUCH DETECTED: x=197, y=139[0m
+[0;32mI (24477) CYGM: WiFi Setup button clicked from submenu[0m
+[0;32mI (24483) CYGM: Scanning for WiFi networks...[0m
+[0;32mI (24484) WIFI_MGR: Starting WiFi scan...[0m
+[0;32mI (27089) WIFI_MGR: Found 4 WiFi networks[0m
+[0;32mI (27090) CYGM: Found 4 networks[0m
+[0;32mI (29041) CYGM: TOUCH DETECTED: x=174, y=74[0m
+[0;32mI (29142) CYGM: TOUCH DETECTED: x=174, y=74[0m
+[0;32mI (29180) CYGM: Selected network: Look Ma, No Wires![0m
+[0;32mI (30527) CYGM: TOUCH DETECTED: x=36, y=135[0m
+[0;32mI (30628) CYGM: Shift pressed, waiting for character or long press (2000ms for caps lock)[0m
+[0;32mI (31864) CYGM: Auto-switching to lowercase after single uppercase char (elapsed: 1236 ms)[0m
+[0;32mI (33968) CYGM: TOUCH DETECTED: x=147, y=102[0m
+[0;32mI (34878) CYGM: TOUCH DETECTED: x=43, y=135[0m
+[0;32mI (34967) CYGM: Shift pressed, waiting for character or long press (2000ms for caps lock)[0m
+[0;32mI (35769) CYGM: Auto-switching to lowercase after single uppercase char (elapsed: 802 ms)[0m
+[0;32mI (37297) CYGM: TOUCH DETECTED: x=212, y=176[0m
+[0;32mI (37809) CYGM: TOUCH DETECTED: x=230, y=99[0m
+[0;32mI (39576) CYGM: TOUCH DETECTED: x=219, y=100[0m
+[0;32mI (39677) CYGM: TOUCH DETECTED: x=219, y=100[0m
+[0;32mI (40486) CYGM: TOUCH DETECTED: x=96, y=140[0m
+[0;32mI (42399) CYGM: TOUCH DETECTED: x=107, y=142[0m
+[0;32mI (43362) CYGM: TOUCH DETECTED: x=311, y=97[0m
+[0;32mI (44271) CYGM: TOUCH DETECTED: x=96, y=140[0m
+[0;32mI (44372) CYGM: TOUCH DETECTED: x=96, y=140[0m
+[0;32mI (46314) CYGM: TOUCH DETECTED: x=99, y=139[0m
+[0;32mI (47121) CYGM: TOUCH DETECTED: x=311, y=93[0m
+[0;32mI (49584) CYGM: TOUCH DETECTED: x=311, y=223[0m
+[0;32mI (49684) CYGM: Connecting to WiFi: Look Ma, No Wires! with password: NotPenis[0m
+[0;32mI (49688) NVS_CONFIG: WiFi credentials saved to NVS[0m
+[0;32mI (49688) CYGM: WiFi credentials saved to NVS[0m
+[0;32mI (49690) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (49696) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (50601) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (50603) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (50778) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (50827) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (50862) wifi:connected with Look Ma, No Wires!, aid = 3, channel 6, BW20, bssid = 9c:a5:70:e1:4f:a5[0m
+[0;32mI (50863) wifi:security: WPA2-PSK, phy: bgn, rssi: -83[0m
+[0;32mI (50874) wifi:pm start, type: 1[0m
+
+[0;32mI (50874) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (50918) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (50919) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (58408) wifi:<ba-add>idx:0 (ifx:0, 9c:a5:70:e1:4f:a5), tid:0, ssn:0, winSize:64[0m
+[0;32mI (73440) CYGM: TOUCH DETECTED: x=311, y=226[0m
+[0;32mI (73541) CYGM: TOUCH DETECTED: x=311, y=226[0m
+[0;32mI (76135) esp_netif_handlers: sta ip: 192.168.7.71, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (76136) WIFI_MGR: Connected! IP: 192.168.7.71[0m
+[0;32mI (76137) CYGM: WiFi connected successfully![0m
+[0;32mI (76141) CYGM: Initializing SNTP[0m
+[0;32mI (76145) CYGM: Timezone set: America/New_York -> EST5EDT,M3.2.0,M11.1.0[0m
+[0;32mI (76150) CYGM: Waiting for system time to be set via SNTP...[0m
+[0;32mI (76156) CYGM: Starting time update task[0m
+[0;32mI (76160) CYGM: Starting weather update task[0m
+[0;32mI (76160) CYGM: Current TZ env: EST5EDT,M3.2.0,M11.1.0[0m
+[0;32mI (76164) CYGM: Weather update task started[0m
+[0;32mI (76169) CYGM: Time: 1969-12-31 19:01:15 (user_24hr=0, user_tz=America/New_York)[0m
+[0;32mI (76264) CYGM: Updating WiFi status label to Connected[0m
+[0;32mI (84907) CYGM: TOUCH DETECTED: x=299, y=22[0m
+[0;32mI (84997) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (86320) CYGM: Current TZ env: EST5EDT,M3.2.0,M11.1.0[0m
+[0;32mI (86321) CYGM: Time: 1969-12-31 19:01:25 (user_24hr=0, user_tz=America/New_York)[0m
+[0;32mI (89183) CYGM: TOUCH DETECTED: x=200, y=191[0m
+[0;32mI (89230) CYGM: Menu item 3 clicked[0m
+[0;32mI (89231) CYGM: Launching Time/Date/Weather menu...[0m
+[0;32mI (91032) CYGM: TOUCH DETECTED: x=228, y=84[0m
+[0;32mI (91106) CYGM: Time/Date settings clicked[0m
+[0;32mI (91271) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (92212) CYGM: TOUCH DETECTED: x=262, y=86[0m
+[0;32mI (93225) CYGM: TOUCH DETECTED: x=195, y=180[0m
+[0;32mI (93327) CYGM: TOUCH DETECTED: x=195, y=173[0m
+[0;32mI (93457) CYGM: TOUCH DETECTED: x=200, y=160[0m
+[0;32mI (93573) CYGM: TOUCH DETECTED: x=202, y=152[0m
+[0;32mI (93688) CYGM: TOUCH DETECTED: x=203, y=142[0m
+[0;32mI (93800) CYGM: TOUCH DETECTED: x=204, y=132[0m
+[0;32mI (93911) CYGM: TOUCH DETECTED: x=204, y=126[0m
+[0;32mI (94022) CYGM: TOUCH DETECTED: x=207, y=117[0m
+[0;32mI (94135) CYGM: TOUCH DETECTED: x=208, y=107[0m
+[0;32mI (94246) CYGM: TOUCH DETECTED: x=208, y=101[0m
+[0;32mI (95280) CYGM: TOUCH DETECTED: x=127, y=183[0m
+[0;32mI (95396) CYGM: Timezone changed to: US Pacific (PT) (America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0)[0m
+[0;32mI (95396) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (95399) CYGM: Time: 2026-01-22 20:02:11 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (96323) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (96324) CYGM: Time: 2026-01-22 20:02:12 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (96998) CYGM: TOUCH DETECTED: x=176, y=198[0m
+[0;32mI (97111) CYGM: TOUCH DETECTED: x=176, y=198[0m
+[0;32mI (97132) CYGM: Saving time settings to NVS...[0m
+[0;32mI (97136) NVS_CONFIG: Time settings saved to NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (97136) CYGM: Time settings saved successfully[0m
+[0;32mI (97138) CYGM: Timezone applied: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (97145) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (97150) CYGM: Time: 2026-01-22 20:02:13 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (99847) CYGM: TOUCH DETECTED: x=210, y=157[0m
+[0;32mI (99858) CYGM: Weather settings clicked[0m
+[0;32mI (100756) CYGM: TOUCH DETECTED: x=195, y=89[0m
+[0;32mI (100789) CYGM: Zipcode edit clicked[0m
+Guru Meditation Error: Core  1 panic'ed (LoadProhibited). Exception was unhandled.
+
+Core  1 register dump:
+PC      : 0x400e5ef9  PS      : 0x00060430  A0      : 0x800fcba9  A1      : 0x3ffdc120  
+A2      : 0x3ffc26a0  A3      : 0x3ffbb07c  A4      : 0x00050000  A5      : 0x00000005  
+A6      : 0x00000000  A7      : 0x00000000  A8      : 0x00000030  A9      : 0x00000038  
+A10     : 0x00000007  A11     : 0x00000040  A12     : 0x00000000  A13     : 0x00000000  
+A14     : 0x00000000  A15     : 0x00000000  SAR     : 0x0000001f  EXCCAUSE: 0x0000001c  
+EXCVADDR: 0x00000030  LBEG    : 0x400013f9  LEND    : 0x4000140d  LCOUNT  : 0xfffffffe  
+
+
+Backtrace: 0x400e5ef6:0x3ffdc120 0x400fcba6:0x3ffdc140 0x401a48d9:0x3ffdc160 0x400e7c61:0x3ffdc180 0x400e1bb0:0x3ffdc1a0 0x400ec0d7:0x3ffdc1c0 0x400da965:0x3ffdc1e0 0x400dbd42:0x3ffdc200 0x400dead9:0x3ffdc220 0x400deb86:0x3ffdc240 0x400deffe:0x3ffdc280 0x400dfc7a:0x3ffdc2b0 0x400dfd81:0x3ffdc2d0 0x400ee8f1:0x3ffdc310 0x400ee99e:0x3ffdc330 0x400ddc68:0x3ffdc350 0x4008b201:0x3ffdc370
+
+
+
+
+ELF file SHA256: 31dc0c466
+
+Rebooting...
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (27) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (31) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=6bb2ch (441132) map[0m
+[0;32mI (237) esp_image: segment 1: paddr=0007bb54 vaddr=3ffb0000 size=0424ch ( 16972) load[0m
+[0;32mI (243) esp_image: segment 2: paddr=0007fda8 vaddr=40080000 size=00270h (   624) load[0m
+[0;32mI (244) esp_image: segment 3: paddr=00080020 vaddr=400d0020 size=e36cch (931532) map[0m
+[0;32mI (566) esp_image: segment 4: paddr=001636f4 vaddr=40080270 size=1a488h (107656) load[0m
+[0;32mI (608) esp_image: segment 5: paddr=0017db84 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (622) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (622) boot: Disabling RNG early entropy source...[0m
+[0;32mI (632) cpu_start: Multicore app[0m
+[0;32mI (640) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (641) cpu_start: Pro cpu start user code[0m
+[0;32mI (641) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (643) app_init: Application information:[0m
+[0;32mI (646) app_init: Project name:     cygm[0m
+[0;32mI (650) app_init: App version:      1[0m
+[0;32mI (653) app_init: Compile time:     Jan 19 2026 08:48:52[0m
+[0;32mI (659) app_init: ELF file SHA256:  31dc0c466...[0m
+[0;32mI (663) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (667) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (670) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (674) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (679) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (685) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (690) heap_init: At 3FFC6C58 len 000193A8 (100 KiB): DRAM[0m
+[0;32mI (695) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (700) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (706) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (712) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (724) spi_flash: detected chip: generic[0m
+[0;32mI (728) spi_flash: flash io: dio[0m
+[0;32mI (732) main_task: Started on CPU0[0m
+[0;32mI (735) main_task: Calling app_main()[0m
+[0;32mI (737) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (742) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (746) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (777) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (779) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (779) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (783) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (787) CYGM:   DST: Enabled[0m
+[0;32mI (789) CYGM:   Format: 12hr[0m
+[0;32mI (792) CYGM: No saved weather settings, using defaults[0m
+[0;32mI (797) CYGM: Initializing LCD backlight[0m
+[0;32mI (801) CYGM: Initializing SPI bus[0m
+[0;32mI (804) CYGM: Initializing LCD panel IO[0m
+[0;32mI (808) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (932) CYGM: LCD initialized successfully[0m
+[0;32mI (933) CYGM: LED PWM initialized[0m
+[0;32mI (935) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (935) CYGM: UI Task started on Core 1[0m
+[0;32mI (936) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (940) wifi:W (940) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+wifi driver task: 3ffd3050, prio:23, stack:6656, core=0
+[0;32mI (957) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (975) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (976) wifi:wifi certification version: v7.0[0m
+[0;32mI (976) wifi:config NVS flash: enabled[0m
+[0;32mI (978) wifi:config nano formatting: disabled[0m
+[0;32mI (983) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (987) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (991) wifi:Init management short buffer num: 32[0m
+[0;32mI (996) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1000) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1004) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1008) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1013) wifi_init: rx ba win: 6[0m
+[0;32mI (1015) wifi_init: accept mbox: 6[0m
+[0;32mI (1018) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1021) wifi_init: udp mbox: 6[0m
+[0;32mI (1024) wifi_init: tcp mbox: 6[0m
+[0;32mI (1027) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1030) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1033) wifi_init: tcp mss: 1440[0m
+[0;32mI (1036) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1040) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1045) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1128) wifi:mode : sta (78:42:1c:94:e8:c0)[0m
+[0;32mI (1129) wifi:enable tsf[0m
+[0;32mI (1132) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1133) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1134) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1140) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1145) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1152) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (939) CYGM: System initialized - tasks running[0m
+[0;32mI (1163) main_task: Returned from app_main()[0m
+[0;32mI (1173) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1175) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1203) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1212) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1244) wifi:connected with Look Ma, No Wires!, aid = 8, channel 6, BW20, bssid = 50:27:a9:83:72:25[0m
+[0;32mI (1245) wifi:security: WPA2-PSK, phy: bgn, rssi: -72[0m
+[0;32mI (1251) wifi:pm start, type: 1[0m
+
+[0;32mI (1251) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1281) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1282) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;33mW (1370) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1370) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1373) CST820 Driver: IC id: 183[0m
+[0;32mI (1375) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1380) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1387) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1391) CYGM: CardKB initialized[0m
+[0;32mI (1393) CYGM: Initializing LVGL[0m
+[0;32mI (1404) CYGM: LVGL initialized successfully[0m
+[0;32mI (1421) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1484) LVGL: Starting LVGL task[0m
+[0;32mI (1486) CYGM: Touch debug task started[0m
+[0;32mI (1776) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:83:72:25), tid:0, ssn:0, winSize:64[0m
+[0;32mI (2791) esp_netif_handlers: sta ip: 192.168.7.71, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (2792) WIFI_MGR: Connected! IP: 192.168.7.71[0m
+[0;32mI (2793) CYGM: WiFi connected successfully[0m
+[0;32mI (2798) CYGM: Initializing SNTP[0m
+[0;32mI (2801) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2806) CYGM: Waiting for system time to be set via SNTP...[0m
+[0;32mI (2812) CYGM: Weather update task started[0m
+[0;32mI (2812) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2820) CYGM: Time: 2026-01-22 20:02:18 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6407) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (12829) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (12830) CYGM: Time: 2026-01-22 20:02:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (22833) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (22834) CYGM: Time: 2026-01-22 20:02:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (32837) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (32838) CYGM: Time: 2026-01-22 20:02:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (42841) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (42842) CYGM: Time: 2026-01-22 20:03:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (52845) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (52846) CYGM: Time: 2026-01-22 20:03:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (62849) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (62850) CYGM: Time: 2026-01-22 20:03:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (68704) CYGM: TOUCH DETECTED: x=299, y=33[0m
+[0;32mI (68733) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (71748) CYGM: TOUCH DETECTED: x=180, y=184[0m
+[0;32mI (71778) CYGM: Menu item 3 clicked[0m
+[0;32mI (71779) CYGM: Launching Time/Date/Weather menu...[0m
+[0;32mI (72853) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (72854) CYGM: Time: 2026-01-22 20:03:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (76503) CYGM: TOUCH DETECTED: x=181, y=155[0m
+[0;32mI (76548) CYGM: Weather settings clicked[0m
+[0;32mI (77342) CYGM: TOUCH DETECTED: x=176, y=90[0m
+[0;32mI (77414) CYGM: Zipcode edit clicked[0m
+[0;32mI (78809) CYGM: TOUCH DETECTED: x=174, y=164[0m
+[0;32mI (79214) CYGM: TOUCH DETECTED: x=126, y=172[0m
+[0;32mI (80348) CYGM: TOUCH DETECTED: x=175, y=163[0m
+[0;32mI (80763) CYGM: TOUCH DETECTED: x=117, y=99[0m
+[0;32mI (81773) CYGM: TOUCH DETECTED: x=272, y=128[0m
+[0;32mI (81833) CYGM: Zipcode entered: 98092[0m
+[0;32mI (82856) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (82857) CYGM: Time: 2026-01-22 20:03:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (83533) CYGM: TOUCH DETECTED: x=197, y=199[0m
+[0;32mI (83623) CYGM: Saving weather settings to NVS...[0m
+[0;32mI (83626) NVS_CONFIG: Weather settings saved to NVS (Zipcode: 98092, Unit: F)[0m
+[0;32mI (83626) CYGM: Weather settings saved successfully[0m
+[0;32mI (83628) CYGM: Weather will update on next refresh cycle[0m
+[0;32mI (87944) CYGM: TOUCH DETECTED: x=30, y=25[0m
+[0;32mI (88022) CYGM: Back button clicked - returning to home screen[0m
+[0;32mI (89098) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (89892) CYGM: TOUCH DETECTED: x=163, y=77[0m
+[0;32mI (89925) CYGM: Menu item 0 clicked[0m
+[0;32mI (89926) CYGM: Menu item not implemented yet[0m
+[0;32mI (92224) CYGM: TOUCH DETECTED: x=164, y=74[0m
+[0;32mI (92339) CYGM: Menu item 0 clicked[0m
+[0;32mI (92340) CYGM: Menu item not implemented yet[0m
+[0;32mI (92859) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (92860) CYGM: Time: 2026-01-22 20:03:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (94551) CYGM: TOUCH DETECTED: x=156, y=75[0m
+[0;32mI (94652) CYGM: TOUCH DETECTED: x=156, y=75[0m
+[0;32mI (94695) CYGM: Menu item 0 clicked[0m
+[0;32mI (94696) CYGM: Menu item not implemented yet[0m
+[0;32mI (102862) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (102863) CYGM: Time: 2026-01-22 20:04:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (112866) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (112867) CYGM: Time: 2026-01-22 20:04:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (122869) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (122870) CYGM: Time: 2026-01-22 20:04:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (132873) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (132874) CYGM: Time: 2026-01-22 20:04:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (142876) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (142876) CYGM: Time: 2026-01-22 20:04:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (152879) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (152880) CYGM: Time: 2026-01-22 20:04:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (162883) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (162884) CYGM: Time: 2026-01-22 20:05:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (172886) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (172887) CYGM: Time: 2026-01-22 20:05:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (182889) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (182890) CYGM: Time: 2026-01-22 20:05:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (192893) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (192893) CYGM: Time: 2026-01-22 20:05:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (202896) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (202897) CYGM: Time: 2026-01-22 20:05:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (212899) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (212899) CYGM: Time: 2026-01-22 20:05:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (222903) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (222903) CYGM: Time: 2026-01-22 20:06:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (232906) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (232907) CYGM: Time: 2026-01-22 20:06:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (242909) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (242910) CYGM: Time: 2026-01-22 20:06:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (252913) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (252914) CYGM: Time: 2026-01-22 20:06:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (262916) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (262916) CYGM: Time: 2026-01-22 20:06:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (272920) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (272920) CYGM: Time: 2026-01-22 20:06:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (282924) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (282925) CYGM: Time: 2026-01-22 20:07:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (292928) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (292928) CYGM: Time: 2026-01-22 20:07:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (302931) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (302932) CYGM: Time: 2026-01-22 20:07:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (312934) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (312935) CYGM: Time: 2026-01-22 20:07:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (322938) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (322938) CYGM: Time: 2026-01-22 20:07:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (332941) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (332941) CYGM: Time: 2026-01-22 20:07:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (342944) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (342944) CYGM: Time: 2026-01-22 20:08:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (352948) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (352948) CYGM: Time: 2026-01-22 20:08:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (362951) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (362952) CYGM: Time: 2026-01-22 20:08:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (372954) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (372954) CYGM: Time: 2026-01-22 20:08:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (382958) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (382958) CYGM: Time: 2026-01-22 20:08:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (392961) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (392962) CYGM: Time: 2026-01-22 20:08:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (402964) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (402964) CYGM: Time: 2026-01-22 20:09:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (412968) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (412968) CYGM: Time: 2026-01-22 20:09:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (422971) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (422972) CYGM: Time: 2026-01-22 20:09:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (432974) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (432975) CYGM: Time: 2026-01-22 20:09:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (442978) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (442978) CYGM: Time: 2026-01-22 20:09:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (452982) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (452983) CYGM: Time: 2026-01-22 20:09:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (462985) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (462985) CYGM: Time: 2026-01-22 20:10:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (472989) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (472990) CYGM: Time: 2026-01-22 20:10:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (482993) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (482994) CYGM: Time: 2026-01-22 20:10:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (492996) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (492997) CYGM: Time: 2026-01-22 20:10:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (502999) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (503000) CYGM: Time: 2026-01-22 20:10:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (513003) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (513004) CYGM: Time: 2026-01-22 20:10:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (523006) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (523006) CYGM: Time: 2026-01-22 20:11:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (533009) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (533010) CYGM: Time: 2026-01-22 20:11:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (543013) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (543014) CYGM: Time: 2026-01-22 20:11:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (553016) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (553016) CYGM: Time: 2026-01-22 20:11:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (563019) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (563019) CYGM: Time: 2026-01-22 20:11:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (573023) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (573024) CYGM: Time: 2026-01-22 20:11:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (583026) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (583027) CYGM: Time: 2026-01-22 20:12:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (593029) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (593029) CYGM: Time: 2026-01-22 20:12:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (603033) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (603034) CYGM: Time: 2026-01-22 20:12:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (613037) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (613038) CYGM: Time: 2026-01-22 20:12:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (623041) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (623042) CYGM: Time: 2026-01-22 20:12:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (633044) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (633044) CYGM: Time: 2026-01-22 20:12:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (643048) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (643048) CYGM: Time: 2026-01-22 20:13:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (653051) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (653052) CYGM: Time: 2026-01-22 20:13:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (663054) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (663055) CYGM: Time: 2026-01-22 20:13:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (673058) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (673059) CYGM: Time: 2026-01-22 20:13:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (683061) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (683062) CYGM: Time: 2026-01-22 20:13:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (693065) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (693066) CYGM: Time: 2026-01-22 20:13:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (703069) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (703069) CYGM: Time: 2026-01-22 20:14:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (713073) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (713073) CYGM: Time: 2026-01-22 20:14:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (723076) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (723077) CYGM: Time: 2026-01-22 20:14:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (733080) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (733081) CYGM: Time: 2026-01-22 20:14:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (743084) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (743084) CYGM: Time: 2026-01-22 20:14:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (753088) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (753088) CYGM: Time: 2026-01-22 20:14:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (763091) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (763092) CYGM: Time: 2026-01-22 20:15:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (773094) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (773095) CYGM: Time: 2026-01-22 20:15:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (783098) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (783099) CYGM: Time: 2026-01-22 20:15:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (793102) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (793103) CYGM: Time: 2026-01-22 20:15:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (803106) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (803107) CYGM: Time: 2026-01-22 20:15:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (813109) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (813110) CYGM: Time: 2026-01-22 20:15:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (823113) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (823114) CYGM: Time: 2026-01-22 20:16:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (833116) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (833116) CYGM: Time: 2026-01-22 20:16:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (843119) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (843120) CYGM: Time: 2026-01-22 20:16:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (853123) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (853123) CYGM: Time: 2026-01-22 20:16:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (863126) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (863127) CYGM: Time: 2026-01-22 20:16:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (873130) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (873130) CYGM: Time: 2026-01-22 20:16:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (883134) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (883134) CYGM: Time: 2026-01-22 20:17:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (893138) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (893138) CYGM: Time: 2026-01-22 20:17:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (903141) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (903142) CYGM: Time: 2026-01-22 20:17:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (913145) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (913145) CYGM: Time: 2026-01-22 20:17:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (923149) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (923149) CYGM: Time: 2026-01-22 20:17:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (933152) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (933153) CYGM: Time: 2026-01-22 20:17:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (943156) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (943157) CYGM: Time: 2026-01-22 20:18:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (953159) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (953159) CYGM: Time: 2026-01-22 20:18:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (963163) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (963164) CYGM: Time: 2026-01-22 20:18:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (973167) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (973168) CYGM: Time: 2026-01-22 20:18:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (983171) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (983172) CYGM: Time: 2026-01-22 20:18:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (993174) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (993174) CYGM: Time: 2026-01-22 20:18:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1003178) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1003178) CYGM: Time: 2026-01-22 20:19:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1013182) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1013183) CYGM: Time: 2026-01-22 20:19:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1023186) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1023187) CYGM: Time: 2026-01-22 20:19:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1033190) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1033190) CYGM: Time: 2026-01-22 20:19:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1043194) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1043194) CYGM: Time: 2026-01-22 20:19:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1053198) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1053199) CYGM: Time: 2026-01-22 20:19:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1063202) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1063203) CYGM: Time: 2026-01-22 20:20:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1073206) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1073207) CYGM: Time: 2026-01-22 20:20:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1083210) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1083211) CYGM: Time: 2026-01-22 20:20:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1093214) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1093214) CYGM: Time: 2026-01-22 20:20:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1103218) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1103219) CYGM: Time: 2026-01-22 20:20:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1113222) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1113223) CYGM: Time: 2026-01-22 20:20:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1123226) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1123227) CYGM: Time: 2026-01-22 20:21:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1133230) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1133230) CYGM: Time: 2026-01-22 20:21:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1143234) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1143235) CYGM: Time: 2026-01-22 20:21:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1153238) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1153239) CYGM: Time: 2026-01-22 20:21:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1163242) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1163243) CYGM: Time: 2026-01-22 20:21:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1173246) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1173246) CYGM: Time: 2026-01-22 20:21:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1183250) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1183250) CYGM: Time: 2026-01-22 20:22:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1193254) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1193254) CYGM: Time: 2026-01-22 20:22:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1203258) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1203259) CYGM: Time: 2026-01-22 20:22:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1213262) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1213263) CYGM: Time: 2026-01-22 20:22:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1223266) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1223266) CYGM: Time: 2026-01-22 20:22:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1233270) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1233270) CYGM: Time: 2026-01-22 20:22:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1243274) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1243274) CYGM: Time: 2026-01-22 20:23:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1253278) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1253278) CYGM: Time: 2026-01-22 20:23:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1263282) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1263283) CYGM: Time: 2026-01-22 20:23:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1273286) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1273286) CYGM: Time: 2026-01-22 20:23:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1283290) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1283290) CYGM: Time: 2026-01-22 20:23:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1293294) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1293294) CYGM: Time: 2026-01-22 20:23:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1303298) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1303299) CYGM: Time: 2026-01-22 20:24:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1313302) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1313303) CYGM: Time: 2026-01-22 20:24:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1323306) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1323307) CYGM: Time: 2026-01-22 20:24:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1333310) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1333310) CYGM: Time: 2026-01-22 20:24:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1343314) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1343314) CYGM: Time: 2026-01-22 20:24:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1353318) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1353319) CYGM: Time: 2026-01-22 20:24:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1363322) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1363323) CYGM: Time: 2026-01-22 20:25:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1373326) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1373326) CYGM: Time: 2026-01-22 20:25:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1383330) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1383331) CYGM: Time: 2026-01-22 20:25:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1393334) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1393334) CYGM: Time: 2026-01-22 20:25:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1403338) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1403338) CYGM: Time: 2026-01-22 20:25:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1413342) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1413343) CYGM: Time: 2026-01-22 20:25:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1423346) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1423346) CYGM: Time: 2026-01-22 20:26:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1433350) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1433351) CYGM: Time: 2026-01-22 20:26:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1443353) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1443353) CYGM: Time: 2026-01-22 20:26:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1453357) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1453358) CYGM: Time: 2026-01-22 20:26:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1463361) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1463362) CYGM: Time: 2026-01-22 20:26:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1473365) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1473365) CYGM: Time: 2026-01-22 20:26:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1483369) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1483369) CYGM: Time: 2026-01-22 20:27:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1493373) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1493373) CYGM: Time: 2026-01-22 20:27:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1503377) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1503378) CYGM: Time: 2026-01-22 20:27:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1513381) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1513382) CYGM: Time: 2026-01-22 20:27:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1523385) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1523386) CYGM: Time: 2026-01-22 20:27:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1533389) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1533389) CYGM: Time: 2026-01-22 20:27:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1543392) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1543392) CYGM: Time: 2026-01-22 20:28:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1553396) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1553396) CYGM: Time: 2026-01-22 20:28:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1563400) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1563401) CYGM: Time: 2026-01-22 20:28:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1573404) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1573405) CYGM: Time: 2026-01-22 20:28:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1583408) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1583408) CYGM: Time: 2026-01-22 20:28:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1593412) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1593413) CYGM: Time: 2026-01-22 20:28:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1603416) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1603416) CYGM: Time: 2026-01-22 20:29:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1613420) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1613421) CYGM: Time: 2026-01-22 20:29:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1623424) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1623425) CYGM: Time: 2026-01-22 20:29:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1633428) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1633429) CYGM: Time: 2026-01-22 20:29:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1643432) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1643433) CYGM: Time: 2026-01-22 20:29:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1653436) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1653436) CYGM: Time: 2026-01-22 20:29:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1663440) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1663441) CYGM: Time: 2026-01-22 20:30:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1673444) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1673444) CYGM: Time: 2026-01-22 20:30:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1683448) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1683449) CYGM: Time: 2026-01-22 20:30:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1693452) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1693453) CYGM: Time: 2026-01-22 20:30:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1703456) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1703456) CYGM: Time: 2026-01-22 20:30:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1713460) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1713460) CYGM: Time: 2026-01-22 20:30:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1723464) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1723465) CYGM: Time: 2026-01-22 20:31:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1733468) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1733469) CYGM: Time: 2026-01-22 20:31:14 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1743472) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1743473) CYGM: Time: 2026-01-22 20:31:24 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1753475) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1753475) CYGM: Time: 2026-01-22 20:31:34 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1763479) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1763479) CYGM: Time: 2026-01-22 20:31:44 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1773483) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1773483) CYGM: Time: 2026-01-22 20:31:54 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1783487) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1783488) CYGM: Time: 2026-01-22 20:32:04 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1793491) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1793491) CYGM: Time: 2026-01-22 20:32:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1803495) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1803496) CYGM: Time: 2026-01-22 20:32:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1807815) CYGM: Geocoding zipcode: 98092[0m
+[0;32mI (1808888) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (1810396) CYGM: Geocoding response: [{"place_id":353663216,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","lat":"47.2927623","lon":"-122.1707181","class":"place","type":"postcode","place_rank":21,"importance":0.12000999999999995,"addresstype":"postcode","name":"98092","display_name":"98092, King County, Washington, United States","boundingbox":["47.2427623","47.3427623","-122.2207181","-122.1207181"]}][0m
+[0;32mI (1810429) CYGM: Zipcode 98092 -> Lat: 47.2928, Lon: -122.1707[0m
+[0;32mI (1810435) CYGM: Location found: 47.2928, -122.1707[0m
+[0;32mI (1810436) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (1811449) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (1812754) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.12886524200439453,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-22T20:30","interval":900,"temperature_2m":36.5,"weather_code":2},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F"},"daily":{"time":["2026-01-22"],"temperature_2m_max":[41.6],"temperature_2m_min":[27.2]}}[0m
+[0;32mI (1812799) CYGM: Weather updated: 36°F (Hi: 41°F, Lo: 27°F), Code: 1[0m
+[0;32mI (1812814) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1812821) CYGM: Weather display updated: 36°F (Hi: 41°F, Lo: 27°F) - Partly Cloudy[0m
+[0;32mI (1813499) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1813500) CYGM: Time: 2026-01-22 20:32:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1823503) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1823504) CYGM: Time: 2026-01-22 20:32:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1833507) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1833508) CYGM: Time: 2026-01-22 20:32:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1843511) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1843511) CYGM: Time: 2026-01-22 20:33:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1853515) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1853516) CYGM: Time: 2026-01-22 20:33:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1863519) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1863520) CYGM: Time: 2026-01-22 20:33:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1873523) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1873523) CYGM: Time: 2026-01-22 20:33:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1883527) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1883528) CYGM: Time: 2026-01-22 20:33:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1893531) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1893532) CYGM: Time: 2026-01-22 20:33:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1903535) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1903535) CYGM: Time: 2026-01-22 20:34:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1913539) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1913539) CYGM: Time: 2026-01-22 20:34:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1923543) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1923544) CYGM: Time: 2026-01-22 20:34:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1933547) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1933548) CYGM: Time: 2026-01-22 20:34:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1943551) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1943551) CYGM: Time: 2026-01-22 20:34:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1953555) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1953555) CYGM: Time: 2026-01-22 20:34:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1963559) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1963559) CYGM: Time: 2026-01-22 20:35:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1973563) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1973563) CYGM: Time: 2026-01-22 20:35:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1983567) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1983568) CYGM: Time: 2026-01-22 20:35:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (1993571) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (1993571) CYGM: Time: 2026-01-22 20:35:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2003575) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2003575) CYGM: Time: 2026-01-22 20:35:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2013579) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2013579) CYGM: Time: 2026-01-22 20:35:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2023583) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2023584) CYGM: Time: 2026-01-22 20:36:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2033587) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2033588) CYGM: Time: 2026-01-22 20:36:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2043591) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2043592) CYGM: Time: 2026-01-22 20:36:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2053595) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2053595) CYGM: Time: 2026-01-22 20:36:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2063599) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2063600) CYGM: Time: 2026-01-22 20:36:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2073603) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2073603) CYGM: Time: 2026-01-22 20:36:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2083607) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2083608) CYGM: Time: 2026-01-22 20:37:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2093611) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2093611) CYGM: Time: 2026-01-22 20:37:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2103615) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2103616) CYGM: Time: 2026-01-22 20:37:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2113619) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2113620) CYGM: Time: 2026-01-22 20:37:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2123623) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2123623) CYGM: Time: 2026-01-22 20:37:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2133628) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2133628) CYGM: Time: 2026-01-22 20:37:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2143632) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2143633) CYGM: Time: 2026-01-22 20:38:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2153636) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2153636) CYGM: Time: 2026-01-22 20:38:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2163640) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2163641) CYGM: Time: 2026-01-22 20:38:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2173644) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2173645) CYGM: Time: 2026-01-22 20:38:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2183648) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2183648) CYGM: Time: 2026-01-22 20:38:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2193652) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2193653) CYGM: Time: 2026-01-22 20:38:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2203656) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2203656) CYGM: Time: 2026-01-22 20:39:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2213660) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2213660) CYGM: Time: 2026-01-22 20:39:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2223664) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2223665) CYGM: Time: 2026-01-22 20:39:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2233668) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2233668) CYGM: Time: 2026-01-22 20:39:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2243672) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2243673) CYGM: Time: 2026-01-22 20:39:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2253676) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2253676) CYGM: Time: 2026-01-22 20:39:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2263680) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2263681) CYGM: Time: 2026-01-22 20:40:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2273684) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2273684) CYGM: Time: 2026-01-22 20:40:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2283688) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2283689) CYGM: Time: 2026-01-22 20:40:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2293692) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2293693) CYGM: Time: 2026-01-22 20:40:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2303696) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2303696) CYGM: Time: 2026-01-22 20:40:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2313700) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2313701) CYGM: Time: 2026-01-22 20:40:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2323704) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2323704) CYGM: Time: 2026-01-22 20:41:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2333708) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2333708) CYGM: Time: 2026-01-22 20:41:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2343712) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2343713) CYGM: Time: 2026-01-22 20:41:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2353716) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2353716) CYGM: Time: 2026-01-22 20:41:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2363720) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2363721) CYGM: Time: 2026-01-22 20:41:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2373724) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2373724) CYGM: Time: 2026-01-22 20:41:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2383728) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2383728) CYGM: Time: 2026-01-22 20:42:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2393732) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2393733) CYGM: Time: 2026-01-22 20:42:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2403736) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2403737) CYGM: Time: 2026-01-22 20:42:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2413740) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2413740) CYGM: Time: 2026-01-22 20:42:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2423744) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2423744) CYGM: Time: 2026-01-22 20:42:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2433748) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2433748) CYGM: Time: 2026-01-22 20:42:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2443752) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2443753) CYGM: Time: 2026-01-22 20:43:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2453756) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2453757) CYGM: Time: 2026-01-22 20:43:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2463760) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2463761) CYGM: Time: 2026-01-22 20:43:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2473764) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2473764) CYGM: Time: 2026-01-22 20:43:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2483768) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2483768) CYGM: Time: 2026-01-22 20:43:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2493772) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2493773) CYGM: Time: 2026-01-22 20:43:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2503776) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2503776) CYGM: Time: 2026-01-22 20:44:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2513780) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2513780) CYGM: Time: 2026-01-22 20:44:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2523784) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2523785) CYGM: Time: 2026-01-22 20:44:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2533788) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2533788) CYGM: Time: 2026-01-22 20:44:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2543792) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2543793) CYGM: Time: 2026-01-22 20:44:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2553796) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2553796) CYGM: Time: 2026-01-22 20:44:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2563800) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2563800) CYGM: Time: 2026-01-22 20:45:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2573804) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2573804) CYGM: Time: 2026-01-22 20:45:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2583808) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2583809) CYGM: Time: 2026-01-22 20:45:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2593812) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2593813) CYGM: Time: 2026-01-22 20:45:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2603816) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2603816) CYGM: Time: 2026-01-22 20:45:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2613820) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2613820) CYGM: Time: 2026-01-22 20:45:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2623824) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2623824) CYGM: Time: 2026-01-22 20:46:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2633828) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2633828) CYGM: Time: 2026-01-22 20:46:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2643832) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2643833) CYGM: Time: 2026-01-22 20:46:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2653836) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2653836) CYGM: Time: 2026-01-22 20:46:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2663840) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2663840) CYGM: Time: 2026-01-22 20:46:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2673844) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2673844) CYGM: Time: 2026-01-22 20:46:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2683848) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2683849) CYGM: Time: 2026-01-22 20:47:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2693852) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2693852) CYGM: Time: 2026-01-22 20:47:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2703856) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2703857) CYGM: Time: 2026-01-22 20:47:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2713860) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2713860) CYGM: Time: 2026-01-22 20:47:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2723864) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2723864) CYGM: Time: 2026-01-22 20:47:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2733868) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2733868) CYGM: Time: 2026-01-22 20:47:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2743872) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2743873) CYGM: Time: 2026-01-22 20:48:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2753876) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2753876) CYGM: Time: 2026-01-22 20:48:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2763880) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2763881) CYGM: Time: 2026-01-22 20:48:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2773884) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2773884) CYGM: Time: 2026-01-22 20:48:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2783888) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2783889) CYGM: Time: 2026-01-22 20:48:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2793892) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2793893) CYGM: Time: 2026-01-22 20:48:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2803896) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2803896) CYGM: Time: 2026-01-22 20:49:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2813900) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2813900) CYGM: Time: 2026-01-22 20:49:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2823904) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2823905) CYGM: Time: 2026-01-22 20:49:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2833908) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2833908) CYGM: Time: 2026-01-22 20:49:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2843912) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2843913) CYGM: Time: 2026-01-22 20:49:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2853916) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2853916) CYGM: Time: 2026-01-22 20:49:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2863920) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2863920) CYGM: Time: 2026-01-22 20:50:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2873924) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2873924) CYGM: Time: 2026-01-22 20:50:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2883928) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2883929) CYGM: Time: 2026-01-22 20:50:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2893932) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2893933) CYGM: Time: 2026-01-22 20:50:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2903936) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2903937) CYGM: Time: 2026-01-22 20:50:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2913940) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2913940) CYGM: Time: 2026-01-22 20:50:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2923943) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2923943) CYGM: Time: 2026-01-22 20:51:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2933947) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2933948) CYGM: Time: 2026-01-22 20:51:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2943951) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2943951) CYGM: Time: 2026-01-22 20:51:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2953955) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2953955) CYGM: Time: 2026-01-22 20:51:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2963959) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2963959) CYGM: Time: 2026-01-22 20:51:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2973963) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2973963) CYGM: Time: 2026-01-22 20:51:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2983967) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2983968) CYGM: Time: 2026-01-22 20:52:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (2993971) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2993972) CYGM: Time: 2026-01-22 20:52:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3003975) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3003976) CYGM: Time: 2026-01-22 20:52:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3013979) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3013979) CYGM: Time: 2026-01-22 20:52:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3023983) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3023983) CYGM: Time: 2026-01-22 20:52:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3033987) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3033988) CYGM: Time: 2026-01-22 20:52:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3043991) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3043991) CYGM: Time: 2026-01-22 20:53:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3053995) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3053995) CYGM: Time: 2026-01-22 20:53:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3063999) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3064000) CYGM: Time: 2026-01-22 20:53:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3074003) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3074003) CYGM: Time: 2026-01-22 20:53:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3084007) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3084008) CYGM: Time: 2026-01-22 20:53:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3094011) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3094011) CYGM: Time: 2026-01-22 20:53:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3104015) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3104015) CYGM: Time: 2026-01-22 20:54:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3114019) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3114019) CYGM: Time: 2026-01-22 20:54:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3124023) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3124024) CYGM: Time: 2026-01-22 20:54:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3134027) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3134028) CYGM: Time: 2026-01-22 20:54:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3144031) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3144031) CYGM: Time: 2026-01-22 20:54:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3154034) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3154034) CYGM: Time: 2026-01-22 20:54:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3164038) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3164039) CYGM: Time: 2026-01-22 20:55:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3174042) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3174043) CYGM: Time: 2026-01-22 20:55:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3184046) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3184047) CYGM: Time: 2026-01-22 20:55:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3194050) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3194050) CYGM: Time: 2026-01-22 20:55:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3204054) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3204054) CYGM: Time: 2026-01-22 20:55:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3214058) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3214058) CYGM: Time: 2026-01-22 20:55:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3224062) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3224063) CYGM: Time: 2026-01-22 20:56:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3234066) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3234066) CYGM: Time: 2026-01-22 20:56:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3244070) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3244071) CYGM: Time: 2026-01-22 20:56:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3254074) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3254074) CYGM: Time: 2026-01-22 20:56:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3264078) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3264078) CYGM: Time: 2026-01-22 20:56:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3274082) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3274083) CYGM: Time: 2026-01-22 20:56:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3284086) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3284086) CYGM: Time: 2026-01-22 20:57:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3294090) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3294090) CYGM: Time: 2026-01-22 20:57:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3304094) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3304095) CYGM: Time: 2026-01-22 20:57:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3314098) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3314098) CYGM: Time: 2026-01-22 20:57:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3324102) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3324103) CYGM: Time: 2026-01-22 20:57:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3334106) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3334106) CYGM: Time: 2026-01-22 20:57:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3344110) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3344110) CYGM: Time: 2026-01-22 20:58:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3354114) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3354114) CYGM: Time: 2026-01-22 20:58:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3364118) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3364119) CYGM: Time: 2026-01-22 20:58:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3374122) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3374123) CYGM: Time: 2026-01-22 20:58:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3384126) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3384126) CYGM: Time: 2026-01-22 20:58:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3394130) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3394130) CYGM: Time: 2026-01-22 20:58:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3404134) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3404134) CYGM: Time: 2026-01-22 20:59:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3414138) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3414138) CYGM: Time: 2026-01-22 20:59:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3424142) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3424143) CYGM: Time: 2026-01-22 20:59:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3434146) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3434146) CYGM: Time: 2026-01-22 20:59:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3444150) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3444151) CYGM: Time: 2026-01-22 20:59:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3454154) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3454154) CYGM: Time: 2026-01-22 20:59:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3464158) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3464158) CYGM: Time: 2026-01-22 21:00:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3474162) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3474163) CYGM: Time: 2026-01-22 21:00:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3484166) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3484167) CYGM: Time: 2026-01-22 21:00:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3494170) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3494170) CYGM: Time: 2026-01-22 21:00:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3504174) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3504174) CYGM: Time: 2026-01-22 21:00:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3514177) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3514177) CYGM: Time: 2026-01-22 21:00:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3524181) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3524182) CYGM: Time: 2026-01-22 21:01:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3534185) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3534185) CYGM: Time: 2026-01-22 21:01:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3544189) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3544190) CYGM: Time: 2026-01-22 21:01:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3554193) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3554193) CYGM: Time: 2026-01-22 21:01:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3564197) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3564198) CYGM: Time: 2026-01-22 21:01:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3574201) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3574202) CYGM: Time: 2026-01-22 21:01:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3584205) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3584205) CYGM: Time: 2026-01-22 21:02:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3594209) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3594209) CYGM: Time: 2026-01-22 21:02:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3604213) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3604214) CYGM: Time: 2026-01-22 21:02:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3606477) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (3612823) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (3613799) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (3614217) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3614219) CYGM: Time: 2026-01-22 21:02:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3615295) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.10848045349121094,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-22T21:00","interval":900,"temperature_2m":35.4,"weather_code":1},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F"},"daily":{"time":["2026-01-22"],"temperature_2m_max":[41.6],"temperature_2m_min":[27.2]}}[0m
+[0;32mI (3615341) CYGM: Weather updated: 35°F (Hi: 41°F, Lo: 27°F), Code: 1[0m
+[0;32mI (3615355) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (3615361) CYGM: Weather display updated: 35°F (Hi: 41°F, Lo: 27°F) - Partly Cloudy[0m
+[0;32mI (3624222) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3624223) CYGM: Time: 2026-01-22 21:02:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3634226) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3634226) CYGM: Time: 2026-01-22 21:02:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3644230) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3644230) CYGM: Time: 2026-01-22 21:03:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3654234) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3654234) CYGM: Time: 2026-01-22 21:03:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3664238) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3664239) CYGM: Time: 2026-01-22 21:03:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3674242) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3674243) CYGM: Time: 2026-01-22 21:03:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3684246) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3684246) CYGM: Time: 2026-01-22 21:03:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3694250) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3694250) CYGM: Time: 2026-01-22 21:03:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3704254) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3704254) CYGM: Time: 2026-01-22 21:04:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3714258) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3714259) CYGM: Time: 2026-01-22 21:04:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3724262) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3724263) CYGM: Time: 2026-01-22 21:04:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3734266) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3734266) CYGM: Time: 2026-01-22 21:04:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3744270) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3744270) CYGM: Time: 2026-01-22 21:04:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3754274) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3754275) CYGM: Time: 2026-01-22 21:04:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3764278) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3764278) CYGM: Time: 2026-01-22 21:05:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3774282) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3774283) CYGM: Time: 2026-01-22 21:05:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3784286) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3784287) CYGM: Time: 2026-01-22 21:05:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3794290) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3794290) CYGM: Time: 2026-01-22 21:05:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3804294) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3804294) CYGM: Time: 2026-01-22 21:05:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3814298) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3814299) CYGM: Time: 2026-01-22 21:05:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3824302) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3824303) CYGM: Time: 2026-01-22 21:06:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3834306) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3834306) CYGM: Time: 2026-01-22 21:06:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3844310) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3844311) CYGM: Time: 2026-01-22 21:06:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3854314) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3854314) CYGM: Time: 2026-01-22 21:06:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3864318) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3864318) CYGM: Time: 2026-01-22 21:06:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3874322) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3874323) CYGM: Time: 2026-01-22 21:06:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3884326) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3884326) CYGM: Time: 2026-01-22 21:07:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3894330) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3894331) CYGM: Time: 2026-01-22 21:07:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3904334) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3904335) CYGM: Time: 2026-01-22 21:07:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3914338) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3914338) CYGM: Time: 2026-01-22 21:07:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3924342) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3924343) CYGM: Time: 2026-01-22 21:07:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3934346) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3934346) CYGM: Time: 2026-01-22 21:07:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3944350) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3944350) CYGM: Time: 2026-01-22 21:08:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3954354) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3954354) CYGM: Time: 2026-01-22 21:08:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3964358) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3964359) CYGM: Time: 2026-01-22 21:08:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3974362) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3974363) CYGM: Time: 2026-01-22 21:08:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3984366) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3984366) CYGM: Time: 2026-01-22 21:08:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (3994370) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3994370) CYGM: Time: 2026-01-22 21:08:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4004374) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4004374) CYGM: Time: 2026-01-22 21:09:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4014378) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4014378) CYGM: Time: 2026-01-22 21:09:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4024382) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4024383) CYGM: Time: 2026-01-22 21:09:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4034386) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4034386) CYGM: Time: 2026-01-22 21:09:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4044390) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4044390) CYGM: Time: 2026-01-22 21:09:45 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4054394) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4054394) CYGM: Time: 2026-01-22 21:09:55 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4064398) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4064399) CYGM: Time: 2026-01-22 21:10:05 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4074402) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4074403) CYGM: Time: 2026-01-22 21:10:15 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4084406) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4084407) CYGM: Time: 2026-01-22 21:10:25 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4094410) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4094410) CYGM: Time: 2026-01-22 21:10:35 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4104414) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4104414) CYGM: Time: 2026-01-22 21:10:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4114418) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4114418) CYGM: Time: 2026-01-22 21:10:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4124422) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4124423) CYGM: Time: 2026-01-22 21:11:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4134426) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4134426) CYGM: Time: 2026-01-22 21:11:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4144430) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4144431) CYGM: Time: 2026-01-22 21:11:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4154434) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4154434) CYGM: Time: 2026-01-22 21:11:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4164438) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4164438) CYGM: Time: 2026-01-22 21:11:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4174442) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4174443) CYGM: Time: 2026-01-22 21:11:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4184446) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4184446) CYGM: Time: 2026-01-22 21:12:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4194450) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4194450) CYGM: Time: 2026-01-22 21:12:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4204454) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4204455) CYGM: Time: 2026-01-22 21:12:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4214458) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4214458) CYGM: Time: 2026-01-22 21:12:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4224462) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4224463) CYGM: Time: 2026-01-22 21:12:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4234467) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4234468) CYGM: Time: 2026-01-22 21:12:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4244471) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4244471) CYGM: Time: 2026-01-22 21:13:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4254475) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4254475) CYGM: Time: 2026-01-22 21:13:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4264479) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4264480) CYGM: Time: 2026-01-22 21:13:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4274483) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4274483) CYGM: Time: 2026-01-22 21:13:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4284487) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4284488) CYGM: Time: 2026-01-22 21:13:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4294491) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4294492) CYGM: Time: 2026-01-22 21:13:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4304495) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4304495) CYGM: Time: 2026-01-22 21:14:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4314499) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4314499) CYGM: Time: 2026-01-22 21:14:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4324503) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4324504) CYGM: Time: 2026-01-22 21:14:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4334507) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4334508) CYGM: Time: 2026-01-22 21:14:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4344511) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4344511) CYGM: Time: 2026-01-22 21:14:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4354515) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4354515) CYGM: Time: 2026-01-22 21:14:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4364519) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4364519) CYGM: Time: 2026-01-22 21:15:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4374523) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4374523) CYGM: Time: 2026-01-22 21:15:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4384527) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4384528) CYGM: Time: 2026-01-22 21:15:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4394531) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4394531) CYGM: Time: 2026-01-22 21:15:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4404535) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4404536) CYGM: Time: 2026-01-22 21:15:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4414539) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4414539) CYGM: Time: 2026-01-22 21:15:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4424543) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4424543) CYGM: Time: 2026-01-22 21:16:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4434547) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4434548) CYGM: Time: 2026-01-22 21:16:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4444551) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4444552) CYGM: Time: 2026-01-22 21:16:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4454555) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4454555) CYGM: Time: 2026-01-22 21:16:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4464559) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4464559) CYGM: Time: 2026-01-22 21:16:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4474563) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4474563) CYGM: Time: 2026-01-22 21:16:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4484567) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4484568) CYGM: Time: 2026-01-22 21:17:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4494570) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4494570) CYGM: Time: 2026-01-22 21:17:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4504574) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4504575) CYGM: Time: 2026-01-22 21:17:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4514578) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4514578) CYGM: Time: 2026-01-22 21:17:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4524582) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4524583) CYGM: Time: 2026-01-22 21:17:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4534586) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4534587) CYGM: Time: 2026-01-22 21:17:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4544590) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4544590) CYGM: Time: 2026-01-22 21:18:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4554594) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4554594) CYGM: Time: 2026-01-22 21:18:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4564598) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4564599) CYGM: Time: 2026-01-22 21:18:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4574602) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4574603) CYGM: Time: 2026-01-22 21:18:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4584606) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4584606) CYGM: Time: 2026-01-22 21:18:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4594610) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4594610) CYGM: Time: 2026-01-22 21:18:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4604614) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4604614) CYGM: Time: 2026-01-22 21:19:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4614618) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4614618) CYGM: Time: 2026-01-22 21:19:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4624622) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4624623) CYGM: Time: 2026-01-22 21:19:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4634626) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4634626) CYGM: Time: 2026-01-22 21:19:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4644630) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4644630) CYGM: Time: 2026-01-22 21:19:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4654634) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4654635) CYGM: Time: 2026-01-22 21:19:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4664638) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4664639) CYGM: Time: 2026-01-22 21:20:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4674642) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4674643) CYGM: Time: 2026-01-22 21:20:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4684646) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4684647) CYGM: Time: 2026-01-22 21:20:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4694650) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4694650) CYGM: Time: 2026-01-22 21:20:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4704654) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4704654) CYGM: Time: 2026-01-22 21:20:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4714658) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4714658) CYGM: Time: 2026-01-22 21:20:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4724662) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4724663) CYGM: Time: 2026-01-22 21:21:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4734666) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4734666) CYGM: Time: 2026-01-22 21:21:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4744670) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4744671) CYGM: Time: 2026-01-22 21:21:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4754674) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4754674) CYGM: Time: 2026-01-22 21:21:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4764678) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4764678) CYGM: Time: 2026-01-22 21:21:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4774682) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4774683) CYGM: Time: 2026-01-22 21:21:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4784686) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4784686) CYGM: Time: 2026-01-22 21:22:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4794690) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4794690) CYGM: Time: 2026-01-22 21:22:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4804694) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4804695) CYGM: Time: 2026-01-22 21:22:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4814698) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4814698) CYGM: Time: 2026-01-22 21:22:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4824702) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4824703) CYGM: Time: 2026-01-22 21:22:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4834706) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4834707) CYGM: Time: 2026-01-22 21:22:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4844710) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4844710) CYGM: Time: 2026-01-22 21:23:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4854714) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4854714) CYGM: Time: 2026-01-22 21:23:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4864718) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4864719) CYGM: Time: 2026-01-22 21:23:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4874722) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4874723) CYGM: Time: 2026-01-22 21:23:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4884726) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4884726) CYGM: Time: 2026-01-22 21:23:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4894730) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4894730) CYGM: Time: 2026-01-22 21:23:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4904734) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4904734) CYGM: Time: 2026-01-22 21:24:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4914738) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4914738) CYGM: Time: 2026-01-22 21:24:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4924742) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4924743) CYGM: Time: 2026-01-22 21:24:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4934746) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4934746) CYGM: Time: 2026-01-22 21:24:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4944750) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4944750) CYGM: Time: 2026-01-22 21:24:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4954754) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4954755) CYGM: Time: 2026-01-22 21:24:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4964758) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4964758) CYGM: Time: 2026-01-22 21:25:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4974762) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4974763) CYGM: Time: 2026-01-22 21:25:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4984765) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4984765) CYGM: Time: 2026-01-22 21:25:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (4994769) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (4994769) CYGM: Time: 2026-01-22 21:25:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5004773) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5004773) CYGM: Time: 2026-01-22 21:25:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5014777) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5014778) CYGM: Time: 2026-01-22 21:25:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5024781) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5024781) CYGM: Time: 2026-01-22 21:26:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5034785) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5034785) CYGM: Time: 2026-01-22 21:26:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5044789) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5044790) CYGM: Time: 2026-01-22 21:26:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5054793) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5054793) CYGM: Time: 2026-01-22 21:26:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5064797) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5064798) CYGM: Time: 2026-01-22 21:26:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5074801) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5074802) CYGM: Time: 2026-01-22 21:26:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5084805) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5084805) CYGM: Time: 2026-01-22 21:27:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5094809) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5094809) CYGM: Time: 2026-01-22 21:27:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5104813) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5104814) CYGM: Time: 2026-01-22 21:27:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5114817) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5114818) CYGM: Time: 2026-01-22 21:27:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5124821) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5124821) CYGM: Time: 2026-01-22 21:27:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5134825) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5134825) CYGM: Time: 2026-01-22 21:27:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5144829) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5144830) CYGM: Time: 2026-01-22 21:28:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5154833) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5154833) CYGM: Time: 2026-01-22 21:28:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5164837) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5164838) CYGM: Time: 2026-01-22 21:28:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5174841) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5174841) CYGM: Time: 2026-01-22 21:28:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5184845) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5184845) CYGM: Time: 2026-01-22 21:28:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5194849) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5194849) CYGM: Time: 2026-01-22 21:28:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5204853) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5204854) CYGM: Time: 2026-01-22 21:29:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5214856) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5214856) CYGM: Time: 2026-01-22 21:29:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5224860) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5224861) CYGM: Time: 2026-01-22 21:29:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5234864) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5234864) CYGM: Time: 2026-01-22 21:29:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5244868) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5244868) CYGM: Time: 2026-01-22 21:29:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5254872) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5254873) CYGM: Time: 2026-01-22 21:29:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5264876) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5264876) CYGM: Time: 2026-01-22 21:30:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5274880) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5274880) CYGM: Time: 2026-01-22 21:30:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5284884) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5284885) CYGM: Time: 2026-01-22 21:30:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5294888) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5294888) CYGM: Time: 2026-01-22 21:30:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5304892) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5304893) CYGM: Time: 2026-01-22 21:30:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5314896) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5314896) CYGM: Time: 2026-01-22 21:30:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5324900) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5324900) CYGM: Time: 2026-01-22 21:31:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5334904) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5334904) CYGM: Time: 2026-01-22 21:31:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5344908) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5344909) CYGM: Time: 2026-01-22 21:31:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5354912) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5354913) CYGM: Time: 2026-01-22 21:31:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5364916) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5364916) CYGM: Time: 2026-01-22 21:31:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5374920) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5374920) CYGM: Time: 2026-01-22 21:31:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5384924) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5384924) CYGM: Time: 2026-01-22 21:32:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5394928) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5394928) CYGM: Time: 2026-01-22 21:32:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5404932) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5404933) CYGM: Time: 2026-01-22 21:32:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5414936) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5414937) CYGM: Time: 2026-01-22 21:32:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5415361) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (5416446) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (5417742) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.10251998901367188,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-22T21:30","interval":900,"temperature_2m":34.6,"weather_code":2},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F"},"daily":{"time":["2026-01-22"],"temperature_2m_max":[41.6],"temperature_2m_min":[27.2]}}[0m
+[0;32mI (5417787) CYGM: Weather updated: 34°F (Hi: 41°F, Lo: 27°F), Code: 1[0m
+[0;32mI (5417802) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (5417808) CYGM: Weather display updated: 34°F (Hi: 41°F, Lo: 27°F) - Partly Cloudy[0m
+[0;32mI (5424940) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5424941) CYGM: Time: 2026-01-22 21:32:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5434944) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5434944) CYGM: Time: 2026-01-22 21:32:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5444948) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5444948) CYGM: Time: 2026-01-22 21:33:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5454952) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5454953) CYGM: Time: 2026-01-22 21:33:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5464956) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5464957) CYGM: Time: 2026-01-22 21:33:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5474960) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5474960) CYGM: Time: 2026-01-22 21:33:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5484964) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5484964) CYGM: Time: 2026-01-22 21:33:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5494968) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5494968) CYGM: Time: 2026-01-22 21:33:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5504972) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5504973) CYGM: Time: 2026-01-22 21:34:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5514976) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5514976) CYGM: Time: 2026-01-22 21:34:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5524980) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5524981) CYGM: Time: 2026-01-22 21:34:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5534984) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5534985) CYGM: Time: 2026-01-22 21:34:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5544988) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5544988) CYGM: Time: 2026-01-22 21:34:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5554992) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5554993) CYGM: Time: 2026-01-22 21:34:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5564996) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5564996) CYGM: Time: 2026-01-22 21:35:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5575000) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5575001) CYGM: Time: 2026-01-22 21:35:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5585004) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5585005) CYGM: Time: 2026-01-22 21:35:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5595008) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5595008) CYGM: Time: 2026-01-22 21:35:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5605012) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5605013) CYGM: Time: 2026-01-22 21:35:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5615017) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5615018) CYGM: Time: 2026-01-22 21:35:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5625020) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5625020) CYGM: Time: 2026-01-22 21:36:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5635024) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5635024) CYGM: Time: 2026-01-22 21:36:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5645028) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5645029) CYGM: Time: 2026-01-22 21:36:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5655032) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5655033) CYGM: Time: 2026-01-22 21:36:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5665036) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5665037) CYGM: Time: 2026-01-22 21:36:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5675040) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5675040) CYGM: Time: 2026-01-22 21:36:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5685044) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5685044) CYGM: Time: 2026-01-22 21:37:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5695048) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5695048) CYGM: Time: 2026-01-22 21:37:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5705052) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5705053) CYGM: Time: 2026-01-22 21:37:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5715056) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5715056) CYGM: Time: 2026-01-22 21:37:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5725060) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5725060) CYGM: Time: 2026-01-22 21:37:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5735064) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5735064) CYGM: Time: 2026-01-22 21:37:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5745068) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5745068) CYGM: Time: 2026-01-22 21:38:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5755072) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5755073) CYGM: Time: 2026-01-22 21:38:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5765076) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5765077) CYGM: Time: 2026-01-22 21:38:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5775080) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5775080) CYGM: Time: 2026-01-22 21:38:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5785084) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5785084) CYGM: Time: 2026-01-22 21:38:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5795088) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5795089) CYGM: Time: 2026-01-22 21:38:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5805092) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5805093) CYGM: Time: 2026-01-22 21:39:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5815096) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5815096) CYGM: Time: 2026-01-22 21:39:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5825100) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5825101) CYGM: Time: 2026-01-22 21:39:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5835104) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5835104) CYGM: Time: 2026-01-22 21:39:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5845108) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5845108) CYGM: Time: 2026-01-22 21:39:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5855112) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5855113) CYGM: Time: 2026-01-22 21:39:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5865116) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5865116) CYGM: Time: 2026-01-22 21:40:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5875120) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5875120) CYGM: Time: 2026-01-22 21:40:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5885124) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5885125) CYGM: Time: 2026-01-22 21:40:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5895128) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5895129) CYGM: Time: 2026-01-22 21:40:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5905132) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5905133) CYGM: Time: 2026-01-22 21:40:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5915136) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5915136) CYGM: Time: 2026-01-22 21:40:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5925140) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5925140) CYGM: Time: 2026-01-22 21:41:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5935144) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5935144) CYGM: Time: 2026-01-22 21:41:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5945148) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5945149) CYGM: Time: 2026-01-22 21:41:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5955152) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5955153) CYGM: Time: 2026-01-22 21:41:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5965156) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5965156) CYGM: Time: 2026-01-22 21:41:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5975160) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5975161) CYGM: Time: 2026-01-22 21:41:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5985164) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5985164) CYGM: Time: 2026-01-22 21:42:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (5995168) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (5995168) CYGM: Time: 2026-01-22 21:42:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6005172) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6005173) CYGM: Time: 2026-01-22 21:42:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6015176) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6015177) CYGM: Time: 2026-01-22 21:42:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6025180) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6025180) CYGM: Time: 2026-01-22 21:42:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6035184) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6035184) CYGM: Time: 2026-01-22 21:42:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6045188) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6045188) CYGM: Time: 2026-01-22 21:43:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6055192) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6055193) CYGM: Time: 2026-01-22 21:43:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6065196) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6065197) CYGM: Time: 2026-01-22 21:43:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6075200) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6075200) CYGM: Time: 2026-01-22 21:43:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6085204) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6085204) CYGM: Time: 2026-01-22 21:43:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6095208) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6095208) CYGM: Time: 2026-01-22 21:43:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6105212) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6105213) CYGM: Time: 2026-01-22 21:44:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6115216) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6115216) CYGM: Time: 2026-01-22 21:44:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6125220) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6125221) CYGM: Time: 2026-01-22 21:44:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6135224) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6135224) CYGM: Time: 2026-01-22 21:44:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6145228) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6145228) CYGM: Time: 2026-01-22 21:44:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6155232) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6155233) CYGM: Time: 2026-01-22 21:44:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6165236) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6165236) CYGM: Time: 2026-01-22 21:45:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6175240) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6175240) CYGM: Time: 2026-01-22 21:45:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6185244) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6185245) CYGM: Time: 2026-01-22 21:45:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6195248) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6195248) CYGM: Time: 2026-01-22 21:45:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6205252) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6205253) CYGM: Time: 2026-01-22 21:45:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6215256) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6215256) CYGM: Time: 2026-01-22 21:45:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6225260) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6225260) CYGM: Time: 2026-01-22 21:46:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6235264) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6235264) CYGM: Time: 2026-01-22 21:46:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6245268) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6245269) CYGM: Time: 2026-01-22 21:46:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6255272) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6255273) CYGM: Time: 2026-01-22 21:46:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6265276) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6265277) CYGM: Time: 2026-01-22 21:46:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6275280) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6275280) CYGM: Time: 2026-01-22 21:46:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6285284) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6285284) CYGM: Time: 2026-01-22 21:47:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6295288) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6295288) CYGM: Time: 2026-01-22 21:47:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6305292) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6305293) CYGM: Time: 2026-01-22 21:47:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6315296) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6315296) CYGM: Time: 2026-01-22 21:47:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6325300) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6325300) CYGM: Time: 2026-01-22 21:47:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6335304) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6335304) CYGM: Time: 2026-01-22 21:47:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6345308) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6345308) CYGM: Time: 2026-01-22 21:48:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6355312) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6355313) CYGM: Time: 2026-01-22 21:48:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6365316) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6365317) CYGM: Time: 2026-01-22 21:48:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6375320) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6375320) CYGM: Time: 2026-01-22 21:48:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6385324) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6385325) CYGM: Time: 2026-01-22 21:48:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6395328) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6395328) CYGM: Time: 2026-01-22 21:48:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6405332) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6405333) CYGM: Time: 2026-01-22 21:49:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6415336) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6415336) CYGM: Time: 2026-01-22 21:49:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6425340) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6425341) CYGM: Time: 2026-01-22 21:49:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6435344) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6435344) CYGM: Time: 2026-01-22 21:49:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6445348) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6445348) CYGM: Time: 2026-01-22 21:49:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6455352) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6455353) CYGM: Time: 2026-01-22 21:49:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6465356) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6465356) CYGM: Time: 2026-01-22 21:50:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6475360) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6475360) CYGM: Time: 2026-01-22 21:50:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6485364) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6485365) CYGM: Time: 2026-01-22 21:50:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6495368) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6495368) CYGM: Time: 2026-01-22 21:50:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6505372) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6505373) CYGM: Time: 2026-01-22 21:50:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6515376) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6515377) CYGM: Time: 2026-01-22 21:50:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6525380) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6525380) CYGM: Time: 2026-01-22 21:51:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6535384) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6535384) CYGM: Time: 2026-01-22 21:51:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6545388) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6545389) CYGM: Time: 2026-01-22 21:51:26 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6555392) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6555393) CYGM: Time: 2026-01-22 21:51:36 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6565396) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6565396) CYGM: Time: 2026-01-22 21:51:46 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6575400) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6575401) CYGM: Time: 2026-01-22 21:51:56 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6585404) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6585404) CYGM: Time: 2026-01-22 21:52:06 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6595408) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6595408) CYGM: Time: 2026-01-22 21:52:16 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6605412) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6605413) CYGM: Time: 2026-01-22 21:52:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6615416) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6615416) CYGM: Time: 2026-01-22 21:52:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6625420) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6625421) CYGM: Time: 2026-01-22 21:52:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6635424) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6635424) CYGM: Time: 2026-01-22 21:52:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6645428) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6645428) CYGM: Time: 2026-01-22 21:53:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6655432) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6655433) CYGM: Time: 2026-01-22 21:53:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6665436) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6665437) CYGM: Time: 2026-01-22 21:53:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6675440) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6675440) CYGM: Time: 2026-01-22 21:53:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6685444) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6685445) CYGM: Time: 2026-01-22 21:53:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6695448) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6695449) CYGM: Time: 2026-01-22 21:53:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6705452) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6705453) CYGM: Time: 2026-01-22 21:54:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6715456) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6715456) CYGM: Time: 2026-01-22 21:54:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6725460) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6725461) CYGM: Time: 2026-01-22 21:54:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6735464) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6735465) CYGM: Time: 2026-01-22 21:54:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6745468) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6745468) CYGM: Time: 2026-01-22 21:54:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6755472) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6755473) CYGM: Time: 2026-01-22 21:54:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6765476) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6765476) CYGM: Time: 2026-01-22 21:55:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6775480) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6775480) CYGM: Time: 2026-01-22 21:55:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6785484) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6785485) CYGM: Time: 2026-01-22 21:55:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6795488) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6795488) CYGM: Time: 2026-01-22 21:55:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6805492) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6805493) CYGM: Time: 2026-01-22 21:55:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6815495) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6815495) CYGM: Time: 2026-01-22 21:55:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6825499) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6825499) CYGM: Time: 2026-01-22 21:56:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6835503) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6835503) CYGM: Time: 2026-01-22 21:56:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6845507) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6845508) CYGM: Time: 2026-01-22 21:56:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6855511) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6855511) CYGM: Time: 2026-01-22 21:56:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6865515) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6865515) CYGM: Time: 2026-01-22 21:56:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6875519) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6875519) CYGM: Time: 2026-01-22 21:56:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6885523) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6885523) CYGM: Time: 2026-01-22 21:57:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6895527) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6895528) CYGM: Time: 2026-01-22 21:57:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6905531) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6905532) CYGM: Time: 2026-01-22 21:57:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6915535) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6915535) CYGM: Time: 2026-01-22 21:57:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6925539) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6925540) CYGM: Time: 2026-01-22 21:57:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6935543) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6935543) CYGM: Time: 2026-01-22 21:57:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6945547) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6945548) CYGM: Time: 2026-01-22 21:58:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6955551) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6955551) CYGM: Time: 2026-01-22 21:58:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6965555) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6965556) CYGM: Time: 2026-01-22 21:58:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6975559) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6975560) CYGM: Time: 2026-01-22 21:58:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6985563) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6985563) CYGM: Time: 2026-01-22 21:58:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (6995567) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (6995568) CYGM: Time: 2026-01-22 21:58:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7005571) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7005571) CYGM: Time: 2026-01-22 21:59:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7015575) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7015575) CYGM: Time: 2026-01-22 21:59:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7025579) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7025580) CYGM: Time: 2026-01-22 21:59:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7035583) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7035583) CYGM: Time: 2026-01-22 21:59:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7045587) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7045588) CYGM: Time: 2026-01-22 21:59:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7055591) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7055591) CYGM: Time: 2026-01-22 21:59:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7065595) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7065595) CYGM: Time: 2026-01-22 22:00:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7075599) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7075599) CYGM: Time: 2026-01-22 22:00:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7085603) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7085604) CYGM: Time: 2026-01-22 22:00:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7095607) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7095608) CYGM: Time: 2026-01-22 22:00:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7105611) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7105611) CYGM: Time: 2026-01-22 22:00:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7115615) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7115615) CYGM: Time: 2026-01-22 22:00:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7125619) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7125619) CYGM: Time: 2026-01-22 22:01:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7135623) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7135623) CYGM: Time: 2026-01-22 22:01:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7145627) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7145628) CYGM: Time: 2026-01-22 22:01:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7155631) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7155631) CYGM: Time: 2026-01-22 22:01:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7165635) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7165635) CYGM: Time: 2026-01-22 22:01:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7175639) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7175639) CYGM: Time: 2026-01-22 22:01:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7185643) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7185643) CYGM: Time: 2026-01-22 22:02:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7195647) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7195648) CYGM: Time: 2026-01-22 22:02:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7205651) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7205652) CYGM: Time: 2026-01-22 22:02:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7206541) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (7215654) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7215654) CYGM: Time: 2026-01-22 22:02:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7217809) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (7218934) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (7220392) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.1354217529296875,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-22T22:00","interval":900,"temperature_2m":34.2,"weather_code":2},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F"},"daily":{"time":["2026-01-22"],"temperature_2m_max":[41.6],"temperature_2m_min":[27.2]}}[0m
+[0;32mI (7220437) CYGM: Weather updated: 34°F (Hi: 41°F, Lo: 27°F), Code: 1[0m
+[0;32mI (7220453) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (7220459) CYGM: Weather display updated: 34°F (Hi: 41°F, Lo: 27°F) - Partly Cloudy[0m
+[0;32mI (7225658) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7225659) CYGM: Time: 2026-01-22 22:02:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7235662) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7235663) CYGM: Time: 2026-01-22 22:02:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7245666) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7245666) CYGM: Time: 2026-01-22 22:03:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7255670) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7255670) CYGM: Time: 2026-01-22 22:03:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7265674) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7265675) CYGM: Time: 2026-01-22 22:03:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7275678) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7275678) CYGM: Time: 2026-01-22 22:03:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7285682) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7285683) CYGM: Time: 2026-01-22 22:03:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7295686) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7295686) CYGM: Time: 2026-01-22 22:03:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7305690) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7305690) CYGM: Time: 2026-01-22 22:04:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7315694) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7315694) CYGM: Time: 2026-01-22 22:04:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7325698) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7325699) CYGM: Time: 2026-01-22 22:04:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7335702) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7335703) CYGM: Time: 2026-01-22 22:04:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7345706) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7345706) CYGM: Time: 2026-01-22 22:04:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7355710) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7355710) CYGM: Time: 2026-01-22 22:04:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7365714) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7365714) CYGM: Time: 2026-01-22 22:05:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7375718) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7375719) CYGM: Time: 2026-01-22 22:05:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7385722) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7385723) CYGM: Time: 2026-01-22 22:05:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7395726) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7395726) CYGM: Time: 2026-01-22 22:05:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7405730) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7405730) CYGM: Time: 2026-01-22 22:05:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7415734) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7415734) CYGM: Time: 2026-01-22 22:05:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7425738) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7425739) CYGM: Time: 2026-01-22 22:06:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7435742) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7435743) CYGM: Time: 2026-01-22 22:06:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7445746) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7445747) CYGM: Time: 2026-01-22 22:06:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7455750) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7455750) CYGM: Time: 2026-01-22 22:06:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7465754) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7465754) CYGM: Time: 2026-01-22 22:06:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7475758) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7475758) CYGM: Time: 2026-01-22 22:06:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7485762) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7485763) CYGM: Time: 2026-01-22 22:07:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7495766) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7495766) CYGM: Time: 2026-01-22 22:07:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7505770) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7505771) CYGM: Time: 2026-01-22 22:07:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7515774) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7515774) CYGM: Time: 2026-01-22 22:07:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7525778) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7525778) CYGM: Time: 2026-01-22 22:07:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7535782) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7535783) CYGM: Time: 2026-01-22 22:07:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7545786) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7545786) CYGM: Time: 2026-01-22 22:08:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7555790) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7555790) CYGM: Time: 2026-01-22 22:08:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7565794) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7565795) CYGM: Time: 2026-01-22 22:08:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7575798) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7575798) CYGM: Time: 2026-01-22 22:08:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7585802) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7585803) CYGM: Time: 2026-01-22 22:08:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7595806) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7595806) CYGM: Time: 2026-01-22 22:08:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7605810) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7605811) CYGM: Time: 2026-01-22 22:09:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7615814) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7615815) CYGM: Time: 2026-01-22 22:09:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7625818) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7625819) CYGM: Time: 2026-01-22 22:09:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7635822) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7635823) CYGM: Time: 2026-01-22 22:09:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7645826) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7645826) CYGM: Time: 2026-01-22 22:09:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7655830) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7655830) CYGM: Time: 2026-01-22 22:09:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7665834) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7665834) CYGM: Time: 2026-01-22 22:10:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7675838) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7675838) CYGM: Time: 2026-01-22 22:10:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7685842) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7685843) CYGM: Time: 2026-01-22 22:10:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7695846) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7695846) CYGM: Time: 2026-01-22 22:10:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7705850) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7705851) CYGM: Time: 2026-01-22 22:10:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7715854) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7715854) CYGM: Time: 2026-01-22 22:10:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7725858) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7725858) CYGM: Time: 2026-01-22 22:11:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7735862) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7735863) CYGM: Time: 2026-01-22 22:11:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7745866) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7745866) CYGM: Time: 2026-01-22 22:11:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7755870) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7755870) CYGM: Time: 2026-01-22 22:11:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7765874) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7765874) CYGM: Time: 2026-01-22 22:11:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7775878) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7775879) CYGM: Time: 2026-01-22 22:11:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7785882) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7785883) CYGM: Time: 2026-01-22 22:12:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7795886) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7795886) CYGM: Time: 2026-01-22 22:12:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7805890) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7805891) CYGM: Time: 2026-01-22 22:12:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7815894) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7815895) CYGM: Time: 2026-01-22 22:12:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7825898) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7825898) CYGM: Time: 2026-01-22 22:12:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7835902) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7835903) CYGM: Time: 2026-01-22 22:12:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7845906) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7845906) CYGM: Time: 2026-01-22 22:13:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7855910) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7855911) CYGM: Time: 2026-01-22 22:13:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7865914) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7865915) CYGM: Time: 2026-01-22 22:13:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7875918) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7875918) CYGM: Time: 2026-01-22 22:13:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7885922) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7885923) CYGM: Time: 2026-01-22 22:13:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7895926) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7895926) CYGM: Time: 2026-01-22 22:13:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7905930) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7905931) CYGM: Time: 2026-01-22 22:14:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7915934) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7915934) CYGM: Time: 2026-01-22 22:14:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7925938) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7925939) CYGM: Time: 2026-01-22 22:14:27 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7935942) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7935943) CYGM: Time: 2026-01-22 22:14:37 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7945946) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7945946) CYGM: Time: 2026-01-22 22:14:47 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7955950) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7955950) CYGM: Time: 2026-01-22 22:14:57 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7965954) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7965954) CYGM: Time: 2026-01-22 22:15:07 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (7975958) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (7975958) CYGM: Time: 2026-01-22 22:15:17 (user_24hr=0, user_tz=America/Los_Angeles)[0m

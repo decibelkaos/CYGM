@@ -1,0 +1,11 @@
+# CYGM Custom Configuration
+# This file contains settings to optimize memory for web server + SSL
+
+# Enable dynamic SSL buffers to reduce peak memory usage
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_PEER_CERT=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+
+# Reduce SSL buffer sizes to save memory
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096

@@ -1,0 +1,786 @@
+#include "nvs_config.h"
+#include "nvs_flash.h"
+#include "esp_log.h"
+#include <string.h>
+
+static const char *TAG = "NVS_CONFIG";
+static const char *NVS_NAMESPACE = "cygm";
+static const char *NVS_SSID_KEY = "wifi_ssid";
+static const char *NVS_PASSWORD_KEY = "wifi_pass";
+static const char *NVS_TIMEZONE_KEY = "timezone";
+static const char *NVS_DST_KEY = "dst_enabled";
+static const char *NVS_24HR_KEY = "format_24hr";
+static const char *NVS_ZIPCODE_KEY = "zipcode";
+static const char *NVS_TEMP_UNIT_KEY = "temp_celsius";
+static const char *NVS_WEATHER_INTERVAL_KEY = "weather_int";
+static const char *NVS_CGM_TYPE_KEY = "cgm_type";
+static const char *NVS_ACCESS_TOKEN_KEY = "access_token";
+static const char *NVS_REFRESH_TOKEN_KEY = "refresh_token";
+static const char *NVS_TOKEN_EXPIRY_KEY = "token_expiry";
+
+esp_err_t nvs_config_init(void) {
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        ESP_LOGW(TAG, "NVS partition needs erasing, erasing...");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "NVS initialized successfully");
+    } else {
+        ESP_LOGE(TAG, "NVS init failed: %s", esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
+esp_err_t nvs_save_wifi_credentials(const char *ssid, const char *password) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Save SSID
+    ret = nvs_set_str(nvs_handle, NVS_SSID_KEY, ssid);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save SSID: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save password
+    ret = nvs_set_str(nvs_handle, NVS_PASSWORD_KEY, password);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save password: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Commit changes
+    ret = nvs_commit(nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "WiFi credentials saved to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_wifi_credentials(wifi_credentials_t *creds) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    size_t ssid_len = MAX_SSID_LEN;
+    size_t pass_len = MAX_PASSWORD_LEN;
+
+    if (creds == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        // Don't warn on first boot when credentials don't exist yet
+        if (ret != ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG, "Failed to open NVS for reading: %s", esp_err_to_name(ret));
+        }
+        return ret;
+    }
+
+    // Load SSID
+    ret = nvs_get_str(nvs_handle, NVS_SSID_KEY, creds->ssid, &ssid_len);
+    if (ret != ESP_OK) {
+        // Expected on first boot, no need to warn
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Load password
+    ret = nvs_get_str(nvs_handle, NVS_PASSWORD_KEY, creds->password, &pass_len);
+    if (ret != ESP_OK) {
+        // Expected on first boot, no need to warn
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "WiFi credentials loaded from NVS (SSID: %s)", creds->ssid);
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_wifi_credentials(void) {
+    wifi_credentials_t creds;
+    return (nvs_load_wifi_credentials(&creds) == ESP_OK);
+}
+
+esp_err_t nvs_clear_wifi_credentials(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    nvs_erase_key(nvs_handle, NVS_SSID_KEY);
+    nvs_erase_key(nvs_handle, NVS_PASSWORD_KEY);
+    ret = nvs_commit(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "WiFi credentials cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_save_time_settings(const char *timezone, bool dst_enabled, bool format_24hr) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Save timezone
+    ret = nvs_set_str(nvs_handle, NVS_TIMEZONE_KEY, timezone);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save timezone: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save DST enabled
+    ret = nvs_set_u8(nvs_handle, NVS_DST_KEY, dst_enabled ? 1 : 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save DST setting: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save 24hr format
+    ret = nvs_set_u8(nvs_handle, NVS_24HR_KEY, format_24hr ? 1 : 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save 24hr format: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Commit changes
+    ret = nvs_commit(nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Time settings saved to NVS (TZ: %s, DST: %d, 24hr: %d)",
+                 timezone, dst_enabled, format_24hr);
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_time_settings(time_settings_t *settings) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    size_t tz_len = MAX_TIMEZONE_LEN;
+    uint8_t dst_val = 0;
+    uint8_t format_val = 0;
+
+    if (settings == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        if (ret != ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG, "Failed to open NVS for reading: %s", esp_err_to_name(ret));
+        }
+        return ret;
+    }
+
+    // Load timezone
+    ret = nvs_get_str(nvs_handle, NVS_TIMEZONE_KEY, settings->timezone, &tz_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Load DST enabled
+    ret = nvs_get_u8(nvs_handle, NVS_DST_KEY, &dst_val);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+    settings->dst_enabled = (dst_val != 0);
+
+    // Load 24hr format
+    ret = nvs_get_u8(nvs_handle, NVS_24HR_KEY, &format_val);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+    settings->format_24hr = (format_val != 0);
+
+    ESP_LOGI(TAG, "Time settings loaded from NVS (TZ: %s, DST: %d, 24hr: %d)",
+             settings->timezone, settings->dst_enabled, settings->format_24hr);
+
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_time_settings(void) {
+    time_settings_t settings;
+    return (nvs_load_time_settings(&settings) == ESP_OK);
+}
+
+esp_err_t nvs_save_weather_settings(const char *zipcode, bool temp_celsius, uint8_t update_interval_min) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Save zipcode
+    ret = nvs_set_str(nvs_handle, NVS_ZIPCODE_KEY, zipcode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save zipcode: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save temperature unit
+    ret = nvs_set_u8(nvs_handle, NVS_TEMP_UNIT_KEY, temp_celsius ? 1 : 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save temp unit: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save update interval (5-90 minutes)
+    ret = nvs_set_u8(nvs_handle, NVS_WEATHER_INTERVAL_KEY, update_interval_min);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save weather interval: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Commit changes
+    ret = nvs_commit(nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Weather settings saved to NVS (Zipcode: %s, Unit: %s, Interval: %d min)",
+                 zipcode, temp_celsius ? "C" : "F", update_interval_min);
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_save_weather_coords(const char *zipcode, float latitude, float longitude, const char *location) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Store coordinates as integers (micro-degrees) to avoid float precision issues
+    int32_t lat_i32 = (int32_t)(latitude * 1000000.0f);
+    int32_t lon_i32 = (int32_t)(longitude * 1000000.0f);
+
+    ret = nvs_set_i32(nvs_handle, "weather_lat", lat_i32);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save latitude: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_set_i32(nvs_handle, "weather_lon", lon_i32);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save longitude: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save the zipcode that was geocoded (to detect changes)
+    ret = nvs_set_str(nvs_handle, "wx_zip_cached", zipcode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save geocoded zipcode: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save location name (e.g., "Bethel, ME")
+    ret = nvs_set_str(nvs_handle, "wx_location", location);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save location: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Weather location saved to NVS: %s (%.4f, %.4f, zipcode: %s)", location, latitude, longitude, zipcode);
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_weather_settings(weather_settings_t *settings) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    size_t zip_len = MAX_ZIPCODE_LEN;
+    uint8_t temp_val = 0;
+    uint8_t interval_val = 5;  // Default 5 minutes
+
+    if (settings == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        if (ret != ESP_ERR_NVS_NOT_FOUND) {
+            ESP_LOGW(TAG, "Failed to open NVS for reading: %s", esp_err_to_name(ret));
+        }
+        return ret;
+    }
+
+    // Load zipcode
+    ret = nvs_get_str(nvs_handle, NVS_ZIPCODE_KEY, settings->zipcode, &zip_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Load temperature unit
+    ret = nvs_get_u8(nvs_handle, NVS_TEMP_UNIT_KEY, &temp_val);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+    settings->temp_celsius = (temp_val != 0);
+
+    // Load update interval (default to 5 minutes if not found)
+    ret = nvs_get_u8(nvs_handle, NVS_WEATHER_INTERVAL_KEY, &interval_val);
+    if (ret != ESP_OK) {
+        // Not found, use default
+        interval_val = 5;
+    }
+    // Clamp to valid range (5-90 minutes)
+    if (interval_val < 5) interval_val = 5;
+    if (interval_val > 90) interval_val = 90;
+    settings->update_interval_min = interval_val;
+
+    // Load cached coordinates and location (if available)
+    int32_t lat_i32 = 0, lon_i32 = 0;
+    size_t geocoded_zip_len = MAX_ZIPCODE_LEN;
+    size_t location_len = MAX_LOCATION_LEN;
+    if (nvs_get_i32(nvs_handle, "weather_lat", &lat_i32) == ESP_OK &&
+        nvs_get_i32(nvs_handle, "weather_lon", &lon_i32) == ESP_OK &&
+        nvs_get_str(nvs_handle, "wx_zip_cached", settings->geocoded_zipcode, &geocoded_zip_len) == ESP_OK) {
+        settings->latitude = (float)lat_i32 / 1000000.0f;   // Convert from micro-degrees
+        settings->longitude = (float)lon_i32 / 1000000.0f;
+        settings->coords_valid = true;
+
+        // Load location name (if available)
+        if (nvs_get_str(nvs_handle, "wx_location", settings->location, &location_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Cached location loaded: %s (%.4f, %.4f, zipcode: %s)",
+                     settings->location, settings->latitude, settings->longitude, settings->geocoded_zipcode);
+        } else {
+            settings->location[0] = '\0';  // Empty string
+            ESP_LOGI(TAG, "Cached coordinates loaded: %.4f, %.4f (for zipcode: %s)",
+                     settings->latitude, settings->longitude, settings->geocoded_zipcode);
+        }
+    } else {
+        settings->coords_valid = false;
+        settings->geocoded_zipcode[0] = '\0';  // Empty string
+        settings->location[0] = '\0';  // Empty string
+    }
+
+    ESP_LOGI(TAG, "Weather settings loaded from NVS (Zipcode: %s, Unit: %s, Interval: %d min)",
+             settings->zipcode, settings->temp_celsius ? "C" : "F", settings->update_interval_min);
+
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_weather_settings(void) {
+    weather_settings_t settings;
+    return (nvs_load_weather_settings(&settings) == ESP_OK);
+}
+
+esp_err_t nvs_save_cgm_type(const char *cgm_type) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_CGM_TYPE_KEY, cgm_type);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save CGM type: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "CGM type saved to NVS: %s", cgm_type);
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_cgm_type(char *cgm_type, size_t len) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    size_t type_len = len;
+
+    if (cgm_type == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_CGM_TYPE_KEY, cgm_type, &type_len);
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_save_dexcom_tokens(const char *access_token, const char *refresh_token, int64_t expiry) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Save access token
+    ret = nvs_set_str(nvs_handle, NVS_ACCESS_TOKEN_KEY, access_token);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save access token: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save refresh token
+    ret = nvs_set_str(nvs_handle, NVS_REFRESH_TOKEN_KEY, refresh_token);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save refresh token: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Save token expiry
+    ret = nvs_set_i64(nvs_handle, NVS_TOKEN_EXPIRY_KEY, expiry);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save token expiry: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Dexcom OAuth tokens saved to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_dexcom_tokens(cgm_settings_t *settings) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    size_t access_len = MAX_ACCESS_TOKEN_LEN;
+    size_t refresh_len = MAX_REFRESH_TOKEN_LEN;
+
+    if (settings == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    // Load access token
+    ret = nvs_get_str(nvs_handle, NVS_ACCESS_TOKEN_KEY, settings->access_token, &access_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Load refresh token
+    ret = nvs_get_str(nvs_handle, NVS_REFRESH_TOKEN_KEY, settings->refresh_token, &refresh_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Load token expiry
+    ret = nvs_get_i64(nvs_handle, NVS_TOKEN_EXPIRY_KEY, &settings->token_expiry);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Dexcom OAuth tokens loaded from NVS");
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_dexcom_tokens(void) {
+    cgm_settings_t settings;
+    return (nvs_load_dexcom_tokens(&settings) == ESP_OK);
+}
+
+esp_err_t nvs_clear_cgm_settings(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    nvs_erase_key(nvs_handle, NVS_CGM_TYPE_KEY);
+    nvs_erase_key(nvs_handle, NVS_ACCESS_TOKEN_KEY);
+    nvs_erase_key(nvs_handle, NVS_REFRESH_TOKEN_KEY);
+    nvs_erase_key(nvs_handle, NVS_TOKEN_EXPIRY_KEY);
+    ret = nvs_commit(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "CGM settings cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+// ==================== Dexcom Share Credentials ====================
+
+#define NVS_DEXCOM_USER_KEY "dex_user"
+#define NVS_DEXCOM_PASS_KEY "dex_pass"
+
+esp_err_t nvs_set_dexcom_credentials(const char *username, const char *password) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_DEXCOM_USER_KEY, username);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_DEXCOM_PASS_KEY, password);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Dexcom credentials saved to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_get_dexcom_credentials(char *username, size_t user_len, char *password, size_t pass_len) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_DEXCOM_USER_KEY, username, &user_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_DEXCOM_PASS_KEY, password, &pass_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_dexcom_credentials(void) {
+    char user[64], pass[64];
+    return (nvs_get_dexcom_credentials(user, sizeof(user), pass, sizeof(pass)) == ESP_OK);
+}
+
+esp_err_t nvs_clear_dexcom_credentials(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    nvs_erase_key(nvs_handle, NVS_DEXCOM_USER_KEY);
+    nvs_erase_key(nvs_handle, NVS_DEXCOM_PASS_KEY);
+    ret = nvs_commit(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Dexcom credentials cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+// ============================================================================
+// CGM Alarm Settings
+// ============================================================================
+
+#define NVS_ALARMS_KEY "cgm_alarms"
+
+// Get default alarm settings (called when no settings exist)
+void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
+    if (alarms == NULL) return;
+
+    // High Alarm (urgent) - Default: Red, 250 mg/dL
+    alarms->high_alarm.enabled = true;
+    alarms->high_alarm.threshold = 250;
+    alarms->high_alarm.text_color = 0xFF3333;  // Red
+    alarms->high_alarm.audio_enabled = true;
+    alarms->high_alarm.visual_enabled = true;
+    alarms->high_alarm.tone = ALARM_TONE_ALERT;
+    alarms->high_alarm.volume = 80;
+    alarms->high_alarm.audio_repeat = true;  // Urgent alarms repeat
+
+    // High Warning (precautionary) - Default: Amber, 180 mg/dL
+    alarms->high_warning.enabled = true;
+    alarms->high_warning.threshold = 180;
+    alarms->high_warning.text_color = 0xFFAA00;  // Amber/Orange
+    alarms->high_warning.audio_enabled = true;
+    alarms->high_warning.visual_enabled = true;
+    alarms->high_warning.tone = ALARM_TONE_CHIME;
+    alarms->high_warning.volume = 60;
+    alarms->high_warning.audio_repeat = false;  // Warnings play once
+
+    // Low Warning (precautionary) - Default: Amber, 80 mg/dL
+    alarms->low_warning.enabled = true;
+    alarms->low_warning.threshold = 80;
+    alarms->low_warning.text_color = 0xFFAA00;  // Amber/Orange
+    alarms->low_warning.audio_enabled = true;
+    alarms->low_warning.visual_enabled = true;
+    alarms->low_warning.tone = ALARM_TONE_CHIME;
+    alarms->low_warning.volume = 60;
+    alarms->low_warning.audio_repeat = false;  // Warnings play once
+
+    // Low Alarm (urgent) - Default: Red, 55 mg/dL
+    alarms->low_alarm.enabled = true;
+    alarms->low_alarm.threshold = 55;
+    alarms->low_alarm.text_color = 0xFF3333;  // Red
+    alarms->low_alarm.audio_enabled = true;
+    alarms->low_alarm.visual_enabled = true;
+    alarms->low_alarm.tone = ALARM_TONE_ALERT;
+    alarms->low_alarm.volume = 80;
+    alarms->low_alarm.audio_repeat = true;  // Urgent alarms repeat
+}
+
+esp_err_t nvs_save_alarm_settings(const cgm_alarms_t *alarms) {
+    if (alarms == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for alarm settings");
+        return ret;
+    }
+
+    // Save entire alarm structure as a blob
+    ret = nvs_set_blob(nvs_handle, NVS_ALARMS_KEY, alarms, sizeof(cgm_alarms_t));
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save alarm settings to NVS");
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Alarm settings saved to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_alarm_settings(cgm_alarms_t *alarms) {
+    if (alarms == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for reading alarm settings, using defaults");
+        nvs_get_default_alarm_settings(alarms);
+        return ret;
+    }
+
+    size_t required_size = sizeof(cgm_alarms_t);
+    ret = nvs_get_blob(nvs_handle, NVS_ALARMS_KEY, alarms, &required_size);
+
+    if (ret != ESP_OK || required_size != sizeof(cgm_alarms_t)) {
+        ESP_LOGW(TAG, "Alarm settings not found or corrupted, using defaults");
+        nvs_get_default_alarm_settings(alarms);
+        nvs_close(nvs_handle);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    ESP_LOGI(TAG, "Alarm settings loaded from NVS");
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_alarm_settings(void) {
+    cgm_alarms_t temp;
+    return (nvs_load_alarm_settings(&temp) == ESP_OK);
+}

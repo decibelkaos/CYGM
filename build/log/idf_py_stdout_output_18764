@@ -1,0 +1,22 @@
+Command: ninja all
+[1/11] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Projects\CYGM\build && C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/components/spiffs/spiffsgen.py 0x100000 C:/Projects/CYGM/web C:/Projects/CYGM/build/spiffs.bin --page-size=256 --obj-name-len=32 --meta-len=4 --use-magic --use-magic-len"
+[2/11] Performing build step for 'bootloader'
+[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Projects\CYGM\build\bootloader\esp-idf\esptool_py && C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 C:/Projects/CYGM/build/bootloader/bootloader.bin"
+Bootloader binary size 0x66c0 bytes. 0x940 bytes (8%) free.
+[3/11] No install step for 'bootloader'
+[4/11] Completed 'bootloader'
+[5/11] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/ui_config.c.obj
+[6/11] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/web_server.c.obj
+[7/11] Linking C static library esp-idf\main\libmain.a
+[8/11] Generating esp-idf/esp_system/ld/sections.ld
+info: Trying to set symbol ESPTOOLPY_FLASHSIZE_2MB to n, but it is currently selected by choice ESPTOOLPY_FLASHSIZE. For setting it to n, set another choice symbol to y instead.
+info: Trying to set symbol PARTITION_TABLE_SINGLE_APP to n, but it is currently selected by choice PARTITION_TABLE_TYPE. For setting it to n, set another choice symbol to y instead.
+[9/11] Linking CXX executable cygm.elf
+[10/11] Generating binary image from built executable
+esptool.py v4.11.dev2
+Creating esp32 image...
+Merged 2 ELF sections
+Successfully created esp32 image.
+Generated C:/Projects/CYGM/build/cygm.bin
+[11/11] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Projects\CYGM\build\esp-idf\esptool_py && C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/components/partition_table/check_sizes.py --offset 0x8000 partition --type app C:/Projects/CYGM/build/partition_table/partition-table.bin C:/Projects/CYGM/build/cygm.bin"
+cygm.bin binary size 0x186b30 bytes. Smallest app partition is 0x200000 bytes. 0x794d0 bytes (24%) free.

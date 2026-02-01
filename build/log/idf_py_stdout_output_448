@@ -1,0 +1,1260 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00210000 00100000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=7d184h (512388) map[0m
+[0;32mI (268) esp_image: segment 1: paddr=0008d1ac vaddr=3ffb0000 size=02e6ch ( 11884) load[0m
+[0;32mI (272) esp_image: segment 2: paddr=00090020 vaddr=400d0020 size=ed6b8h (972472) map[0m
+[0;32mI (605) esp_image: segment 3: paddr=0017d6e0 vaddr=3ffb2e6c size=01404h (  5124) load[0m
+[0;32mI (607) esp_image: segment 4: paddr=0017eaec vaddr=40080000 size=1a7d4h (108500) load[0m
+[0;32mI (651) esp_image: segment 5: paddr=001992c8 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (664) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (664) boot: Disabling RNG early entropy source...[0m
+[0;32mI (675) cpu_start: Multicore app[0m
+[0;32mI (683) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (683) cpu_start: Pro cpu start user code[0m
+[0;32mI (683) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (685) app_init: Application information:[0m
+[0;32mI (689) app_init: Project name:     cygm[0m
+[0;32mI (693) app_init: App version:      1[0m
+[0;32mI (696) app_init: Compile time:     Jan 27 2026 21:15:36[0m
+[0;32mI (701) app_init: ELF file SHA256:  19fd44f8c...[0m
+[0;32mI (705) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (709) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (713) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (717) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (721) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (727) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (732) heap_init: At 3FFCAA18 len 000155E8 (85 KiB): DRAM[0m
+[0;32mI (737) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (743) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (748) heap_init: At 4009A7D4 len 0000582C (22 KiB): IRAM[0m
+[0;33mW (755) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (767) spi_flash: detected chip: generic[0m
+[0;32mI (770) spi_flash: flash io: dio[0m
+[0;32mI (774) main_task: Started on CPU0[0m
+[0;32mI (777) main_task: Calling app_main()[0m
+[0;32mI (779) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (784) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (788) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (820) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (821) UIConfig: Initializing UI configuration system[0m
+[0;32mI (822) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (827) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (831) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (835) CYGM:   DST: Enabled[0m
+[0;32mI (838) CYGM:   Format: 12hr[0m
+[0;32mI (841) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F, Interval: 5 min)[0m
+[0;32mI (849) CYGM: Loaded weather settings from NVS:[0m
+[0;32mI (853) CYGM:   Zipcode: 98092[0m
+[0;32mI (856) CYGM:   Unit: Fahrenheit[0m
+[0;32mI (859) CYGM:   Update interval: 5 minutes[0m
+[0;32mI (863) NVS_CONFIG: Alarm settings loaded from NVS[0m
+[0;32mI (867) CYGM: Alarm settings loaded from NVS[0m
+[0;32mI (871) CYGM: Initializing LCD backlight[0m
+[0;32mI (875) CYGM: Initializing SPI bus[0m
+[0;32mI (879) CYGM: Initializing LCD panel IO[0m
+[0;32mI (883) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (1006) CYGM: LCD initialized successfully[0m
+[0;32mI (1007) CYGM: LED PWM initialized[0m
+[0;32mI (1007) CYGM: Buzzer PWM initialized (GPIO 26)[0m
+[0;32mI (1009) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (1009) CYGM: UI Task started on Core 1[0m
+[0;32mI (1014) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (1015) wifi:wifi driver task: 3ffd6de8, prio:23, stack:6656, core=0W (1019) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+
+[0;32mI (1042) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (1055) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (1055) wifi:wifi certification version: v7.0[0m
+[0;32mI (1056) wifi:config NVS flash: enabled[0m
+[0;32mI (1058) wifi:config nano formatting: disabled[0m
+[0;32mI (1062) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1067) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1071) wifi:Init management short buffer num: 32[0m
+[0;32mI (1075) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1080) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1084) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1087) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1093) wifi_init: rx ba win: 6[0m
+[0;32mI (1094) wifi_init: accept mbox: 6[0m
+[0;32mI (1098) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1101) wifi_init: udp mbox: 6[0m
+[0;32mI (1104) wifi_init: tcp mbox: 6[0m
+[0;32mI (1106) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1110) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1113) wifi_init: tcp mss: 1440[0m
+[0;32mI (1116) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1120) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1125) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1207) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
+[0;32mI (1224) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1225) wifi:enable tsf[0m
+[0;32mI (1228) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1229) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1230) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1236) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1241) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1248) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (1014) CYGM: System initialized - tasks running[0m
+[0;32mI (1275) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1277) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1288) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1296) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1313) wifi:connected with Look Ma, No Wires!, aid = 2, channel 6, BW20, bssid = f8:bb:bf:78:61:c6[0m
+[0;32mI (1314) wifi:security: WPA2-PSK, phy: bgn, rssi: -19[0m
+[0;32mI (1320) wifi:pm start, type: 1[0m
+
+[0;32mI (1320) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1329) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1336) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (1369) wifi:<ba-add>idx:0 (ifx:0, f8:bb:bf:78:61:c6), tid:0, ssn:0, winSize:64[0m
+[0;33mW (1450) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1450) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1453) CST820 Driver: IC id: 183[0m
+[0;32mI (1455) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1460) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1467) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1471) CYGM: CardKB initialized[0m
+[0;32mI (1473) CYGM: Initializing LVGL[0m
+[0;32mI (1482) CYGM: LVGL initialized successfully[0m
+[0;32mI (1508) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1608) LVGL: Starting LVGL task[0m
+[0;32mI (3022) main_task: Returned from app_main()[0m
+[0;32mI (3476) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (3477) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (3478) CYGM: WiFi connected successfully[0m
+[0;32mI (3505) CYGM: Web server DISABLED (to save memory for SSL). Set ENABLE_WEB_SERVER=1 to enable.[0m
+[0;32mI (3505) CYGM: Initializing SNTP[0m
+[0;32mI (3507) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3512) CYGM: SNTP initialized with 3 servers. Waiting for system time to be set...[0m
+[0;32mI (3520) CYGM: Current system time BEFORE sync: 1969-12-31 16:00:02[0m
+[0;32mI (3528) CYGM: Found saved Dexcom credentials, will attempt auto-login after time sync[0m
+[0;32mI (3534) CYGM: Waiting for SNTP time sync before Dexcom auth (required for SSL)...[0m
+[0;32mI (3541) CYGM: Current system time: 1969-12-31 16:00:02[0m
+[0;32mI (3546) CYGM: Waiting for SNTP time sync...[0m
+[0;33mW (8030) wifi:[ADDBA]RX addba response, tid:0, txa_attempts:0, token mismatch, expect:1(rx:0), status:37(declined)[0m
+[0;32mI (8550) CYGM: Still waiting for time sync... current: 1969-12-31 16:00:07 (elapsed: 5000 ms)[0m
+[0;32mI (13551) CYGM: Still waiting for time sync... current: 1969-12-31 16:00:12 (elapsed: 10001 ms)[0m
+[0;32mI (18552) CYGM: Still waiting for time sync... current: 1969-12-31 16:00:17 (elapsed: 15002 ms)[0m
+[0;32mI (23553) CYGM: Still waiting for time sync... current: 1969-12-31 16:00:22 (elapsed: 20003 ms)[0m
+[0;32mI (28554) CYGM: Still waiting for time sync... current: 1969-12-31 16:00:27 (elapsed: 25004 ms)[0m
+[0;32mI (33555) CYGM: Still waiting for time sync... current: 1969-12-31 16:00:32 (elapsed: 30005 ms)[0m
+[0;32mI (38039) wifi:[ADDBA]RX DELBA, reason:38, delete tid:0, initiator:0(recipient)[0m
+[0;32mI (38298) CYGM: === TIME SYNCHRONIZED FROM SNTP SERVER ===[0m
+[0;32mI (38299) CYGM: New system time: 2026-01-29 21:47:19[0m
+[0;32mI (38299) CYGM: Initializing SD card logger with correct timestamp...[0m
+[0;32mI (38303) SD_LOGGER: Initializing SD card logger (SPI mode)[0m
+[0;32mI (38309) SD_LOGGER: Pins: MISO=19, MOSI=23, CLK=18, CS=5[0m
+[0;32mI (38317) sdspi_transaction: cmd=52, R1 response: command not supported[0m
+[0;32mI (38363) sdspi_transaction: cmd=5, R1 response: command not supported[0m
+[0;32mI (38387) SD_LOGGER: SD card mounted successfully[0m
+Name: ASTC
+Type: SDHC
+Speed: 20.00 MHz (limit: 20.00 MHz)
+Size: 29819MB
+CSD: ver=2, sector_size=512, capacity=61069312 read_bl_len=9
+SSR: bus_width=1
+[0;32mI (38395) SD_LOGGER: Creating log file: /sdcard/cygm.log (length: 16)[0m
+[0;32mI (38401) SD_LOGGER: Filename hex dump:[0m
+[0;32mI (38404) SD_LOGGER:   [0] = 0x2f ('/')[0m
+[0;32mI (38408) SD_LOGGER:   [1] = 0x73 ('s')[0m
+[0;32mI (38412) SD_LOGGER:   [2] = 0x64 ('d')[0m
+[0;32mI (38415) SD_LOGGER:   [3] = 0x63 ('c')[0m
+[0;32mI (38419) SD_LOGGER:   [4] = 0x61 ('a')[0m
+[0;32mI (38422) SD_LOGGER:   [5] = 0x72 ('r')[0m
+[0;32mI (38426) SD_LOGGER:   [6] = 0x64 ('d')[0m
+[0;32mI (38429) SD_LOGGER:   [7] = 0x2f ('/')[0m
+[0;32mI (38433) SD_LOGGER:   [8] = 0x63 ('c')[0m
+[0;32mI (38436) SD_LOGGER:   [9] = 0x79 ('y')[0m
+[0;32mI (38440) SD_LOGGER:   [10] = 0x67 ('g')[0m
+[0;32mI (38444) SD_LOGGER:   [11] = 0x6d ('m')[0m
+[0;32mI (38447) SD_LOGGER:   [12] = 0x2e ('.')[0m
+[0;32mI (38451) SD_LOGGER:   [13] = 0x6c ('l')[0m
+[0;32mI (38455) SD_LOGGER:   [14] = 0x6f ('o')[0m
+[0;32mI (38458) SD_LOGGER:   [15] = 0x67 ('g')[0m
+[0;32mI (38462) SD_LOGGER: Mount point /sdcard exists (mode: 0x41ff)[0m
+[0;32mI (38467) SD_LOGGER: Testing write access with test file...[0m
+[0;32mI (38487) SD_LOGGER: Test file created successfully[0m
+[0;32mI (38496) SD_LOGGER: Attempting fopen with path: '/sdcard/cygm.log', mode: 'w'[0m
+[0;32mI (38497) SD_LOGGER: Calling fopen()...[0m
+[0;32mI (38499) SD_LOGGER: fopen() returned: 0x3ffaeb0c, errno: 0[0m
+[0;32mI (38505) SD_LOGGER: SD card logger initialized successfully[0m
+[0;32mI (38507) SD_LOGGER: Log file: /sdcard/cygm.log[0m
+[0;32mI (38511) CYGM: SD card logger initialized: /sdcard/cygm.log[0m
+[0;32mI (38556) CYGM: Still waiting for time sync... current: 2026-01-29 21:47:19 (elapsed: 35006 ms)[0m
+[0;32mI (38556) CYGM: Time synced: 2026-01-29 21:47:19[0m
+[0;32mI (38558) CYGM: Time synced successfully, proceeding with Dexcom auto-login[0m
+[0;32mI (38565) CYGM: Dexcom auth attempt 1/5...[0m
+[0;32mI (38568) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (38573) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (38577) DEXCOM: System time at auth: 2026-01-29 21:47:19[0m
+[0;32mI (38583) DEXCOM: Trying US region...[0m
+[0;32mI (38587) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (38591) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (38601) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (38607) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (38612) DEXCOM: Performing request...[0m
+[0;32mI (38686) wifi:[ADDBA]RX DELBA, reason:38, delete tid:0, initiator:0(recipient)[0m
+[1;31mE (38688) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (38688) esp-tls: create_ssl_handle failed[0m
+[1;31mE (38692) esp-tls: Failed to open new connection[0m
+[1;31mE (38696) transport_base: Failed to open a new connection[0m
+[1;31mE (38705) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (38706) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[0;32mI (38708) wifi:[ADDBA]RX DELBA, reason:37, delete tid:0, initiator:0(recipient)[0m
+[1;31mE (38718) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (38723) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (38728) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;33mW (38752) wifi:[ADDBA]RX addba response, tid:0, txa_attempts:0, token mismatch, expect:4(rx:0), status:37(declined)[0m
+[0;32mI (39234) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (39235) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (39237) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (39249) wifi:[ADDBA]RX DELBA, reason:38, delete tid:0, initiator:0(recipient)[0m
+[1;31mE (39273) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (39274) esp-tls: create_ssl_handle failed[0m
+[1;31mE (39274) esp-tls: Failed to open new connection[0m
+[1;31mE (39276) transport_base: Failed to open a new connection[0m
+[0;32mI (39279) wifi:[ADDBA]RX DELBA, reason:37, delete tid:0, initiator:0(recipient)[0m
+[0;33mW (39288) wifi:[ADDBA]RX addba response, tid:0, ba not setup[0m
+[0;32mI (39294) wifi:[ADDBA]RX DELBA, reason:37, delete tid:0, initiator:0(recipient)[0m
+[0;32mI (39301) wifi:[ADDBA]RX DELBA, reason:37, delete tid:0, initiator:0(recipient)[0m
+[1;31mE (39311) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (39314) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (39316) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;32mI (39320) wifi:[ADDBA]RX DELBA, reason:37, delete tid:0, initiator:0(recipient)[0m
+[0;33mW (39329) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (39333) DEXCOM: Trying Outside US region...[0m
+[0;32mI (39338) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (39342) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (39352) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (39358) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (39363) DEXCOM: Performing request...[0m
+[1;31mE (39447) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (39448) esp-tls: create_ssl_handle failed[0m
+[1;31mE (39448) esp-tls: Failed to open new connection[0m
+[1;31mE (39450) transport_base: Failed to open a new connection[0m
+[1;31mE (39458) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (39460) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (39465) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (39470) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (39475) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (39981) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (39982) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (39984) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (40021) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (40023) esp-tls: create_ssl_handle failed[0m
+[1;31mE (40023) esp-tls: Failed to open new connection[0m
+[1;31mE (40025) transport_base: Failed to open a new connection[0m
+[1;31mE (40033) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (40035) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (40039) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (40044) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (40049) DEXCOM: Trying Japan region...[0m
+[0;32mI (40053) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (40057) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (40067) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (40073) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (40078) DEXCOM: Performing request...[0m
+[1;31mE (40163) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (40164) esp-tls: create_ssl_handle failed[0m
+[1;31mE (40164) esp-tls: Failed to open new connection[0m
+[1;31mE (40166) transport_base: Failed to open a new connection[0m
+[1;31mE (40174) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (40176) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (40181) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (40187) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (40192) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (40697) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (40698) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (40700) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (40729) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (40730) esp-tls: create_ssl_handle failed[0m
+[1;31mE (40730) esp-tls: Failed to open new connection[0m
+[1;31mE (40733) transport_base: Failed to open a new connection[0m
+[1;31mE (40741) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (40743) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (40746) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (40751) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (40756) CYGM: Dexcom auth attempt 1 failed: ESP_FAIL[0m
+[0;32mI (40761) CYGM: Retrying in 2000 ms...[0m
+[0;32mI (42764) CYGM: Dexcom auth attempt 2/5...[0m
+[0;32mI (42764) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (42765) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (42766) DEXCOM: System time at auth: 2026-01-29 21:47:23[0m
+[0;32mI (42771) DEXCOM: Trying US region...[0m
+[0;32mI (42775) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (42779) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (42789) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (42796) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (42801) DEXCOM: Performing request...[0m
+[1;31mE (42845) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (42846) esp-tls: create_ssl_handle failed[0m
+[1;31mE (42847) esp-tls: Failed to open new connection[0m
+[1;31mE (42849) transport_base: Failed to open a new connection[0m
+[1;31mE (42857) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (42859) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (42863) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (42869) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (42874) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (43379) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (43380) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (43382) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (43422) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (43423) esp-tls: create_ssl_handle failed[0m
+[1;31mE (43423) esp-tls: Failed to open new connection[0m
+[1;31mE (43425) transport_base: Failed to open a new connection[0m
+[1;31mE (43434) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (43435) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (43439) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (43444) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (43449) DEXCOM: Trying Outside US region...[0m
+[0;32mI (43454) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (43458) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (43468) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (43474) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (43479) DEXCOM: Performing request...[0m
+[1;31mE (43516) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (43517) esp-tls: create_ssl_handle failed[0m
+[1;31mE (43517) esp-tls: Failed to open new connection[0m
+[1;31mE (43519) transport_base: Failed to open a new connection[0m
+[1;31mE (43527) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (43530) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (43534) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (43540) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (43545) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (44050) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (44051) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (44053) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (44095) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (44096) esp-tls: create_ssl_handle failed[0m
+[1;31mE (44096) esp-tls: Failed to open new connection[0m
+[1;31mE (44098) transport_base: Failed to open a new connection[0m
+[1;31mE (44106) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (44108) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (44112) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (44117) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (44122) DEXCOM: Trying Japan region...[0m
+[0;32mI (44127) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (44131) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (44140) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (44146) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (44151) DEXCOM: Performing request...[0m
+[1;31mE (44185) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (44186) esp-tls: create_ssl_handle failed[0m
+[1;31mE (44186) esp-tls: Failed to open new connection[0m
+[1;31mE (44188) transport_base: Failed to open a new connection[0m
+[1;31mE (44196) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (44198) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (44203) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (44208) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (44213) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (44719) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (44720) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (44722) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (44770) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (44771) esp-tls: create_ssl_handle failed[0m
+[1;31mE (44771) esp-tls: Failed to open new connection[0m
+[1;31mE (44773) transport_base: Failed to open a new connection[0m
+[1;31mE (44781) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (44783) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (44787) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (44792) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (44797) CYGM: Dexcom auth attempt 2 failed: ESP_FAIL[0m
+[0;32mI (44802) CYGM: Retrying in 4000 ms...[0m
+[0;32mI (48805) CYGM: Dexcom auth attempt 3/5...[0m
+[0;32mI (48805) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (48806) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (48807) DEXCOM: System time at auth: 2026-01-29 21:47:29[0m
+[0;32mI (48812) DEXCOM: Trying US region...[0m
+[0;32mI (48816) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (48820) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (48830) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (48836) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (48841) DEXCOM: Performing request...[0m
+[1;31mE (48883) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (48885) esp-tls: create_ssl_handle failed[0m
+[1;31mE (48885) esp-tls: Failed to open new connection[0m
+[1;31mE (48887) transport_base: Failed to open a new connection[0m
+[1;31mE (48895) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (48897) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (48902) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (48907) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (48912) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (49418) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (49419) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (49421) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (49467) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (49468) esp-tls: create_ssl_handle failed[0m
+[1;31mE (49468) esp-tls: Failed to open new connection[0m
+[1;31mE (49471) transport_base: Failed to open a new connection[0m
+[1;31mE (49479) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (49480) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (49484) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (49489) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (49494) DEXCOM: Trying Outside US region...[0m
+[0;32mI (49499) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (49503) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (49513) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (49519) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (49524) DEXCOM: Performing request...[0m
+[1;31mE (49563) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (49564) esp-tls: create_ssl_handle failed[0m
+[1;31mE (49564) esp-tls: Failed to open new connection[0m
+[1;31mE (49566) transport_base: Failed to open a new connection[0m
+[1;31mE (49574) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (49576) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (49581) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (49586) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (49591) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (50097) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (50098) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (50100) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (50138) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (50139) esp-tls: create_ssl_handle failed[0m
+[1;31mE (50140) esp-tls: Failed to open new connection[0m
+[1;31mE (50142) transport_base: Failed to open a new connection[0m
+[1;31mE (50150) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (50152) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (50156) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (50161) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (50166) DEXCOM: Trying Japan region...[0m
+[0;32mI (50170) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (50175) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (50184) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (50190) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (50195) DEXCOM: Performing request...[0m
+[1;31mE (50234) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (50236) esp-tls: create_ssl_handle failed[0m
+[1;31mE (50236) esp-tls: Failed to open new connection[0m
+[1;31mE (50238) transport_base: Failed to open a new connection[0m
+[1;31mE (50246) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (50248) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (50252) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (50258) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (50263) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (50768) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (50769) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (50771) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (50815) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (50815) esp-tls: create_ssl_handle failed[0m
+[1;31mE (50816) esp-tls: Failed to open new connection[0m
+[1;31mE (50818) transport_base: Failed to open a new connection[0m
+[1;31mE (50826) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (50828) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (50832) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (50837) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (50841) CYGM: Dexcom auth attempt 3 failed: ESP_FAIL[0m
+[0;32mI (50846) CYGM: Retrying in 8000 ms...[0m
+[0;32mI (58850) CYGM: Dexcom auth attempt 4/5...[0m
+[0;32mI (58850) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (58851) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (58852) DEXCOM: System time at auth: 2026-01-29 21:47:40[0m
+[0;32mI (58857) DEXCOM: Trying US region...[0m
+[0;32mI (58861) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (58865) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (58875) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (58881) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (58886) DEXCOM: Performing request...[0m
+[1;31mE (58930) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (58931) esp-tls: create_ssl_handle failed[0m
+[1;31mE (58931) esp-tls: Failed to open new connection[0m
+[1;31mE (58934) transport_base: Failed to open a new connection[0m
+[1;31mE (58941) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (58944) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (58948) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (58954) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (58959) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (59464) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (59465) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (59467) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (59508) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (59509) esp-tls: create_ssl_handle failed[0m
+[1;31mE (59510) esp-tls: Failed to open new connection[0m
+[1;31mE (59512) transport_base: Failed to open a new connection[0m
+[1;31mE (59520) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (59522) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (59526) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (59531) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (59535) DEXCOM: Trying Outside US region...[0m
+[0;32mI (59540) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (59544) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (59554) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (59561) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (59565) DEXCOM: Performing request...[0m
+[1;31mE (59602) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (59604) esp-tls: create_ssl_handle failed[0m
+[1;31mE (59604) esp-tls: Failed to open new connection[0m
+[1;31mE (59606) transport_base: Failed to open a new connection[0m
+[1;31mE (59614) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (59616) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (59621) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (59626) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (59631) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (60137) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (60138) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (60140) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (60180) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (60181) esp-tls: create_ssl_handle failed[0m
+[1;31mE (60181) esp-tls: Failed to open new connection[0m
+[1;31mE (60183) transport_base: Failed to open a new connection[0m
+[1;31mE (60191) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (60193) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (60197) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (60203) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (60207) DEXCOM: Trying Japan region...[0m
+[0;32mI (60212) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (60216) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (60225) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (60231) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (60236) DEXCOM: Performing request...[0m
+[1;31mE (60279) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (60280) esp-tls: create_ssl_handle failed[0m
+[1;31mE (60280) esp-tls: Failed to open new connection[0m
+[1;31mE (60282) transport_base: Failed to open a new connection[0m
+[1;31mE (60291) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (60293) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (60297) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (60302) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (60307) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (60813) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (60814) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (60816) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (60856) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (60857) esp-tls: create_ssl_handle failed[0m
+[1;31mE (60858) esp-tls: Failed to open new connection[0m
+[1;31mE (60860) transport_base: Failed to open a new connection[0m
+[1;31mE (60868) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (60870) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (60874) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (60879) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (60883) CYGM: Dexcom auth attempt 4 failed: ESP_FAIL[0m
+[0;32mI (60888) CYGM: Retrying in 16000 ms...[0m
+[0;32mI (76892) CYGM: Dexcom auth attempt 5/5...[0m
+[0;32mI (76892) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (76893) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (76894) DEXCOM: System time at auth: 2026-01-29 21:47:58[0m
+[0;32mI (76899) DEXCOM: Trying US region...[0m
+[0;32mI (76903) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (76907) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (76917) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (76924) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (76928) DEXCOM: Performing request...[0m
+[1;31mE (76972) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (76974) esp-tls: create_ssl_handle failed[0m
+[1;31mE (76974) esp-tls: Failed to open new connection[0m
+[1;31mE (76976) transport_base: Failed to open a new connection[0m
+[1;31mE (76984) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (76986) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (76991) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (76996) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (77001) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (77507) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (77508) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (77510) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (77550) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (77551) esp-tls: create_ssl_handle failed[0m
+[1;31mE (77551) esp-tls: Failed to open new connection[0m
+[1;31mE (77553) transport_base: Failed to open a new connection[0m
+[1;31mE (77562) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (77563) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (77567) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (77572) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (77577) DEXCOM: Trying Outside US region...[0m
+[0;32mI (77582) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (77586) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (77596) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (77602) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (77607) DEXCOM: Performing request...[0m
+[1;31mE (77645) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (77646) esp-tls: create_ssl_handle failed[0m
+[1;31mE (77646) esp-tls: Failed to open new connection[0m
+[1;31mE (77648) transport_base: Failed to open a new connection[0m
+[1;31mE (77656) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (77658) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (77663) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (77668) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (77673) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (78179) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (78180) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (78182) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (78219) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (78221) esp-tls: create_ssl_handle failed[0m
+[1;31mE (78221) esp-tls: Failed to open new connection[0m
+[1;31mE (78223) transport_base: Failed to open a new connection[0m
+[1;31mE (78231) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (78233) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (78237) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (78242) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (78247) DEXCOM: Trying Japan region...[0m
+[0;32mI (78251) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (78255) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (78265) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (78271) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (78276) DEXCOM: Performing request...[0m
+[1;31mE (78319) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (78320) esp-tls: create_ssl_handle failed[0m
+[1;31mE (78320) esp-tls: Failed to open new connection[0m
+[1;31mE (78322) transport_base: Failed to open a new connection[0m
+[1;31mE (78331) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (78332) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (78337) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (78342) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (78348) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (78853) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (78854) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (78856) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (78898) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (78899) esp-tls: create_ssl_handle failed[0m
+[1;31mE (78899) esp-tls: Failed to open new connection[0m
+[1;31mE (78902) transport_base: Failed to open a new connection[0m
+[1;31mE (78910) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (78911) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (78915) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (78920) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (78925) CYGM: Dexcom auth attempt 5 failed: ESP_FAIL[0m
+[1;31mE (78930) CYGM: Dexcom auto-login failed after 5 attempts[0m
+[1;31mE (78935) CYGM: CRITICAL: Will continue trying in background task[0m
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00210000 00100000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=7d184h (512388) map[0m
+[0;32mI (268) esp_image: segment 1: paddr=0008d1ac vaddr=3ffb0000 size=02e6ch ( 11884) load[0m
+[0;32mI (272) esp_image: segment 2: paddr=00090020 vaddr=400d0020 size=ed6b8h (972472) map[0m
+[0;32mI (605) esp_image: segment 3: paddr=0017d6e0 vaddr=3ffb2e6c size=01404h (  5124) load[0m
+[0;32mI (607) esp_image: segment 4: paddr=0017eaec vaddr=40080000 size=1a7d4h (108500) load[0m
+[0;32mI (651) esp_image: segment 5: paddr=001992c8 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (664) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (664) boot: Disabling RNG early entropy source...[0m
+[0;32mI (675) cpu_start: Multicore app[0m
+[0;32mI (683) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (683) cpu_start: Pro cpu start user code[0m
+[0;32mI (683) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (685) app_init: Application information:[0m
+[0;32mI (689) app_init: Project name:     cygm[0m
+[0;32mI (693) app_init: App version:      1[0m
+[0;32mI (696) app_init: Compile time:     Jan 27 2026 21:15:36[0m
+[0;32mI (701) app_init: ELF file SHA256:  19fd44f8c...[0m
+[0;32mI (705) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (709) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (713) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (717) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (721) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (727) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (732) heap_init: At 3FFCAA18 len 000155E8 (85 KiB): DRAM[0m
+[0;32mI (737) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (743) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (748) heap_init: At 4009A7D4 len 0000582C (22 KiB): IRAM[0m
+[0;33mW (755) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (767) spi_flash: detected chip: generic[0m
+[0;32mI (770) spi_flash: flash io: dio[0m
+[0;32mI (774) main_task: Started on CPU0[0m
+[0;32mI (777) main_task: Calling app_main()[0m
+[0;32mI (779) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (784) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (788) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (820) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (821) UIConfig: Initializing UI configuration system[0m
+[0;32mI (822) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (827) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (831) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (835) CYGM:   DST: Enabled[0m
+[0;32mI (837) CYGM:   Format: 12hr[0m
+[0;32mI (841) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F, Interval: 5 min)[0m
+[0;32mI (849) CYGM: Loaded weather settings from NVS:[0m
+[0;32mI (853) CYGM:   Zipcode: 98092[0m
+[0;32mI (856) CYGM:   Unit: Fahrenheit[0m
+[0;32mI (858) CYGM:   Update interval: 5 minutes[0m
+[0;32mI (863) NVS_CONFIG: Alarm settings loaded from NVS[0m
+[0;32mI (867) CYGM: Alarm settings loaded from NVS[0m
+[0;32mI (871) CYGM: Initializing LCD backlight[0m
+[0;32mI (875) CYGM: Initializing SPI bus[0m
+[0;32mI (878) CYGM: Initializing LCD panel IO[0m
+[0;32mI (882) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (1005) CYGM: LCD initialized successfully[0m
+[0;32mI (1006) CYGM: LED PWM initialized[0m
+[0;32mI (1006) CYGM: Buzzer PWM initialized (GPIO 26)[0m
+[0;32mI (1008) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (1008) CYGM: UI Task started on Core 1[0m
+[0;32mI (1013) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (1014) wifi:wifi driver task: 3ffd6de8, prio:23, stack:6656, core=0W (1018) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+
+[0;32mI (1041) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (1054) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (1054) wifi:wifi certification version: v7.0[0m
+[0;32mI (1055) wifi:config NVS flash: enabled[0m
+[0;32mI (1057) wifi:config nano formatting: disabled[0m
+[0;32mI (1061) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1066) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1070) wifi:Init management short buffer num: 32[0m
+[0;32mI (1074) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1079) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1083) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1086) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1092) wifi_init: rx ba win: 6[0m
+[0;32mI (1093) wifi_init: accept mbox: 6[0m
+[0;32mI (1097) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1100) wifi_init: udp mbox: 6[0m
+[0;32mI (1103) wifi_init: tcp mbox: 6[0m
+[0;32mI (1105) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1109) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1112) wifi_init: tcp mss: 1440[0m
+[0;32mI (1115) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1119) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1124) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1206) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1207) wifi:enable tsf[0m
+[0;32mI (1210) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1211) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1212) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1218) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1224) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1230) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (1013) CYGM: System initialized - tasks running[0m
+[0;32mI (1249) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1251) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1363) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1376) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1412) wifi:connected with Look Ma, No Wires!, aid = 6, channel 6, BW20, bssid = 50:27:a9:83:72:25[0m
+[0;32mI (1413) wifi:security: WPA2-PSK, phy: bgn, rssi: -71[0m
+[0;32mI (1419) wifi:pm start, type: 1[0m
+
+[0;32mI (1419) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;33mW (1449) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1449) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1452) CST820 Driver: IC id: 183[0m
+[0;32mI (1454) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1459) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1463) wifi:I (1466) CYGM: Initializing CardKB I2C bus[0m
+dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us
+[0;32mI (1472) CYGM: CardKB initialized[0m
+[0;32mI (1477) wifi:AP's beacon interval = 102400 us, DTIM period = 2I (1480) CYGM: Initializing LVGL[0m
+
+[0;32mI (1497) CYGM: LVGL initialized successfully[0m
+[0;32mI (1523) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1623) LVGL: Starting LVGL task[0m
+[0;32mI (1944) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:83:72:25), tid:0, ssn:0, winSize:64[0m
+[0;32mI (2943) wifi:<ba-del>idx:0, tid:0[0m
+[0;32mI (2948) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:83:72:25), tid:0, ssn:1, winSize:64[0m
+[0;32mI (3004) main_task: Returned from app_main()[0m
+[0;32mI (3968) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (3969) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (3970) CYGM: WiFi connected successfully[0m
+[0;32mI (3976) CYGM: Web server DISABLED (to save memory for SSL). Set ENABLE_WEB_SERVER=1 to enable.[0m
+[0;32mI (3982) CYGM: Initializing SNTP[0m
+[0;32mI (3987) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3992) CYGM: SNTP initialized with 3 servers. Waiting for system time to be set...[0m
+[0;32mI (3999) CYGM: Current system time BEFORE sync: 1969-12-31 16:00:03[0m
+[0;32mI (4007) CYGM: Found saved Dexcom credentials, will attempt auto-login after time sync[0m
+[0;32mI (4016) CYGM: Waiting for SNTP time sync before Dexcom auth (required for SSL)...[0m
+[0;32mI (4021) CYGM: Current system time: 1969-12-31 16:00:03[0m
+[0;32mI (4025) CYGM: Waiting for SNTP time sync...[0m
+[0;32mI (7041) CYGM: === TIME SYNCHRONIZED FROM SNTP SERVER ===[0m
+[0;32mI (7042) CYGM: New system time: 2026-01-29 21:48:19[0m
+[0;32mI (7042) CYGM: Initializing SD card logger with correct timestamp...[0m
+[0;32mI (7047) SD_LOGGER: Initializing SD card logger (SPI mode)[0m
+[0;32mI (7052) SD_LOGGER: Pins: MISO=19, MOSI=23, CLK=18, CS=5[0m
+[0;32mI (7060) sdspi_transaction: cmd=52, R1 response: command not supported[0m
+[0;32mI (7106) sdspi_transaction: cmd=5, R1 response: command not supported[0m
+[0;32mI (7130) SD_LOGGER: SD card mounted successfully[0m
+Name: ASTC
+Type: SDHC
+Speed: 20.00 MHz (limit: 20.00 MHz)
+Size: 29819MB
+CSD: ver=2, sector_size=512, capacity=61069312 read_bl_len=9
+SSR: bus_width=1
+[0;32mI (7137) SD_LOGGER: Creating log file: /sdcard/cygm.log (length: 16)[0m
+[0;32mI (7143) SD_LOGGER: Filename hex dump:[0m
+[0;32mI (7147) SD_LOGGER:   [0] = 0x2f ('/')[0m
+[0;32mI (7150) SD_LOGGER:   [1] = 0x73 ('s')[0m
+[0;32mI (7154) SD_LOGGER:   [2] = 0x64 ('d')[0m
+[0;32mI (7157) SD_LOGGER:   [3] = 0x63 ('c')[0m
+[0;32mI (7160) SD_LOGGER:   [4] = 0x61 ('a')[0m
+[0;32mI (7164) SD_LOGGER:   [5] = 0x72 ('r')[0m
+[0;32mI (7167) SD_LOGGER:   [6] = 0x64 ('d')[0m
+[0;32mI (7171) SD_LOGGER:   [7] = 0x2f ('/')[0m
+[0;32mI (7174) SD_LOGGER:   [8] = 0x63 ('c')[0m
+[0;32mI (7178) SD_LOGGER:   [9] = 0x79 ('y')[0m
+[0;32mI (7181) SD_LOGGER:   [10] = 0x67 ('g')[0m
+[0;32mI (7185) SD_LOGGER:   [11] = 0x6d ('m')[0m
+[0;32mI (7188) SD_LOGGER:   [12] = 0x2e ('.')[0m
+[0;32mI (7192) SD_LOGGER:   [13] = 0x6c ('l')[0m
+[0;32mI (7196) SD_LOGGER:   [14] = 0x6f ('o')[0m
+[0;32mI (7199) SD_LOGGER:   [15] = 0x67 ('g')[0m
+[0;32mI (7203) SD_LOGGER: Mount point /sdcard exists (mode: 0x41ff)[0m
+[0;32mI (7208) SD_LOGGER: Testing write access with test file...[0m
+[0;32mI (7228) SD_LOGGER: Test file created successfully[0m
+[0;32mI (7238) SD_LOGGER: Attempting fopen with path: '/sdcard/cygm.log', mode: 'w'[0m
+[0;32mI (7238) SD_LOGGER: Calling fopen()...[0m
+[0;32mI (7240) SD_LOGGER: fopen() returned: 0x3ffaeb0c, errno: 0[0m
+[0;32mI (7247) SD_LOGGER: SD card logger initialized successfully[0m
+[0;32mI (7248) SD_LOGGER: Log file: /sdcard/cygm.log[0m
+[0;32mI (7252) CYGM: SD card logger initialized: /sdcard/cygm.log[0m
+[0;32mI (7530) CYGM: Time synced: 2026-01-29 21:48:20[0m
+[0;32mI (7531) CYGM: Time synced successfully, proceeding with Dexcom auto-login[0m
+[0;32mI (7531) CYGM: Dexcom auth attempt 1/5...[0m
+[0;32mI (7534) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (7539) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (7543) DEXCOM: System time at auth: 2026-01-29 21:48:20[0m
+[0;32mI (7548) DEXCOM: Trying US region...[0m
+[0;32mI (7552) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (7556) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (7566) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (7572) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (7577) DEXCOM: Performing request...[0m
+[1;31mE (7652) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (7653) esp-tls: create_ssl_handle failed[0m
+[1;31mE (7653) esp-tls: Failed to open new connection[0m
+[1;31mE (7655) transport_base: Failed to open a new connection[0m
+[1;31mE (7663) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (7665) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (7669) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (7675) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (7680) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (8185) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (8186) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (8188) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (12532) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (12533) esp-tls: create_ssl_handle failed[0m
+[1;31mE (12533) esp-tls: Failed to open new connection[0m
+[1;31mE (12535) transport_base: Failed to open a new connection[0m
+[1;31mE (12543) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (12545) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (12549) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (12554) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (12559) DEXCOM: Trying Outside US region...[0m
+[0;32mI (12564) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (12568) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (12578) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (12584) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (12589) DEXCOM: Performing request...[0m
+[1;31mE (13905) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (13906) esp-tls: create_ssl_handle failed[0m
+[1;31mE (13907) esp-tls: Failed to open new connection[0m
+[1;31mE (13909) transport_base: Failed to open a new connection[0m
+[1;31mE (13917) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (13919) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (13923) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (13929) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (13934) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (14439) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (14440) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (14442) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (16012) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (16013) esp-tls: create_ssl_handle failed[0m
+[1;31mE (16013) esp-tls: Failed to open new connection[0m
+[1;31mE (16015) transport_base: Failed to open a new connection[0m
+[1;31mE (16024) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (16025) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (16029) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (16034) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (16039) DEXCOM: Trying Japan region...[0m
+[0;32mI (16044) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (16048) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (16057) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (16064) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (16068) DEXCOM: Performing request...[0m
+[1;31mE (18063) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (18064) esp-tls: create_ssl_handle failed[0m
+[1;31mE (18064) esp-tls: Failed to open new connection[0m
+[1;31mE (18066) transport_base: Failed to open a new connection[0m
+[1;31mE (18075) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (18076) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (18081) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (18086) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (18092) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (18597) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (18598) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (18600) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (21544) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (21545) esp-tls: create_ssl_handle failed[0m
+[1;31mE (21545) esp-tls: Failed to open new connection[0m
+[1;31mE (21547) transport_base: Failed to open a new connection[0m
+[1;31mE (21555) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (21558) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (21561) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (21566) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (21571) CYGM: Dexcom auth attempt 1 failed: ESP_FAIL[0m
+[0;32mI (21576) CYGM: Retrying in 2000 ms...[0m
+[0;32mI (23579) CYGM: Dexcom auth attempt 2/5...[0m
+[0;32mI (23579) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (23580) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (23581) DEXCOM: System time at auth: 2026-01-29 21:48:36[0m
+[0;32mI (23586) DEXCOM: Trying US region...[0m
+[0;32mI (23590) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (23594) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (23604) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (23611) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (23615) DEXCOM: Performing request...[0m
+[1;31mE (25024) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (25025) esp-tls: create_ssl_handle failed[0m
+[1;31mE (25026) esp-tls: Failed to open new connection[0m
+[1;31mE (25027) transport_base: Failed to open a new connection[0m
+[1;31mE (25036) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (25037) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (25042) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (25047) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (25052) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (25558) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (25559) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (25561) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (28507) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (28508) esp-tls: create_ssl_handle failed[0m
+[1;31mE (28508) esp-tls: Failed to open new connection[0m
+[1;31mE (28510) transport_base: Failed to open a new connection[0m
+[1;31mE (28519) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (28520) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (28524) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (28529) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (28533) DEXCOM: Trying Outside US region...[0m
+[0;32mI (28538) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (28542) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (28552) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (28559) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (28563) DEXCOM: Performing request...[0m
+[1;31mE (34434) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (34435) esp-tls: create_ssl_handle failed[0m
+[1;31mE (34435) esp-tls: Failed to open new connection[0m
+[1;31mE (34438) transport_base: Failed to open a new connection[0m
+[1;31mE (34446) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (34448) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (34452) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (34458) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (34463) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (34969) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (34970) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (34972) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (35014) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (35015) esp-tls: create_ssl_handle failed[0m
+[1;31mE (35016) esp-tls: Failed to open new connection[0m
+[1;31mE (35018) transport_base: Failed to open a new connection[0m
+[1;31mE (35026) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (35028) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (35032) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (35037) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (35042) DEXCOM: Trying Japan region...[0m
+[0;32mI (35047) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (35050) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (35060) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (35066) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (35071) DEXCOM: Performing request...[0m
+[1;31mE (35103) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (35104) esp-tls: create_ssl_handle failed[0m
+[1;31mE (35104) esp-tls: Failed to open new connection[0m
+[1;31mE (35106) transport_base: Failed to open a new connection[0m
+[1;31mE (35115) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (35116) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (35121) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (35126) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (35131) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (35637) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (35638) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (35640) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (35681) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (35682) esp-tls: create_ssl_handle failed[0m
+[1;31mE (35683) esp-tls: Failed to open new connection[0m
+[1;31mE (35685) transport_base: Failed to open a new connection[0m
+[1;31mE (35693) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (35695) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (35699) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (35704) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (35708) CYGM: Dexcom auth attempt 2 failed: ESP_FAIL[0m
+[0;32mI (35713) CYGM: Retrying in 4000 ms...[0m
+[0;32mI (39716) CYGM: Dexcom auth attempt 3/5...[0m
+[0;32mI (39716) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (39717) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (39718) DEXCOM: System time at auth: 2026-01-29 21:48:52[0m
+[0;32mI (39723) DEXCOM: Trying US region...[0m
+[0;32mI (39727) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (39731) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (39741) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (39747) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (39752) DEXCOM: Performing request...[0m
+[1;31mE (39795) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (39796) esp-tls: create_ssl_handle failed[0m
+[1;31mE (39796) esp-tls: Failed to open new connection[0m
+[1;31mE (39799) transport_base: Failed to open a new connection[0m
+[1;31mE (39807) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (39809) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (39813) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (39819) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (39824) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (40329) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (40330) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (40332) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (40364) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (40365) esp-tls: create_ssl_handle failed[0m
+[1;31mE (40365) esp-tls: Failed to open new connection[0m
+[1;31mE (40367) transport_base: Failed to open a new connection[0m
+[1;31mE (40376) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (40377) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (40381) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (40386) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (40391) DEXCOM: Trying Outside US region...[0m
+[0;32mI (40396) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (40400) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (40410) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (40416) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (40421) DEXCOM: Performing request...[0m
+[1;31mE (40461) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (40462) esp-tls: create_ssl_handle failed[0m
+[1;31mE (40463) esp-tls: Failed to open new connection[0m
+[1;31mE (40465) transport_base: Failed to open a new connection[0m
+[1;31mE (40472) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (40475) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (40479) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (40485) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (40490) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (40995) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (40996) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (40998) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (41035) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (41036) esp-tls: create_ssl_handle failed[0m
+[1;31mE (41036) esp-tls: Failed to open new connection[0m
+[1;31mE (41038) transport_base: Failed to open a new connection[0m
+[1;31mE (41047) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (41048) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (41052) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (41057) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (41062) DEXCOM: Trying Japan region...[0m
+[0;32mI (41066) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (41070) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (41080) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (41086) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (41091) DEXCOM: Performing request...[0m
+[1;31mE (41126) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (41127) esp-tls: create_ssl_handle failed[0m
+[1;31mE (41127) esp-tls: Failed to open new connection[0m
+[1;31mE (41129) transport_base: Failed to open a new connection[0m
+[1;31mE (41137) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (41139) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (41144) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (41149) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (41154) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (41659) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (41660) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (41662) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (41699) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (41700) esp-tls: create_ssl_handle failed[0m
+[1;31mE (41700) esp-tls: Failed to open new connection[0m
+[1;31mE (41702) transport_base: Failed to open a new connection[0m
+[1;31mE (41711) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (41712) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (41716) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (41721) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (41725) CYGM: Dexcom auth attempt 3 failed: ESP_FAIL[0m
+[0;32mI (41730) CYGM: Retrying in 8000 ms...[0m
+[0;32mI (49734) CYGM: Dexcom auth attempt 4/5...[0m
+[0;32mI (49734) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (49735) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (49736) DEXCOM: System time at auth: 2026-01-29 21:49:02[0m
+[0;32mI (49741) DEXCOM: Trying US region...[0m
+[0;32mI (49745) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (49749) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (49759) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (49766) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (49770) DEXCOM: Performing request...[0m
+[1;31mE (49805) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (49806) esp-tls: create_ssl_handle failed[0m
+[1;31mE (49807) esp-tls: Failed to open new connection[0m
+[1;31mE (49809) transport_base: Failed to open a new connection[0m
+[1;31mE (49817) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (49819) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (49823) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (49829) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (49834) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (50340) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (50341) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (50343) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (50387) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (50388) esp-tls: create_ssl_handle failed[0m
+[1;31mE (50389) esp-tls: Failed to open new connection[0m
+[1;31mE (50391) transport_base: Failed to open a new connection[0m
+[1;31mE (50400) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (50401) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (50405) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (50410) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (50414) DEXCOM: Trying Outside US region...[0m
+[0;32mI (50419) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (50423) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (50433) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (50440) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (50444) DEXCOM: Performing request...[0m
+[1;31mE (50488) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (50489) esp-tls: create_ssl_handle failed[0m
+[1;31mE (50489) esp-tls: Failed to open new connection[0m
+[1;31mE (50492) transport_base: Failed to open a new connection[0m
+[1;31mE (50499) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (50501) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (50506) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (50512) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (50517) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (51022) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (51023) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (51025) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (51058) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (51059) esp-tls: create_ssl_handle failed[0m
+[1;31mE (51059) esp-tls: Failed to open new connection[0m
+[1;31mE (51061) transport_base: Failed to open a new connection[0m
+[1;31mE (51069) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (51071) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (51075) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (51080) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (51085) DEXCOM: Trying Japan region...[0m
+[0;32mI (51089) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (51093) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (51103) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (51109) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (51114) DEXCOM: Performing request...[0m
+[1;31mE (51154) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (51155) esp-tls: create_ssl_handle failed[0m
+[1;31mE (51155) esp-tls: Failed to open new connection[0m
+[1;31mE (51157) transport_base: Failed to open a new connection[0m
+[1;31mE (51166) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (51168) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (51172) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (51177) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (51183) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (51688) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (51689) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (51691) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (51734) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (51735) esp-tls: create_ssl_handle failed[0m
+[1;31mE (51735) esp-tls: Failed to open new connection[0m
+[1;31mE (51737) transport_base: Failed to open a new connection[0m
+[1;31mE (51745) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (51747) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (51751) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (51756) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (51761) CYGM: Dexcom auth attempt 4 failed: ESP_FAIL[0m
+[0;32mI (51765) CYGM: Retrying in 16000 ms...[0m
+[0;32mI (67769) CYGM: Dexcom auth attempt 5/5...[0m
+[0;32mI (67769) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (67770) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (67771) DEXCOM: System time at auth: 2026-01-29 21:49:20[0m
+[0;32mI (67776) DEXCOM: Trying US region...[0m
+[0;32mI (67780) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (67784) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (67794) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (67801) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (67805) DEXCOM: Performing request...[0m
+[1;31mE (67845) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (67847) esp-tls: create_ssl_handle failed[0m
+[1;31mE (67847) esp-tls: Failed to open new connection[0m
+[1;31mE (67849) transport_base: Failed to open a new connection[0m
+[1;31mE (67857) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (67859) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (67864) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (67869) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (67874) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (68380) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (68381) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (68383) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (68421) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (68422) esp-tls: create_ssl_handle failed[0m
+[1;31mE (68422) esp-tls: Failed to open new connection[0m
+[1;31mE (68425) transport_base: Failed to open a new connection[0m
+[1;31mE (68433) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (68435) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (68438) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (68443) DEXCOM: US failed, trying Outside US region...[0m
+[0;32mI (68448) DEXCOM: Trying Outside US region...[0m
+[0;32mI (68453) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (68457) DEXCOM: URL: https://shareous1.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (68467) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (68473) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (68478) DEXCOM: Performing request...[0m
+[1;31mE (68519) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (68520) esp-tls: create_ssl_handle failed[0m
+[1;31mE (68520) esp-tls: Failed to open new connection[0m
+[1;31mE (68522) transport_base: Failed to open a new connection[0m
+[1;31mE (68531) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (68532) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (68537) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (68542) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (68547) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (69053) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (69054) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (69056) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (69097) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (69098) esp-tls: create_ssl_handle failed[0m
+[1;31mE (69099) esp-tls: Failed to open new connection[0m
+[1;31mE (69101) transport_base: Failed to open a new connection[0m
+[1;31mE (69109) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (69111) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (69115) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (69120) DEXCOM: Outside US failed, trying Japan region...[0m
+[0;32mI (69125) DEXCOM: Trying Japan region...[0m
+[0;32mI (69129) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (69133) DEXCOM: URL: https://share.dexcom.jp/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (69143) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (69149) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (69154) DEXCOM: Performing request...[0m
+[1;31mE (69192) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (69193) esp-tls: create_ssl_handle failed[0m
+[1;31mE (69193) esp-tls: Failed to open new connection[0m
+[1;31mE (69195) transport_base: Failed to open a new connection[0m
+[1;31mE (69204) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;32mI (69205) DEXCOM: Result: ESP_ERR_HTTP_CONNECT (status 0)[0m
+[1;31mE (69210) DEXCOM: HTTP request failed: ESP_ERR_HTTP_CONNECT[0m
+[0;32mI (69215) DEXCOM: Cleaning up persistent HTTP client[0m
+[0;33mW (69220) DEXCOM: Two-step login failed, trying legacy endpoint...[0m
+[0;32mI (69726) DEXCOM: Trying legacy login by name...[0m
+[0;32mI (69727) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (69729) DEXCOM: Persistent HTTP client initialized successfully[0m
+[1;31mE (69762) esp-tls-mbedtls: mbedtls_ssl_setup returned -0x7F00[0m
+[1;31mE (69763) esp-tls: create_ssl_handle failed[0m
+[1;31mE (69763) esp-tls: Failed to open new connection[0m
+[1;31mE (69765) transport_base: Failed to open a new connection[0m
+[1;31mE (69773) HTTP_CLIENT: Connection failed, sock < 0[0m
+[0;33mW (69775) DEXCOM: Legacy login failed: status 0[0m
+[0;32mI (69779) DEXCOM: Cleaning up persistent HTTP client[0m
+[1;31mE (69784) DEXCOM: Authentication failed on all regions[0m
+[0;33mW (69788) CYGM: Dexcom auth attempt 5 failed: ESP_FAIL[0m
+[1;31mE (69793) CYGM: Dexcom auto-login failed after 5 attempts[0m
+[1;31mE (69798) CYGM: CRITICAL: Will continue trying in background task[0m

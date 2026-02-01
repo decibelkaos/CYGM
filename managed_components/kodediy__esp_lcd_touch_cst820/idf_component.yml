@@ -1,0 +1,12 @@
+dependencies:
+  cmake_utilities: 0.*
+  esp_lcd_touch:
+    public: true
+    version: ^1.0.4
+  idf: '>=5.0.0'
+description: ESP LCD Touch CST820
+issues: https://github.com/kodediy/esp_lcd_touch_cst820/issues
+license: Apache-2.0
+repository: https://github.com/kodediy/esp_lcd_touch_cst820.git
+url: https://github.com/kodediy/esp_lcd_touch_cst820
+version: 1.0.1

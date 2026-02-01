@@ -1,0 +1,56 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+[0;33m--- Warning: GDB cannot open serial ports accessed as COMx[0m
+[0;33m--- Using \\.\COM40 instead...[0m
+[0;33m--- esp-idf-monitor 1.9.0 on \\.\COM40 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4008b961: [0;33mpanic_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/panic.c[0m[0m:[1;31m477[0m
+[0m--- 0x4008b929: [0;33mesp_system_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/esp_system_chip.c[0m[0m:[1;31m87[0m
+[0m--- 0x40094579: [0;33m__assert_func[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/assert.c[0m[0m:[1;31m80[0m
+[0m--- 0x400e5a6e: [0;33mlvgl_port_lock[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m127[0m
+[0m--- 0x400e109b: [0;33mbattery_monitor_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2799[0m
+[0m--- 0x4008c625: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4008b961: [0;33mpanic_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/panic.c[0m[0m:[1;31m477[0m
+[0m--- 0x4008b929: [0;33mesp_system_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/esp_system_chip.c[0m[0m:[1;31m87[0m
+[0m--- 0x40094579: [0;33m__assert_func[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/assert.c[0m[0m:[1;31m80[0m
+[0m--- 0x400e5a6e: [0;33mlvgl_port_lock[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m127[0m
+[0m--- 0x400e109b: [0;33mbattery_monitor_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2799[0m
+[0m--- 0x4008c625: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4008b961: [0;33mpanic_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/panic.c[0m[0m:[1;31m477[0m
+[0m--- 0x4008b929: [0;33mesp_system_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/esp_system_chip.c[0m[0m:[1;31m87[0m
+[0m--- 0x40094579: [0;33m__assert_func[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/assert.c[0m[0m:[1;31m80[0m
+[0m--- 0x400e5a6e: [0;33mlvgl_port_lock[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m127[0m
+[0m--- 0x400e109b: [0;33mbattery_monitor_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2799[0m
+[0m--- 0x4008c625: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4008b961: [0;33mpanic_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/panic.c[0m[0m:[1;31m477[0m
+[0m--- 0x4008b929: [0;33mesp_system_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/esp_system_chip.c[0m[0m:[1;31m87[0m
+[0m--- 0x40094579: [0;33m__assert_func[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/assert.c[0m[0m:[1;31m80[0m
+[0m--- 0x400e5a6e: [0;33mlvgl_port_lock[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m127[0m
+[0m--- 0x400e109b: [0;33mbattery_monitor_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2799[0m
+[0m--- 0x4008c625: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4008b961: [0;33mpanic_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/panic.c[0m[0m:[1;31m477[0m
+[0m--- 0x4008b929: [0;33mesp_system_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/esp_system_chip.c[0m[0m:[1;31m87[0m
+[0m--- 0x40094579: [0;33m__assert_func[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/assert.c[0m[0m:[1;31m80[0m
+[0m--- 0x400e5a6e: [0;33mlvgl_port_lock[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m127[0m
+[0m--- 0x400e109b: [0;33mbattery_monitor_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2799[0m
+[0m--- 0x4008c625: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x4008b961: [0;33mpanic_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/panic.c[0m[0m:[1;31m477[0m
+[0m--- 0x4008b929: [0;33mesp_system_abort[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/esp_system/port/esp_system_chip.c[0m[0m:[1;31m87[0m
+[0m--- 0x40094579: [0;33m__assert_func[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/newlib/src/assert.c[0m[0m:[1;31m80[0m
+[0m--- 0x400e5a6e: [0;33mlvgl_port_lock[0m[0m at [0;32mC:/Projects/CYGM/managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port.c[0m[0m:[1;31m127[0m
+[0m--- 0x400e109b: [0;33mbattery_monitor_task[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m2799[0m
+[0m--- 0x4008c625: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m

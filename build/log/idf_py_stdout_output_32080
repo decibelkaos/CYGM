@@ -1,0 +1,350 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=5e584h (386436) map[0m
+[0;32mI (218) esp_image: segment 1: paddr=0006e5ac vaddr=3ffb0000 size=01a6ch (  6764) load[0m
+[0;32mI (221) esp_image: segment 2: paddr=00070020 vaddr=400d0020 size=e2d38h (929080) map[0m
+[0;32mI (539) esp_image: segment 3: paddr=00152d60 vaddr=3ffb1a6c size=027e0h ( 10208) load[0m
+[0;32mI (543) esp_image: segment 4: paddr=00155548 vaddr=40080000 size=1a6f8h (108280) load[0m
+[0;32mI (586) esp_image: segment 5: paddr=0016fc48 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (599) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (599) boot: Disabling RNG early entropy source...[0m
+[0;32mI (610) cpu_start: Multicore app[0m
+[0;32mI (618) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (618) cpu_start: Pro cpu start user code[0m
+[0;32mI (618) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (620) app_init: Application information:[0m
+[0;32mI (624) app_init: Project name:     cygm[0m
+[0;32mI (627) app_init: App version:      1[0m
+[0;32mI (631) app_init: Compile time:     Jan 19 2026 08:48:52[0m
+[0;32mI (636) app_init: ELF file SHA256:  e12c9754a...[0m
+[0;32mI (640) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (644) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (648) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (652) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (656) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (662) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (667) heap_init: At 3FFC54D8 len 0001AB28 (106 KiB): DRAM[0m
+[0;32mI (672) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (678) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (683) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (690) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (702) spi_flash: detected chip: generic[0m
+[0;32mI (705) spi_flash: flash io: dio[0m
+[0;32mI (709) main_task: Started on CPU0[0m
+[0;32mI (712) main_task: Calling app_main()[0m
+[0;32mI (714) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (719) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (723) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (751) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (753) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 1)[0m
+[0;32mI (754) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (757) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (761) CYGM:   DST: Enabled[0m
+[0;32mI (764) CYGM:   Format: 24hr[0m
+[0;32mI (767) CYGM: No saved weather settings, using defaults[0m
+[0;32mI (771) CYGM: Initializing LCD backlight[0m
+[0;32mI (775) CYGM: Initializing SPI bus[0m
+[0;32mI (779) CYGM: Initializing LCD panel IO[0m
+[0;32mI (783) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (906) CYGM: LCD initialized successfully[0m
+[0;32mI (907) CYGM: LED PWM initialized[0m
+[0;32mI (909) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (909) CYGM: UI Task started on Core 1[0m
+[0;32mI (910) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (914) wifi:W (914) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+wifi driver task: 3ffd17ec, prio:23, stack:6656, core=0
+[0;32mI (931) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (949) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (950) wifi:wifi certification version: v7.0[0m
+[0;32mI (950) wifi:config NVS flash: enabled[0m
+[0;32mI (952) wifi:config nano formatting: disabled[0m
+[0;32mI (957) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (962) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (965) wifi:Init management short buffer num: 32[0m
+[0;32mI (970) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (974) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (978) wifi:Init static rx buffer num: 10[0m
+[0;32mI (982) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (987) wifi_init: rx ba win: 6[0m
+[0;32mI (988) wifi_init: accept mbox: 6[0m
+[0;32mI (991) wifi_init: tcpip mbox: 32[0m
+[0;32mI (995) wifi_init: udp mbox: 6[0m
+[0;32mI (997) wifi_init: tcp mbox: 6[0m
+[0;32mI (1000) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1003) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1007) wifi_init: tcp mss: 1440[0m
+[0;32mI (1010) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1013) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1019) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1103) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1104) wifi:enable tsf[0m
+[0;32mI (1107) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1108) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1109) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1115) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1120) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1127) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (913) CYGM: System initialized - tasks running[0m
+[0;32mI (1138) main_task: Returned from app_main()[0m
+[0;32mI (1151) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1152) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1176) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1192) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1221) wifi:connected with Look Ma, No Wires!, aid = 5, channel 6, BW20, bssid = 50:27:a9:83:72:25[0m
+[0;32mI (1222) wifi:security: WPA2-PSK, phy: bgn, rssi: -72[0m
+[0;32mI (1228) wifi:pm start, type: 1[0m
+
+[0;32mI (1228) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1244) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1245) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;33mW (1344) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1344) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1346) CST820 Driver: IC id: 183[0m
+[0;32mI (1349) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1354) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1360) CYGM: Initializing CardKB I2C bus[0m
+[0;32mI (1365) CYGM: CardKB initialized[0m
+[0;32mI (1367) CYGM: Initializing LVGL[0m
+[0;32mI (1378) CYGM: LVGL initialized successfully[0m
+[0;32mI (1454) LVGL: Starting LVGL task[0m
+[0;32mI (1455) CYGM: Touch debug task started[0m
+[0;32mI (1754) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:83:72:25), tid:0, ssn:0, winSize:64[0m
+[0;32mI (3789) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (3790) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (3791) CYGM: WiFi connected successfully[0m
+[0;32mI (3796) CYGM: Initializing SNTP[0m
+[0;32mI (3801) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3804) CYGM: Waiting for system time to be set via SNTP...[0m
+[0;32mI (3810) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3810) CYGM: Weather update task started[0m
+[0;32mI (3815) CYGM: Time: 1969-12-31 16:00:03 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (8047) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (13827) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (13828) CYGM: Time: 2026-01-19 08:53:56 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (13945) CYGM: TOUCH DETECTED: x=294, y=26[0m
+[0;32mI (13986) CYGM: Settings button clicked - switching to menu screen[0m
+[0;32mI (15279) CYGM: TOUCH DETECTED: x=174, y=192[0m
+[0;32mI (15346) CYGM: Menu item 3 clicked[0m
+[0;32mI (15347) CYGM: Launching Time/Date/Weather menu...[0m
+[0;32mI (16034) CYGM: TOUCH DETECTED: x=191, y=163[0m
+[0;32mI (16072) CYGM: Weather settings clicked[0m
+[0;32mI (17167) CYGM: TOUCH DETECTED: x=171, y=84[0m
+[0;32mI (17253) CYGM: Zipcode edit clicked[0m
+[0;32mI (19356) CYGM: TOUCH DETECTED: x=174, y=166[0m
+[0;32mI (19760) CYGM: TOUCH DETECTED: x=121, y=164[0m
+[0;32mI (20063) CYGM: TOUCH DETECTED: x=115, y=200[0m
+[0;32mI (21206) CYGM: TOUCH DETECTED: x=112, y=72[0m
+[0;32mI (22120) CYGM: TOUCH DETECTED: x=106, y=81[0m
+[0;32mI (23140) CYGM: TOUCH DETECTED: x=110, y=107[0m
+[0;32mI (23185) CYGM: Zipcode entered: 98092[0m
+Guru Meditation Error: Core  1 panic'ed (LoadProhibited). Exception was unhandled.
+
+Core  1 register dump:
+PC      : 0x400e52fb  PS      : 0x00060f30  A0      : 0x800e20f4  A1      : 0x3ffda8f0  
+A2      : 0x00000000  A3      : 0x00000007  A4      : 0x3ffda910  A5      : 0x00000000  
+A6      : 0x00000000  A7      : 0x3ffb8fb8  A8      : 0x800e60ae  A9      : 0x00000000  
+A10     : 0x3ffbcf8c  A11     : 0x00000008  A12     : 0x00000000  A13     : 0x00000000  
+A14     : 0x00000000  A15     : 0x3ffbcf5c  SAR     : 0x00000020  EXCCAUSE: 0x0000001c  
+EXCVADDR: 0x00000020  LBEG    : 0x400013f9  LEND    : 0x4000140d  LCOUNT  : 0xfffffffe  
+
+
+Backtrace: 0x400e52f8:0x3ffda8f0 0x400e20f1:0x3ffda910 0x400e2144:0x3ffda940 0x400de299:0x3ffda960 0x400de549:0x3ffdaa20 0x400db9b5:0x3ffdaa40 0x400de689:0x3ffdaa60 0x400de736:0x3ffdaa80 0x400debae:0x3ffdaac0 0x400df82a:0x3ffdaaf0 0x400df931:0x3ffdab10 0x400ee4a1:0x3ffdab50 0x400ee54e:0x3ffdab70 0x400dd818:0x3ffdab90 0x4008b201:0x3ffdabb0
+
+
+
+
+ELF file SHA256: e12c9754a
+
+Rebooting...
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (27) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (31) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=5e584h (386436) map[0m
+[0;32mI (218) esp_image: segment 1: paddr=0006e5ac vaddr=3ffb0000 size=01a6ch (  6764) load[0m
+[0;32mI (221) esp_image: segment 2: paddr=00070020 vaddr=400d0020 size=e2d38h (929080) map[0m
+[0;32mI (539) esp_image: segment 3: paddr=00152d60 vaddr=3ffb1a6c size=027e0h ( 10208) load[0m
+[0;32mI (543) esp_image: segment 4: paddr=00155548 vaddr=40080000 size=1a6f8h (108280) load[0m
+[0;32mI (586) esp_image: segment 5: paddr=0016fc48 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (599) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (599) boot: Disabling RNG early entropy source...[0m
+[0;32mI (610) cpu_start: Multicore app[0m
+[0;32mI (618) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (618) cpu_start: Pro cpu start user code[0m
+[0;32mI (618) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (620) app_init: Application information:[0m
+[0;32mI (624) app_init: Project name:     cygm[0m
+[0;32mI (627) app_init: App version:      1[0m
+[0;32mI (631) app_init: Compile time:     Jan 19 2026 08:48:52[0m
+[0;32mI (636) app_init: ELF file SHA256:  e12c9754a...[0m
+[0;32mI (640) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (644) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (648) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (652) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (656) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (662) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (667) heap_init: At 3FFC54D8 len 0001AB28 (106 KiB): DRAM[0m
+[0;32mI (672) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (677) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (683) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (690) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (701) spi_flash: detected chip: generic[0m
+[0;32mI (705) spi_flash: flash io: dio[0m
+[0;32mI (709) main_task: Started on CPU0[0m
+[0;32mI (712) main_task: Calling app_main()[0m
+[0;32mI (714) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (719) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (723) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (751) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (753) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 1)[0m
+[0;32mI (754) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (757) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (761) CYGM:   DST: Enabled[0m
+[0;32mI (764) CYGM:   Format: 24hr[0m
+[0;32mI (767) CYGM: No saved weather settings, using defaults[0m
+[0;32mI (771) CYGM: Initializing LCD backlight[0m
+[0;32mI (775) CYGM: Initializing SPI bus[0m
+[0;32mI (779) CYGM: Initializing LCD panel IO[0m
+[0;32mI (783) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (906) CYGM: LCD initialized successfully[0m
+[0;32mI (907) CYGM: LED PWM initialized[0m
+[0;32mI (909) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (909) CYGM: UI Task started on Core 1[0m
+[0;32mI (910) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (914) wifi:W (914) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+wifi driver task: 3ffd17ec, prio:23, stack:6656, core=0
+[0;32mI (931) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (949) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (950) wifi:wifi certification version: v7.0[0m
+[0;32mI (950) wifi:config NVS flash: enabled[0m
+[0;32mI (952) wifi:config nano formatting: disabled[0m
+[0;32mI (957) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (962) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (965) wifi:Init management short buffer num: 32[0m
+[0;32mI (970) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (974) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (978) wifi:Init static rx buffer num: 10[0m
+[0;32mI (982) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (987) wifi_init: rx ba win: 6[0m
+[0;32mI (988) wifi_init: accept mbox: 6[0m
+[0;32mI (991) wifi_init: tcpip mbox: 32[0m
+[0;32mI (995) wifi_init: udp mbox: 6[0m
+[0;32mI (997) wifi_init: tcp mbox: 6[0m
+[0;32mI (1000) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1003) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1007) wifi_init: tcp mss: 1440[0m
+[0;32mI (1010) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1013) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1019) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1101) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1102) wifi:enable tsf[0m
+[0;32mI (1104) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1105) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1107) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1113) CYGM: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1118) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1125) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (913) CYGM: System initialized - tasks running[0m
+[0;32mI (1136) main_task: Returned from app_main()[0m
+[0;32mI (1184) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1186) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1301) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1311) wifi:state: assoc -> run (0x10)[0m
+[0;33mW (1344) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1344) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1347) CST820 Driver: IC id: 183[0m
+[0;32mI (1349) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1350) wifi:I (1355) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+connected with Look Ma, No Wires!, aid = 7, channel 6, BW20, bssid = 50:27:a9:75:07:45I (1362) CYGM: Initializing CardKB I2C bus
+
+[0;32mI (1374) wifi:security: WPA2-PSK, phy: bgn, rssi: -28[0m
+[0;32mI (1374) CYGM: CardKB initialized[0m
+[0;32mI (1381) CYGM: Initializing LVGL[0m
+[0;32mI (1382) wifi:pm start, type: 1[0m
+
+[0;32mI (1387) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1392) CYGM: LVGL initialized successfully[0m
+[0;32mI (1432) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:75:07:45), tid:0, ssn:0, winSize:64[0m
+[0;32mI (1392) LVGL: Starting LVGL task[0m
+[0;32mI (1480) CYGM: Touch debug task started[0m
+[0;32mI (1590) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1590) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (2496) esp_netif_handlers: sta ip: 192.168.7.36, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (2497) WIFI_MGR: Connected! IP: 192.168.7.36[0m
+[0;32mI (2498) CYGM: WiFi connected successfully[0m
+[0;32mI (2503) CYGM: Initializing SNTP[0m
+[0;32mI (2508) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2511) CYGM: Waiting for system time to be set via SNTP...[0m
+[0;32mI (2517) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2517) CYGM: Weather update task started[0m
+[0;32mI (2522) CYGM: Time: 2026-01-19 08:54:07 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (5706) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (12534) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (12535) CYGM: Time: 2026-01-19 08:54:18 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (22538) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (22539) CYGM: Time: 2026-01-19 08:54:28 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (32541) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (32542) CYGM: Time: 2026-01-19 08:54:38 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (42544) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (42545) CYGM: Time: 2026-01-19 08:54:48 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (52547) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (52548) CYGM: Time: 2026-01-19 08:54:58 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (62550) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (62551) CYGM: Time: 2026-01-19 08:55:08 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (72553) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (72554) CYGM: Time: 2026-01-19 08:55:18 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (82557) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (82558) CYGM: Time: 2026-01-19 08:55:28 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (92560) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (92561) CYGM: Time: 2026-01-19 08:55:38 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (102563) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (102564) CYGM: Time: 2026-01-19 08:55:48 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (112567) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (112568) CYGM: Time: 2026-01-19 08:55:58 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (122571) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (122572) CYGM: Time: 2026-01-19 08:56:08 (user_24hr=1, user_tz=America/Los_Angeles)[0m

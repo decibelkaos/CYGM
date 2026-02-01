@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Force)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:docs.m5stack.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:forum.lvgl.io)",
+      "WebFetch(domain:docs.lvgl.io)",
+      "WebFetch(domain:www.elektroda.com)",
+      "Bash(ls:*)",
+      "Bash(powershell -Command \"& {. $env:IDF_PATH/export.ps1; idf.py build}\")",
+      "Bash(Select-String -Pattern \"warning:|error:\" -Context 0,2)",
+      "Bash(C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/tools/idf.py build:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(curl:*)",
+      "Bash(tree:*)",
+      "WebFetch(domain:open-meteo.com)",
+      "Bash(python generate_arrow_images.py:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

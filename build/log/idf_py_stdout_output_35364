@@ -1,0 +1,120 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xeets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1184
+load:0x40078000,len:13232
+load:0x40080400,len:3028
+entry 0x400805e4
+[1;31mE (353) psram: PSRAM ID read error: 0xffffffff[0m
+SeeGM Display starting...
+[WiFi] Wi-Fi ready (STA). Scanning...
+[WiFi] Scan done: 15 APs.
+Touch controller: OK
+[MEMORY] Free heap before LVGL: 214592 bytes
+[MEMORY] Free heap after LVGL: 201760 bytes
+[MAIN] Creating HOME screen...
+[MEMORY] Free heap after HOME: 201760 bytes
+[MAIN] Other screens will be created on demand
+[MAIN] Initializing ScreenManager...
+[ScreenManager] Initializing with enhanced error recovery...
+[ScreenManager] Initialization - Free: 201760 bytes, PSRAM: 0 bytes, Largest block: 110580 bytes
+[ScreenManager] Ready - other screens will be created on demand
+[Dexcom] API initialized
+[MAIN] Showing home screen...
+[MEMORY] Free heap at end of setup: 201760 bytes
+[STORAGE] Will attempt storage init in 5 seconds
+[HomeScreen] === CGM UPDATE DEBUG ===
+[HomeScreen] CGM Type: None
+[HomeScreen] Connection State: 0
+[HomeScreen] Is Connected: NO
+[HomeScreen] Status: Not initialized
+[HomeScreen] Data Valid: NO
+[HomeScreen] Data Value: 0
+[HomeScreen] Data Arrow: 
+[HomeScreen] Storage Ready: NO
+[HomeScreen] WiFi Connected: NO
+[HomeScreen] ==============================
+[HomeScreen] No CGM configured - showing setup panel
+[STORAGE] Attempting delayed initialization...
+[STORAGE] Successfully initialized!
+[STORAGE] Found saved WiFi: Look Ma, No Wires!
+[STORAGE] Found saved CGM: dexcom (thisgirlmurphy@hotmail.com)
+[WiFi] Auto-connecting to: Look Ma, No Wires!
+[WiFi] Connecting to: Look Ma, No Wires!
+[WiFi] Status: DISCONNECTED
+[WiFi] Got IP: 192.168.7.71
+[HomeScreen] WiFi fully connected: 192.168.7.71
+[HomeScreen] Initializing CGM Manager...
+[CGMManager] Initialized
+[HomeScreen] CGM Manager initialized successfully
+[CGMManager] WiFi connected: 192.168.7.71
+[Dexcom] API initialized
+[Dexcom] Credentials configured for user: thisgirlmurphy@hotmail.com
+[CGMManager] Loaded dexcom credentials for thisgirlmurphy@hotmail.com
+[CGMManager] Attempting login for Dexcom...
+[Dexcom] Attempting Share login...
+[Dexcom] AUTH POST https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount
+[Dexcom] AUTH code: 200
+[Dexcom] AUTH accountId: cc16e452-a5ec-482a-86e0-453c6d33019c
+[Dexcom] LOGIN-ID POST https://share2.dexcom.com/ShareWebServices/Services/General/LoginPublisherAccountById
+[Dexcom] LOGIN-ID code: 200
+[Dexcom] Login OK (region=US). Session: 5f48faea...
+[CGMManager] Login successful for Dexcom
+[HomeScreen] CGM configured (Dexcom) but no data - showing dashes
+[CGMManager] Fetching data from Dexcom...
+[Dexcom] Rate limited - 41 seconds until next request
+[CGMManager] Update failed: Rate limited
+[ScreenManager] Detailed periodic check - Free: 198316 bytes, PSRAM: 0 bytes, Largest block: 110580 bytes
+[ScreenManager] Screen status - HOME: 1, WIFI: 0 (failed: 0), CGM: 0 (failed: 0)
+[CGMManager] Fetching data from Dexcom...
+[Dexcom] POST glucose URL: https://share2.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues
+[Dexcom] Data HTTP code: 200
+[Dexcom] Response length: 2 bytes
+[Dexcom] Raw response: []
+[Dexcom] ERROR: Empty array or not array. IsArray: true, Size: 0
+[Dexcom] Active region fetch failed - trying alternate region once
+[Dexcom] POST glucose URL: https://shareous1.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues
+[Dexcom] Data HTTP code: 500
+[Dexcom] Response length: 965 bytes
+[Dexcom] Raw response: {"Code":"SessionIdNotFound","Message":"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]","SubCode":"{\n    \"OnlineException\": {\n        \"DateThrownLocal\": \"2026-01-22T02:24:53.716247454\",\n        \"DateThrown\": \"2026-01-22T02:24:53.716247454Z\",\n        \"ErrorCode\": \"SessionIdNotFound\",\n        \"Type\": 5,\n        \"Category\": 2,\n        \"Severity\": 2,\n        \"TypeString\": \"ObjectNotFound\",\n        \"CategoryString\": \"Database\",\n        \"SeverityString\": \"Severe\",\n        \"HostName\": \"\",\n        \"HostIP\": \"\",\n        \"Id\": \"ddc24ba0-3e80-48b5-bec8-25bb29ca543b\",\n        \"Message\": \"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\",\n        \"FullText\": \"com.dexcom.udp.common.data.exception.OnlineException: Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\"\n    }\n}","TypeName":"FaultException"}
+[Dexcom] HTTP error 500: {"Code":"SessionIdNotFound","Message":"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]","SubCode":"{\n    \"OnlineException\": {\n        \"DateThrownLocal\": \"2026-01-22T02:24:53.716247454\",\n        \"DateThrown\": \"2026-01-22T02:24:53.716247454Z\",\n        \"ErrorCode\": \"SessionIdNotFound\",\n        \"Type\": 5,\n        \"Category\": 2,\n        \"Severity\": 2,\n        \"TypeString\": \"ObjectNotFound\",\n        \"CategoryString\": \"Database\",\n        \"SeverityString\": \"Severe\",\n        \"HostName\": \"\",\n        \"HostIP\": \"\",\n        \"Id\": \"ddc24ba0-3e80-48b5-bec8-25bb29ca543b\",\n        \"Message\": \"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\",\n        \"FullText\": \"com.dexcom.udp.common.data.exception.OnlineException: Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\"\n    }\n}","TypeName":"FaultException"}
+[CGMManager] Update failed: Data request failed: HTTP 500
+[ScreenManager] Detailed periodic check - Free: 197856 bytes, PSRAM: 0 bytes, Largest block: 110580 bytes
+[ScreenManager] Screen status - HOME: 1, WIFI: 0 (failed: 0), CGM: 0 (failed: 0)
+[ScreenManager] Detailed periodic check - Free: 198316 bytes, PSRAM: 0 bytes, Largest block: 110580 bytes
+[ScreenManager] Screen status - HOME: 1, WIFI: 0 (failed: 0), CGM: 0 (failed: 0)
+[CGMManager] Fetching data from Dexcom...
+[Dexcom] POST glucose URL: https://share2.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues
+[Dexcom] Data HTTP code: 200
+[Dexcom] Response length: 2 bytes
+[Dexcom] Raw response: []
+[Dexcom] ERROR: Empty array or not array. IsArray: true, Size: 0
+[Dexcom] Active region fetch failed - trying alternate region once
+[Dexcom] POST glucose URL: https://shareous1.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues
+[Dexcom] Data HTTP code: 500
+[Dexcom] Response length: 965 bytes
+[Dexcom] Raw response: {"Code":"SessionIdNotFound","Message":"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]","SubCode":"{\n    \"OnlineException\": {\n        \"DateThrownLocal\": \"2026-01-22T02:26:23.556756162\",\n        \"DateThrown\": \"2026-01-22T02:26:23.556756162Z\",\n        \"ErrorCode\": \"SessionIdNotFound\",\n        \"Type\": 5,\n        \"Category\": 2,\n        \"Severity\": 2,\n        \"TypeString\": \"ObjectNotFound\",\n        \"CategoryString\": \"Database\",\n        \"SeverityString\": \"Severe\",\n        \"HostName\": \"\",\n        \"HostIP\": \"\",\n        \"Id\": \"ffc29c07-8259-41ab-b11f-05961284e7c6\",\n        \"Message\": \"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\",\n        \"FullText\": \"com.dexcom.udp.common.data.exception.OnlineException: Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\"\n    }\n}","TypeName":"FaultException"}
+[Dexcom] HTTP error 500: {"Code":"SessionIdNotFound","Message":"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]","SubCode":"{\n    \"OnlineException\": {\n        \"DateThrownLocal\": \"2026-01-22T02:26:23.556756162\",\n        \"DateThrown\": \"2026-01-22T02:26:23.556756162Z\",\n        \"ErrorCode\": \"SessionIdNotFound\",\n        \"Type\": 5,\n        \"Category\": 2,\n        \"Severity\": 2,\n        \"TypeString\": \"ObjectNotFound\",\n        \"CategoryString\": \"Database\",\n        \"SeverityString\": \"Severe\",\n        \"HostName\": \"\",\n        \"HostIP\": \"\",\n        \"Id\": \"ffc29c07-8259-41ab-b11f-05961284e7c6\",\n        \"Message\": \"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\",\n        \"FullText\": \"com.dexcom.udp.common.data.exception.OnlineException: Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\"\n    }\n}","TypeName":"FaultException"}
+[CGMManager] Update failed: Data request failed: HTTP 500
+[ScreenManager] Detailed periodic check - Free: 198316 bytes, PSRAM: 0 bytes, Largest block: 110580 bytes
+[ScreenManager] Screen status - HOME: 1, WIFI: 0 (failed: 0), CGM: 0 (failed: 0)
+[CGMManager] Fetching data from Dexcom...
+[Dexcom] POST glucose URL: https://share2.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues
+[Dexcom] Data HTTP code: 200
+[Dexcom] Response length: 2 bytes
+[Dexcom] Raw response: []
+[Dexcom] ERROR: Empty array or not array. IsArray: true, Size: 0
+[Dexcom] Active region fetch failed - trying alternate region once
+[Dexcom] POST glucose URL: https://shareous1.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues
+[Dexcom] Data HTTP code: 500
+[Dexcom] Response length: 965 bytes
+[Dexcom] Raw response: {"Code":"SessionIdNotFound","Message":"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]","SubCode":"{\n    \"OnlineException\": {\n        \"DateThrownLocal\": \"2026-01-22T02:27:53.492643682\",\n        \"DateThrown\": \"2026-01-22T02:27:53.492643682Z\",\n        \"ErrorCode\": \"SessionIdNotFound\",\n        \"Type\": 5,\n        \"Category\": 2,\n        \"Severity\": 2,\n        \"TypeString\": \"ObjectNotFound\",\n        \"CategoryString\": \"Database\",\n        \"SeverityString\": \"Severe\",\n        \"HostName\": \"\",\n        \"HostIP\": \"\",\n        \"Id\": \"23b9b0e7-83f2-4898-846a-ffdd2e7d4d84\",\n        \"Message\": \"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\",\n        \"FullText\": \"com.dexcom.udp.common.data.exception.OnlineException: Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\"\n    }\n}","TypeName":"FaultException"}
+[Dexcom] HTTP error 500: {"Code":"SessionIdNotFound","Message":"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]","SubCode":"{\n    \"OnlineException\": {\n        \"DateThrownLocal\": \"2026-01-22T02:27:53.492643682\",\n        \"DateThrown\": \"2026-01-22T02:27:53.492643682Z\",\n        \"ErrorCode\": \"SessionIdNotFound\",\n        \"Type\": 5,\n        \"Category\": 2,\n        \"Severity\": 2,\n        \"TypeString\": \"ObjectNotFound\",\n        \"CategoryString\": \"Database\",\n        \"SeverityString\": \"Severe\",\n        \"HostName\": \"\",\n        \"HostIP\": \"\",\n        \"Id\": \"23b9b0e7-83f2-4898-846a-ffdd2e7d4d84\",\n        \"Message\": \"Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\",\n        \"FullText\": \"com.dexcom.udp.common.data.exception.OnlineException: Failed to find session object. [SessionId = 5f48faea-2701-44a8-885d-3c9a0e75ddc2]\"\n    }\n}","TypeName":"FaultException"}
+[CGMManager] Update failed: Data request failed: HTTP 500
+[ScreenManager] Detailed periodic check - Free: 197868 bytes, PSRAM: 0 bytes, Largest block: 110580 bytes
+[ScreenManager] Screen status - HOME: 1, WIFI: 0 (failed: 0), CGM: 0 (failed: 0)

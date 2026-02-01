@@ -1,0 +1,242 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM7 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py'
+0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_F�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 17 2026 19:57:44[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot: End of partition table[0m
+[0;32mI (79) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=6bb1ch (441116) map[0m
+[0;32mI (237) esp_image: segment 1: paddr=0007bb44 vaddr=3ffb0000 size=0424ch ( 16972) load[0m
+[0;32mI (243) esp_image: segment 2: paddr=0007fd98 vaddr=40080000 size=00280h (   640) load[0m
+[0;32mI (244) esp_image: segment 3: paddr=00080020 vaddr=400d0020 size=e3608h (931336) map[0m
+[0;32mI (566) esp_image: segment 4: paddr=00163630 vaddr=40080280 size=1a478h (107640) load[0m
+[0;32mI (609) esp_image: segment 5: paddr=0017dab0 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (622) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (622) boot: Disabling RNG early entropy source...[0m
+[0;32mI (632) cpu_start: Multicore app[0m
+[0;32mI (641) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (641) cpu_start: Pro cpu start user code[0m
+[0;32mI (641) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (643) app_init: Application information:[0m
+[0;32mI (647) app_init: Project name:     cygm[0m
+[0;32mI (650) app_init: App version:      1[0m
+[0;32mI (654) app_init: Compile time:     Jan 19 2026 08:48:52[0m
+[0;32mI (659) app_init: ELF file SHA256:  90560aebb...[0m
+[0;32mI (663) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (667) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (671) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (675) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (679) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (685) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (690) heap_init: At 3FFC54E0 len 0001AB20 (106 KiB): DRAM[0m
+[0;32mI (695) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (701) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (706) heap_init: At 4009A6F8 len 00005908 (22 KiB): IRAM[0m
+[0;33mW (713) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (724) spi_flash: detected chip: generic[0m
+[0;32mI (728) spi_flash: flash io: dio[0m
+[0;32mI (732) main_task: Started on CPU0[0m
+[0;32mI (735) main_task: Calling app_main()[0m
+[0;32mI (737) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (742) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (746) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (775) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (777) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 1)[0m
+[0;32mI (778) CYGM: Loaded time settings from NVS:[0m
+[0;32mI (781) CYGM:   Timezone: America/Los_Angeles[0m
+[0;32mI (785) CYGM:   DST: Enabled[0m
+[0;32mI (788) CYGM:   Format: 24hr[0m
+[0;32mI (791) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F)[0m
+[0;32mI (798) CYGM: Loaded weather settings from NVS:[0m
+[0;32mI (802) CYGM:   Zipcode: 98092[0m
+[0;32mI (805) CYGM:   Unit: Fahrenheit[0m
+[0;32mI (808) CYGM: Initializing LCD backlight[0m
+[0;32mI (811) CYGM: Initializing SPI bus[0m
+[0;32mI (815) CYGM: Initializing LCD panel IO[0m
+[0;32mI (819) CYGM: Initializing LCD panel (ST7789)[0m
+[0;32mI (942) CYGM: LCD initialized successfully[0m
+[0;32mI (943) CYGM: LED PWM initialized[0m
+[0;32mI (945) CYGM: WiFi Task started on Core 0[0m
+[0;32mI (945) CYGM: UI Task started on Core 1[0m
+[0;32mI (946) CYGM: Initializing touch I2C bus on Core 1[0m
+[0;32mI (950) wifi:I (949) CYGM: System initialized - tasks running[0m
+[0;33mW (950) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+wifi driver task: 3ffd1878, prio:23, stack:6656, core=0
+[0;32mI (972) CYGM: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (990) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (990) wifi:wifi certification version: v7.0[0m
+[0;32mI (991) wifi:config NVS flash: enabled[0m
+[0;32mI (993) wifi:config nano formatting: disabled[0m
+[0;32mI (997) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1002) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1006) wifi:Init management short buffer num: 32[0m
+[0;32mI (1010) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1015) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1019) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1022) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1028) wifi_init: rx ba win: 6[0m
+[0;32mI (1029) wifi_init: accept mbox: 6[0m
+[0;32mI (1033) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1036) wifi_init: udp mbox: 6[0m
+[0;32mI (1039) wifi_init: tcp mbox: 6[0m
+[0;32mI (1041) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1045) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1048) wifi_init: tcp mss: 1440[0m
+[0;32mI (1051) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1055) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1060) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1140) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
+[0;32mI (955) main_task: Returned from app_main()[0m
+[0;32mI (1198) wifi:mode : sta (78:42:1c:93:69:14)[0m
+[0;32mI (1199) wifi:enable tsf[0m
+[0;32mI (1202) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1203) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1204) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: MiddleOffice2.4)[0m
+[0;32mI (1209) CYGM: Connecting to WiFi: MiddleOffice2.4[0m
+[0;32mI (1215) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: MiddleOffice2.4)[0m
+[0;32mI (1221) WIFI_MGR: Using saved WiFi credentials for: MiddleOffice2.4[0m
+[0;32mI (1242) wifi:new:<5,0>, old:<1,0>, ap:<255,255>, sta:<5,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1244) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1250) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1261) wifi:state: assoc -> run (0x10)[0m
+[0;32mI (1266) wifi:<ba-add>idx:0 (ifx:0, 24:2f:d0:aa:9a:c4), tid:5, ssn:0, winSize:64[0m
+[0;32mI (1368) wifi:connected with MiddleOffice2.4, aid = 3, channel 5, BW20, bssid = 24:2f:d0:aa:9a:c4[0m
+[0;32mI (1369) wifi:security: WPA2-PSK, phy: bgn, rssi: -27[0m
+[0;32mI (1375) wifi:pm start, type: 1[0m
+
+[0;32mI (1375) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;33mW (1390) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1390) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1396) CST820 Driver: IC id: 183[0m
+[0;32mI (1398) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1404) CYGM: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1407) wifi:I (1410) CYGM: Initializing CardKB I2C bus[0m
+<ba-add>idx:1 (ifx:0, 24:2f:d0:aa:9a:c4), tid:6, ssn:1, winSize:64
+[0;32mI (1416) CYGM: CardKB initialized[0m
+[0;32mI (1424) CYGM: Initializing LVGL[0m
+[0;32mI (1434) CYGM: LVGL initialized successfully[0m
+[0;32mI (1449) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1509) LVGL: Starting LVGL task[0m
+[0;32mI (1511) CYGM: Touch debug task started[0m
+[0;32mI (1523) wifi:AP's beacon interval = 102400 us, DTIM period = 1[0m
+[0;32mI (2565) esp_netif_handlers: sta ip: 10.1.10.155, mask: 255.255.255.0, gw: 10.1.10.1[0m
+[0;32mI (2566) WIFI_MGR: Connected! IP: 10.1.10.155[0m
+[0;32mI (2567) CYGM: WiFi connected successfully[0m
+[0;32mI (2572) CYGM: Initializing SNTP[0m
+[0;32mI (2575) CYGM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2580) CYGM: Waiting for system time to be set via SNTP...[0m
+[0;32mI (2585) CYGM: Weather update task started[0m
+[0;32mI (2586) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (2594) CYGM: Time: 1969-12-31 16:00:01 (user_24hr=1, user_tz=America/Los_Angeles)[0m
+[0;32mI (3475) wifi:<ba-del>idx:0, tid:5[0m
+[0;32mI (3478) wifi:<ba-add>idx:0 (ifx:0, 24:2f:d0:aa:9a:c4), tid:0, ssn:2, winSize:64[0m
+[0;32mI (4679) CYGM: Time synchronized from SNTP server[0m
+[0;32mI (7589) CYGM: Geocoding zipcode: 98092[0m
+[0;32mI (8904) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (10009) CYGM: Geocoding response: [{"place_id":353663216,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","lat":"47.2927623","lon":"-122.1707181","class":"place","type":"postcode","place_rank":21,"importance":0.12000999999999995,"addresstype":"postcode","name":"98092","display_name":"98092, King County, Washington, United States","boundingbox":["47.2427623","47.3427623","-122.2207181","-122.1207181"]}][0m
+[0;32mI (10039) CYGM: Zipcode 98092 -> Lat: 47.2928, Lon: -122.1707[0m
+[0;32mI (10048) CYGM: Location found: 47.2928, -122.1707[0m
+[0;32mI (10049) CYGM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (11100) esp-x509-crt-bundle: Certificate validated[0m
+[0;32mI (11657) CYGM: TOUCH DETECTED: x=104, y=55[0m
+[0;32mI (11705) CYGM: Clock label clicked - toggling time format[0m
+[0;32mI (11709) NVS_CONFIG: Time settings saved to NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 0)[0m
+[0;32mI (11710) CYGM: Time format saved: 12hr[0m
+[0;32mI (11711) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (11716) CYGM: Time: 2026-01-19 11:41:48 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (12182) CYGM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.08320808410644531,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-19T11:30","interval":900,"temperature_2m":32.6,"weather_code":45},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F"},"daily":{"time":["2026-01-19"],"temperature_2m_max":[40.7],"temperature_2m_min":[27.4]}}[0m
+[0;32mI (12228) CYGM: Weather updated: 32°F (Hi: 40°F, Lo: 27°F), Code: 6[0m
+[0;32mI (12243) CYGM: Drawing weather icon code: 6 (Foggy)[0m
+[0;32mI (12245) CYGM: Weather display updated: 32°F (Hi: 40°F, Lo: 27°F)[0m
+[0;32mI (12603) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (12604) CYGM: Time: 2026-01-19 11:41:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (22606) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (22607) CYGM: Time: 2026-01-19 11:41:59 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (32609) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (32610) CYGM: Time: 2026-01-19 11:42:09 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (42612) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (42613) CYGM: Time: 2026-01-19 11:42:19 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (52615) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (52618) CYGM: Time: 2026-01-19 11:42:29 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (62626) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (62627) CYGM: Time: 2026-01-19 11:42:39 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (72629) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (72629) CYGM: Time: 2026-01-19 11:42:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (82632) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (82633) CYGM: Time: 2026-01-19 11:42:59 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (92635) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (92635) CYGM: Time: 2026-01-19 11:43:09 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (102638) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (102639) CYGM: Time: 2026-01-19 11:43:19 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (112642) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (112643) CYGM: Time: 2026-01-19 11:43:29 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (122646) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (122647) CYGM: Time: 2026-01-19 11:43:39 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (132650) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (132651) CYGM: Time: 2026-01-19 11:43:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (142654) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (142655) CYGM: Time: 2026-01-19 11:43:59 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (152658) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (152659) CYGM: Time: 2026-01-19 11:44:09 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (162662) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (162663) CYGM: Time: 2026-01-19 11:44:19 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (172665) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (172666) CYGM: Time: 2026-01-19 11:44:29 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (182669) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (182670) CYGM: Time: 2026-01-19 11:44:39 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (192673) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (192674) CYGM: Time: 2026-01-19 11:44:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (202677) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (202678) CYGM: Time: 2026-01-19 11:44:59 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (212681) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (212682) CYGM: Time: 2026-01-19 11:45:09 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (222685) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (222686) CYGM: Time: 2026-01-19 11:45:19 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (232689) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (232690) CYGM: Time: 2026-01-19 11:45:29 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (242693) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (242694) CYGM: Time: 2026-01-19 11:45:39 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (252697) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (252698) CYGM: Time: 2026-01-19 11:45:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (262701) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (262702) CYGM: Time: 2026-01-19 11:45:59 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (272705) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (272706) CYGM: Time: 2026-01-19 11:46:09 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (282709) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (282710) CYGM: Time: 2026-01-19 11:46:19 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (292713) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (292714) CYGM: Time: 2026-01-19 11:46:29 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (302717) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (302718) CYGM: Time: 2026-01-19 11:46:39 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (312721) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (312722) CYGM: Time: 2026-01-19 11:46:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (322725) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (322726) CYGM: Time: 2026-01-19 11:46:59 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (332729) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (332730) CYGM: Time: 2026-01-19 11:47:09 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (342733) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (342734) CYGM: Time: 2026-01-19 11:47:19 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (352737) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (352738) CYGM: Time: 2026-01-19 11:47:29 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (362741) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (362742) CYGM: Time: 2026-01-19 11:47:39 (user_24hr=0, user_tz=America/Los_Angeles)[0m
+[0;32mI (372745) CYGM: Current TZ env: PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (372746) CYGM: Time: 2026-01-19 11:47:49 (user_24hr=0, user_tz=America/Los_Angeles)[0m

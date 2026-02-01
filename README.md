@@ -49,6 +49,36 @@ idf.py flash monitor -p COM40
 
 ---
 
+## Architecture
+
+### Modular Structure (v1.3.1+)
+
+**Refactored 2026-01-31**: main.c reduced from 6,524 lines to 1,420 lines (78% reduction)
+
+```
+main/
+├── hardware/          # Hardware abstraction
+│   ├── led.c/h       # RGB LED PWM control
+│   ├── buzzer.c/h    # Tone generation, alarms
+│   ├── battery.c/h   # ADC monitoring, shutdown protection
+│   └── display.c/h   # LCD, touch, CardKB, LVGL
+├── features/          # High-level features
+│   ├── time_system.c/h    # SNTP, timezone, time display
+│   └── weather_system.c/h # Geocoding, Open-Meteo API
+├── ui/                # UI screens
+│   ├── home_screen.c/h    # Time, weather, glucose
+│   ├── menu_screen.c/h    # Settings menu
+│   ├── wifi_screens.c/h   # WiFi configuration
+│   ├── cgm_screens.c/h    # CGM provider setup
+│   └── alarm_screens.c/h  # Alarm configuration
+├── tasks/             # Background FreeRTOS tasks
+│   └── background_tasks.c/h # Core 0/1 task management
+├── shared_state.h     # Global state declarations
+└── main.c             # Coordinator (1,420 lines)
+```
+
+**Benefits**: Clear separation of concerns, easy navigation, maintainable codebase
+
 ## Documentation
 
 📖 **[RULES.md](RULES.md)** - Claude development guidelines and project constraints

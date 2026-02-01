@@ -1,0 +1,74 @@
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+[0;33m--- Warning: GDB cannot open serial ports accessed as COMx[0m
+[0;33m--- Using \\.\COM40 instead...[0m
+[0;33m--- esp-idf-monitor 1.9.0 on \\.\COM40 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400de871: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m290[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400de86e: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m289[0m
+[0m--- 0x400dddc2: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m106[0m
+[0m--- 0x400ea9e7: [0;33mlv_btn_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/widgets/lv_btn.c[0m[0m:[1;31m53[0m
+[0m--- 0x400d8a9f: [0;33mcreate_wifi_password_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m895[0m
+[0m--- 0x400d8dae: [0;33mui_task_core1[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m961[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400de871: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m290[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400de86e: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m289[0m
+[0m--- 0x400dddc2: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m106[0m
+[0m--- 0x400ea9e7: [0;33mlv_btn_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/widgets/lv_btn.c[0m[0m:[1;31m53[0m
+[0m--- 0x400d8a9f: [0;33mcreate_wifi_password_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m895[0m
+[0m--- 0x400d8dae: [0;33mui_task_core1[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m961[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400de871: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m290[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400de86e: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m289[0m
+[0m--- 0x400dddc2: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m106[0m
+[0m--- 0x400ea9e7: [0;33mlv_btn_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/widgets/lv_btn.c[0m[0m:[1;31m53[0m
+[0m--- 0x400d8a9f: [0;33mcreate_wifi_password_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m895[0m
+[0m--- 0x400d8dae: [0;33mui_task_core1[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m961[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400de871: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m290[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400de86e: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m289[0m
+[0m--- 0x400dddc2: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m106[0m
+[0m--- 0x400ea9e7: [0;33mlv_btn_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/widgets/lv_btn.c[0m[0m:[1;31m53[0m
+[0m--- 0x400d8a9f: [0;33mcreate_wifi_password_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m895[0m
+[0m--- 0x400d8dae: [0;33mui_task_core1[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m961[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400de871: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m290[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400de86e: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m289[0m
+[0m--- 0x400dddc2: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m106[0m
+[0m--- 0x400ea9e7: [0;33mlv_btn_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/widgets/lv_btn.c[0m[0m:[1;31m53[0m
+[0m--- 0x400d8a9f: [0;33mcreate_wifi_password_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m895[0m
+[0m--- 0x400d8dae: [0;33mui_task_core1[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m961[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m--- 0x400de871: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m290[0m
+[0m--- 0x400013f9: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x4000140d: [0;33mstrcpy[0m[0m in [0;32mROM[0m
+[0m--- 0x400de86e: [0;33mlv_obj_mark_layout_as_dirty[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_pos.c[0m[0m:[1;31m289[0m
+[0m--- 0x400dddc2: [0;33mlv_obj_class_init_obj[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/core/lv_obj_class.c[0m[0m:[1;31m106[0m
+[0m--- 0x400ea9e7: [0;33mlv_btn_create[0m[0m at [0;32mC:/Projects/CYGM/managed_components/lvgl__lvgl/src/widgets/lv_btn.c[0m[0m:[1;31m53[0m
+[0m--- 0x400d8a9f: [0;33mcreate_wifi_password_screen[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m895[0m
+[0m--- 0x400d8dae: [0;33mui_task_core1[0m[0m at [0;32mC:/Projects/CYGM/main/main.c[0m[0m:[1;31m961[0m
+[0m--- 0x4008b201: [0;33mvPortTaskWrapper[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c[0m[0m:[1;31m139[0m
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+[0m--- 0x40080644: [0;33mcall_start_cpu0[0m[0m at [0;32mC:/Espressif/frameworks/esp-idf-v5.5.2/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+[0m

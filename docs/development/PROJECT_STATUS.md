@@ -6,7 +6,7 @@
 
 ## 🎉 BETA STAGE - Ready for Field Testing
 
-**Current Version**: 1.3.0
+**Current Version**: 1.3.1
 
 All core features are implemented and functional. Device is ready for real-world testing and feedback.
 
@@ -190,6 +190,52 @@ All core features are implemented and functional. Device is ready for real-world
 - Drag-and-drop UI element editor
 - Custom trend arrow designer
 - Custom weather icon designer
+
+---
+
+## 🏗️ Code Organization (v1.3.1)
+
+**Major Refactoring Completed: 2026-01-31**
+
+### Before & After
+- **Original main.c**: 6,524 lines (monolithic)
+- **Refactored main.c**: 1,420 lines (78% reduction!)
+- **Modules Created**: 13 modules with clear separation of concerns
+
+### Module Breakdown
+```
+Hardware (4 modules):
+- led.c (61 lines) - RGB LED PWM control
+- buzzer.c (177 lines) - Tone generation, boot/success/alarm sounds
+- battery.c (282 lines) - ADC monitoring, voltage-to-%, shutdown protection
+- display.c (223 lines) - LCD/SPI, touch (Core 1), CardKB, LVGL init
+
+Features (2 modules):
+- time_system.c (259 lines) - SNTP, timezone handling, time display
+- weather_system.c (1,253 lines) - Geocoding, Open-Meteo API, weather display
+
+UI (5 modules):
+- menu_screen.c (91 lines) - Main settings menu
+- home_screen.c (208 lines) - Time, weather, glucose display
+- wifi_screens.c (603 lines) - WiFi scan, list, password entry
+- cgm_screens.c (737 lines) - CGM provider configuration
+- alarm_screens.c (1,039 lines) - Alarm settings, tone picker, snooze
+
+Tasks (1 module):
+- background_tasks.c (259 lines) - UI task (Core 1), WiFi task (Core 0)
+
+Shared State (1 module):
+- shared_state.h (282 lines) - Global variable declarations
+```
+
+### Benefits Achieved
+- ✅ **100% feature parity** - Zero functionality changes
+- ✅ **Clear separation of concerns** - Hardware, features, UI, tasks
+- ✅ **Easy maintenance** - Each module 60-1,250 lines (avg ~400)
+- ✅ **Modular architecture** - main.c is now just a coordinator
+- ✅ **Improved navigation** - Easy to locate and fix bugs
+- ✅ **Safe modifications** - Changes isolated to specific modules
+- ✅ **Full git history** - 14 commits documenting each extraction
 
 ---
 
