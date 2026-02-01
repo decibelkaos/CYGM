@@ -292,18 +292,7 @@ static lv_obj_t *home_sunrise_label = NULL;
 static lv_obj_t *home_sunset_canvas = NULL;
 static lv_obj_t *home_sunset_label = NULL;
 
-// ===== COLOR PALETTE - Dark Blue Theme =====
-#define COLOR_BG            0x000000  // Pure black background
-#define COLOR_CARD_BG       0x1a2332  // Dark blue-grey cards
-#define COLOR_TEXT_WHITE    0xFFFFFF  // Pure white text
-#define COLOR_TEXT_GRAY     0x9CA3AF  // Light gray for secondary
-#define COLOR_TEXT_DIM      0x6B7280  // Dimmed gray
-#define COLOR_ACCENT_BLUE   0x3B82F6  // Bright blue accent
-#define COLOR_ACCENT_LIGHT  0x60A5FA  // Lighter blue
-#define COLOR_GREEN         0x22C55E  // Green for good
-#define COLOR_ORANGE        0xF59E0B  // Orange warning
-#define COLOR_RED           0xEF4444  // Red alert
-#define COLOR_BORDER        0xFFFFFF  // White border/outline
+// ===== HELPER FUNCTIONS =====
 
 // Draw weather icon on a canvas
 static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
@@ -872,7 +861,6 @@ static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
 static void check_glucose_alarms(int glucose_mg_dl);
 static void update_glucose_display(void);
 static void visual_alarm_slider_event_cb(lv_event_t *e);
-static void create_alarm_snooze_screen(void);
 
 // Get alarm color based on glucose value and alarm thresholds
 static uint32_t get_glucose_alarm_color(int glucose_mg_dl) {

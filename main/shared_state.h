@@ -83,17 +83,17 @@ extern "C" {
 #define ENABLE_WEB_SERVER 0
 
 // ==================== Color Palette ====================
-#define COLOR_BG            0x000000
-#define COLOR_CARD_BG       0x1a2332
-#define COLOR_TEXT_WHITE    0xFFFFFF
-#define COLOR_TEXT_GRAY     0x9CA3AF
-#define COLOR_TEXT_DIM      0x6B7280
-#define COLOR_ACCENT_BLUE   0x3B82F6
-#define COLOR_ACCENT_LIGHT  0x60A5FA
-#define COLOR_GREEN         0x22C55E
-#define COLOR_ORANGE        0xF59E0B
-#define COLOR_RED           0xEF4444
-#define COLOR_BORDER        0xFFFFFF
+#define COLOR_BG            0x000000  // Pure black background
+#define COLOR_CARD_BG       0x1a2332  // Dark blue-grey cards
+#define COLOR_TEXT_WHITE    0xFFFFFF  // Pure white text
+#define COLOR_TEXT_GRAY     0x9CA3AF  // Light gray for secondary
+#define COLOR_TEXT_DIM      0x6B7280  // Dimmed gray
+#define COLOR_ACCENT_BLUE   0x3B82F6  // Bright blue accent
+#define COLOR_ACCENT_LIGHT  0x60A5FA  // Lighter blue
+#define COLOR_GREEN         0x22C55E  // Green for good
+#define COLOR_ORANGE        0xF59E0B  // Orange warning
+#define COLOR_RED           0xEF4444  // Red alert
+#define COLOR_BORDER        0xFFFFFF  // White border/outline
 
 // ==================== Type Definitions ====================
 
