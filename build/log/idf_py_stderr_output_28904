@@ -1,3 +1,0 @@
-Command: ninja all
-C:\Users\decib\AppData\Local\Temp\kconfgen_tmpn7cchf5j:1: warning: ignoring malformed line '\ufeff# CYGM - CGM Display Default Configuration'
-info: Trying to set symbol PARTITION_TABLE_SINGLE_APP to n, but it is currently selected by choice PARTITION_TABLE_TYPE. For setting it to n, set another choice symbol to y instead.

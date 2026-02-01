@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 // ==================== Version Information ====================
-#define CYGM_VERSION "1.3.1"
+#define CYGM_VERSION "1.3.2"
 #define CYGM_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // ==================== Hardware Configuration ====================

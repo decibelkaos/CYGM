@@ -35,6 +35,51 @@ void led_set_color(uint8_t r, uint8_t g, uint8_t b);
  */
 void led_set_breathing_color(uint8_t r, uint8_t g, uint8_t b);
 
+/**
+ * Start WiFi boot blink pattern (green, 200ms interval)
+ */
+void led_start_wifi_boot_blink(void);
+
+/**
+ * Stop WiFi boot blink pattern
+ */
+void led_stop_wifi_boot_blink(void);
+
+/**
+ * Blink blue once (for Dexcom polling indication)
+ */
+void led_blink_blue(void);
+
+/**
+ * Show success (steady green for 3 seconds, then fade off)
+ */
+void led_show_success(void);
+
+/**
+ * Start error blink pattern (red, 500ms on/off)
+ */
+void led_start_error_blink(void);
+
+/**
+ * Stop error blink pattern
+ */
+void led_stop_error_blink(void);
+
+/**
+ * Start alarm flash pattern (bright red, fast)
+ */
+void led_start_alarm_flash(void);
+
+/**
+ * Stop alarm flash pattern
+ */
+void led_stop_alarm_flash(void);
+
+/**
+ * Turn off LED
+ */
+void led_off(void);
+
 #ifdef __cplusplus
 }
 #endif

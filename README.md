@@ -2,7 +2,7 @@
 ## Hardware: JC2432W328 (ESP32-D0WD) + M5Stack CardKB
 
 **Project Status**: 🎉 **BETA STAGE** - Ready for Field Testing
-**Version**: 1.3.1
+**Version**: 1.3.2
 **Last Updated**: January 31, 2026
 
 An open-source, low-cost CGM display supporting multiple data sources (Dexcom Share, Nightscout, LibreLinkUp).
@@ -41,6 +41,12 @@ idf.py flash monitor -p COM40
    - Extended shafts for better visibility
 ✅ Weather display with location detection (memory time-sharing)
 ✅ Audio feedback (boot sound, connection confirmation, alarm tones)
+✅ **LED visual feedback** - RGB LED status indicators:
+   - Green blink (200ms) during WiFi boot sequence
+   - Blue double-blink ramp (5 steps, 1.5s) before Dexcom poll
+   - Green fade (3s steady, 500ms fade) on successful glucose fetch
+   - Red blink (500ms) for errors
+   - Bright red flash (100ms) during alarms
 ✅ Intelligent status messages (warmup, signal loss, no data)
 ✅ Physical keyboard for easy setup
 ✅ Large, readable display with trend arrows

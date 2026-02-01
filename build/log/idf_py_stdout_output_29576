@@ -1,20 +1,298 @@
-Command: ninja flash
-[1/6] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Projects\CYGM\build\esp-idf\esptool_py && C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/components/partition_table/check_sizes.py --offset 0x8000 partition --type app C:/Projects/CYGM/build/partition_table/partition-table.bin C:/Projects/CYGM/build/cygm.bin"
-cygm.bin binary size 0x168540 bytes. Smallest app partition is 0x200000 bytes. 0x97ac0 bytes (30%) free.
-[2/6] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Projects\CYGM\build && C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/components/spiffs/spiffsgen.py 0x100000 C:/Projects/CYGM/web C:/Projects/CYGM/build/spiffs.bin --page-size=256 --obj-name-len=32 --meta-len=4 --use-magic --use-magic-len"
-[3/6] Performing build step for 'bootloader'
-[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Projects\CYGM\build\bootloader\esp-idf\esptool_py && C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v5.5.2/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 C:/Projects/CYGM/build/bootloader/bootloader.bin"
-Bootloader binary size 0x66c0 bytes. 0x940 bytes (8%) free.
-[4/6] No install step for 'bootloader'
-[5/6] Completed 'bootloader'
-[5/6] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Espressif\frameworks\esp-idf-v5.5.2\components\esptool_py && C:\Espressif\tools\cmake\3.30.2\bin\cmake.exe -D IDF_PATH=C:/Espressif/frameworks/esp-idf-v5.5.2 -D SERIAL_TOOL=C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe;;C:/Espressif/frameworks/esp-idf-v5.5.2/components/esptool_py/esptool/esptool.py;--chip;esp32 -D SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args -D WORKING_DIRECTORY=C:/Projects/CYGM/build -P C:/Espressif/frameworks/esp-idf-v5.5.2/components/esptool_py/run_serial_tool.cmake"
-esptool.py --chip esp32 -p COM40 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 bootloader/bootloader.bin 0x10000 cygm.bin 0x8000 partition_table/partition-table.bin 0x210000 spiffs.bin
-esptool.py v4.11.dev2
-Serial port COM40
-Connecting......................................
+Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\tools/idf_monitor.py -p COM40 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Projects\CYGM\build\cygm.elf C:\Projects\CYGM\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe' 'C:\Espressif\frameworks\esp-idf-v5.5.2\tools\idf.py' '-p' 'COM40'
+PI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0�ets Jul 29 2019 12:21:46
 
-A fatal error occurred: Failed to connect to ESP32: Wrong boot mode detected (0x13)! The chip needs to be in download mode.
-For troubleshooting steps visit: https://docs.espressif.com/projects/esptool/en/latest/troubleshooting.html
-FAILED: CMakeFiles/flash C:/Projects/CYGM/build/CMakeFiles/flash 
-C:\WINDOWS\system32\cmd.exe /C "cd /D C:\Espressif\frameworks\esp-idf-v5.5.2\components\esptool_py && C:\Espressif\tools\cmake\3.30.2\bin\cmake.exe -D IDF_PATH=C:/Espressif/frameworks/esp-idf-v5.5.2 -D SERIAL_TOOL=C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe;;C:/Espressif/frameworks/esp-idf-v5.5.2/components/esptool_py/esptool/esptool.py;--chip;esp32 -D SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args -D WORKING_DIRECTORY=C:/Projects/CYGM/build -P C:/Espressif/frameworks/esp-idf-v5.5.2/components/esptool_py/run_serial_tool.cmake"
-ninja: build stopped: subcommand failed.
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6384
+load:0x40078000,len:15916
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v5.5.2 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Jan 31 2026 19:36:20[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (32) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00200000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00210000 00100000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=7113ch (463164) map[0m
+[0;32mI (251) esp_image: segment 1: paddr=00081164 vaddr=3ffb0000 size=0427ch ( 17020) load[0m
+[0;32mI (257) esp_image: segment 2: paddr=000853e8 vaddr=40080000 size=0ac30h ( 44080) load[0m
+[0;32mI (275) esp_image: segment 3: paddr=00090020 vaddr=400d0020 size=e3a74h (932468) map[0m
+[0;32mI (594) esp_image: segment 4: paddr=00173a9c vaddr=4008ac30 size=10ee8h ( 69352) load[0m
+[0;32mI (621) esp_image: segment 5: paddr=0018498c vaddr=50000000 size=00098h (   152) load[0m
+[0;32mI (635) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (635) boot: Disabling RNG early entropy source...[0m
+[0;32mI (645) cpu_start: Multicore app[0m
+[0;32mI (654) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (654) cpu_start: Pro cpu start user code[0m
+[0;32mI (654) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (656) app_init: Application information:[0m
+[0;32mI (660) app_init: Project name:     cygm[0m
+[0;32mI (663) app_init: App version:      322c4ab-dirty[0m
+[0;32mI (668) app_init: Compile time:     Jan 31 2026 19:36:08[0m
+[0;32mI (673) app_init: ELF file SHA256:  a700140b8...[0m
+[0;32mI (677) app_init: ESP-IDF:          v5.5.2[0m
+[0;32mI (681) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (685) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (689) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (693) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (699) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (704) heap_init: At 3FFCC070 len 00013F90 (79 KiB): DRAM[0m
+[0;32mI (709) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (714) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (720) heap_init: At 4009BB18 len 000044E8 (17 KiB): IRAM[0m
+[0;33mW (727) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (738) spi_flash: detected chip: generic[0m
+[0;32mI (742) spi_flash: flash io: dio[0m
+[0;32mI (746) main_task: Started on CPU0[0m
+[0;32mI (749) main_task: Calling app_main()[0m
+[0;32mI (751) CYGM: === CYGM - Continuous Glucose Monitor ===[0m
+[0;32mI (756) CYGM: Hardware: JC2432W328 (ESP32-D0WD)[0m
+[0;32mI (760) CYGM: Core 0: WiFi | Core 1: UI/Touch[0m
+[0;32mI (799) NVS_CONFIG: NVS initialized successfully[0m
+[0;32mI (800) UIConfig: Initializing UI configuration system[0m
+[0;32mI (801) NVS_CONFIG: Time settings loaded from NVS (TZ: America/Los_Angeles, DST: 1, 24hr: 1)[0m
+[0;32mI (806) TIME_SYSTEM: Loaded time settings from NVS:[0m
+[0;32mI (810) TIME_SYSTEM:   Timezone: America/Los_Angeles[0m
+[0;32mI (815) TIME_SYSTEM:   DST: Enabled[0m
+[0;32mI (818) TIME_SYSTEM:   Format: 24hr[0m
+[0;32mI (824) NVS_CONFIG: Cached location loaded: Auburn, WA (47.2928, -122.1707, zipcode: 98092)[0m
+[0;32mI (830) NVS_CONFIG: Weather settings loaded from NVS (Zipcode: 98092, Unit: F, Interval: 5 min)[0m
+[0;32mI (838) WEATHER_SYSTEM: Using cached weather location: Auburn, WA (47.2928, -122.1707, zipcode: 98092)[0m
+[0;32mI (847) WEATHER_SYSTEM: Timezone matches location: America/Los_Angeles[0m
+[0;32mI (853) WEATHER_SYSTEM: Loaded weather settings from NVS:[0m
+[0;32mI (858) WEATHER_SYSTEM:   Zipcode: 98092[0m
+[0;32mI (862) WEATHER_SYSTEM:   Unit: Fahrenheit[0m
+[0;32mI (866) WEATHER_SYSTEM:   Update interval: 5 minutes[0m
+[0;32mI (871) NVS_CONFIG: Alarm settings loaded from NVS[0m
+[0;32mI (875) CYGM: Alarm settings loaded from NVS[0m
+[0;32mI (879) DISPLAY: Initializing LCD backlight[0m
+[0;32mI (883) DISPLAY: Initializing SPI bus[0m
+[0;32mI (887) DISPLAY: Initializing LCD panel IO[0m
+[0;32mI (891) DISPLAY: Initializing LCD panel (ST7789)[0m
+[0;32mI (1015) DISPLAY: LCD initialized successfully[0m
+[0;32mI (1016) LED: LED PWM initialized[0m
+[0;32mI (1016) BUZZER: Buzzer PWM initialized (GPIO 26)[0m
+[0;32mI (1017) BATTERY: Initializing battery monitoring[0m
+[0;32mI (1021) BATTERY: ADC calibration initialized[0m
+[0;32mI (1024) BATTERY: Battery monitoring initialized (GPIO 39)[0m
+[0;32mI (1029) BACKGROUND_TASKS: WiFi Task started on Core 0[0m
+[0;32mI (1029) BACKGROUND_TASKS: UI Task started on Core 1[0m
+[0;32mI (1039) wifi:I (1039) DISPLAY: Initializing touch I2C bus on Core 1[0m
+wifi driver task: 3ffd7d18, prio:23, stack:6656, core=0
+[0;33mW (1045) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs[0m
+[0;32mI (1064) wifi:wifi firmware version: ee91c8c[0m
+[0;32mI (1067) DISPLAY: Initializing CST820 touch controller (polling mode)[0m
+[0;32mI (1069) wifi:wifi certification version: v7.0[0m
+[0;32mI (1080) wifi:config NVS flash: enabled[0m
+[0;32mI (1083) wifi:config nano formatting: disabled[0m
+[0;32mI (1088) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (1093) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (1096) wifi:Init management short buffer num: 32[0m
+[0;32mI (1101) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (1105) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (1109) wifi:Init static rx buffer num: 10[0m
+[0;32mI (1113) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (1118) wifi_init: rx ba win: 6[0m
+[0;32mI (1120) wifi_init: accept mbox: 6[0m
+[0;32mI (1123) wifi_init: tcpip mbox: 32[0m
+[0;32mI (1126) wifi_init: udp mbox: 6[0m
+[0;32mI (1129) wifi_init: tcp mbox: 6[0m
+[0;32mI (1132) wifi_init: tcp tx win: 5760[0m
+[0;32mI (1135) wifi_init: tcp rx win: 5760[0m
+[0;32mI (1139) wifi_init: tcp mss: 1440[0m
+[0;32mI (1142) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (1145) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (1151) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (1233) wifi:mode : sta (78:42:1c:94:e8:c0)[0m
+[0;32mI (1234) wifi:enable tsf[0m
+[0;32mI (1236) WIFI_MGR: WiFi manager initialized[0m
+[0;32mI (1237) WIFI_MGR: WiFi started (ready for connection)[0m
+[0;32mI (1239) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1245) BACKGROUND_TASKS: Connecting to WiFi: Look Ma, No Wires![0m
+[0;32mI (1251) NVS_CONFIG: WiFi credentials loaded from NVS (SSID: Look Ma, No Wires!)[0m
+[0;32mI (1258) WIFI_MGR: Using saved WiFi credentials for: Look Ma, No Wires![0m
+[0;32mI (1038) CYGM: System initialized - tasks running[0m
+[0;32mI (1276) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0[0m
+[0;32mI (1277) wifi:state: init -> auth (0xb0)[0m
+[0;32mI (1443) wifi:state: auth -> assoc (0x0)[0m
+[0;32mI (1464) wifi:state: assoc -> run (0x10)[0m
+[0;33mW (1477) i2c.common: GPIO 33 is not usable, maybe conflict with others[0m
+[0;33mW (1477) i2c.common: GPIO 32 is not usable, maybe conflict with others[0m
+[0;32mI (1479) CST820 Driver: IC id: 183[0m
+[0;32mI (1481) CST820 Driver: LCD panel create success, version: 1.0.1[0m
+[0;32mI (1487) DISPLAY: Touch initialized successfully (Core 1, polling mode)[0m
+[0;32mI (1494) DISPLAY: Initializing CardKB I2C bus[0m
+[0;32mI (1498) DISPLAY: CardKB initialized[0m
+[0;32mI (1501) DISPLAY: Initializing LVGL[0m
+[0;32mI (1509) wifi:connected with Look Ma, No Wires!, aid = 8, channel 6, BW20, bssid = 50:27:a9:83:72:25[0m
+[0;32mI (1511) DISPLAY: LVGL initialized successfully[0m
+[0;32mI (1513) wifi:security: WPA2-PSK, phy: bgn, rssi: -72[0m
+[0;32mI (1526) wifi:pm start, type: 1[0m
+
+[0;32mI (1527) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us[0m
+[0;32mI (1570) CYGM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (1512) LVGL: Starting LVGL task[0m
+[0;32mI (1778) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us[0m
+[0;32mI (1779) wifi:AP's beacon interval = 102400 us, DTIM period = 2[0m
+[0;32mI (2055) wifi:<ba-add>idx:0 (ifx:0, 50:27:a9:83:72:25), tid:0, ssn:0, winSize:64[0m
+[0;32mI (3031) main_task: Returned from app_main()[0m
+[0;32mI (3071) esp_netif_handlers: sta ip: 192.168.7.71, mask: 255.255.252.0, gw: 192.168.4.1[0m
+[0;32mI (3072) WIFI_MGR: Connected! IP: 192.168.7.71[0m
+[0;32mI (3073) BACKGROUND_TASKS: WiFi connected successfully[0m
+[0;32mI (3080) TIME_SYSTEM: Initializing SNTP[0m
+[0;32mI (3083) TIME_SYSTEM: Timezone set: America/Los_Angeles -> PST8PDT,M3.2.0,M11.1.0[0m
+[0;32mI (3089) TIME_SYSTEM: SNTP initialized with 3 servers. Waiting for system time to be set...[0m
+[0;32mI (3097) TIME_SYSTEM: Current system time BEFORE sync: 1969-12-31 16:00:02[0m
+[0;32mI (3106) BACKGROUND_TASKS: Found saved Dexcom credentials, will attempt auto-login after time sync[0m
+[0;32mI (3113) BACKGROUND_TASKS: Waiting for SNTP time sync before Dexcom auth (required for SSL)...[0m
+[0;32mI (3120) BACKGROUND_TASKS: Current system time: 1969-12-31 16:00:02[0m
+[0;32mI (3126) TIME_SYSTEM: Waiting for SNTP time sync...[0m
+[0;32mI (4039) TIME_SYSTEM: === TIME SYNCHRONIZED FROM SNTP SERVER ===[0m
+[0;32mI (4040) TIME_SYSTEM: New system time: 2026-01-31 20:26:48[0m
+[0;32mI (4131) TIME_SYSTEM: Time synced: 2026-01-31 20:26:48[0m
+[0;32mI (4132) BACKGROUND_TASKS: Time synced successfully, proceeding with Dexcom auto-login[0m
+[0;32mI (4134) BACKGROUND_TASKS: Dexcom auth attempt 1/5...[0m
+[0;32mI (4138) DEXCOM: Authenticating with Dexcom Share...[0m
+[0;32mI (4143) DEXCOM: === DEXCOM AUTH TIME CHECK ===[0m
+[0;32mI (4147) DEXCOM: System time at auth: 2026-01-31 20:26:48[0m
+[0;32mI (4152) DEXCOM: Trying US region...[0m
+[0;32mI (4156) DEXCOM: Getting account ID for: ashlynn2011[0m
+[0;32mI (4160) DEXCOM: URL: https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount[0m
+[0;32mI (4170) DEXCOM: Initializing persistent HTTP client[0m
+[0;32mI (4176) DEXCOM: Persistent HTTP client initialized successfully[0m
+[0;32mI (4180) DEXCOM: Performing request...[0m
+[0;32mI (6716) BACKGROUND_TASKS: Starting battery monitor task[0m
+[0;32mI (6717) BATTERY: Battery monitor task started[0m
+[0;32mI (6738) BATTERY: Battery ADC: raw=3468, voltage_mv=2839, calculated=4.145V (divider=1.46x)[0m
+[0;32mI (6739) BATTERY: Battery: 4.145V, 100%[0m
+[0;32mI (7427) DEXCOM: Result: ESP_OK (status 200)[0m
+[0;32mI (7428) DEXCOM: Got account ID: 0052f8e5...[0m
+[0;32mI (7928) DEXCOM: Getting session ID...[0m
+[0;32mI (8451) DEXCOM: Got session ID: 6a9bc364...[0m
+[0;32mI (8453) NVS_CONFIG: Dexcom credentials saved to NVS[0m
+[0;32mI (8454) DEXCOM: Dexcom authentication successful on US region![0m
+[0;32mI (8454) DEXCOM: Keeping persistent HTTP client alive for glucose fetches[0m
+[0;32mI (8461) BACKGROUND_TASKS: Dexcom auto-login successful on attempt 1![0m
+[0;32mI (8468) DEXCOM: Fetching glucose data...[0m
+[0;32mI (8471) DEXCOM: Free heap before glucose fetch: 18644 bytes[0m
+[0;32mI (8476) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (8661) DEXCOM: Glucose: 321 mg/dL, Trend: Falling slowly (Status: 0)[0m
+[0;32mI (8662) BACKGROUND_TASKS: Initial glucose: 321 mg/dL, trend: Falling slowly[0m
+[0;32mI (8664) BACKGROUND_TASKS: First glucose reading received - playing success sound[0m
+[0;32mI (9171) CYGM: Alarm state changed: 0 -> 1[0m
+[0;33mW (9171) CYGM: 🚨 ALARM TRIGGERED: High Alarm (threshold: 250 mg/dL)[0m
+[0;32mI (9173) CYGM: Playing alarm tone: 3 at volume 80%[0m
+[0;32mI (9625) CYGM: Starting visual alarm[0m
+[0;32mI (9650) BACKGROUND_TASKS: Starting weather task (after Dexcom, HTTP mode)...[0m
+[0;32mI (9651) BACKGROUND_TASKS: Starting glucose update task (90 second interval)...[0m
+[0;32mI (9653) WEATHER_SYSTEM: Weather update task started[0m
+[0;32mI (9659) WEATHER_SYSTEM: Waiting 15 seconds before first weather attempt...[0m
+[0;32mI (9654) CYGM: Glucose update task started (90 second interval)[0m
+[0;32mI (24665) WEATHER_SYSTEM: Free heap before weather geocoding: 9808 bytes[0m
+[0;32mI (24665) WEATHER_SYSTEM: Using cached coordinates for zipcode 98092 (no geocoding needed)[0m
+[0;32mI (26669) WEATHER_SYSTEM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (26671) WEATHER_SYSTEM: Free heap before weather fetch: 9584 bytes[0m
+[0;32mI (26672) WEATHER_SYSTEM: Weather URL: http://api.open-meteo.com/v1/forecast?latitude=47.2928&longitude=-122.1707&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1[0m
+[0;32mI (28153) WEATHER_SYSTEM: Weather HTTP result: ESP_OK (status: 200)[0m
+[0;32mI (28153) WEATHER_SYSTEM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.16009807586669922,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-31T20:15","interval":900,"temperature_2m":47.5,"weather_code":1},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F","sunrise":"iso8601","sunset":"iso8601"},"daily":{"time":["2026-01-31"],"temperature_2m_max":[57.3],"temperature_2m_min":[44.6],"sunrise":["2026-01-31T07:34"],"sunset":["2026-01-31T17:09"]}}[0m
+[0;32mI (28216) WEATHER_SYSTEM: Weather updated: 47 F (Hi: 57 F, Lo: 44 F), Code: 1[0m
+[0;32mI (28222) WEATHER_SYSTEM: Free heap after weather fetch: 8364 bytes[0m
+[0;32mI (28279) WEATHER_SYSTEM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (35039) CYGM: Visual alarm slider activated - showing snooze/dismiss screen[0m
+[0;32mI (35040) CYGM: Stopping visual alarm[0m
+[0;32mI (36361) ALARM_SCREENS: Alarm snoozed for 180 minutes[0m
+[0;32mI (36873) BATTERY: Battery ADC: raw=3464, voltage_mv=2837, calculated=4.142V (divider=1.46x)[0m
+[0;32mI (36874) BATTERY: Battery: 4.142V, 100%[0m
+[0;32mI (66897) BATTERY: Battery ADC: raw=3463, voltage_mv=2836, calculated=4.141V (divider=1.46x)[0m
+[0;32mI (66898) BATTERY: Battery: 4.141V, 100%[0m
+[0;32mI (96921) BATTERY: Battery ADC: raw=3462, voltage_mv=2836, calculated=4.141V (divider=1.46x)[0m
+[0;32mI (96922) BATTERY: Battery: 4.141V, 100%[0m
+[0;32mI (99670) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (99671) DEXCOM: Fetching glucose data...[0m
+[0;32mI (99671) DEXCOM: Free heap before glucose fetch: 8792 bytes[0m
+[0;32mI (99673) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (101044) DEXCOM: Glucose: 314 mg/dL, Trend: Falling slowly (Status: 0)[0m
+[0;32mI (101045) CYGM: Glucose updated: 314 mg/dL, trend: Falling slowly[0m
+[0;32mI (101046) CYGM: Snooze expired! Re-triggering alarm (state: 1)[0m
+[0;33mW (101051) CYGM: 🚨 ALARM TRIGGERED: High Alarm (threshold: 250 mg/dL)[0m
+[0;32mI (101058) CYGM: Playing alarm tone: 3 at volume 80%[0m
+[0;32mI (101513) CYGM: Starting visual alarm[0m
+[0;32mI (105476) CYGM: Visual alarm slider activated - showing snooze/dismiss screen[0m
+[0;32mI (105477) CYGM: Stopping visual alarm[0m
+[0;32mI (107482) ALARM_SCREENS: Alarm snoozed for 180 minutes[0m
+[0;32mI (126945) BATTERY: Battery ADC: raw=3464, voltage_mv=2837, calculated=4.142V (divider=1.46x)[0m
+[0;32mI (126946) BATTERY: Battery: 4.142V, 100%[0m
+[0;32mI (156969) BATTERY: Battery ADC: raw=3462, voltage_mv=2836, calculated=4.141V (divider=1.46x)[0m
+[0;32mI (156970) BATTERY: Battery: 4.141V, 100%[0m
+[0;32mI (186993) BATTERY: Battery ADC: raw=3465, voltage_mv=2837, calculated=4.142V (divider=1.46x)[0m
+[0;32mI (186994) BATTERY: Battery: 4.142V, 100%[0m
+[0;32mI (191623) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (191624) DEXCOM: Fetching glucose data...[0m
+[0;32mI (191624) DEXCOM: Free heap before glucose fetch: 8888 bytes[0m
+[0;32mI (191626) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (192574) DEXCOM: Glucose: 314 mg/dL, Trend: Falling slowly (Status: 0)[0m
+[0;32mI (192575) CYGM: Glucose updated: 314 mg/dL, trend: Falling slowly[0m
+[0;32mI (192577) CYGM: Snooze expired! Re-triggering alarm (state: 1)[0m
+[0;33mW (192582) CYGM: 🚨 ALARM TRIGGERED: High Alarm (threshold: 250 mg/dL)[0m
+[0;32mI (192589) CYGM: Playing alarm tone: 3 at volume 80%[0m
+[0;32mI (193043) CYGM: Starting visual alarm[0m
+[0;32mI (198784) CYGM: Visual alarm slider activated - showing snooze/dismiss screen[0m
+[0;32mI (198785) CYGM: Stopping visual alarm[0m
+[0;32mI (200907) ALARM_SCREENS: Alarm snoozed for 10 minutes[0m
+[0;32mI (217017) BATTERY: Battery ADC: raw=3466, voltage_mv=2838, calculated=4.143V (divider=1.46x)[0m
+[0;32mI (217019) BATTERY: Battery: 4.143V, 100%[0m
+[0;32mI (247042) BATTERY: Battery ADC: raw=3470, voltage_mv=2840, calculated=4.146V (divider=1.46x)[0m
+[0;32mI (247043) BATTERY: Battery: 4.146V, 100%[0m
+[0;32mI (277066) BATTERY: Battery ADC: raw=3468, voltage_mv=2839, calculated=4.145V (divider=1.46x)[0m
+[0;32mI (277067) BATTERY: Battery: 4.145V, 100%[0m
+[0;32mI (283070) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (283071) DEXCOM: Fetching glucose data...[0m
+[0;32mI (283072) DEXCOM: Free heap before glucose fetch: 8884 bytes[0m
+[0;32mI (283073) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (283295) DEXCOM: Glucose: 314 mg/dL, Trend: Falling slowly (Status: 0)[0m
+[0;32mI (283296) CYGM: Glucose updated: 314 mg/dL, trend: Falling slowly[0m
+[0;32mI (283297) CYGM: Snooze expired! Re-triggering alarm (state: 1)[0m
+[0;33mW (283302) CYGM: 🚨 ALARM TRIGGERED: High Alarm (threshold: 250 mg/dL)[0m
+[0;32mI (283309) CYGM: Playing alarm tone: 3 at volume 80%[0m
+[0;32mI (283764) CYGM: Starting visual alarm[0m
+[0;32mI (287931) CYGM: Visual alarm slider activated - showing snooze/dismiss screen[0m
+[0;32mI (287932) CYGM: Stopping visual alarm[0m
+[0;32mI (298674) ALARM_SCREENS: Alarm snoozed for 180 minutes[0m
+[0;32mI (307090) BATTERY: Battery ADC: raw=3465, voltage_mv=2837, calculated=4.142V (divider=1.46x)[0m
+[0;32mI (307091) BATTERY: Battery: 4.142V, 100%[0m
+[0;32mI (328348) WEATHER_SYSTEM: Using cached coordinates for zipcode 98092 (no geocoding needed)[0m
+[0;32mI (330348) WEATHER_SYSTEM: Fetching weather for 47.2928, -122.1707[0m
+[0;32mI (330349) WEATHER_SYSTEM: Free heap before weather fetch: 8972 bytes[0m
+[0;32mI (330350) WEATHER_SYSTEM: Weather URL: http://api.open-meteo.com/v1/forecast?latitude=47.2928&longitude=-122.1707&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1[0m
+[0;32mI (331216) WEATHER_SYSTEM: Weather HTTP result: ESP_OK (status: 200)[0m
+[0;32mI (331217) WEATHER_SYSTEM: Weather response: {"latitude":47.294487,"longitude":-122.160934,"generationtime_ms":0.10192394256591797,"utc_offset_seconds":-28800,"timezone":"America/Los_Angeles","timezone_abbreviation":"GMT-8","elevation":23.0,"current_units":{"time":"iso8601","interval":"seconds","temperature_2m":"°F","weather_code":"wmo code"},"current":{"time":"2026-01-31T20:30","interval":900,"temperature_2m":47.3,"weather_code":1},"daily_units":{"time":"iso8601","temperature_2m_max":"°F","temperature_2m_min":"°F","sunrise":"iso8601","sunset":"iso8601"},"daily":{"time":["2026-01-31"],"temperature_2m_max":[57.3],"temperature_2m_min":[44.6],"sunrise":["2026-01-31T07:34"],"sunset":["2026-01-31T17:09"]}}[0m
+[0;32mI (331279) WEATHER_SYSTEM: Weather updated: 47 F (Hi: 57 F, Lo: 44 F), Code: 1[0m
+[0;32mI (331285) WEATHER_SYSTEM: Free heap after weather fetch: 8428 bytes[0m
+[0;32mI (331294) WEATHER_SYSTEM: Drawing weather icon code: 1 (Partly Cloudy)[0m
+[0;32mI (337114) BATTERY: Battery ADC: raw=3466, voltage_mv=2838, calculated=4.143V (divider=1.46x)[0m
+[0;32mI (337115) BATTERY: Battery: 4.143V, 100%[0m
+[0;32mI (367138) BATTERY: Battery ADC: raw=3467, voltage_mv=2839, calculated=4.145V (divider=1.46x)[0m
+[0;32mI (367139) BATTERY: Battery: 4.145V, 100%[0m
+[0;32mI (373789) CYGM: Fetching periodic glucose reading...[0m
+[0;32mI (373790) DEXCOM: Fetching glucose data...[0m
+[0;32mI (373791) DEXCOM: Free heap before glucose fetch: 8652 bytes[0m
+[0;32mI (373792) DEXCOM: Reusing persistent HTTP client (SSL connection already established)[0m
+[0;32mI (374018) DEXCOM: Glucose: 302 mg/dL, Trend: Falling slowly (Status: 0)[0m
+[0;32mI (374019) CYGM: Glucose updated: 302 mg/dL, trend: Falling slowly[0m
+[0;32mI (374020) CYGM: Snooze expired! Re-triggering alarm (state: 1)[0m
+[0;33mW (374026) CYGM: 🚨 ALARM TRIGGERED: High Alarm (threshold: 250 mg/dL)[0m
+[0;32mI (374032) CYGM: Playing alarm tone: 3 at volume 80%[0m
+[0;32mI (374487) CYGM: Starting visual alarm[0m

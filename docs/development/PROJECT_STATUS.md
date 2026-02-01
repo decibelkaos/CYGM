@@ -6,7 +6,7 @@
 
 ## 🎉 BETA STAGE - Ready for Field Testing
 
-**Current Version**: 1.3.1
+**Current Version**: 1.3.2
 
 All core features are implemented and functional. Device is ready for real-world testing and feedback.
 
@@ -15,9 +15,21 @@ All core features are implemented and functional. Device is ready for real-world
 #### 1. Hardware Integration ✅
 - **Display**: ST7789 320x240 TFT (55MHz SPI, RGB565)
 - **Touch**: CST820 capacitive touch with polling mode
-- **LED**: RGB LED (active-low control)
+- **LED**: RGB LED (active-low PWM control) with visual feedback system
 - **Speaker**: DTMF tone generation for alarms
 - **Keyboard**: M5Stack CardKB (I2C) for text entry
+
+#### 1a. LED Visual Feedback System ✅ (v1.3.2)
+- **WiFi Boot Blink**: Green LED blinks every 200ms during WiFi connection, stops when home screen loads
+- **Dexcom Poll Indicator**: Blue LED double-blink sequence before glucose fetch
+  - 5 steps with decreasing brightness (100%, 85%, 70%, 60%, 50%)
+  - Each step has 2 blinks (50ms on, 50ms off, 50ms on, 150ms gap)
+  - Total duration: 1.5 seconds
+  - Signals upcoming Dexcom API poll
+- **Success Indicator**: Steady green LED for 3 seconds after successful glucose fetch, then 500ms fade-out
+- **Error Indicator**: Red LED blinks 500ms on/off for WiFi or Dexcom errors (5 seconds duration)
+- **Alarm Flash**: Bright red fast flash (100ms on/off) during active alarms
+- **Architecture**: Dedicated FreeRTOS task on Core 0, multiple animation modes with state machine
 
 #### 2. Network & Time ✅
 - **WiFi**: WPA2-PSK connection with NVS credential storage

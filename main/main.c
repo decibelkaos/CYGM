@@ -908,7 +908,7 @@ static void trigger_alarm(active_alarm_state_t state) {
 
     if (alarm == NULL) return;
 
-    ESP_LOGW(TAG, "🚨 ALARM TRIGGERED: %s (threshold: %d mg/dL)",
+    ESP_LOGW(TAG, "ALARM TRIGGERED: %s (threshold: %d mg/dL)",
              alarm_name, alarm->threshold);
 
     // Check if snooze is active
@@ -953,16 +953,32 @@ void check_glucose_alarms(int glucose_mg_dl) {
         new_state = ALARM_STATE_LOW_WARNING;
     }
 
-    // Check if snooze has expired (even if state hasn't changed)
-    if (new_state != ALARM_STATE_NONE && alarm_snooze_until > 0) {
+    // Check snooze status
+    if (alarm_snooze_until > 0) {
         time_t now;
         time(&now);
-        if (now >= alarm_snooze_until) {
+
+        if (now < alarm_snooze_until) {
+            // Still snoozed - don't trigger alarm
+            int minutes_remaining = (alarm_snooze_until - now) / 60;
+            int seconds_remaining = (alarm_snooze_until - now) % 60;
+            ESP_LOGI(TAG, "Alarm snoozed for %d min %d sec more (until %lld, current %ld)",
+                     minutes_remaining, seconds_remaining, alarm_snooze_until, (long)now);
+            return;  // Exit early - alarm is snoozed
+        } else if (new_state != ALARM_STATE_NONE) {
+            // Snooze expired and alarm condition still exists - re-trigger
             ESP_LOGI(TAG, "Snooze expired! Re-triggering alarm (state: %d)", new_state);
             alarm_snooze_until = 0;  // Clear snooze
             alarm_acknowledged = false;  // Reset acknowledgment
+            current_alarm_state = new_state;  // Update state
             trigger_alarm(new_state);
             return;  // Don't process state change logic below
+        } else {
+            // Snooze expired but glucose returned to normal
+            ESP_LOGI(TAG, "Snooze expired but glucose returned to normal");
+            alarm_snooze_until = 0;  // Clear snooze
+            current_alarm_state = ALARM_STATE_NONE;
+            return;
         }
     }
 
@@ -1092,6 +1108,9 @@ static void start_visual_alarm(void) {
     visual_alarm_active = true;
     visual_alarm_pulse_state = 0;
 
+    // Start fast red LED flash for alarm
+    led_start_alarm_flash();
+
     if (lvgl_port_lock(0)) {
         // Create white overlay that covers entire screen
         visual_alarm_overlay = lv_obj_create(lv_scr_act());
@@ -1142,6 +1161,9 @@ static void stop_visual_alarm(void) {
 
     ESP_LOGI(TAG, "Stopping visual alarm");
     visual_alarm_active = false;
+
+    // Stop LED alarm flash
+    led_stop_alarm_flash();
 
     if (visual_alarm_timer != NULL) {
         lv_timer_del(visual_alarm_timer);
@@ -1268,6 +1290,10 @@ void glucose_update_task(void *pvParameters) {
         if (dexcom_is_authenticated()) {
             dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
             ESP_LOGI(TAG, "Fetching periodic glucose reading...");
+
+            // Blink blue to indicate Dexcom poll starting
+            led_blink_blue();
+
             esp_err_t ret = dexcom_fetch_glucose(&glucose);
 
             if (ret == ESP_OK && glucose.valid) {
@@ -1281,6 +1307,9 @@ void glucose_update_task(void *pvParameters) {
 
                 ESP_LOGI(TAG, "Glucose updated: %d mg/dL, trend: %s",
                          glucose.value, dexcom_trend_description(glucose.trend));
+
+                // Show success LED (green fade)
+                led_show_success();
 
                 // SD logging removed: sd_log(TAG, "Glucose update SUCCESS: %d mg/dL, trend: %s, heap: %lu bytes", ...);
 
@@ -1308,6 +1337,12 @@ void glucose_update_task(void *pvParameters) {
 
                 update_glucose_display();
                 ESP_LOGW(TAG, "Periodic glucose fetch failed: %s", esp_err_to_name(ret));
+
+                // Show error LED (red blink)
+                led_start_error_blink();
+                vTaskDelay(pdMS_TO_TICKS(5000));  // Blink for 5 seconds
+                led_stop_error_blink();
+
                 // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
             }
         } else {

@@ -1,7 +1,0 @@
-Command: C:\Espressif\python_env\idf5.5_py3.11_env\Scripts\python.exe C:\Espressif\frameworks\esp-idf-v5.5.2\components/esptool_py/esptool/esptool.py -p COM40 -b 460800 --before default_reset --after hard_reset --chip esp32 erase_flash
-esptool.py v4.11.dev2
-Serial port COM40
-Connecting......................................
-
-A fatal error occurred: Failed to connect to ESP32: Wrong boot mode detected (0x13)! The chip needs to be in download mode.
-For troubleshooting steps visit: https://docs.espressif.com/projects/esptool/en/latest/troubleshooting.html

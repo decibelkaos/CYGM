@@ -794,10 +794,14 @@ static void alarm_snooze_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         int snooze_minutes = (int)(intptr_t)lv_event_get_user_data(e);
-        ESP_LOGI(TAG, "Alarm snoozed for %d minutes", snooze_minutes);
 
-        // Set snooze time
-        alarm_snooze_until = esp_timer_get_time() / 1000000 + (snooze_minutes * 60);
+        // Set snooze time using Unix timestamp (compatible with time())
+        time_t now;
+        time(&now);
+        alarm_snooze_until = now + (snooze_minutes * 60);
+
+        ESP_LOGI(TAG, "Alarm snoozed for %d minutes (until timestamp %lld, current %ld)",
+                 snooze_minutes, alarm_snooze_until, (long)now);
 
         // Mark alarm as acknowledged
         alarm_acknowledged = true;

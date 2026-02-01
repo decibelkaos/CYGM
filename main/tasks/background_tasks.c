@@ -66,6 +66,9 @@ void ui_task_core1(void *pvParameters) {
     // Switch to home screen
     lv_scr_load(screen_home);
 
+    // Stop WiFi boot blink when home screen loads
+    led_stop_wifi_boot_blink();
+
     // Start battery monitoring task NOW (after LVGL is fully initialized)
     ESP_LOGI(TAG, "Starting battery monitor task");
     xTaskCreatePinnedToCore(
@@ -110,7 +113,7 @@ void wifi_task_core0(void *pvParameters) {
             ESP_LOGI(TAG, "WiFi connected successfully");
             add_boot_log("WiFi connected!");
             wifi_connected = true;
-            led_set_breathing_color(0, 127, 0);  // Green = connected
+            led_start_wifi_boot_blink();  // Start green blink during boot
 
             // Update WiFi status icon color
             if (lvgl_port_lock(0)) {
@@ -247,7 +250,7 @@ void wifi_task_core0(void *pvParameters) {
             }
         } else {
             ESP_LOGE(TAG, "WiFi connection failed");
-            led_set_breathing_color(127, 0, 0);  // Red = failed
+            led_start_error_blink();  // Red blink for error
 
             // Update WiFi status on home screen
             if (lvgl_port_lock(0)) {
