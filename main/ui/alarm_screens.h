@@ -15,7 +15,7 @@ extern "C" {
 #endif
 
 void create_alarm_settings_screen(void);
-void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm, lv_color_t color_low, lv_color_t color_high);
+void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm, int y_pos, int height);
 void create_tone_picker_screen(alarm_config_t *alarm);
 void create_alarm_preview_screen(void);
 void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value, alarm_config_t *alarm, lv_color_t color_low, lv_color_t color_high);

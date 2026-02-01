@@ -6,15 +6,18 @@
 
 #include "alarm_screens.h"
 #include "shared_state.h"
+#include "main.h"
 #include "hardware/buzzer.h"
 #include "nvs_config.h"
 #include "lvgl.h"
+#include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include <stdio.h>
 
 static const char *TAG = "ALARM_SCREENS";
 
-// Forward declarations for event callbacks
+// Forward declarations for internal event callbacks
 static void alarm_toggle_event_cb(lv_event_t *e);
 static void alarm_edit_btn_event_cb(lv_event_t *e);
 static void alarm_threshold_slider_event_cb(lv_event_t *e);
@@ -22,55 +25,18 @@ static void alarm_volume_slider_event_cb(lv_event_t *e);
 static void alarm_audio_toggle_event_cb(lv_event_t *e);
 static void alarm_visual_toggle_event_cb(lv_event_t *e);
 static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void tone_button_event_cb(lv_event_t *e);
-static void alarm_slider_event_cb(lv_event_t *e);
-
-void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
 static void alarm_settings_back_event_cb(lv_event_t *e);
 static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
 static void tone_select_btn_event_cb(lv_event_t *e);
 static void tone_preview_btn_event_cb(lv_event_t *e);
 static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
 static void alarm_tone_btn_event_cb(lv_event_t *e);
+static void alarm_snooze_event_cb(lv_event_t *e);
+static void alarm_preview_back_event_cb(lv_event_t *e);
 
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
+// Public function implementations
 
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_alarm_settings_screen(void) {
+void create_alarm_settings_screen(void) {
     screen_alarm_settings = lv_obj_create(NULL);
     lv_obj_add_style(screen_alarm_settings, &style_bg, 0);
 
@@ -120,24 +86,6 @@ static void create_alarm_settings_screen(void) {
 }
 
 void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
                               int y_pos, int height) {
     if (alarm == NULL) {
         ESP_LOGE(TAG, "create_alarm_card: alarm is NULL!");
@@ -194,51 +142,7 @@ static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_
     lv_obj_add_event_cb(edit_btn, alarm_edit_btn_event_cb, LV_EVENT_CLICKED, alarm);
 }
 
-void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_tone_picker_screen(alarm_config_t *alarm) {
+void create_tone_picker_screen(alarm_config_t *alarm) {
     screen_tone_picker = lv_obj_create(NULL);
     if (screen_tone_picker == NULL) {
         ESP_LOGE(TAG, "Failed to create tone picker screen - LVGL out of memory!");
@@ -315,49 +219,7 @@ static void create_tone_picker_screen(alarm_config_t *alarm) {
     }
 }
 
-void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_alarm_preview_screen(void) {
+void create_alarm_preview_screen(void) {
     screen_alarm_preview = lv_obj_create(NULL);
     lv_obj_add_style(screen_alarm_preview, &style_bg, 0);
 
@@ -389,45 +251,38 @@ static void create_alarm_preview_screen(void) {
 
     // High Alarm demo
     create_alarm_preview_card(screen_alarm_preview, "High Alarm", 280,
-                              current_alarm_settings.high_alarm.text_color, card_y);
+                              &current_alarm_settings.high_alarm,
+                              lv_color_hex(current_alarm_settings.high_alarm.text_color),
+                              lv_color_hex(current_alarm_settings.high_alarm.text_color));
     card_y += card_height + card_spacing;
 
     // High Warning demo
     create_alarm_preview_card(screen_alarm_preview, "High Warning", 190,
-                              current_alarm_settings.high_warning.text_color, card_y);
+                              &current_alarm_settings.high_warning,
+                              lv_color_hex(current_alarm_settings.high_warning.text_color),
+                              lv_color_hex(current_alarm_settings.high_warning.text_color));
     card_y += card_height + card_spacing;
 
     // Low Warning demo
     create_alarm_preview_card(screen_alarm_preview, "Low Warning", 75,
-                              current_alarm_settings.low_warning.text_color, card_y);
+                              &current_alarm_settings.low_warning,
+                              lv_color_hex(current_alarm_settings.low_warning.text_color),
+                              lv_color_hex(current_alarm_settings.low_warning.text_color));
     card_y += card_height + card_spacing;
 
     // Low Alarm demo
     create_alarm_preview_card(screen_alarm_preview, "Low Alarm", 48,
-                              current_alarm_settings.low_alarm.text_color, card_y);
+                              &current_alarm_settings.low_alarm,
+                              lv_color_hex(current_alarm_settings.low_alarm.text_color),
+                              lv_color_hex(current_alarm_settings.low_alarm.text_color));
 }
 
 void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos) {
+                               alarm_config_t *alarm, lv_color_t color_low, lv_color_t color_high) {
     // Card container
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, 310, 45);
-    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y_pos);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 35 + (parent == screen_alarm_preview ? lv_obj_get_child_cnt(parent) - 2 : 0) * 50);
     lv_obj_add_style(card, &style_card, 0);
 
     // Title
@@ -443,7 +298,7 @@ static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int g
     lv_obj_t *glucose_lbl = lv_label_create(card);
     lv_label_set_text(glucose_lbl, glucose_text);
     lv_obj_set_style_text_font(glucose_lbl, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(glucose_lbl, lv_color_hex(text_color), 0);
+    lv_obj_set_style_text_color(glucose_lbl, color_low, 0);
     lv_obj_align(glucose_lbl, LV_ALIGN_LEFT_MID, 10, 5);
 }
 
@@ -510,47 +365,7 @@ void create_alarm_snooze_screen(void) {
     lv_obj_add_event_cb(dismiss_btn, alarm_snooze_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)180);  // 180 minutes = 3 hours
 }
 
-void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
+void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     if (alarm == NULL) {
         ESP_LOGE(TAG, "create_alarm_detail_editor_screen: alarm is NULL!");
         return;
@@ -721,38 +536,8 @@ static void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_add_event_cb(repeat_toggle, alarm_audio_repeat_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
 }
 
-void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
+// Event handler implementations
 
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_toggle_event_cb(lv_event_t *e) {
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
@@ -765,37 +550,6 @@ static void alarm_toggle_event_cb(lv_event_t *e) {
     ESP_LOGI(TAG, "Alarm enabled: %d", alarm->enabled);
 }
 
-void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_edit_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
@@ -835,32 +589,6 @@ static void alarm_edit_btn_event_cb(lv_event_t *e) {
     }
 }
 
-void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_threshold_slider_event_cb(lv_event_t *e) {
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
@@ -883,31 +611,6 @@ static void alarm_threshold_slider_event_cb(lv_event_t *e) {
     ESP_LOGI(TAG, "Threshold changed: %d mg/dL", (int)value);
 }
 
-void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_volume_slider_event_cb(lv_event_t *e) {
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
@@ -930,30 +633,6 @@ static void alarm_volume_slider_event_cb(lv_event_t *e) {
     // Volume changed (don't log - too frequent)
 }
 
-void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_audio_toggle_event_cb(lv_event_t *e) {
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
@@ -966,29 +645,6 @@ static void alarm_audio_toggle_event_cb(lv_event_t *e) {
     ESP_LOGI(TAG, "Audio enabled: %d", alarm->audio_enabled);
 }
 
-void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_visual_toggle_event_cb(lv_event_t *e) {
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
@@ -1001,28 +657,6 @@ static void alarm_visual_toggle_event_cb(lv_event_t *e) {
     ESP_LOGI(TAG, "Visual enabled: %d", alarm->visual_enabled);
 }
 
-void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
 static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e) {
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
@@ -1035,5 +669,176 @@ static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e) {
     ESP_LOGI(TAG, "Audio repeat enabled: %d", alarm->audio_repeat);
 }
 
+static void alarm_settings_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Back to menu - saving alarm settings");
+        nvs_save_alarm_settings(&current_alarm_settings);
 
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_menu);
+            lvgl_port_unlock();
+        }
+    }
+}
 
+static void tone_picker_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Tone picker back - returning to detail editor");
+
+        if (lvgl_port_lock(0)) {
+            if (screen_alarm_detail_editor != NULL) {
+                lv_scr_load(screen_alarm_detail_editor);
+            }
+
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void tone_select_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        int tone_index = (int)(intptr_t)lv_event_get_user_data(e);
+
+        if (editing_alarm != NULL) {
+            editing_alarm->tone = tone_index;
+            ESP_LOGI(TAG, "Tone selected: %d", tone_index);
+        }
+
+        // Return to detail editor
+        if (lvgl_port_lock(0)) {
+            if (screen_alarm_detail_editor != NULL) {
+                lv_obj_del(screen_alarm_detail_editor);
+                screen_alarm_detail_editor = NULL;
+            }
+
+            create_alarm_detail_editor_screen(editing_alarm);
+
+            if (screen_alarm_detail_editor != NULL) {
+                lv_scr_load(screen_alarm_detail_editor);
+            }
+
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void tone_preview_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        int tone_index = (int)(intptr_t)lv_event_get_user_data(e);
+        ESP_LOGI(TAG, "Preview tone: %d", tone_index);
+
+        // Play the tone using buzzer
+        play_alarm_tone(tone_index, 100);  // Play at 100% volume for preview
+    }
+}
+
+static void alarm_detail_editor_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Detail editor back - saving and returning to alarm settings");
+        nvs_save_alarm_settings(&current_alarm_settings);
+
+        if (lvgl_port_lock(0)) {
+            if (screen_alarm_settings != NULL) {
+                lv_obj_del(screen_alarm_settings);
+                screen_alarm_settings = NULL;
+            }
+
+            create_alarm_settings_screen();
+
+            if (screen_alarm_settings != NULL) {
+                lv_scr_load(screen_alarm_settings);
+            }
+
+            if (screen_alarm_detail_editor != NULL) {
+                lv_obj_del(screen_alarm_detail_editor);
+                screen_alarm_detail_editor = NULL;
+            }
+            lvgl_port_unlock();
+        }
+
+        editing_alarm = NULL;
+    }
+}
+
+static void alarm_tone_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
+
+        ESP_LOGI(TAG, "Tone button clicked - opening tone picker");
+
+        if (lvgl_port_lock(0)) {
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+
+            create_tone_picker_screen(alarm);
+
+            if (screen_tone_picker != NULL) {
+                lv_scr_load(screen_tone_picker);
+            }
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void alarm_snooze_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        int snooze_minutes = (int)(intptr_t)lv_event_get_user_data(e);
+        ESP_LOGI(TAG, "Alarm snoozed for %d minutes", snooze_minutes);
+
+        // Set snooze time
+        alarm_snooze_until = esp_timer_get_time() / 1000000 + (snooze_minutes * 60);
+
+        // Mark alarm as acknowledged
+        alarm_acknowledged = true;
+
+        // Stop visual alarm if active
+        if (visual_alarm_active) {
+            visual_alarm_active = false;
+        }
+
+        // Always dismiss the snooze screen and return to home
+        if (lvgl_port_lock(0)) {
+            // IMPORTANT: Load new screen BEFORE deleting current screen
+            lv_scr_load(screen_home);
+
+            // Now safe to delete the old screens
+            if (visual_alarm_overlay != NULL) {
+                lv_obj_del(visual_alarm_overlay);
+                visual_alarm_overlay = NULL;
+            }
+            if (screen_alarm_snooze != NULL) {
+                lv_obj_del(screen_alarm_snooze);
+                screen_alarm_snooze = NULL;
+            }
+
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void alarm_preview_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Alarm preview back");
+
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_alarm_settings);
+
+            if (screen_alarm_preview != NULL) {
+                lv_obj_del(screen_alarm_preview);
+                screen_alarm_preview = NULL;
+            }
+            lvgl_port_unlock();
+        }
+    }
+}

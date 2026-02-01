@@ -38,6 +38,7 @@
 
 // Project modules
 #include "shared_state.h"
+#include "main.h"
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
@@ -58,10 +59,6 @@
 // SD card logging removed - not needed for monitoring device (use serial output for debugging)
 
 static const char *TAG = "CYGM";
-
-// ==================== Version Information ====================
-#define CYGM_VERSION "1.3.0"
-#define CYGM_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // ==================== Hardware Configuration ====================
 
@@ -288,7 +285,7 @@ lv_obj_t *home_sunset_label = NULL;
 // ===== HELPER FUNCTIONS =====
 
 // Draw weather icon on a canvas
-static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
+void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
     ESP_LOGI(TAG, "Drawing weather icon code: %d (%s)", weather_code, get_weather_condition_text(weather_code));
 
     // Initialize drawing descriptors
@@ -554,7 +551,7 @@ static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
 }
 
 // Draw trend arrow on canvas (60x60 pixels)
-static void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
+void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
     if (canvas == NULL) return;
 
     lv_draw_line_dsc_t line_dsc;
@@ -851,8 +848,8 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer);
 static void audio_alarm_repeat_timer_cb(lv_timer_t *timer);
 
 static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
-static void check_glucose_alarms(int glucose_mg_dl);
-static void update_glucose_display(void);
+void check_glucose_alarms(int glucose_mg_dl);
+void update_glucose_display(void);
 static void visual_alarm_slider_event_cb(lv_event_t *e);
 
 // Get alarm color based on glucose value and alarm thresholds
@@ -934,7 +931,7 @@ static void trigger_alarm(active_alarm_state_t state) {
 }
 
 // Check glucose against alarm thresholds and trigger if needed
-static void check_glucose_alarms(int glucose_mg_dl) {
+void check_glucose_alarms(int glucose_mg_dl) {
     if (!glucose_data_valid) {
         return;  // Don't check alarms without valid data
     }
@@ -1167,7 +1164,7 @@ static void stop_visual_alarm(void) {
 }
 
 // Update glucose display on home screen
-static void update_glucose_display(void) {
+void update_glucose_display(void) {
     // Check if widgets exist (home screen is loaded)
     if (label_glucose == NULL || trend_canvas == NULL || label_time_ago == NULL) {
         return;
@@ -1259,7 +1256,7 @@ static void update_glucose_display(void) {
 }
 
 // Glucose update task - fetches glucose periodically (every 90 seconds)
-static void glucose_update_task(void *pvParameters) {
+void glucose_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Glucose update task started (90 second interval)");
 
     // Wait 90 seconds before first fetch (initial fetch already done during auth)
@@ -1343,7 +1340,7 @@ static void glucose_update_task(void *pvParameters) {
 lv_style_t style_bg;
 lv_style_t style_card;
 
-static void init_styles(void) {
+void init_styles(void) {
     // Background style - pure black
     lv_style_init(&style_bg);
     lv_style_set_bg_color(&style_bg, lv_color_hex(COLOR_BG));
@@ -1361,11 +1358,28 @@ static void init_styles(void) {
 // ===== EVENT HANDLERS =====
 
 // Forward declarations for functions remaining in main.c
-static void create_time_weather_settings_screen(void);
-static void create_zipcode_entry_screen(void);
-static void temp_toggle_event_cb(lv_event_t *e);
+void temp_toggle_event_cb(lv_event_t *e);
 
-static void menu_btn_event_cb(lv_event_t *e) {
+// Event handler for tapping temperature label to toggle Celsius/Fahrenheit
+void temp_toggle_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        // Toggle temperature unit
+        user_temp_celsius = !user_temp_celsius;
+        ESP_LOGI(TAG, "Temperature unit toggled to %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
+
+        // Save to NVS
+        weather_settings_t settings;
+        if (nvs_load_weather_settings(&settings) == ESP_OK) {
+            nvs_save_weather_settings(settings.zipcode, user_temp_celsius, settings.update_interval_min);
+        }
+
+        // Update weather display
+        update_weather_display();
+    }
+}
+
+void menu_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
@@ -1376,7 +1390,7 @@ static void menu_btn_event_cb(lv_event_t *e) {
     }
 }
 
-static void back_btn_event_cb(lv_event_t *e) {
+void back_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Back button clicked - returning to home screen");
@@ -1388,7 +1402,7 @@ static void back_btn_event_cb(lv_event_t *e) {
 }
 
 // Event handler for tapping time label to toggle 12hr/24hr format
-static void clock_label_event_cb(lv_event_t *e) {
+void clock_label_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Clock label clicked - toggling time format");
@@ -1417,7 +1431,7 @@ static void anim_bar_set_value(void *bar, int32_t value) {
     lv_bar_set_value((lv_obj_t *)bar, value, LV_ANIM_OFF);
 }
 
-static void menu_item_event_cb(lv_event_t *e) {
+void menu_item_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         int item_index = (int)(intptr_t)lv_event_get_user_data(e);
@@ -1478,17 +1492,8 @@ static void menu_item_event_cb(lv_event_t *e) {
                 xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
                 break;
             case 2:  // Time/Date/Weather Settings (combined)
-                ESP_LOGI(TAG, "Launching Time/Date/Weather settings...");
-                if (lvgl_port_lock(0)) {
-                    // Always recreate settings screen
-                    if (screen_time_weather_menu != NULL) {
-                        lv_obj_del(screen_time_weather_menu);
-                        screen_time_weather_menu = NULL;
-                    }
-                    create_time_weather_settings_screen();
-                    lv_scr_load(screen_time_weather_menu);
-                    lvgl_port_unlock();
-                }
+                // TODO: Implement time/weather settings screen
+                ESP_LOGI(TAG, "Time/Date/Weather settings not yet implemented");
                 break;
             case 3:  // Alarm Settings
                 ESP_LOGI(TAG, "Launching Alarm settings...");
@@ -1510,7 +1515,7 @@ static void menu_item_event_cb(lv_event_t *e) {
 }
 
 // Function to add message to boot log
-static void add_boot_log(const char *msg) {
+void add_boot_log(const char *msg) {
     // Always append to buffer (even if LVGL not ready yet)
     size_t current_len = strlen(boot_log_buffer);
     size_t remaining = sizeof(boot_log_buffer) - current_len - 1;
@@ -1533,7 +1538,7 @@ static void add_boot_log(const char *msg) {
 }
 
 // Draw small sunrise icon (12x12)
-static void draw_sunrise_icon(lv_obj_t *canvas) {
+void draw_sunrise_icon(lv_obj_t *canvas) {
     lv_draw_arc_dsc_t arc_dsc;
     lv_draw_arc_dsc_init(&arc_dsc);
 
@@ -1572,7 +1577,7 @@ static void draw_sunrise_icon(lv_obj_t *canvas) {
 }
 
 // Draw small sunset icon (12x12)
-static void draw_sunset_icon(lv_obj_t *canvas) {
+void draw_sunset_icon(lv_obj_t *canvas) {
     lv_draw_arc_dsc_t arc_dsc;
     lv_draw_arc_dsc_init(&arc_dsc);
 
@@ -1613,7 +1618,7 @@ static void draw_sunset_icon(lv_obj_t *canvas) {
 }
 
 // ===== SPLASH SCREEN =====
-static void create_splash_screen(void) {
+void create_splash_screen(void) {
     screen_splash = lv_obj_create(NULL);
     lv_obj_add_style(screen_splash, &style_bg, 0);
 

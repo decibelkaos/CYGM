@@ -257,6 +257,24 @@ Shared State (1 module):
 
 **Result**: Weather API and Dexcom API now work simultaneously ✅
 
+### Alarm Snooze Screen Dismiss Fix (Jan 31, 2026)
+
+**Problem**: After tapping snooze buttons, the screen would not dismiss and return to home. Device would crash with LoadProhibited exception.
+
+**Root Cause**:
+1. Screen dismissal code was inside `if (visual_alarm_active)` check
+2. LVGL screens were being deleted before loading new screen (wrong order)
+
+**Solution**:
+- Moved screen dismissal outside the visual_alarm_active check
+- Changed order: Load new screen FIRST, then delete old screens
+- Added proper cleanup of visual_alarm_overlay and screen_alarm_snooze
+
+**Files Modified**:
+- `main/ui/alarm_screens.c` (alarm_snooze_event_cb function)
+
+**Result**: Snooze buttons now properly dismiss screen and return to home ✅
+
 ---
 
 ## 📊 Memory Usage

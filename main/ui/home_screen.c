@@ -6,7 +6,10 @@
 
 #include "home_screen.h"
 #include "shared_state.h"
+#include "main.h"
+#include "features/weather_system.h"
 #include "lvgl.h"
+#include "esp_lvgl_port.h"
 #include "esp_log.h"
 
 static const char *TAG = "HOME_SCREEN";

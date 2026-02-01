@@ -6,73 +6,31 @@
 
 #include "cgm_screens.h"
 #include "shared_state.h"
+#include "main.h"
 #include "dexcom_api.h"
 #include "nvs_config.h"
 #include "lvgl.h"
+#include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include <string.h>
 
 static const char *TAG = "CGM_SCREENS";
 
-// Forward declarations for functions in main.c
-extern void update_glucose_display(void);
-extern void create_dexcom_auth_screen(void);
-
-// Forward declarations for event handlers
+// Forward declarations for internal event handlers
 static void dexcom_back_event_cb(lv_event_t *e);
 static void dexcom_logout_btn_event_cb(lv_event_t *e);
-
-void create_cgm_menu_screen(void);
-static void create_dexcom_auth_screen(void);
-static void create_dexcom_login_screen(void);
-static void create_dexcom_username_entry_screen(void);
-static void create_dexcom_password_entry_screen(void);
-static void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
+static void cgm_back_event_cb(lv_event_t *e);
+static void dexcom_btn_event_cb(lv_event_t *e);
+static void librelinkup_btn_event_cb(lv_event_t *e);
+static void dexcom_view_status_btn_event_cb(lv_event_t *e);
+static void dexcom_open_login_event_cb(lv_event_t *e);
+static void dexcom_username_tap_event_cb(lv_event_t *e);
+static void dexcom_password_tap_event_cb(lv_event_t *e);
+static void dexcom_login_btn_event_cb(lv_event_t *e);
+static void dexcom_username_entry_keyboard_event_cb(lv_event_t *e);
+static void dexcom_username_entry_field_event_cb(lv_event_t *e);
+static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e);
+static void dexcom_password_entry_field_event_cb(lv_event_t *e);
 
 // Dexcom back button event handler
 static void dexcom_back_event_cb(lv_event_t *e) {
@@ -119,7 +77,163 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
     }
 }
 
-static void create_cgm_menu_screen(void) {
+// CGM back button event handler
+static void cgm_back_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_menu);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom button event handler
+static void dexcom_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_auth);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// LibreLinkUp button event handler (placeholder)
+static void librelinkup_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "LibreLinkUp not yet implemented");
+    }
+}
+
+// Dexcom view status button event handler
+static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_status);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom open login button event handler
+static void dexcom_open_login_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom username tap event handler
+static void dexcom_username_tap_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_username_entry);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom password tap event handler
+static void dexcom_password_tap_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_password_entry);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom login button event handler
+static void dexcom_login_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Logging in to Dexcom with username: %s", dexcom_username_buf);
+
+        // Authenticate with Dexcom API
+        if (dexcom_authenticate(dexcom_username_buf, dexcom_password_buf) == ESP_OK) {
+            ESP_LOGI(TAG, "Dexcom login successful");
+            nvs_set_dexcom_credentials(dexcom_username_buf, dexcom_password_buf);
+            if (lvgl_port_lock(0)) {
+                lv_scr_load(screen_dexcom_status);
+                lvgl_port_unlock();
+            }
+        } else {
+            ESP_LOGE(TAG, "Dexcom login failed");
+        }
+    }
+}
+
+// Dexcom username entry keyboard event handler
+static void dexcom_username_entry_keyboard_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CANCEL) {
+        ESP_LOGI(TAG, "Username entry cancelled");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    } else if (code == LV_EVENT_READY) {
+        ESP_LOGI(TAG, "Username entry completed: %s", dexcom_username_buf);
+        if (dexcom_username_label != NULL) {
+            lv_label_set_text(dexcom_username_label, dexcom_username_buf);
+        }
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom username entry field event handler
+static void dexcom_username_entry_field_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        const char *text = lv_textarea_get_text(dexcom_username_entry_ta);
+        strncpy(dexcom_username_buf, text, sizeof(dexcom_username_buf) - 1);
+        dexcom_username_buf[sizeof(dexcom_username_buf) - 1] = '\0';
+    }
+}
+
+// Dexcom password entry keyboard event handler
+static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CANCEL) {
+        ESP_LOGI(TAG, "Password entry cancelled");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    } else if (code == LV_EVENT_READY) {
+        ESP_LOGI(TAG, "Password entry completed (masked)");
+        if (dexcom_password_label != NULL) {
+            int len = strlen(dexcom_password_buf);
+            if (len == 0) {
+                lv_label_set_text(dexcom_password_label, "");
+            } else {
+                char display[65];
+                for (int i = 0; i < len; i++) {
+                    display[i] = '*';
+                }
+                display[len] = '\0';
+                lv_label_set_text(dexcom_password_label, display);
+            }
+        }
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_dexcom_login);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// Dexcom password entry field event handler
+static void dexcom_password_entry_field_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        const char *text = lv_textarea_get_text(dexcom_password_entry_ta);
+        strncpy(dexcom_password_buf, text, sizeof(dexcom_password_buf) - 1);
+        dexcom_password_buf[sizeof(dexcom_password_buf) - 1] = '\0';
+    }
+}
+
+void create_cgm_menu_screen(void) {
     screen_cgm_menu = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen_cgm_menu, lv_color_hex(COLOR_BG), 0);
 
@@ -167,57 +281,7 @@ static void create_cgm_menu_screen(void) {
     lv_obj_add_event_cb(libre_btn, librelinkup_btn_event_cb, LV_EVENT_CLICKED, NULL);
 }
 
-void create_dexcom_auth_screen(void);
-static void create_dexcom_login_screen(void);
-static void create_dexcom_username_entry_screen(void);
-static void create_dexcom_password_entry_screen(void);
-static void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_dexcom_auth_screen(void) {
+void create_dexcom_auth_screen(void) {
     screen_dexcom_auth = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen_dexcom_auth, lv_color_hex(COLOR_BG), 0);
 
@@ -306,56 +370,7 @@ static void create_dexcom_auth_screen(void) {
     }
 }
 
-void create_dexcom_login_screen(void);
-static void create_dexcom_username_entry_screen(void);
-static void create_dexcom_password_entry_screen(void);
-static void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_dexcom_login_screen(void) {
+void create_dexcom_login_screen(void) {
     screen_dexcom_login = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_login, &style_bg, 0);
 
@@ -454,55 +469,7 @@ static void create_dexcom_login_screen(void) {
     lv_obj_add_event_cb(login_btn, dexcom_login_btn_event_cb, LV_EVENT_CLICKED, NULL);
 }
 
-void create_dexcom_username_entry_screen(void);
-static void create_dexcom_password_entry_screen(void);
-static void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_dexcom_username_entry_screen(void) {
+void create_dexcom_username_entry_screen(void) {
     screen_dexcom_username_entry = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_username_entry, &style_bg, 0);
 
@@ -549,54 +516,7 @@ static void create_dexcom_username_entry_screen(void) {
     lv_obj_add_event_cb(dexcom_username_entry_ta, dexcom_username_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
-void create_dexcom_password_entry_screen(void);
-static void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_dexcom_password_entry_screen(void) {
+void create_dexcom_password_entry_screen(void) {
     screen_dexcom_password_entry = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_password_entry, &style_bg, 0);
 
@@ -655,53 +575,7 @@ static void create_dexcom_password_entry_screen(void) {
     lv_obj_add_event_cb(dexcom_password_entry_ta, dexcom_password_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
-void create_dexcom_status_screen(void);
-static void create_alarm_settings_screen(void);
-static void create_tone_picker_screen(alarm_config_t *alarm);
-#if 0
-static void create_alarm_preview_screen(void);
-#endif
-static void create_alarm_detail_editor_screen(alarm_config_t *alarm);
-
-// Alarm event handlers
-static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
-#if 0
-static void alarm_preview_back_event_cb(lv_event_t *e);
-#endif
-static void alarm_toggle_event_cb(lv_event_t *e);
-static void alarm_edit_btn_event_cb(lv_event_t *e);
-// static void alarm_preview_open_event_cb(lv_event_t *e);  // Unused - preview button removed
-static void tone_select_btn_event_cb(lv_event_t *e);
-static void tone_preview_btn_event_cb(lv_event_t *e);
-static void alarm_detail_editor_back_event_cb(lv_event_t *e);
-static void alarm_threshold_slider_event_cb(lv_event_t *e);
-static void alarm_volume_slider_event_cb(lv_event_t *e);
-static void alarm_audio_toggle_event_cb(lv_event_t *e);
-static void alarm_visual_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
-static void alarm_tone_btn_event_cb(lv_event_t *e);
-
-// Alarm helper functions
-static void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
-                              int y_pos, int height);
-#if 0
-static void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
-                                      uint32_t text_color, int y_pos);
-#endif
-static void wifi_scan_task(void *pvParameters);
-
-static void menu_btn_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
-    }
-}
-static void create_dexcom_status_screen(void) {
+void create_dexcom_status_screen(void) {
     screen_dexcom_status = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_status, &style_bg, 0);
 

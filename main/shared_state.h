@@ -149,6 +149,7 @@ extern lv_obj_t *screen_dexcom_password_entry;
 extern lv_obj_t *screen_dexcom_status;
 extern lv_obj_t *screen_alarm_settings;
 extern lv_obj_t *screen_tone_picker;
+extern lv_obj_t *screen_alarm_preview;
 extern lv_obj_t *screen_alarm_detail_editor;
 
 // ==================== Alarm Configuration ====================
