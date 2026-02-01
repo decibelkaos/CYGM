@@ -209,8 +209,8 @@ lv_obj_t *battery_percent_label = NULL;  // Battery percent label
 lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
 
 // Splash screen boot log
-static lv_obj_t *boot_log_label = NULL;
-static char boot_log_buffer[512] = {0};  // Buffer for boot messages
+lv_obj_t *boot_log_label = NULL;
+char boot_log_buffer[512] = {0};  // Buffer for boot messages
 
 // Dexcom login UI elements
 lv_obj_t *dexcom_username_label = NULL;
@@ -221,13 +221,13 @@ char dexcom_password_buf[64] = {0};
 // Glucose data - "Last Known Good" approach
 // We ALWAYS display the last valid glucose reading, even if current fetch fails
 // This prevents user anxiety from seeing "---" during temporary network/API issues
-static int current_glucose = 0;
-static dexcom_trend_t current_trend = TREND_NONE;
-static time_t glucose_timestamp = 0;
-static bool glucose_data_valid = false;      // True if we've EVER received valid data
-static bool glucose_data_fresh = false;       // True only if last fetch succeeded
-static dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
-static bool first_glucose_received = false;  // Track if we've received first reading
+int current_glucose = 0;
+dexcom_trend_t current_trend = TREND_NONE;
+time_t glucose_timestamp = 0;
+bool glucose_data_valid = false;      // True if we've EVER received valid data
+bool glucose_data_fresh = false;       // True only if last fetch succeeded
+dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
+bool first_glucose_received = false;  // Track if we've received first reading
 
 // Entry screen UI elements
 lv_obj_t *dexcom_username_entry_label = NULL;
@@ -263,9 +263,9 @@ uint32_t last_shift_press_time = 0;
 bool shift_waiting_for_char = false;  // True when shift pressed but no char typed yet
 
 // Time/Date/Weather settings
-static char user_timezone[64] = "America/New_York";  // Default timezone
-static bool user_dst_enabled = true;  // Daylight Saving Time enabled
-static bool user_24hr_format = false;  // 12-hour (AM/PM) vs 24-hour format
+char user_timezone[64] = "America/New_York";  // Default timezone
+bool user_dst_enabled = true;  // Daylight Saving Time enabled
+bool user_24hr_format = false;  // 12-hour (AM/PM) vs 24-hour format
 char user_zipcode[11] = "";  // US zipcode (5 or 9 digits)
 bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
 uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
