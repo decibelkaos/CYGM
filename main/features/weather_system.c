@@ -1,0 +1,1253 @@
+/*
+ * weather_system.c
+ *
+ * Weather data fetching and display implementation
+ */
+
+#include "weather_system.h"
+#include "time_system.h"
+#include "shared_state.h"
+#include "nvs_config.h"
+#include "wifi_manager.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "esp_log.h"
+#include "freertos/task.h"
+#include "cJSON.h"
+#include "lvgl.h"
+#include "esp_lvgl_port.h"
+#include <string.h>
+#include <time.h>
+
+static const char *TAG = "WEATHER_SYSTEM";
+
+// HTTP response buffer for weather/geocoding
+#define WEATHER_HTTP_BUFFER_SIZE 2048
+static char http_response_buffer[WEATHER_HTTP_BUFFER_SIZE];
+static int http_response_len = 0;
+
+// Geocoded zipcode tracker
+static char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
+
+esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+    switch (evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            if (http_response_len + evt->data_len < WEATHER_HTTP_BUFFER_SIZE - 1) {
+                memcpy(http_response_buffer + http_response_len, evt->data, evt->data_len);
+                http_response_len += evt->data_len;
+                http_response_buffer[http_response_len] = '\0';
+            } else {
+                // Buffer overflow protection
+                ESP_LOGE(TAG, "Weather HTTP response buffer overflow! Response too large (%d + %d >= %d)",
+                         http_response_len, evt->data_len, WEATHER_HTTP_BUFFER_SIZE);
+            }
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+static const char* state_to_timezone(const char *state);
+
+// Geocoded zipcode tracker (to detect when user changes zipcode)
+static char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
+
+static void load_weather_settings(void) {
+    weather_settings_t settings;
+
+    // Try to load settings from NVS
+    if (nvs_load_weather_settings(&settings) == ESP_OK) {
+        // Apply loaded settings
+        strncpy(user_zipcode, settings.zipcode, sizeof(user_zipcode) - 1);
+        user_zipcode[sizeof(user_zipcode) - 1] = '\0';
+        user_temp_celsius = settings.temp_celsius;
+        user_weather_interval_min = settings.update_interval_min;
+
+        // Load cached coordinates and location if available
+        if (settings.coords_valid) {
+            user_latitude = settings.latitude;
+            user_longitude = settings.longitude;
+            strncpy(geocoded_zipcode, settings.geocoded_zipcode, sizeof(geocoded_zipcode) - 1);
+            geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
+
+            // Load location name
+            if (strlen(settings.location) > 0) {
+                strncpy(user_location, settings.location, sizeof(user_location) - 1);
+                user_location[sizeof(user_location) - 1] = '\0';
+                ESP_LOGI(TAG, "Using cached weather location: %s (%.4f, %.4f, zipcode: %s)",
+                         user_location, user_latitude, user_longitude, geocoded_zipcode);
+
+                // Auto-detect timezone from location (in case it was changed manually before)
+                // Extract state abbreviation from location (format: "City, ST")
+                char *comma = strrchr(user_location, ',');
+                if (comma != NULL && strlen(comma) > 2) {
+                    char state_abbr[3];
+                    strncpy(state_abbr, comma + 2, 2);  // Skip comma and space
+                    state_abbr[2] = '\0';
+
+                    // Map state abbreviation to full name
+                    const char *state_full = NULL;
+                    if (strcmp(state_abbr, "WA") == 0) state_full = "Washington";
+                    else if (strcmp(state_abbr, "CA") == 0) state_full = "California";
+                    else if (strcmp(state_abbr, "OR") == 0) state_full = "Oregon";
+                    else if (strcmp(state_abbr, "TX") == 0) state_full = "Texas";
+                    else if (strcmp(state_abbr, "NY") == 0) state_full = "New York";
+                    else if (strcmp(state_abbr, "FL") == 0) state_full = "Florida";
+                    else if (strcmp(state_abbr, "ME") == 0) state_full = "Maine";
+                    else if (strcmp(state_abbr, "IL") == 0) state_full = "Illinois";
+                    else if (strcmp(state_abbr, "PA") == 0) state_full = "Pennsylvania";
+                    else if (strcmp(state_abbr, "OH") == 0) state_full = "Ohio";
+                    else if (strcmp(state_abbr, "GA") == 0) state_full = "Georgia";
+                    else if (strcmp(state_abbr, "NC") == 0) state_full = "North Carolina";
+                    else if (strcmp(state_abbr, "MI") == 0) state_full = "Michigan";
+                    else if (strcmp(state_abbr, "NJ") == 0) state_full = "New Jersey";
+                    else if (strcmp(state_abbr, "VA") == 0) state_full = "Virginia";
+                    else if (strcmp(state_abbr, "AZ") == 0) state_full = "Arizona";
+                    else if (strcmp(state_abbr, "MA") == 0) state_full = "Massachusetts";
+                    else if (strcmp(state_abbr, "IN") == 0) state_full = "Indiana";
+                    else if (strcmp(state_abbr, "TN") == 0) state_full = "Tennessee";
+                    else if (strcmp(state_abbr, "MO") == 0) state_full = "Missouri";
+                    // Add more states as needed
+
+                    if (state_full != NULL) {
+                        const char *detected_tz = state_to_timezone(state_full);
+
+                        // Check if detected timezone differs from loaded timezone
+                        if (strcmp(detected_tz, user_timezone) != 0) {
+                            ESP_LOGI(TAG, "Timezone mismatch detected! Location '%s' suggests %s, but loaded %s",
+                                     user_location, detected_tz, user_timezone);
+                            ESP_LOGI(TAG, "Updating timezone to match location...");
+
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+
+                            // Save and apply the corrected timezone
+                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                            const char *posix_tz = get_posix_timezone(user_timezone);
+                            setenv("TZ", posix_tz, 1);
+                            tzset();
+                            ESP_LOGI(TAG, "Timezone corrected to: %s", user_timezone);
+                        } else {
+                            ESP_LOGI(TAG, "Timezone matches location: %s", user_timezone);
+                        }
+                    }
+                }
+            } else {
+                ESP_LOGI(TAG, "Using cached weather coordinates: %.4f, %.4f (for zipcode: %s)",
+                         user_latitude, user_longitude, geocoded_zipcode);
+            }
+        }
+
+        ESP_LOGI(TAG, "Loaded weather settings from NVS:");
+        ESP_LOGI(TAG, "  Zipcode: %s", user_zipcode);
+        ESP_LOGI(TAG, "  Unit: %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
+        ESP_LOGI(TAG, "  Update interval: %d minutes", user_weather_interval_min);
+    } else {
+        ESP_LOGI(TAG, "No saved weather settings, using defaults");
+    }
+}
+static const char* state_to_timezone(const char *state) {
+    // Eastern Time (UTC-5/-4)
+    if (strcmp(state, "Connecticut") == 0) return "America/New_York";
+    if (strcmp(state, "Delaware") == 0) return "America/New_York";
+    if (strcmp(state, "District of Columbia") == 0) return "America/New_York";
+    if (strcmp(state, "Georgia") == 0) return "America/New_York";
+    if (strcmp(state, "Maine") == 0) return "America/New_York";
+    if (strcmp(state, "Maryland") == 0) return "America/New_York";
+    if (strcmp(state, "Massachusetts") == 0) return "America/New_York";
+    if (strcmp(state, "New Hampshire") == 0) return "America/New_York";
+    if (strcmp(state, "New Jersey") == 0) return "America/New_York";
+    if (strcmp(state, "New York") == 0) return "America/New_York";
+    if (strcmp(state, "North Carolina") == 0) return "America/New_York";
+    if (strcmp(state, "Ohio") == 0) return "America/New_York";
+    if (strcmp(state, "Pennsylvania") == 0) return "America/New_York";
+    if (strcmp(state, "Rhode Island") == 0) return "America/New_York";
+    if (strcmp(state, "South Carolina") == 0) return "America/New_York";
+    if (strcmp(state, "Vermont") == 0) return "America/New_York";
+    if (strcmp(state, "Virginia") == 0) return "America/New_York";
+    if (strcmp(state, "West Virginia") == 0) return "America/New_York";
+
+    // Central Time (UTC-6/-5)
+    if (strcmp(state, "Alabama") == 0) return "America/Chicago";
+    if (strcmp(state, "Arkansas") == 0) return "America/Chicago";
+    if (strcmp(state, "Illinois") == 0) return "America/Chicago";
+    if (strcmp(state, "Indiana") == 0) return "America/Indiana/Indianapolis";  // Most of Indiana
+    if (strcmp(state, "Iowa") == 0) return "America/Chicago";
+    if (strcmp(state, "Kansas") == 0) return "America/Chicago";  // Most of Kansas
+    if (strcmp(state, "Kentucky") == 0) return "America/Chicago";  // Western Kentucky
+    if (strcmp(state, "Louisiana") == 0) return "America/Chicago";
+    if (strcmp(state, "Minnesota") == 0) return "America/Chicago";
+    if (strcmp(state, "Mississippi") == 0) return "America/Chicago";
+    if (strcmp(state, "Missouri") == 0) return "America/Chicago";
+    if (strcmp(state, "Nebraska") == 0) return "America/Chicago";  // Eastern Nebraska
+    if (strcmp(state, "North Dakota") == 0) return "America/Chicago";  // Most of ND
+    if (strcmp(state, "Oklahoma") == 0) return "America/Chicago";
+    if (strcmp(state, "South Dakota") == 0) return "America/Chicago";  // Eastern SD
+    if (strcmp(state, "Tennessee") == 0) return "America/Chicago";  // Western TN
+    if (strcmp(state, "Texas") == 0) return "America/Chicago";  // Most of Texas
+    if (strcmp(state, "Wisconsin") == 0) return "America/Chicago";
+
+    // Mountain Time (UTC-7/-6)
+    if (strcmp(state, "Arizona") == 0) return "America/Phoenix";  // No DST
+    if (strcmp(state, "Colorado") == 0) return "America/Denver";
+    if (strcmp(state, "Idaho") == 0) return "America/Denver";  // Southern Idaho
+    if (strcmp(state, "Montana") == 0) return "America/Denver";
+    if (strcmp(state, "New Mexico") == 0) return "America/Denver";
+    if (strcmp(state, "Utah") == 0) return "America/Denver";
+    if (strcmp(state, "Wyoming") == 0) return "America/Denver";
+
+    // Pacific Time (UTC-8/-7)
+    if (strcmp(state, "California") == 0) return "America/Los_Angeles";
+    if (strcmp(state, "Nevada") == 0) return "America/Los_Angeles";
+    if (strcmp(state, "Oregon") == 0) return "America/Los_Angeles";  // Most of Oregon
+    if (strcmp(state, "Washington") == 0) return "America/Los_Angeles";
+
+    // Alaska Time (UTC-9/-8)
+    if (strcmp(state, "Alaska") == 0) return "America/Anchorage";
+
+    // Hawaii-Aleutian Time (UTC-10, no DST)
+    if (strcmp(state, "Hawaii") == 0) return "Pacific/Honolulu";
+
+    // Default fallback for unknown states
+    return "America/New_York";  // Eastern Time as default
+}
+esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot fetch coordinates");
+        return ESP_FAIL;
+    }
+
+    char url[256];
+    // Nominatim REQUIRES HTTPS (redirects HTTP with 301) - no choice but to use SSL
+    snprintf(url, sizeof(url),
+             "https://nominatim.openstreetmap.org/search?postalcode=%s&country=us&format=json&limit=1&addressdetails=1",
+             zipcode);
+
+    http_response_len = 0;
+    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = 15000,
+        .user_agent = "CYGM/1.0",
+        .method = HTTP_METHOD_GET,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,  // HTTPS required (Nominatim redirects HTTP to HTTPS)
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
+        .buffer_size = WEATHER_HTTP_BUFFER_SIZE,
+        .buffer_size_tx = 1024  // Reduce TX buffer
+    };
+
+    ESP_LOGI(TAG, "Geocoding URL: %s", url);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client for geocoding");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "Geocoding HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Geocoding response: %s", http_response_buffer);
+
+        // Parse JSON response
+        cJSON *json = cJSON_Parse(http_response_buffer);
+        if (json != NULL) {
+            if (cJSON_GetArraySize(json) > 0) {
+                cJSON *first = cJSON_GetArrayItem(json, 0);
+                cJSON *lat_json = cJSON_GetObjectItem(first, "lat");
+                cJSON *lon_json = cJSON_GetObjectItem(first, "lon");
+
+                if (lat_json && lon_json) {
+                    *lat = atof(lat_json->valuestring);
+                    *lon = atof(lon_json->valuestring);
+
+                    bool location_found = false;
+
+                    // Try to get city/town and state from address components
+                    cJSON *address = cJSON_GetObjectItem(first, "address");
+                    if (address) {
+                        cJSON *city = cJSON_GetObjectItem(address, "city");
+                        cJSON *town = cJSON_GetObjectItem(address, "town");
+                        cJSON *village = cJSON_GetObjectItem(address, "village");
+                        cJSON *county = cJSON_GetObjectItem(address, "county");
+                        cJSON *state = cJSON_GetObjectItem(address, "state");
+
+                        // Use city, town, village, or county (in that priority order)
+                        const char *locality = NULL;
+                        if (city && cJSON_IsString(city)) {
+                            locality = city->valuestring;
+                        } else if (town && cJSON_IsString(town)) {
+                            locality = town->valuestring;
+                        } else if (village && cJSON_IsString(village)) {
+                            locality = village->valuestring;
+                        } else if (county && cJSON_IsString(county)) {
+                            // Remove " County" suffix if present
+                            static char county_name[57];
+                            strncpy(county_name, county->valuestring, sizeof(county_name) - 1);
+                            county_name[sizeof(county_name) - 1] = '\0';
+                            char *suffix = strstr(county_name, " County");
+                            if (suffix) *suffix = '\0';
+                            locality = county_name;
+                        }
+
+                        if (locality && state && cJSON_IsString(state)) {
+                            // Abbreviate state names for US
+                            const char *state_abbr = state->valuestring;
+                            if (strcmp(state->valuestring, "Washington") == 0) state_abbr = "WA";
+                            else if (strcmp(state->valuestring, "California") == 0) state_abbr = "CA";
+                            else if (strcmp(state->valuestring, "Oregon") == 0) state_abbr = "OR";
+                            else if (strcmp(state->valuestring, "Texas") == 0) state_abbr = "TX";
+                            else if (strcmp(state->valuestring, "New York") == 0) state_abbr = "NY";
+                            else if (strcmp(state->valuestring, "Florida") == 0) state_abbr = "FL";
+
+                            // Ensure locality fits with state abbreviation
+                            static char safe_locality[57];
+                            strncpy(safe_locality, locality, sizeof(safe_locality) - 1);
+                            safe_locality[sizeof(safe_locality) - 1] = '\0';
+
+                            snprintf(user_location, sizeof(user_location), "%s, %s",
+                                     safe_locality, state_abbr);
+                            location_found = true;
+
+                            // Auto-detect timezone from state
+                            const char *detected_tz = state_to_timezone(state->valuestring);
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+                            ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                                     state->valuestring, user_timezone);
+                        } else if (state && cJSON_IsString(state)) {
+                            // No city found, just use zipcode and state
+                            snprintf(user_location, sizeof(user_location), "%s, %s",
+                                     zipcode, state->valuestring);
+                            location_found = true;
+
+                            // Auto-detect timezone from state
+                            const char *detected_tz = state_to_timezone(state->valuestring);
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+                            ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                                     state->valuestring, user_timezone);
+                        }
+                    }
+
+                    // Fallback: Parse display_name if address parsing didn't work
+                    if (!location_found) {
+                        cJSON *display_name_json = cJSON_GetObjectItem(first, "display_name");
+                        if (display_name_json && cJSON_IsString(display_name_json)) {
+                            // display_name format: "98092, King County, Washington, United States"
+                            // Parse to extract locality and state
+                            static char display_name_buf[256];
+                            strncpy(display_name_buf, display_name_json->valuestring, sizeof(display_name_buf) - 1);
+                            display_name_buf[sizeof(display_name_buf) - 1] = '\0';
+
+                            // Split by comma
+                            char *parts[5] = {NULL};
+                            int part_count = 0;
+                            char *token = strtok(display_name_buf, ",");
+                            while (token && part_count < 5) {
+                                // Trim leading spaces
+                                while (*token == ' ') token++;
+                                parts[part_count++] = token;
+                                token = strtok(NULL, ",");
+                            }
+
+                            // Typically: [0]=zipcode, [1]=county, [2]=state, [3]=country
+                            if (part_count >= 3) {
+                                const char *locality = parts[1];  // Usually county
+                                const char *state = parts[2];
+
+                                // Remove " County" suffix if present (limit to 56 chars)
+                                static char locality_buf[57];
+                                strncpy(locality_buf, locality, sizeof(locality_buf) - 1);
+                                locality_buf[sizeof(locality_buf) - 1] = '\0';
+                                char *suffix = strstr(locality_buf, " County");
+                                if (suffix) *suffix = '\0';
+
+                                // Abbreviate state names
+                                const char *state_abbr = state;
+                                if (strcmp(state, "Washington") == 0) state_abbr = "WA";
+                                else if (strcmp(state, "California") == 0) state_abbr = "CA";
+                                else if (strcmp(state, "Oregon") == 0) state_abbr = "OR";
+                                else if (strcmp(state, "Texas") == 0) state_abbr = "TX";
+                                else if (strcmp(state, "New York") == 0) state_abbr = "NY";
+                                else if (strcmp(state, "Florida") == 0) state_abbr = "FL";
+
+                                snprintf(user_location, sizeof(user_location), "%s, %s",
+                                         locality_buf, state_abbr);
+                                location_found = true;
+
+                                // Auto-detect timezone from state
+                                const char *detected_tz = state_to_timezone(state);
+                                strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                                user_timezone[sizeof(user_timezone) - 1] = '\0';
+                                ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                                         state, user_timezone);
+                            }
+                        }
+                    }
+
+                    // Final fallback to just zipcode
+                    if (!location_found) {
+                        strncpy(user_location, zipcode, sizeof(user_location) - 1);
+                    }
+
+                    ESP_LOGI(TAG, "Zipcode %s -> Lat: %.4f, Lon: %.4f, Location: %s",
+                             zipcode, *lat, *lon, user_location);
+                    cJSON_Delete(json);
+                    esp_http_client_cleanup(client);
+                    return ESP_OK;
+                }
+            }
+            cJSON_Delete(json);
+        }
+    }
+
+    ESP_LOGE(TAG, "Failed to geocode zipcode: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return ESP_FAIL;
+}
+esp_err_t reverse_geocode(float lat, float lon) {
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot reverse geocode");
+        return ESP_FAIL;
+    }
+
+    char url[256];
+    // Nominatim REQUIRES HTTPS (redirects HTTP with 301) - no choice but to use SSL
+    snprintf(url, sizeof(url),
+             "https://nominatim.openstreetmap.org/reverse?lat=%.4f&lon=%.4f&format=json&addressdetails=1",
+             lat, lon);
+
+    http_response_len = 0;
+    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = 15000,
+        .user_agent = "CYGM/1.0",
+        .method = HTTP_METHOD_GET,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,  // HTTPS required (Nominatim redirects HTTP to HTTPS)
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
+        .buffer_size = WEATHER_HTTP_BUFFER_SIZE,
+        .buffer_size_tx = 1024  // Reduce TX buffer
+    };
+
+    ESP_LOGI(TAG, "Reverse geocoding URL: %s", url);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client for reverse geocoding");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "Reverse geocoding HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Reverse geocoding response: %s", http_response_buffer);
+
+        // Parse JSON response
+        cJSON *json = cJSON_Parse(http_response_buffer);
+        if (json != NULL) {
+            cJSON *address = cJSON_GetObjectItem(json, "address");
+            if (address) {
+                cJSON *city = cJSON_GetObjectItem(address, "city");
+                cJSON *town = cJSON_GetObjectItem(address, "town");
+                cJSON *village = cJSON_GetObjectItem(address, "village");
+                cJSON *county = cJSON_GetObjectItem(address, "county");
+                cJSON *state = cJSON_GetObjectItem(address, "state");
+
+                // Use city, town, village, or county (in that priority order)
+                const char *locality = NULL;
+                if (city && cJSON_IsString(city)) {
+                    locality = city->valuestring;
+                } else if (town && cJSON_IsString(town)) {
+                    locality = town->valuestring;
+                } else if (village && cJSON_IsString(village)) {
+                    locality = village->valuestring;
+                } else if (county && cJSON_IsString(county)) {
+                    // Remove " County" suffix if present
+                    static char county_name[57];
+                    strncpy(county_name, county->valuestring, sizeof(county_name) - 1);
+                    county_name[sizeof(county_name) - 1] = '\0';
+                    char *suffix = strstr(county_name, " County");
+                    if (suffix) *suffix = '\0';
+                    locality = county_name;
+                }
+
+                if (locality && state && cJSON_IsString(state)) {
+                    // Abbreviate state names for US
+                    const char *state_abbr = state->valuestring;
+                    if (strcmp(state->valuestring, "Washington") == 0) state_abbr = "WA";
+                    else if (strcmp(state->valuestring, "California") == 0) state_abbr = "CA";
+                    else if (strcmp(state->valuestring, "Oregon") == 0) state_abbr = "OR";
+                    else if (strcmp(state->valuestring, "Texas") == 0) state_abbr = "TX";
+                    else if (strcmp(state->valuestring, "New York") == 0) state_abbr = "NY";
+                    else if (strcmp(state->valuestring, "Florida") == 0) state_abbr = "FL";
+
+                    // Ensure locality fits with state abbreviation
+                    static char safe_locality[57];
+                    strncpy(safe_locality, locality, sizeof(safe_locality) - 1);
+                    safe_locality[sizeof(safe_locality) - 1] = '\0';
+
+                    snprintf(user_location, sizeof(user_location), "%s, %s",
+                             safe_locality, state_abbr);
+
+                    // Auto-detect timezone from state
+                    const char *detected_tz = state_to_timezone(state->valuestring);
+                    strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                    user_timezone[sizeof(user_timezone) - 1] = '\0';
+                    ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
+                             state->valuestring, user_timezone);
+
+                    ESP_LOGI(TAG, "Reverse geocode result: %s", user_location);
+                    cJSON_Delete(json);
+                    esp_http_client_cleanup(client);
+                    return ESP_OK;
+                }
+            }
+            cJSON_Delete(json);
+        }
+    }
+
+    ESP_LOGE(TAG, "Failed to reverse geocode: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return ESP_FAIL;
+}
+bool is_night_time(void);
+
+// ===== COLOR PALETTE - Dark Blue Theme =====
+#define COLOR_BG            0x000000  // Pure black background
+#define COLOR_CARD_BG       0x1a2332  // Dark blue-grey cards
+#define COLOR_TEXT_WHITE    0xFFFFFF  // Pure white text
+#define COLOR_TEXT_GRAY     0x9CA3AF  // Light gray for secondary
+#define COLOR_TEXT_DIM      0x6B7280  // Dimmed gray
+#define COLOR_ACCENT_BLUE   0x3B82F6  // Bright blue accent
+#define COLOR_ACCENT_LIGHT  0x60A5FA  // Lighter blue
+#define COLOR_GREEN         0x22C55E  // Green for good
+#define COLOR_ORANGE        0xF59E0B  // Orange warning
+#define COLOR_RED           0xEF4444  // Red alert
+#define COLOR_BORDER        0xFFFFFF  // White border/outline
+
+// Draw weather icon on a canvas
+static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
+    ESP_LOGI(TAG, "Drawing weather icon code: %d (%s)", weather_code, get_weather_condition_text(weather_code));
+
+    // Initialize drawing descriptors
+    lv_draw_arc_dsc_t arc_dsc;
+    lv_draw_arc_dsc_init(&arc_dsc);
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+
+    switch (weather_code) {
+        case 0: { // SUN (day) / MOON (night) - Clear sky
+            if (is_night_time()) {
+                // Draw crescent moon
+                // Draw large circle (full moon)
+                arc_dsc.color = lv_color_hex(0xF0E68C); // Pale yellow
+                arc_dsc.width = 24;
+                lv_canvas_draw_arc(canvas, 30, 25, 12, 0, 360, &arc_dsc);
+
+                // Draw smaller circle on right to create crescent
+                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);  // Same as background
+                arc_dsc.width = 20;
+                lv_canvas_draw_arc(canvas, 36, 22, 10, 0, 360, &arc_dsc);
+            } else {
+                // Draw filled sun circle
+                rect_dsc.bg_color = lv_color_hex(0xFFAA00); // Orange
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                rect_dsc.radius = LV_RADIUS_CIRCLE;
+
+                // Draw filled circle by drawing a rounded rectangle
+                // lv_canvas_draw_rect signature: (canvas, x, y, w, h, &dsc)
+                lv_canvas_draw_rect(canvas, 30 - 12, 25 - 12, 24, 24, &rect_dsc);
+
+                // Draw 8 rays around the sun
+                line_dsc.color = lv_color_hex(0xFFAA00);
+                line_dsc.width = 2;
+                lv_point_t ray_points[2];
+
+                for (int i = 0; i < 8; i++) {
+                    float angle = i * 45.0 * 3.14159 / 180.0;
+                    ray_points[0].x = 30 + (int)(18 * cos(angle));
+                    ray_points[0].y = 25 + (int)(18 * sin(angle));
+                    ray_points[1].x = 30 + (int)(26 * cos(angle));
+                    ray_points[1].y = 25 + (int)(26 * sin(angle));
+                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
+                }
+            }
+            break;
+        }
+
+        case 1: { // PARTLY CLOUDY - Sun/Moon with cloud
+            if (is_night_time()) {
+                // Draw crescent moon in upper left
+                arc_dsc.color = lv_color_hex(0xF0E68C);
+                arc_dsc.width = 14;
+                lv_canvas_draw_arc(canvas, 18, 15, 7, 0, 360, &arc_dsc);
+
+                // Create crescent effect
+                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);
+                arc_dsc.width = 12;
+                lv_canvas_draw_arc(canvas, 22, 13, 6, 0, 360, &arc_dsc);
+            } else {
+                // Draw sun in upper left
+                arc_dsc.color = lv_color_hex(0xFFAA00); // Orange
+                arc_dsc.width = 6;
+                lv_canvas_draw_arc(canvas, 18, 15, 8, 0, 360, &arc_dsc);
+
+                // Draw partial rays (only visible ones)
+                line_dsc.color = lv_color_hex(0xFFAA00);
+                line_dsc.width = 2;
+                lv_point_t ray_points[2];
+
+                // Top-left rays only (4 rays)
+                for (int i = 2; i < 6; i++) {
+                    float angle = i * 45.0 * 3.14159 / 180.0;
+                    ray_points[0].x = 18 + (int)(12 * cos(angle));
+                    ray_points[0].y = 15 + (int)(12 * sin(angle));
+                    ray_points[1].x = 18 + (int)(18 * cos(angle));
+                    ray_points[1].y = 15 + (int)(18 * sin(angle));
+                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
+                }
+            }
+
+            // Draw cloud in lower right (partially covering sun/moon)
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 14;
+            lv_canvas_draw_arc(canvas, 28, 28, 7, 0, 360, &arc_dsc);   // Left bump
+            lv_canvas_draw_arc(canvas, 38, 24, 9, 0, 360, &arc_dsc);   // Middle bump
+            lv_canvas_draw_arc(canvas, 46, 28, 7, 0, 360, &arc_dsc);   // Right bump
+            break;
+        }
+
+        case 2: { // CLOUD - Simple cloud shape
+            // Draw cloud using overlapping filled circles (arcs with thick width)
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 16;  // Thick arc creates filled circle effect
+
+            lv_canvas_draw_arc(canvas, 20, 25, 8, 0, 360, &arc_dsc);   // Left bump
+            lv_canvas_draw_arc(canvas, 30, 20, 10, 0, 360, &arc_dsc);  // Middle bump (larger)
+            lv_canvas_draw_arc(canvas, 40, 25, 8, 0, 360, &arc_dsc);   // Right bump
+            break;
+        }
+
+        case 3: { // RAIN - Cloud + rain drops
+            // Draw cloud
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 16;
+
+            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+
+            // Draw rain drops (3 vertical lines)
+            line_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
+            line_dsc.width = 2;
+            lv_point_t rain[2];
+
+            for (int i = 0; i < 3; i++) {
+                rain[0].x = 18 + i * 12;
+                rain[0].y = 32;
+                rain[1].x = 18 + i * 12;
+                rain[1].y = 44;
+                lv_canvas_draw_line(canvas, rain, 2, &line_dsc);
+            }
+            break;
+        }
+
+        case 4: { // SNOW - Cloud + snowflakes
+            // Draw cloud
+            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            arc_dsc.width = 16;
+
+            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+
+            // Draw snowflakes (small crosses)
+            line_dsc.color = lv_color_hex(COLOR_TEXT_WHITE);
+            line_dsc.width = 2;
+            lv_point_t snow[2];
+            int positions[] = {20, 30, 40};
+
+            for (int i = 0; i < 3; i++) {
+                int x = positions[i];
+                int y = 38;
+                // Vertical line
+                snow[0].x = x;
+                snow[0].y = y - 4;
+                snow[1].x = x;
+                snow[1].y = y + 4;
+                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+
+                // Horizontal line
+                snow[0].x = x - 4;
+                snow[0].y = y;
+                snow[1].x = x + 4;
+                snow[1].y = y;
+                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+            }
+            break;
+        }
+
+        case 5: { // STORM - Dark cloud + lightning
+            // Draw dark cloud
+            arc_dsc.color = lv_color_hex(0x555555); // Dark gray
+            arc_dsc.width = 16;
+
+            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
+            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+
+            // Draw lightning bolt (zigzag using connected lines)
+            line_dsc.color = lv_color_hex(0xFFFF00); // Yellow
+            line_dsc.width = 3;
+            lv_point_t bolt[2];
+
+            // First segment
+            bolt[0].x = 30; bolt[0].y = 28;
+            bolt[1].x = 28; bolt[1].y = 36;
+            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+            // Second segment
+            bolt[0].x = 28; bolt[0].y = 36;
+            bolt[1].x = 32; bolt[1].y = 36;
+            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+            // Third segment
+            bolt[0].x = 32; bolt[0].y = 36;
+            bolt[1].x = 30; bolt[1].y = 46;
+            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+            break;
+        }
+
+        case 6: { // FOG - Horizontal wavy layers
+            // Draw multiple horizontal fog layers (wavy lines)
+            line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+            line_dsc.width = 3;
+            lv_point_t fog[2];
+
+            // Top fog layer
+            fog[0].x = 15; fog[0].y = 20;
+            fog[1].x = 45; fog[1].y = 20;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+
+            // Middle fog layer (slightly offset)
+            fog[0].x = 10; fog[0].y = 28;
+            fog[1].x = 50; fog[1].y = 28;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+
+            // Lower-middle fog layer
+            fog[0].x = 12; fog[0].y = 36;
+            fog[1].x = 48; fog[1].y = 36;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+
+            // Bottom fog layer
+            fog[0].x = 18; fog[0].y = 44;
+            fog[1].x = 42; fog[1].y = 44;
+            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+            break;
+        }
+
+        case 7: { // ICE - Falling ice crystals (diagonal lines + crosses)
+            // Draw ice crystals as small diagonal crosses
+            line_dsc.color = lv_color_hex(0xAADDFF); // Light cyan/ice blue
+            line_dsc.width = 2;
+            lv_point_t ice[2];
+
+            // Three ice crystals falling at different positions
+            int positions[][2] = {{20, 20}, {35, 32}, {25, 42}};
+
+            for (int i = 0; i < 3; i++) {
+                int cx = positions[i][0];
+                int cy = positions[i][1];
+
+                // Diagonal line 1 (top-left to bottom-right)
+                ice[0].x = cx - 4; ice[0].y = cy - 4;
+                ice[1].x = cx + 4; ice[1].y = cy + 4;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+
+                // Diagonal line 2 (top-right to bottom-left)
+                ice[0].x = cx + 4; ice[0].y = cy - 4;
+                ice[1].x = cx - 4; ice[1].y = cy + 4;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+
+                // Vertical line (shorter)
+                ice[0].x = cx; ice[0].y = cy - 3;
+                ice[1].x = cx; ice[1].y = cy + 3;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+
+                // Horizontal line (shorter)
+                ice[0].x = cx - 3; ice[0].y = cy;
+                ice[1].x = cx + 3; ice[1].y = cy;
+                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+static bool is_night_time(void) {
+    if (sunrise_time == 0 || sunset_time == 0) {
+        return false;  // No sunrise/sunset data yet
+    }
+
+    time_t now;
+    time(&now);
+
+    // Check if current time is after sunset or before sunrise
+    return (now >= sunset_time || now < sunrise_time);
+}
+static int map_weather_code(int wmo_code) {
+    // WMO Weather interpretation codes
+    if (wmo_code == 0) return 0;  // Clear sky
+    if (wmo_code == 1 || wmo_code == 2) return 1;  // Partly cloudy
+    if (wmo_code == 3) return 2;  // Cloudy
+    if (wmo_code >= 45 && wmo_code <= 48) return 6;  // Fog
+    if ((wmo_code >= 56 && wmo_code <= 57) || (wmo_code >= 66 && wmo_code <= 67)) return 7;  // Freezing rain/drizzle (ice)
+    if (wmo_code >= 51 && wmo_code <= 65) return 3;  // Rain (excluding freezing rain)
+    if (wmo_code >= 71 && wmo_code <= 86) return 4;  // Snow (including snow showers)
+    if (wmo_code >= 95 && wmo_code <= 99) return 5;  // Thunderstorm
+    return 2;  // Default to cloudy
+}
+esp_err_t fetch_weather(float lat, float lon) {
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot fetch weather");
+        return ESP_FAIL;
+    }
+
+    char url[512];
+    // Use HTTP for Open-Meteo (free API, no SSL needed, saves ~20KB memory)
+    snprintf(url, sizeof(url),
+             "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=%s&timezone=auto&forecast_days=1",
+             lat, lon, user_temp_celsius ? "celsius" : "fahrenheit");
+
+    http_response_len = 0;
+    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = 15000,  // Increase timeout to 15 seconds
+        .user_agent = "CYGM/1.0",
+        .method = HTTP_METHOD_GET,
+        .transport_type = HTTP_TRANSPORT_OVER_TCP,  // HTTP instead of HTTPS
+        .skip_cert_common_name_check = true,
+        .disable_auto_redirect = false
+    };
+
+    ESP_LOGI(TAG, "Weather URL: %s", url);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client for weather");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "Weather HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Weather response: %s", http_response_buffer);
+
+        // Parse JSON response
+        cJSON *json = cJSON_Parse(http_response_buffer);
+        if (json != NULL) {
+            cJSON *current = cJSON_GetObjectItem(json, "current");
+            cJSON *daily = cJSON_GetObjectItem(json, "daily");
+
+            if (current && daily) {
+                cJSON *temp = cJSON_GetObjectItem(current, "temperature_2m");
+                cJSON *weather_code = cJSON_GetObjectItem(current, "weather_code");
+                cJSON *temp_max = cJSON_GetObjectItem(daily, "temperature_2m_max");
+                cJSON *temp_min = cJSON_GetObjectItem(daily, "temperature_2m_min");
+                cJSON *sunrise = cJSON_GetObjectItem(daily, "sunrise");
+                cJSON *sunset = cJSON_GetObjectItem(daily, "sunset");
+
+                if (temp && weather_code && temp_max && temp_min) {
+                    current_temp_f = (int)temp->valuedouble;
+
+                    // Get first element of daily arrays
+                    high_temp_f = (int)cJSON_GetArrayItem(temp_max, 0)->valuedouble;
+                    low_temp_f = (int)cJSON_GetArrayItem(temp_min, 0)->valuedouble;
+
+                    // Parse sunrise/sunset times (ISO 8601 format)
+                    if (sunrise && sunset) {
+                        cJSON *sunrise_str = cJSON_GetArrayItem(sunrise, 0);
+                        cJSON *sunset_str = cJSON_GetArrayItem(sunset, 0);
+                        if (sunrise_str && cJSON_IsString(sunrise_str)) {
+                            struct tm tm_sunrise = {0};
+                            strptime(sunrise_str->valuestring, "%Y-%m-%dT%H:%M", &tm_sunrise);
+                            sunrise_time = mktime(&tm_sunrise);
+                        }
+                        if (sunset_str && cJSON_IsString(sunset_str)) {
+                            struct tm tm_sunset = {0};
+                            strptime(sunset_str->valuestring, "%Y-%m-%dT%H:%M", &tm_sunset);
+                            sunset_time = mktime(&tm_sunset);
+                        }
+                    }
+
+                    current_weather_code = map_weather_code(weather_code->valueint);
+                    current_condition = get_weather_condition_text(current_weather_code);
+
+                    ESP_LOGI(TAG, "Weather updated: %d F (Hi: %d F, Lo: %d F), Code: %d",
+                             current_temp_f, high_temp_f, low_temp_f, current_weather_code);
+
+                    cJSON_Delete(json);
+                    esp_http_client_cleanup(client);
+                    return ESP_OK;
+                }
+            }
+            cJSON_Delete(json);
+        }
+    }
+
+    ESP_LOGE(TAG, "Failed to fetch weather: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return ESP_FAIL;
+}
+void update_weather_display(void) {
+    // Check if widgets exist (home screen is loaded)
+    if (home_temp_label == NULL || home_hilo_label == NULL || home_weather_canvas == NULL ||
+        home_condition_label == NULL || home_location_label == NULL ||
+        home_sunrise_label == NULL || home_sunset_label == NULL) {
+        ESP_LOGW(TAG, "Weather widgets not available (home screen not loaded)");
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        // Update temperature label
+        char temp_buf[16];
+        if (user_temp_celsius) {
+            int temp_c = (current_temp_f - 32) * 5 / 9;
+            snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
+        } else {
+            snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
+        }
+        lv_label_set_text(home_temp_label, temp_buf);
+
+        // Update Hi/Lo label (stacked vertically)
+        char hilo_buf[32];
+        if (user_temp_celsius) {
+            int high_c = (high_temp_f - 32) * 5 / 9;
+            int low_c = (low_temp_f - 32) * 5 / 9;
+            snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
+        } else {
+            snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
+        }
+        lv_label_set_text(home_hilo_label, hilo_buf);
+
+        // Update weather condition text
+        lv_label_set_text(home_condition_label, get_weather_condition_text(current_weather_code));
+
+        // Update location label
+        lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+
+        // Update weather icon (clear canvas with fully transparent background first)
+        lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Fully transparent
+        draw_weather_icon(home_weather_canvas, current_weather_code);
+
+        ESP_LOGD(TAG, "Weather display updated: %d F (Hi: %d F, Lo: %d F) - %s",
+                 current_temp_f, high_temp_f, low_temp_f, get_weather_condition_text(current_weather_code));
+        lvgl_port_unlock();
+    }
+
+    // Update sunrise/sunset times (separate function since it has its own lock)
+    update_sunrise_sunset_display();
+}
+void weather_update_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Weather update task started");
+
+    // Wait for initial WiFi connection and Dexcom auth to complete
+    // Short delay since we're using HTTP (no SSL overhead)
+    ESP_LOGI(TAG, "Waiting 15 seconds before first weather attempt...");
+    vTaskDelay(pdMS_TO_TICKS(15000));  // 15 seconds - gives Dexcom time to authenticate
+    ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
+
+    while (1) {
+        bool dexcom_was_closed = false;  // Track if we closed Dexcom (so we know to reopen it)
+
+        if (wifi_manager_is_connected() && strlen(user_zipcode) > 0) {
+            // Only geocode if:
+            // 1. No cached coordinates exist, OR
+            // 2. Current zipcode != geocoded zipcode (user changed it)
+            bool need_geocode = (user_latitude == 0.0f && user_longitude == 0.0f) ||
+                                (strcmp(user_zipcode, geocoded_zipcode) != 0);
+
+            if (need_geocode) {
+                if (strcmp(user_zipcode, geocoded_zipcode) != 0) {
+                    ESP_LOGI(TAG, "Zipcode changed (%s -> %s), re-geocoding...", geocoded_zipcode, user_zipcode);
+                } else {
+                    ESP_LOGI(TAG, "No cached coordinates - need to geocode zipcode: %s", user_zipcode);
+                }
+
+                // CRITICAL: Verify time is synced before attempting SSL connections
+                if (!is_time_synced()) {
+                    ESP_LOGW(TAG, "Time not synced, waiting for SNTP before geocoding...");
+                    if (!wait_for_time_sync(10000)) {
+                        ESP_LOGE(TAG, "Time sync timeout - skipping geocoding (SSL will fail)");
+                        // Wait configured interval and try again
+                        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
+                        continue;
+                    }
+                }
+
+                // MEMORY OPTIMIZATION: Close Dexcom client ONLY when geocoding (HTTPS needs memory)
+                ESP_LOGI(TAG, "Closing Dexcom client to free memory for geocoding SSL...");
+                dexcom_close_persistent_client();
+                dexcom_was_closed = true;
+                vTaskDelay(pdMS_TO_TICKS(1000));  // Let memory stabilize
+
+                // Retry logic for geocoding (may fail due to HTTP connection pool or SSL issues)
+                esp_err_t geocode_result = ESP_FAIL;
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    ESP_LOGI(TAG, "Free heap before geocoding attempt %d: %lu bytes", attempt, esp_get_free_heap_size());
+                    geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
+                    ESP_LOGI(TAG, "Free heap after geocoding attempt %d: %lu bytes", attempt, esp_get_free_heap_size());
+
+                    if (geocode_result == ESP_OK) {
+                        ESP_LOGI(TAG, "Location found: %.4f, %.4f", user_latitude, user_longitude);
+                        break;
+                    } else {
+                        ESP_LOGW(TAG, "Geocoding attempt %d/3 failed: %s", attempt, esp_err_to_name(geocode_result));
+                        if (attempt < 3) {
+                            ESP_LOGI(TAG, "Retrying in 5 seconds...");
+                            vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay between retries
+                        }
+                    }
+                }
+
+                if (geocode_result == ESP_OK) {
+                    // Save auto-detected timezone to NVS (timezone was set during geocoding)
+                    nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                    ESP_LOGI(TAG, "Auto-detected timezone saved to NVS: %s", user_timezone);
+
+                    // Apply timezone to system immediately
+                    const char *posix_tz = get_posix_timezone(user_timezone);
+                    setenv("TZ", posix_tz, 1);
+                    tzset();
+
+                    // Force immediate time display update to reflect new timezone
+                    update_time_display();
+                    ESP_LOGI(TAG, "Time display updated with new timezone: %s", user_timezone);
+
+                    // Update geocoded zipcode tracker
+                    strncpy(geocoded_zipcode, user_zipcode, sizeof(geocoded_zipcode) - 1);
+                    geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
+
+                    ESP_LOGI(TAG, "Coordinates and location for zipcode: %s", geocoded_zipcode);
+
+                    // Wait a bit before reverse geocoding to let HTTP connections close
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+
+                    // Do reverse geocoding to get actual city name (more accurate than postal code lookup)
+                    // Retry this too
+                    ESP_LOGI(TAG, "Free heap before reverse geocoding: %lu bytes", esp_get_free_heap_size());
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        if (reverse_geocode(user_latitude, user_longitude) == ESP_OK) {
+                            ESP_LOGI(TAG, "Reverse geocoding successful");
+                            ESP_LOGI(TAG, "Free heap after reverse geocoding: %lu bytes", esp_get_free_heap_size());
+
+                            // Save location and coordinates to NVS (now that we have both)
+                            nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
+                            break;
+                        } else {
+                            ESP_LOGW(TAG, "Reverse geocoding attempt %d/3 failed", attempt);
+                            if (attempt < 3) {
+                                vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
+                            }
+                        }
+                    }
+
+                    // Update location label immediately after geocoding
+                    update_location_display();
+                } else {
+                    ESP_LOGW(TAG, "Geocoding failed after 3 attempts - skipping weather update this cycle");
+                }
+            } else {
+                // Using cached coordinates - no geocoding needed
+                ESP_LOGI(TAG, "Using cached coordinates for zipcode %s (no geocoding needed)", geocoded_zipcode);
+
+                // If location name is not set, do reverse geocoding to populate it
+                // reverse_geocode() also auto-detects and sets the timezone
+                if (strlen(user_location) == 0) {
+                    ESP_LOGI(TAG, "Location name not set, doing reverse geocoding to get city name and timezone...");
+                    ESP_LOGI(TAG, "Closing Dexcom client to free memory for reverse geocoding SSL...");
+                    dexcom_close_persistent_client();
+                    dexcom_was_closed = true;
+                    ESP_LOGI(TAG, "Free heap before reverse geocoding: %lu bytes", esp_get_free_heap_size());
+
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        if (reverse_geocode(user_latitude, user_longitude) == ESP_OK) {
+                            ESP_LOGI(TAG, "Reverse geocoding successful: %s", user_location);
+
+                            // Save location and coordinates to NVS
+                            nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
+
+                            // Save and apply the auto-detected timezone
+                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                            const char *posix_tz = get_posix_timezone(user_timezone);
+                            setenv("TZ", posix_tz, 1);
+                            tzset();
+                            update_time_display();
+                            ESP_LOGI(TAG, "Timezone applied from reverse geocoding: %s", user_timezone);
+
+                            update_location_display();
+                            break;
+                        } else {
+                            ESP_LOGW(TAG, "Reverse geocoding attempt %d/3 failed", attempt);
+                            if (attempt < 3) {
+                                vTaskDelay(pdMS_TO_TICKS(5000));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fetch weather if we have coordinates
+            if (user_latitude != 0.0f && user_longitude != 0.0f) {
+                // Wait a bit before weather fetch to let HTTP connections close
+                vTaskDelay(pdMS_TO_TICKS(2000));
+
+                ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
+                ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
+
+                // Retry logic for weather fetch (may fail due to HTTP connection pool exhaustion)
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    if (fetch_weather(user_latitude, user_longitude) == ESP_OK) {
+                        ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
+                        update_weather_display();
+                        break;
+                    } else {
+                        ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
+                        ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
+                        if (attempt < 3) {
+                            ESP_LOGI(TAG, "Retrying in 5 seconds...");
+                            vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
+                        }
+                    }
+                }
+            }
+
+            // MEMORY OPTIMIZATION: Re-open Dexcom persistent client ONLY if we closed it
+            if (dexcom_was_closed) {
+                ESP_LOGI(TAG, "Weather operations complete, re-opening Dexcom client...");
+                dexcom_reopen_persistent_client();
+            }
+        } else {
+            ESP_LOGD(TAG, "Skipping weather update (WiFi: %d, Zipcode: %s)",
+                    wifi_manager_is_connected(), user_zipcode);
+        }
+
+        // Wait for configured interval or until notified to update immediately
+        // ulTaskNotifyTake clears notification and returns immediately if notified
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
+    }
+}
+void load_weather_settings(void) {
+    weather_settings_t settings;
+
+    // Try to load settings from NVS
+    if (nvs_load_weather_settings(&settings) == ESP_OK) {
+        // Apply loaded settings
+        strncpy(user_zipcode, settings.zipcode, sizeof(user_zipcode) - 1);
+        user_zipcode[sizeof(user_zipcode) - 1] = '\0';
+        user_temp_celsius = settings.temp_celsius;
+        user_weather_interval_min = settings.update_interval_min;
+
+        // Load cached coordinates and location if available
+        if (settings.coords_valid) {
+            user_latitude = settings.latitude;
+            user_longitude = settings.longitude;
+            strncpy(geocoded_zipcode, settings.geocoded_zipcode, sizeof(geocoded_zipcode) - 1);
+            geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
+
+            // Load location name
+            if (strlen(settings.location) > 0) {
+                strncpy(user_location, settings.location, sizeof(user_location) - 1);
+                user_location[sizeof(user_location) - 1] = '\0';
+                ESP_LOGI(TAG, "Using cached weather location: %s (%.4f, %.4f, zipcode: %s)",
+                         user_location, user_latitude, user_longitude, geocoded_zipcode);
+
+                // Auto-detect timezone from location (in case it was changed manually before)
+                // Extract state abbreviation from location (format: "City, ST")
+                char *comma = strrchr(user_location, ',');
+                if (comma != NULL && strlen(comma) > 2) {
+                    char state_abbr[3];
+                    strncpy(state_abbr, comma + 2, 2);  // Skip comma and space
+                    state_abbr[2] = '\0';
+
+                    // Map state abbreviation to full name
+                    const char *state_full = NULL;
+                    if (strcmp(state_abbr, "WA") == 0) state_full = "Washington";
+                    else if (strcmp(state_abbr, "CA") == 0) state_full = "California";
+                    else if (strcmp(state_abbr, "OR") == 0) state_full = "Oregon";
+                    else if (strcmp(state_abbr, "TX") == 0) state_full = "Texas";
+                    else if (strcmp(state_abbr, "NY") == 0) state_full = "New York";
+                    else if (strcmp(state_abbr, "FL") == 0) state_full = "Florida";
+                    else if (strcmp(state_abbr, "ME") == 0) state_full = "Maine";
+                    else if (strcmp(state_abbr, "IL") == 0) state_full = "Illinois";
+                    else if (strcmp(state_abbr, "PA") == 0) state_full = "Pennsylvania";
+                    else if (strcmp(state_abbr, "OH") == 0) state_full = "Ohio";
+                    else if (strcmp(state_abbr, "GA") == 0) state_full = "Georgia";
+                    else if (strcmp(state_abbr, "NC") == 0) state_full = "North Carolina";
+                    else if (strcmp(state_abbr, "MI") == 0) state_full = "Michigan";
+                    else if (strcmp(state_abbr, "NJ") == 0) state_full = "New Jersey";
+                    else if (strcmp(state_abbr, "VA") == 0) state_full = "Virginia";
+                    else if (strcmp(state_abbr, "AZ") == 0) state_full = "Arizona";
+                    else if (strcmp(state_abbr, "MA") == 0) state_full = "Massachusetts";
+                    else if (strcmp(state_abbr, "IN") == 0) state_full = "Indiana";
+                    else if (strcmp(state_abbr, "TN") == 0) state_full = "Tennessee";
+                    else if (strcmp(state_abbr, "MO") == 0) state_full = "Missouri";
+                    // Add more states as needed
+
+                    if (state_full != NULL) {
+                        const char *detected_tz = state_to_timezone(state_full);
+
+                        // Check if detected timezone differs from loaded timezone
+                        if (strcmp(detected_tz, user_timezone) != 0) {
+                            ESP_LOGI(TAG, "Timezone mismatch detected! Location '%s' suggests %s, but loaded %s",
+                                     user_location, detected_tz, user_timezone);
+                            ESP_LOGI(TAG, "Updating timezone to match location...");
+
+                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                            user_timezone[sizeof(user_timezone) - 1] = '\0';
+
+                            // Save and apply the corrected timezone
+                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+                            const char *posix_tz = get_posix_timezone(user_timezone);
+                            setenv("TZ", posix_tz, 1);
+                            tzset();
+                            ESP_LOGI(TAG, "Timezone corrected to: %s", user_timezone);
+                        } else {
+                            ESP_LOGI(TAG, "Timezone matches location: %s", user_timezone);
+                        }
+                    }
+                }
+            } else {
+                ESP_LOGI(TAG, "Using cached weather coordinates: %.4f, %.4f (for zipcode: %s)",
+                         user_latitude, user_longitude, geocoded_zipcode);
+            }
+        }
+
+        ESP_LOGI(TAG, "Loaded weather settings from NVS:");
+        ESP_LOGI(TAG, "  Zipcode: %s", user_zipcode);
+        ESP_LOGI(TAG, "  Unit: %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
+        ESP_LOGI(TAG, "  Update interval: %d minutes", user_weather_interval_min);
+    } else {
+        ESP_LOGI(TAG, "No saved weather settings, using defaults");
+    }
+}

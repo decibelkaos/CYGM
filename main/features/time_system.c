@@ -77,7 +77,7 @@ static const char *timezone_posix[] = {
 static const int timezone_count = 22;
 
 // Helper function to get POSIX timezone string from IANA identifier
-static const char* get_posix_timezone(const char *iana_tz) {
+const char* get_posix_timezone(const char *iana_tz) {
     for (int i = 0; i < timezone_count; i++) {
         if (strcmp(iana_tz, timezone_list[i]) == 0) {
             return timezone_posix[i];

@@ -10,4 +10,5 @@
                             "hardware/battery.c"
                             "hardware/display.c"
                             "features/time_system.c"
+                            "features/weather_system.c"
                        INCLUDE_DIRS "." "hardware" "features")

@@ -52,6 +52,13 @@ void time_update_task(void *pvParameters);
  */
 void load_time_settings(void);
 
+/**
+ * Get POSIX timezone string from IANA timezone identifier
+ * @param iana_tz IANA timezone name (e.g., "America/New_York")
+ * @return POSIX timezone string (e.g., "EST5EDT,M3.2.0,M11.1.0")
+ */
+const char* get_posix_timezone(const char *iana_tz);
+
 #ifdef __cplusplus
 }
 #endif
