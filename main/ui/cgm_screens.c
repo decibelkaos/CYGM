@@ -91,6 +91,12 @@ static void cgm_back_event_cb(lv_event_t *e) {
 static void dexcom_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
+            // Create screen on demand
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
+            create_dexcom_auth_screen();
             lv_scr_load(screen_dexcom_auth);
             lvgl_port_unlock();
         }
@@ -108,6 +114,12 @@ static void librelinkup_btn_event_cb(lv_event_t *e) {
 static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
+            // Create screen on demand
+            if (screen_dexcom_status != NULL) {
+                lv_obj_del(screen_dexcom_status);
+                screen_dexcom_status = NULL;
+            }
+            create_dexcom_status_screen();
             lv_scr_load(screen_dexcom_status);
             lvgl_port_unlock();
         }
@@ -118,6 +130,12 @@ static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
 static void dexcom_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
+            // Create screen on demand
+            if (screen_dexcom_login != NULL) {
+                lv_obj_del(screen_dexcom_login);
+                screen_dexcom_login = NULL;
+            }
+            create_dexcom_login_screen();
             lv_scr_load(screen_dexcom_login);
             lvgl_port_unlock();
         }

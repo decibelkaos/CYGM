@@ -55,6 +55,7 @@
 #include "ui/wifi_screens.h"
 #include "ui/cgm_screens.h"
 #include "ui/alarm_screens.h"
+#include "ui/time_weather_screens.h"
 #include "tasks/background_tasks.h"
 // SD card logging removed - not needed for monitoring device (use serial output for debugging)
 
@@ -149,7 +150,6 @@ lv_obj_t *screen_home = NULL;
 lv_obj_t *screen_menu = NULL;
 lv_obj_t *screen_wifi_list = NULL;
 lv_obj_t *screen_wifi_password = NULL;
-lv_obj_t *screen_time_weather_menu = NULL;
 lv_obj_t *screen_zipcode_entry = NULL;
 lv_obj_t *screen_cgm_menu = NULL;
 lv_obj_t *screen_dexcom_auth = NULL;
@@ -158,6 +158,7 @@ lv_obj_t *screen_dexcom_username_entry = NULL;
 lv_obj_t *screen_dexcom_password_entry = NULL;
 lv_obj_t *screen_dexcom_status = NULL;
 lv_obj_t *screen_alarm_settings = NULL;
+lv_obj_t *screen_time_weather_settings = NULL;
 lv_obj_t *screen_tone_picker = NULL;
 #if 0  // Alarm preview disabled - kept for potential future use
 lv_obj_t *screen_alarm_preview = NULL;
@@ -1409,6 +1410,12 @@ void temp_toggle_event_cb(lv_event_t *e) {
             nvs_save_weather_settings(settings.zipcode, user_temp_celsius, settings.update_interval_min);
         }
 
+        // Update settings screen label if provided
+        lv_obj_t *label = (lv_obj_t *)lv_event_get_user_data(e);
+        if (label != NULL) {
+            lv_label_set_text(label, user_temp_celsius ? "Celsius" : "Fahrenheit");
+        }
+
         // Update weather display
         update_weather_display();
     }
@@ -1453,6 +1460,12 @@ void clock_label_event_cb(lv_event_t *e) {
             ESP_LOGW(TAG, "Failed to save time format to NVS");
         }
 
+        // Update settings screen label if provided
+        lv_obj_t *label = (lv_obj_t *)lv_event_get_user_data(e);
+        if (label != NULL) {
+            lv_label_set_text(label, user_24hr_format ? "24 Hour" : "12 Hour");
+        }
+
         // Update display immediately
         update_time_display();
 
@@ -1493,6 +1506,21 @@ void menu_item_event_cb(lv_event_t *e) {
                     lv_scr_load(screen_wifi_list);
                     lv_obj_clean(screen_wifi_list);
 
+                    // Back button
+                    lv_obj_t *back_btn = lv_btn_create(screen_wifi_list);
+                    lv_obj_set_size(back_btn, 50, 30);
+                    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 8);
+                    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+                    lv_obj_set_style_radius(back_btn, 8, 0);
+                    lv_obj_set_style_border_width(back_btn, 0, 0);
+                    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+
+                    lv_obj_t *back_lbl = lv_label_create(back_btn);
+                    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+                    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+                    lv_obj_center(back_lbl);
+                    lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
                     // "Scanning..." text
                     lv_obj_t *scanning = lv_label_create(screen_wifi_list);
                     lv_label_set_text(scanning, "Scanning...");
@@ -1527,8 +1555,16 @@ void menu_item_event_cb(lv_event_t *e) {
                 xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
                 break;
             case 2:  // Time/Date/Weather Settings (combined)
-                // TODO: Implement time/weather settings screen
-                ESP_LOGI(TAG, "Time/Date/Weather settings not yet implemented");
+                ESP_LOGI(TAG, "Launching Time/Weather settings...");
+                if (lvgl_port_lock(0)) {
+                    if (screen_time_weather_settings != NULL) {
+                        lv_obj_del(screen_time_weather_settings);
+                        screen_time_weather_settings = NULL;
+                    }
+                    create_time_weather_settings_screen();
+                    lv_scr_load(screen_time_weather_settings);
+                    lvgl_port_unlock();
+                }
                 break;
             case 3:  // Alarm Settings
                 ESP_LOGI(TAG, "Launching Alarm settings...");

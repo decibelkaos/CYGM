@@ -11,7 +11,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 
-static const char *TAG = "MENU_SCREEN";
+// TAG removed - not used in this module
 
 void create_menu_screen(void) {
     screen_menu = lv_obj_create(NULL);

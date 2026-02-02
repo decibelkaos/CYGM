@@ -27,8 +27,8 @@ static const char *TAG = "WEATHER_SYSTEM";
 static char http_response_buffer[WEATHER_HTTP_BUFFER_SIZE];
 static int http_response_len = 0;
 
-// Geocoded zipcode tracker
-static char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
+// Geocoded zipcode tracker (to detect when user changes zipcode)
+char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {

@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 // ==================== Version Information ====================
-#define CYGM_VERSION "1.3.2"
+#define CYGM_VERSION "1.3.3"
 #define CYGM_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // ==================== Hardware Configuration ====================
@@ -139,7 +139,6 @@ extern lv_obj_t *screen_home;
 extern lv_obj_t *screen_menu;
 extern lv_obj_t *screen_wifi_list;
 extern lv_obj_t *screen_wifi_password;
-extern lv_obj_t *screen_time_weather_menu;
 extern lv_obj_t *screen_zipcode_entry;
 extern lv_obj_t *screen_cgm_menu;
 extern lv_obj_t *screen_dexcom_auth;
@@ -148,6 +147,8 @@ extern lv_obj_t *screen_dexcom_username_entry;
 extern lv_obj_t *screen_dexcom_password_entry;
 extern lv_obj_t *screen_dexcom_status;
 extern lv_obj_t *screen_alarm_settings;
+extern lv_obj_t *screen_time_weather_settings;
+extern lv_obj_t *screen_zipcode_entry;
 extern lv_obj_t *screen_tone_picker;
 extern lv_obj_t *screen_alarm_preview;
 extern lv_obj_t *screen_alarm_detail_editor;
@@ -250,6 +251,7 @@ extern char user_timezone[64];
 extern bool user_dst_enabled;
 extern bool user_24hr_format;
 extern char user_zipcode[11];
+extern char geocoded_zipcode[11];  // Geocoded zipcode tracker
 extern bool user_temp_celsius;
 extern uint8_t user_weather_interval_min;
 extern char user_location[64];

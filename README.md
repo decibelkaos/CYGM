@@ -2,8 +2,8 @@
 ## Hardware: JC2432W328 (ESP32-D0WD) + M5Stack CardKB
 
 **Project Status**: 🎉 **BETA STAGE** - Ready for Field Testing
-**Version**: 1.3.2
-**Last Updated**: January 31, 2026
+**Version**: 1.3.3
+**Last Updated**: February 1, 2026
 
 An open-source, low-cost CGM display supporting multiple data sources (Dexcom Share, Nightscout, LibreLinkUp).
 

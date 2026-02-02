@@ -12,7 +12,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 
-static const char *TAG = "HOME_SCREEN";
+// TAG removed - not used in this module
 
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);

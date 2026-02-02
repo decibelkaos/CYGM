@@ -16,5 +16,6 @@
                             "ui/wifi_screens.c"
                             "ui/cgm_screens.c"
                             "ui/alarm_screens.c"
+                            "ui/time_weather_screens.c"
                             "tasks/background_tasks.c"
                        INCLUDE_DIRS "." "hardware" "features" "ui" "tasks")

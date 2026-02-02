@@ -1,12 +1,12 @@
 # CYGM Project Status
 ## Continuous Glucose Monitor Display for ESP32
-### Last Updated: January 31, 2026
+### Last Updated: February 1, 2026
 
 ---
 
 ## 🎉 BETA STAGE - Ready for Field Testing
 
-**Current Version**: 1.3.2
+**Current Version**: 1.3.3
 
 All core features are implemented and functional. Device is ready for real-world testing and feedback.
 
