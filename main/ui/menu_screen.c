@@ -43,24 +43,24 @@ void create_menu_screen(void) {
 
     // Menu list container
     lv_obj_t *list = lv_obj_create(screen_menu);
-    lv_obj_set_size(list, 300, 180);
+    lv_obj_set_size(list, 300, 165);  // Increased height for 5 items at 30px each
     lv_obj_align(list, LV_ALIGN_CENTER, 0, 10);
     lv_obj_set_style_bg_color(list, lv_color_hex(COLOR_CARD_BG), 0);
     lv_obj_set_style_bg_opa(list, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(list, 12, 0);
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_style_pad_all(list, 0, 0);
-    lv_obj_set_style_pad_top(list, 5, 0);  // Add top padding to center items vertically
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_top(list, 8, 0);  // Top padding
     lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLLABLE);
-    
-    // Menu items
-    const char *items[] = {"CGM Settings", "WiFi Setup", "Time/Date/Weather", "Alarm"};
-    const char *icons[] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_WIFI, LV_SYMBOL_SETTINGS, LV_SYMBOL_BELL};
 
-    for (int i = 0; i < 4; i++) {
+    // Menu items - NO FLEX, manual positioning
+    const char *items[] = {"CGM Settings", "WiFi Setup", "Time/Date/Weather", "Alarm", "Deep Sleep"};
+    const char *icons[] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_WIFI, LV_SYMBOL_SETTINGS, LV_SYMBOL_BELL, LV_SYMBOL_POWER};
+
+    for (int i = 0; i < 5; i++) {
         lv_obj_t *row = lv_btn_create(list);
-        lv_obj_set_size(row, 300, 36);
+        lv_obj_set_size(row, 300, 30);  // Reduced from 36px to 30px
+        lv_obj_set_pos(row, 0, i * 30);  // Manual Y positioning - NO FLEX
         lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
         lv_obj_set_style_bg_color(row, lv_color_hex(0x2C2C2E), LV_STATE_PRESSED);
         lv_obj_set_style_radius(row, 0, 0);
@@ -68,19 +68,19 @@ void create_menu_screen(void) {
         lv_obj_set_style_shadow_width(row, 0, 0);
         lv_obj_set_style_pad_left(row, 15, 0);
         lv_obj_set_style_pad_right(row, 15, 0);
-        
+
         // Icon
         lv_obj_t *icon = lv_label_create(row);
         lv_label_set_text(icon, icons[i]);
         lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
         lv_obj_align(icon, LV_ALIGN_LEFT_MID, 0, 0);
-        
+
         // Label
         lv_obj_t *label = lv_label_create(row);
         lv_label_set_text(label, items[i]);
         lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
         lv_obj_align(label, LV_ALIGN_LEFT_MID, 30, 0);
-        
+
         // Arrow
         lv_obj_t *arrow = lv_label_create(row);
         lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
