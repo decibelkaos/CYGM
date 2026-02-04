@@ -49,7 +49,6 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     }
     return ESP_OK;
 }
-static const char* state_to_timezone(const char *state);
 
 void load_weather_settings(void) {
     weather_settings_t settings;
@@ -146,7 +145,7 @@ void load_weather_settings(void) {
         ESP_LOGI(TAG, "No saved weather settings, using defaults");
     }
 }
-static const char* state_to_timezone(const char *state) {
+const char* state_to_timezone(const char *state) {
     // Eastern Time (UTC-5/-4)
     if (strcmp(state, "Connecticut") == 0) return "America/New_York";
     if (strcmp(state, "Delaware") == 0) return "America/New_York";

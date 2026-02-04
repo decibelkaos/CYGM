@@ -85,6 +85,13 @@ void weather_update_task(void *pvParameters);
  */
 bool is_night_time(void);
 
+/**
+ * Auto-detect timezone from US state or province name
+ * @param state State or province name
+ * @return IANA timezone string (e.g., "America/New_York")
+ */
+const char* state_to_timezone(const char *state);
+
 #ifdef __cplusplus
 }
 #endif

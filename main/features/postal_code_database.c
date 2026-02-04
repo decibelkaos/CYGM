@@ -30083,3 +30083,142 @@ int get_postal_code_count(void) {
 const char* get_postal_code_attribution(void) {
     return "Postal code data from GeoNames (www.geonames.org)";
 }
+
+// ========== Hierarchical Location Browsing ==========
+
+// Get number of unique countries in database
+int get_unique_country_count(void) {
+    int count = 0;
+    const char *last_country = NULL;
+
+    for (int i = 0; i < database_size; i++) {
+        const char *country = postal_code_database[i].country;
+        if (last_country == NULL || strcmp(country, last_country) != 0) {
+            count++;
+            last_country = country;
+        }
+    }
+    return count;
+}
+
+// Get unique country by index (sorted alphabetically)
+const char* get_unique_country(int index) {
+    int count = 0;
+    const char *last_country = NULL;
+
+    for (int i = 0; i < database_size; i++) {
+        const char *country = postal_code_database[i].country;
+        if (last_country == NULL || strcmp(country, last_country) != 0) {
+            if (count == index) {
+                return country;
+            }
+            count++;
+            last_country = country;
+        }
+    }
+    return NULL;
+}
+
+// Get number of unique states for a country
+int get_unique_state_count(const char *country) {
+    if (!country) return 0;
+
+    int count = 0;
+    const char *last_state = NULL;
+
+    for (int i = 0; i < database_size; i++) {
+        if (strcmp(postal_code_database[i].country, country) == 0) {
+            const char *state = postal_code_database[i].state;
+            // Skip empty states
+            if (state[0] == '\0') continue;
+
+            if (last_state == NULL || strcmp(state, last_state) != 0) {
+                count++;
+                last_state = state;
+            }
+        }
+    }
+    return count;
+}
+
+// Get unique state for a country by index
+const char* get_unique_state(const char *country, int index) {
+    if (!country) return NULL;
+
+    int count = 0;
+    const char *last_state = NULL;
+
+    for (int i = 0; i < database_size; i++) {
+        if (strcmp(postal_code_database[i].country, country) == 0) {
+            const char *state = postal_code_database[i].state;
+            // Skip empty states
+            if (state[0] == '\0') continue;
+
+            if (last_state == NULL || strcmp(state, last_state) != 0) {
+                if (count == index) {
+                    return state;
+                }
+                count++;
+                last_state = state;
+            }
+        }
+    }
+    return NULL;
+}
+
+// Get number of unique cities for a country/state combination
+int get_unique_city_count(const char *country, const char *state) {
+    if (!country) return 0;
+
+    int count = 0;
+    const char *last_city = NULL;
+
+    for (int i = 0; i < database_size; i++) {
+        const postal_code_entry_t *entry = &postal_code_database[i];
+
+        // Match country
+        if (strcmp(entry->country, country) != 0) continue;
+
+        // Match state (if provided and non-empty in database)
+        if (state && state[0] != '\0' && entry->state[0] != '\0') {
+            if (strcmp(entry->state, state) != 0) continue;
+        }
+
+        const char *city = entry->city;
+        if (last_city == NULL || strcmp(city, last_city) != 0) {
+            count++;
+            last_city = city;
+        }
+    }
+    return count;
+}
+
+// Get unique city entry for a country/state combination by index
+const postal_code_entry_t* get_unique_city(const char *country, const char *state, int index) {
+    if (!country) return NULL;
+
+    int count = 0;
+    const char *last_city = NULL;
+
+    for (int i = 0; i < database_size; i++) {
+        const postal_code_entry_t *entry = &postal_code_database[i];
+
+        // Match country
+        if (strcmp(entry->country, country) != 0) continue;
+
+        // Match state (if provided and non-empty in database)
+        if (state && state[0] != '\0' && entry->state[0] != '\0') {
+            if (strcmp(entry->state, state) != 0) continue;
+        }
+
+        const char *city = entry->city;
+        if (last_city == NULL || strcmp(city, last_city) != 0) {
+            if (count == index) {
+                return entry;
+            }
+            count++;
+            last_city = city;
+        }
+    }
+    return NULL;
+}

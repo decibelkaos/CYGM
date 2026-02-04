@@ -37,4 +37,12 @@ int count_location_matches(const char *search_text);
 int get_postal_code_count(void);
 const char* get_postal_code_attribution(void);
 
+// Hierarchical location browsing (for City Lookup UI)
+int get_unique_country_count(void);
+const char* get_unique_country(int index);
+int get_unique_state_count(const char *country);
+const char* get_unique_state(const char *country, int index);
+int get_unique_city_count(const char *country, const char *state);
+const postal_code_entry_t* get_unique_city(const char *country, const char *state, int index);
+
 #endif // POSTAL_CODE_DATABASE_H
