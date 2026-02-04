@@ -10,6 +10,7 @@
 #include "nvs_config.h"
 #include "features/weather_system.h"
 #include "features/time_system.h"
+#include "features/postal_code_database.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -21,18 +22,32 @@ static const char *TAG = "TIME_WEATHER";
 // Reference to interval value label
 static lv_obj_t *weather_interval_value_label = NULL;
 
+// Code lookup screen references
+static lv_obj_t *code_lookup_result_label = NULL;
+static char temp_search_code[12] = {0};
+
 // Forward declarations
 static void time_weather_back_event_cb(lv_event_t *e);
-static void zipcode_edit_event_cb(lv_event_t *e);
+static void city_lookup_event_cb(lv_event_t *e);
+static void code_lookup_event_cb(lv_event_t *e);
 static void weather_interval_slider_event_cb(lv_event_t *e);
 static void zipcode_field_update_event_cb(lv_event_t *e);
 static void zipcode_keyboard_event_cb(lv_event_t *e);
 
 // Event handlers
-static void zipcode_edit_event_cb(lv_event_t *e) {
+static void city_lookup_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Zipcode edit clicked");
+        ESP_LOGI(TAG, "City Lookup clicked");
+        // TODO: Create and load city lookup screen
+        ESP_LOGI(TAG, "City Lookup screen not yet implemented");
+    }
+}
+
+static void code_lookup_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Code Lookup clicked");
         create_zipcode_entry_screen();
         if (lvgl_port_lock(0)) {
             lv_scr_load(screen_zipcode_entry);
@@ -98,50 +113,103 @@ static void zipcode_field_update_event_cb(lv_event_t *e) {
     lv_obj_t *display = (lv_obj_t*)lv_event_get_user_data(e);
     lv_obj_t *ta = lv_event_get_target(e);
     const char *txt = lv_textarea_get_text(ta);
-    lv_label_set_text(display, strlen(txt) > 0 ? txt : "00000");
+
+    // Update display label
+    lv_label_set_text(display, strlen(txt) > 0 ? txt : "Type postal code...");
+
+    // Real-time search in postal code database
+    if (strlen(txt) >= 3 && code_lookup_result_label != NULL) {
+        const postal_code_entry_t *entry = find_location_unified(txt);
+        if (entry != NULL) {
+            // Format: "City, State, Country\n(Lat: XX.XX, Lon: XX.XX)"
+            char result[128];
+            snprintf(result, sizeof(result), "%s, %s, %s\n(%.4f, %.4f)",
+                     entry->city, entry->state, entry->country,
+                     entry->latitude, entry->longitude);
+            lv_label_set_text(code_lookup_result_label, result);
+
+            // Save to temp variables for OK button
+            strncpy(temp_search_code, txt, sizeof(temp_search_code) - 1);
+            temp_search_code[sizeof(temp_search_code) - 1] = '\0';
+        } else {
+            lv_label_set_text(code_lookup_result_label, "No match found");
+        }
+    } else if (code_lookup_result_label != NULL) {
+        lv_label_set_text(code_lookup_result_label, "Type at least 3 characters");
+    }
 }
 
 static void zipcode_keyboard_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *ta = (lv_obj_t*)lv_event_get_user_data(e);
+    void *user_data = lv_event_get_user_data(e);
+
+    // Handle button clicks (user_data contains the synthetic event code)
+    if (code == LV_EVENT_CLICKED) {
+        code = (lv_event_code_t)(intptr_t)user_data;
+    }
 
     if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
-        const char *zip = lv_textarea_get_text(ta);
-        int len = strlen(zip);
-
         if (code == LV_EVENT_READY) {
-            // ENTER pressed - validate and save
-            if (len == 5 || len == 9) {
-                strncpy(user_zipcode, zip, sizeof(user_zipcode) - 1);
-                user_zipcode[sizeof(user_zipcode) - 1] = '\0';
-                ESP_LOGI(TAG, "Zipcode entered: %s", user_zipcode);
+            // OK pressed - use the last searched postal code
+            if (strlen(temp_search_code) >= 3) {
+                const postal_code_entry_t *entry = find_location_unified(temp_search_code);
+                if (entry != NULL) {
+                    // Save location data
+                    strncpy(user_zipcode, temp_search_code, sizeof(user_zipcode) - 1);
+                    user_zipcode[sizeof(user_zipcode) - 1] = '\0';
 
-                // Reset geocoding to trigger re-fetch
-                memset(geocoded_zipcode, 0, sizeof(geocoded_zipcode));
+                    user_latitude = entry->latitude;
+                    user_longitude = entry->longitude;
 
-                // Trigger immediate weather update
-                if (weather_task_handle != NULL) {
-                    xTaskNotifyGive(weather_task_handle);
-                    ESP_LOGI(TAG, "Triggered immediate weather update after zipcode entry");
-                }
+                    snprintf(user_location, sizeof(user_location), "%s, %s", entry->city, entry->state);
 
-                // Return to settings screen
-                create_time_weather_settings_screen();
-                if (lvgl_port_lock(0)) {
-                    lv_scr_load(screen_time_weather_settings);
-                    lvgl_port_unlock();
+                    // Auto-detect timezone
+                    const char *detected_tz = state_to_timezone(entry->state);
+                    strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+                    user_timezone[sizeof(user_timezone) - 1] = '\0';
+
+                    ESP_LOGI(TAG, "Location saved: %s (%.4f, %.4f)", user_location, user_latitude, user_longitude);
+
+                    // Save to NVS
+                    nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
+                    nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
+
+                    // Apply timezone
+                    const char *posix_tz = get_posix_timezone(user_timezone);
+                    setenv("TZ", posix_tz, 1);
+                    tzset();
+
+                    // Reset geocoding tracker
+                    memset(geocoded_zipcode, 0, sizeof(geocoded_zipcode));
+
+                    // Trigger immediate weather update
+                    if (weather_task_handle != NULL) {
+                        xTaskNotifyGive(weather_task_handle);
+                        ESP_LOGI(TAG, "Triggered immediate weather update");
+                    }
+
+                    // Update display
+                    update_time_display();
+                } else {
+                    ESP_LOGW(TAG, "No valid location found for: %s", temp_search_code);
                 }
             } else {
-                ESP_LOGW(TAG, "Invalid zipcode length: %d (expected 5 or 9 digits)", len);
+                ESP_LOGW(TAG, "No postal code entered");
             }
         } else {
             // CANCEL pressed
-            ESP_LOGI(TAG, "Zipcode entry cancelled");
-            create_time_weather_settings_screen();
-            if (lvgl_port_lock(0)) {
-                lv_scr_load(screen_time_weather_settings);
-                lvgl_port_unlock();
-            }
+            ESP_LOGI(TAG, "Code lookup cancelled");
+        }
+
+        // Clear temp data
+        memset(temp_search_code, 0, sizeof(temp_search_code));
+        code_lookup_result_label = NULL;
+
+        // Return to settings screen
+        create_time_weather_settings_screen();
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_time_weather_settings);
+            lvgl_port_unlock();
         }
     }
 }
@@ -155,45 +223,88 @@ void create_zipcode_entry_screen(void) {
     screen_zipcode_entry = lv_obj_create(NULL);
     lv_obj_add_style(screen_zipcode_entry, &style_bg, 0);
 
-    // Header
+    // Cancel button (red, top-left)
+    lv_obj_t *cancel_btn = lv_btn_create(screen_zipcode_entry);
+    lv_obj_set_size(cancel_btn, 70, 30);
+    lv_obj_align(cancel_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_radius(cancel_btn, 6, 0);
+    lv_obj_set_style_border_width(cancel_btn, 0, 0);
+    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+
+    lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_set_style_text_font(cancel_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cancel_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(cancel_lbl);
+
+    // OK button (green, top-right)
+    lv_obj_t *ok_btn = lv_btn_create(screen_zipcode_entry);
+    lv_obj_set_size(ok_btn, 70, 30);
+    lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
+    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_radius(ok_btn, 6, 0);
+    lv_obj_set_style_border_width(ok_btn, 0, 0);
+    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+
+    lv_obj_t *ok_lbl = lv_label_create(ok_btn);
+    lv_label_set_text(ok_lbl, "OK");
+    lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(ok_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(ok_lbl);
+
+    // Header (centered between buttons)
     lv_obj_t *header = lv_label_create(screen_zipcode_entry);
-    lv_label_set_text(header, "Enter Zipcode");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_label_set_text(header, "Code Lookup");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 8);
 
     // Hidden textarea for keyboard input
     lv_obj_t *zipcode_field = lv_textarea_create(screen_zipcode_entry);
     lv_obj_set_size(zipcode_field, 1, 1);
     lv_obj_set_pos(zipcode_field, -100, -100);
     lv_textarea_set_one_line(zipcode_field, true);
-    lv_textarea_set_max_length(zipcode_field, 9);
+    lv_textarea_set_max_length(zipcode_field, 10);
     lv_textarea_set_text(zipcode_field, user_zipcode);
     lv_obj_add_flag(zipcode_field, LV_OBJ_FLAG_HIDDEN);
 
-    // Display label showing current input
+    // Display label showing postal code being typed
     lv_obj_t *display_label = lv_label_create(screen_zipcode_entry);
-    lv_label_set_text(display_label, strlen(user_zipcode) > 0 ? user_zipcode : "00000");
-    lv_obj_set_style_text_font(display_label, &lv_font_montserrat_24, 0);
+    lv_label_set_text(display_label, strlen(user_zipcode) > 0 ? user_zipcode : "Type postal code...");
+    lv_obj_set_style_text_font(display_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(display_label, LV_ALIGN_TOP_MID, 0, 35);
+    lv_obj_align(display_label, LV_ALIGN_TOP_MID, 0, 40);
 
-    // LVGL keyboard (numeric mode)
+    // Result label (location with lat/lon)
+    code_lookup_result_label = lv_label_create(screen_zipcode_entry);
+    lv_label_set_text(code_lookup_result_label, "Type at least 3 characters");
+    lv_obj_set_style_text_font(code_lookup_result_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(code_lookup_result_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(code_lookup_result_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(code_lookup_result_label, 300);
+    lv_obj_align(code_lookup_result_label, LV_ALIGN_TOP_MID, 0, 65);
+
+    // LVGL keyboard (text mode for alphanumeric postal codes)
     lv_obj_t *kbd = lv_keyboard_create(screen_zipcode_entry);
-    lv_obj_set_size(kbd, 320, 165);
+    lv_obj_set_size(kbd, 320, 150);
     lv_obj_align(kbd, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_keyboard_set_textarea(kbd, zipcode_field);
-    lv_keyboard_set_mode(kbd, LV_KEYBOARD_MODE_NUMBER);
+    lv_keyboard_set_mode(kbd, LV_KEYBOARD_MODE_TEXT_UPPER);
 
     // Style keyboard
     lv_obj_set_style_bg_color(kbd, lv_color_hex(COLOR_CARD_BG), 0);
     lv_obj_set_style_bg_opa(kbd, LV_OPA_COVER, 0);
 
-    // Update display label when typing
+    // Update display and search as user types
     lv_obj_add_event_cb(zipcode_field, zipcode_field_update_event_cb, LV_EVENT_VALUE_CHANGED, display_label);
 
-    // Add keyboard event handler
+    // Add keyboard event handler (for enter/cancel)
     lv_obj_add_event_cb(kbd, zipcode_keyboard_event_cb, LV_EVENT_ALL, zipcode_field);
+
+    // Add cancel/OK button handlers
+    lv_obj_add_event_cb(cancel_btn, zipcode_keyboard_event_cb, LV_EVENT_CLICKED, (void*)LV_EVENT_CANCEL);
+    lv_obj_add_event_cb(ok_btn, zipcode_keyboard_event_cb, LV_EVENT_CLICKED, (void*)LV_EVENT_READY);
 }
 
 void create_time_weather_settings_screen(void) {
@@ -240,38 +351,55 @@ void create_time_weather_settings_screen(void) {
     lv_obj_set_style_text_color(tz_value, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(tz_value, LV_ALIGN_TOP_LEFT, 20, 73);
 
-    // Zipcode field
-    lv_obj_t *zip_label = lv_label_create(screen_time_weather_settings);
-    lv_label_set_text(zip_label, "Zipcode:");
-    lv_obj_set_style_text_font(zip_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(zip_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(zip_label, LV_ALIGN_TOP_LEFT, 20, 105);
+    // Location section header
+    lv_obj_t *loc_label = lv_label_create(screen_time_weather_settings);
+    lv_label_set_text(loc_label, "Location:");
+    lv_obj_set_style_text_font(loc_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(loc_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(loc_label, LV_ALIGN_TOP_LEFT, 20, 105);
 
-    lv_obj_t *zip_btn = lv_btn_create(screen_time_weather_settings);
-    lv_obj_set_size(zip_btn, 280, 35);
-    lv_obj_align(zip_btn, LV_ALIGN_TOP_LEFT, 20, 125);
-    lv_obj_set_style_bg_color(zip_btn, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_radius(zip_btn, 8, 0);
-    lv_obj_set_style_border_width(zip_btn, 0, 0);
-    lv_obj_set_style_shadow_width(zip_btn, 0, 0);
-
-    lv_obj_t *zip_value = lv_label_create(zip_btn);
-    if (strlen(user_zipcode) > 0) {
-        lv_label_set_text(zip_value, user_zipcode);
+    // Current location display
+    lv_obj_t *loc_value = lv_label_create(screen_time_weather_settings);
+    if (strlen(user_location) > 0) {
+        lv_label_set_text(loc_value, user_location);
     } else {
-        lv_label_set_text(zip_value, "Tap to enter zipcode");
+        lv_label_set_text(loc_value, "Not set - use lookup below");
     }
-    lv_obj_set_style_text_font(zip_value, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(zip_value, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_center(zip_value);
-    lv_obj_add_event_cb(zip_btn, zipcode_edit_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_text_font(loc_value, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(loc_value, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(loc_value, LV_ALIGN_TOP_LEFT, 20, 123);
 
-    // Warning
-    lv_obj_t *zip_warning = lv_label_create(screen_time_weather_settings);
-    lv_label_set_text(zip_warning, "May take up to 3 minutes to update");
-    lv_obj_set_style_text_font(zip_warning, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(zip_warning, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_align(zip_warning, LV_ALIGN_TOP_LEFT, 20, 163);
+    // City Lookup button
+    lv_obj_t *city_btn = lv_btn_create(screen_time_weather_settings);
+    lv_obj_set_size(city_btn, 135, 35);
+    lv_obj_align(city_btn, LV_ALIGN_TOP_LEFT, 20, 145);
+    lv_obj_set_style_bg_color(city_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_radius(city_btn, 8, 0);
+    lv_obj_set_style_border_width(city_btn, 0, 0);
+    lv_obj_set_style_shadow_width(city_btn, 0, 0);
+
+    lv_obj_t *city_lbl = lv_label_create(city_btn);
+    lv_label_set_text(city_lbl, "City Lookup");
+    lv_obj_set_style_text_font(city_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(city_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(city_lbl);
+    lv_obj_add_event_cb(city_btn, city_lookup_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Code Lookup button
+    lv_obj_t *code_btn = lv_btn_create(screen_time_weather_settings);
+    lv_obj_set_size(code_btn, 135, 35);
+    lv_obj_align(code_btn, LV_ALIGN_TOP_LEFT, 165, 145);
+    lv_obj_set_style_bg_color(code_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_radius(code_btn, 8, 0);
+    lv_obj_set_style_border_width(code_btn, 0, 0);
+    lv_obj_set_style_shadow_width(code_btn, 0, 0);
+
+    lv_obj_t *code_lbl = lv_label_create(code_btn);
+    lv_label_set_text(code_lbl, "Code Lookup");
+    lv_obj_set_style_text_font(code_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(code_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(code_lbl);
+    lv_obj_add_event_cb(code_btn, code_lookup_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Update interval
     lv_obj_t *interval_label = lv_label_create(screen_time_weather_settings);

@@ -242,116 +242,6 @@ esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
     ESP_LOGW(TAG, "Postal code '%s' not found in local database", zipcode);
     return ESP_FAIL;
 }
-esp_err_t reverse_geocode(float lat, float lon) {
-    if (!wifi_manager_is_connected()) {
-        ESP_LOGW(TAG, "WiFi not connected, cannot reverse geocode");
-        return ESP_FAIL;
-    }
-
-    char url[256];
-    // Nominatim REQUIRES HTTPS (redirects HTTP with 301) - no choice but to use SSL
-    snprintf(url, sizeof(url),
-             "https://nominatim.openstreetmap.org/reverse?lat=%.4f&lon=%.4f&format=json&addressdetails=1",
-             lat, lon);
-
-    http_response_len = 0;
-    memset(http_response_buffer, 0, sizeof(http_response_buffer));
-
-    esp_http_client_config_t config = {
-        .url = url,
-        .event_handler = http_event_handler,
-        .timeout_ms = 15000,
-        .user_agent = "CYGM/1.0",
-        .method = HTTP_METHOD_GET,
-        .transport_type = HTTP_TRANSPORT_OVER_SSL,  // HTTPS required (Nominatim redirects HTTP to HTTPS)
-        .skip_cert_common_name_check = true,
-        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
-        .buffer_size = WEATHER_HTTP_BUFFER_SIZE,
-        .buffer_size_tx = 1024  // Reduce TX buffer
-    };
-
-    ESP_LOGI(TAG, "Reverse geocoding URL: %s", url);
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == NULL) {
-        ESP_LOGE(TAG, "Failed to initialize HTTP client for reverse geocoding");
-        return ESP_FAIL;
-    }
-
-    esp_err_t err = esp_http_client_perform(client);
-    int status_code = esp_http_client_get_status_code(client);
-    ESP_LOGI(TAG, "Reverse geocoding HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
-
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Reverse geocoding response: %s", http_response_buffer);
-
-        // Parse JSON response
-        cJSON *json = cJSON_Parse(http_response_buffer);
-        if (json != NULL) {
-            cJSON *address = cJSON_GetObjectItem(json, "address");
-            if (address) {
-                cJSON *city = cJSON_GetObjectItem(address, "city");
-                cJSON *town = cJSON_GetObjectItem(address, "town");
-                cJSON *village = cJSON_GetObjectItem(address, "village");
-                cJSON *county = cJSON_GetObjectItem(address, "county");
-                cJSON *state = cJSON_GetObjectItem(address, "state");
-
-                // Use city, town, village, or county (in that priority order)
-                const char *locality = NULL;
-                if (city && cJSON_IsString(city)) {
-                    locality = city->valuestring;
-                } else if (town && cJSON_IsString(town)) {
-                    locality = town->valuestring;
-                } else if (village && cJSON_IsString(village)) {
-                    locality = village->valuestring;
-                } else if (county && cJSON_IsString(county)) {
-                    // Remove " County" suffix if present
-                    static char county_name[57];
-                    strncpy(county_name, county->valuestring, sizeof(county_name) - 1);
-                    county_name[sizeof(county_name) - 1] = '\0';
-                    char *suffix = strstr(county_name, " County");
-                    if (suffix) *suffix = '\0';
-                    locality = county_name;
-                }
-
-                if (locality && state && cJSON_IsString(state)) {
-                    // Abbreviate state names for US
-                    const char *state_abbr = state->valuestring;
-                    if (strcmp(state->valuestring, "Washington") == 0) state_abbr = "WA";
-                    else if (strcmp(state->valuestring, "California") == 0) state_abbr = "CA";
-                    else if (strcmp(state->valuestring, "Oregon") == 0) state_abbr = "OR";
-                    else if (strcmp(state->valuestring, "Texas") == 0) state_abbr = "TX";
-                    else if (strcmp(state->valuestring, "New York") == 0) state_abbr = "NY";
-                    else if (strcmp(state->valuestring, "Florida") == 0) state_abbr = "FL";
-
-                    // Ensure locality fits with state abbreviation
-                    static char safe_locality[57];
-                    strncpy(safe_locality, locality, sizeof(safe_locality) - 1);
-                    safe_locality[sizeof(safe_locality) - 1] = '\0';
-
-                    snprintf(user_location, sizeof(user_location), "%s, %s",
-                             safe_locality, state_abbr);
-
-                    // Auto-detect timezone from state
-                    const char *detected_tz = state_to_timezone(state->valuestring);
-                    strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
-                    user_timezone[sizeof(user_timezone) - 1] = '\0';
-                    ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
-                             state->valuestring, user_timezone);
-
-                    ESP_LOGI(TAG, "Reverse geocode result: %s", user_location);
-                    cJSON_Delete(json);
-                    esp_http_client_cleanup(client);
-                    return ESP_OK;
-                }
-            }
-            cJSON_Delete(json);
-        }
-    }
-
-    ESP_LOGE(TAG, "Failed to reverse geocode: %s", esp_err_to_name(err));
-    esp_http_client_cleanup(client);
-    return ESP_FAIL;
-}
 
 // ===== COLOR PALETTE - Dark Blue Theme =====
 #define COLOR_BG            0x000000  // Pure black background
@@ -917,30 +807,12 @@ void weather_update_task(void *pvParameters) {
                     geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
 
                     ESP_LOGI(TAG, "Coordinates and location for zipcode: %s", geocoded_zipcode);
+                    ESP_LOGI(TAG, "Location: %s (%.4f, %.4f)", user_location, user_latitude, user_longitude);
 
-                    // Wait a bit before reverse geocoding to let HTTP connections close
-                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    // Save location and coordinates to NVS (location already set from local database)
+                    nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
 
-                    // Do reverse geocoding to get actual city name (more accurate than postal code lookup)
-                    // Retry this too
-                    ESP_LOGI(TAG, "Free heap before reverse geocoding: %lu bytes", esp_get_free_heap_size());
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        if (reverse_geocode(user_latitude, user_longitude) == ESP_OK) {
-                            ESP_LOGI(TAG, "Reverse geocoding successful");
-                            ESP_LOGI(TAG, "Free heap after reverse geocoding: %lu bytes", esp_get_free_heap_size());
-
-                            // Save location and coordinates to NVS (now that we have both)
-                            nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
-                            break;
-                        } else {
-                            ESP_LOGW(TAG, "Reverse geocoding attempt %d/3 failed", attempt);
-                            if (attempt < 3) {
-                                vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
-                            }
-                        }
-                    }
-
-                    // Update location label immediately after geocoding
+                    // Update location label immediately
                     update_location_display();
                 } else {
                     ESP_LOGW(TAG, "Geocoding failed after 3 attempts - skipping weather update this cycle");
