@@ -9,6 +9,7 @@
 #include "shared_state.h"
 #include "nvs_config.h"
 #include "wifi_manager.h"
+#include "postal_code_database.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -211,202 +212,34 @@ static const char* state_to_timezone(const char *state) {
     return "America/New_York";  // Eastern Time as default
 }
 esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
-    if (!wifi_manager_is_connected()) {
-        ESP_LOGW(TAG, "WiFi not connected, cannot fetch coordinates");
-        return ESP_FAIL;
+    // LOCAL DATABASE LOOKUP - No SSL, No Internet Required, Instant!
+    ESP_LOGI(TAG, "Looking up postal code '%s' in local database...", zipcode);
+
+    const postal_code_entry_t *entry = find_postal_code(zipcode);
+    if (entry == NULL) {
+        // Try fuzzy match for partial codes
+        entry = find_postal_code_fuzzy(zipcode);
     }
 
-    char url[256];
-    // Nominatim REQUIRES HTTPS (redirects HTTP with 301) - no choice but to use SSL
-    snprintf(url, sizeof(url),
-             "https://nominatim.openstreetmap.org/search?postalcode=%s&country=us&format=json&limit=1&addressdetails=1",
-             zipcode);
+    if (entry != NULL) {
+        *lat = entry->latitude;
+        *lon = entry->longitude;
 
-    http_response_len = 0;
-    memset(http_response_buffer, 0, sizeof(http_response_buffer));
+        // Format location as "City, ST" (max 64 chars)
+        snprintf(user_location, sizeof(user_location), "%s, %s", entry->city, entry->state);
 
-    esp_http_client_config_t config = {
-        .url = url,
-        .event_handler = http_event_handler,
-        .timeout_ms = 15000,
-        .user_agent = "CYGM/1.0",
-        .method = HTTP_METHOD_GET,
-        .transport_type = HTTP_TRANSPORT_OVER_SSL,  // HTTPS required (Nominatim redirects HTTP to HTTPS)
-        .skip_cert_common_name_check = true,
-        .crt_bundle_attach = esp_crt_bundle_attach,  // Use certificate bundle
-        .buffer_size = WEATHER_HTTP_BUFFER_SIZE,
-        .buffer_size_tx = 1024  // Reduce TX buffer
-    };
+        // Auto-detect timezone from state
+        const char *detected_tz = state_to_timezone(entry->state);
+        strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+        user_timezone[sizeof(user_timezone) - 1] = '\0';
 
-    ESP_LOGI(TAG, "Geocoding URL: %s", url);
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == NULL) {
-        ESP_LOGE(TAG, "Failed to initialize HTTP client for geocoding");
-        return ESP_FAIL;
+        ESP_LOGI(TAG, "Postal code %s -> %.4f, %.4f (%s, %s, %s) [Timezone: %s]",
+                 zipcode, *lat, *lon, entry->city, entry->state, entry->country, user_timezone);
+
+        return ESP_OK;
     }
 
-    esp_err_t err = esp_http_client_perform(client);
-    int status_code = esp_http_client_get_status_code(client);
-    ESP_LOGI(TAG, "Geocoding HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
-
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Geocoding response: %s", http_response_buffer);
-
-        // Parse JSON response
-        cJSON *json = cJSON_Parse(http_response_buffer);
-        if (json != NULL) {
-            if (cJSON_GetArraySize(json) > 0) {
-                cJSON *first = cJSON_GetArrayItem(json, 0);
-                cJSON *lat_json = cJSON_GetObjectItem(first, "lat");
-                cJSON *lon_json = cJSON_GetObjectItem(first, "lon");
-
-                if (lat_json && lon_json) {
-                    *lat = atof(lat_json->valuestring);
-                    *lon = atof(lon_json->valuestring);
-
-                    bool location_found = false;
-
-                    // Try to get city/town and state from address components
-                    cJSON *address = cJSON_GetObjectItem(first, "address");
-                    if (address) {
-                        cJSON *city = cJSON_GetObjectItem(address, "city");
-                        cJSON *town = cJSON_GetObjectItem(address, "town");
-                        cJSON *village = cJSON_GetObjectItem(address, "village");
-                        cJSON *county = cJSON_GetObjectItem(address, "county");
-                        cJSON *state = cJSON_GetObjectItem(address, "state");
-
-                        // Use city, town, village, or county (in that priority order)
-                        const char *locality = NULL;
-                        if (city && cJSON_IsString(city)) {
-                            locality = city->valuestring;
-                        } else if (town && cJSON_IsString(town)) {
-                            locality = town->valuestring;
-                        } else if (village && cJSON_IsString(village)) {
-                            locality = village->valuestring;
-                        } else if (county && cJSON_IsString(county)) {
-                            // Remove " County" suffix if present
-                            static char county_name[57];
-                            strncpy(county_name, county->valuestring, sizeof(county_name) - 1);
-                            county_name[sizeof(county_name) - 1] = '\0';
-                            char *suffix = strstr(county_name, " County");
-                            if (suffix) *suffix = '\0';
-                            locality = county_name;
-                        }
-
-                        if (locality && state && cJSON_IsString(state)) {
-                            // Abbreviate state names for US
-                            const char *state_abbr = state->valuestring;
-                            if (strcmp(state->valuestring, "Washington") == 0) state_abbr = "WA";
-                            else if (strcmp(state->valuestring, "California") == 0) state_abbr = "CA";
-                            else if (strcmp(state->valuestring, "Oregon") == 0) state_abbr = "OR";
-                            else if (strcmp(state->valuestring, "Texas") == 0) state_abbr = "TX";
-                            else if (strcmp(state->valuestring, "New York") == 0) state_abbr = "NY";
-                            else if (strcmp(state->valuestring, "Florida") == 0) state_abbr = "FL";
-
-                            // Ensure locality fits with state abbreviation
-                            static char safe_locality[57];
-                            strncpy(safe_locality, locality, sizeof(safe_locality) - 1);
-                            safe_locality[sizeof(safe_locality) - 1] = '\0';
-
-                            snprintf(user_location, sizeof(user_location), "%s, %s",
-                                     safe_locality, state_abbr);
-                            location_found = true;
-
-                            // Auto-detect timezone from state
-                            const char *detected_tz = state_to_timezone(state->valuestring);
-                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
-                            user_timezone[sizeof(user_timezone) - 1] = '\0';
-                            ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
-                                     state->valuestring, user_timezone);
-                        } else if (state && cJSON_IsString(state)) {
-                            // No city found, just use zipcode and state
-                            snprintf(user_location, sizeof(user_location), "%s, %s",
-                                     zipcode, state->valuestring);
-                            location_found = true;
-
-                            // Auto-detect timezone from state
-                            const char *detected_tz = state_to_timezone(state->valuestring);
-                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
-                            user_timezone[sizeof(user_timezone) - 1] = '\0';
-                            ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
-                                     state->valuestring, user_timezone);
-                        }
-                    }
-
-                    // Fallback: Parse display_name if address parsing didn't work
-                    if (!location_found) {
-                        cJSON *display_name_json = cJSON_GetObjectItem(first, "display_name");
-                        if (display_name_json && cJSON_IsString(display_name_json)) {
-                            // display_name format: "98092, King County, Washington, United States"
-                            // Parse to extract locality and state
-                            static char display_name_buf[256];
-                            strncpy(display_name_buf, display_name_json->valuestring, sizeof(display_name_buf) - 1);
-                            display_name_buf[sizeof(display_name_buf) - 1] = '\0';
-
-                            // Split by comma
-                            char *parts[5] = {NULL};
-                            int part_count = 0;
-                            char *token = strtok(display_name_buf, ",");
-                            while (token && part_count < 5) {
-                                // Trim leading spaces
-                                while (*token == ' ') token++;
-                                parts[part_count++] = token;
-                                token = strtok(NULL, ",");
-                            }
-
-                            // Typically: [0]=zipcode, [1]=county, [2]=state, [3]=country
-                            if (part_count >= 3) {
-                                const char *locality = parts[1];  // Usually county
-                                const char *state = parts[2];
-
-                                // Remove " County" suffix if present (limit to 56 chars)
-                                static char locality_buf[57];
-                                strncpy(locality_buf, locality, sizeof(locality_buf) - 1);
-                                locality_buf[sizeof(locality_buf) - 1] = '\0';
-                                char *suffix = strstr(locality_buf, " County");
-                                if (suffix) *suffix = '\0';
-
-                                // Abbreviate state names
-                                const char *state_abbr = state;
-                                if (strcmp(state, "Washington") == 0) state_abbr = "WA";
-                                else if (strcmp(state, "California") == 0) state_abbr = "CA";
-                                else if (strcmp(state, "Oregon") == 0) state_abbr = "OR";
-                                else if (strcmp(state, "Texas") == 0) state_abbr = "TX";
-                                else if (strcmp(state, "New York") == 0) state_abbr = "NY";
-                                else if (strcmp(state, "Florida") == 0) state_abbr = "FL";
-
-                                snprintf(user_location, sizeof(user_location), "%s, %s",
-                                         locality_buf, state_abbr);
-                                location_found = true;
-
-                                // Auto-detect timezone from state
-                                const char *detected_tz = state_to_timezone(state);
-                                strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
-                                user_timezone[sizeof(user_timezone) - 1] = '\0';
-                                ESP_LOGI(TAG, "Auto-detected timezone from state '%s': %s",
-                                         state, user_timezone);
-                            }
-                        }
-                    }
-
-                    // Final fallback to just zipcode
-                    if (!location_found) {
-                        strncpy(user_location, zipcode, sizeof(user_location) - 1);
-                    }
-
-                    ESP_LOGI(TAG, "Zipcode %s -> Lat: %.4f, Lon: %.4f, Location: %s",
-                             zipcode, *lat, *lon, user_location);
-                    cJSON_Delete(json);
-                    esp_http_client_cleanup(client);
-                    return ESP_OK;
-                }
-            }
-            cJSON_Delete(json);
-        }
-    }
-
-    ESP_LOGE(TAG, "Failed to geocode zipcode: %s", esp_err_to_name(err));
-    esp_http_client_cleanup(client);
+    ESP_LOGW(TAG, "Postal code '%s' not found in local database", zipcode);
     return ESP_FAIL;
 }
 esp_err_t reverse_geocode(float lat, float lon) {
@@ -1043,7 +876,7 @@ void weather_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
 
     while (1) {
-        bool dexcom_was_closed = false;  // Track if we closed Dexcom (so we know to reopen it)
+        // Local database lookup - no need to manage Dexcom client memory
 
         if (wifi_manager_is_connected() && strlen(user_zipcode) > 0) {
             // Only geocode if:
@@ -1059,41 +892,11 @@ void weather_update_task(void *pvParameters) {
                     ESP_LOGI(TAG, "No cached coordinates - need to geocode zipcode: %s", user_zipcode);
                 }
 
-                // CRITICAL: Verify time is synced before attempting SSL connections
-                if (!is_time_synced()) {
-                    ESP_LOGW(TAG, "Time not synced, waiting for SNTP before geocoding...");
-                    if (!wait_for_time_sync(10000)) {
-                        ESP_LOGE(TAG, "Time sync timeout - skipping geocoding (SSL will fail)");
-                        // Wait configured interval and try again
-                        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
-                        continue;
-                    }
-                }
+                // No time sync needed for local database lookup!
 
-                // MEMORY OPTIMIZATION: Close Dexcom client ONLY when geocoding (HTTPS needs memory)
-                ESP_LOGI(TAG, "Closing Dexcom client to free memory for geocoding SSL...");
-                dexcom_close_persistent_client();
-                dexcom_was_closed = true;
-                vTaskDelay(pdMS_TO_TICKS(1000));  // Let memory stabilize
-
-                // Retry logic for geocoding (may fail due to HTTP connection pool or SSL issues)
-                esp_err_t geocode_result = ESP_FAIL;
-                for (int attempt = 1; attempt <= 3; attempt++) {
-                    ESP_LOGI(TAG, "Free heap before geocoding attempt %d: %lu bytes", attempt, esp_get_free_heap_size());
-                    geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
-                    ESP_LOGI(TAG, "Free heap after geocoding attempt %d: %lu bytes", attempt, esp_get_free_heap_size());
-
-                    if (geocode_result == ESP_OK) {
-                        ESP_LOGI(TAG, "Location found: %.4f, %.4f", user_latitude, user_longitude);
-                        break;
-                    } else {
-                        ESP_LOGW(TAG, "Geocoding attempt %d/3 failed: %s", attempt, esp_err_to_name(geocode_result));
-                        if (attempt < 3) {
-                            ESP_LOGI(TAG, "Retrying in 5 seconds...");
-                            vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay between retries
-                        }
-                    }
-                }
+                // LOCAL DATABASE LOOKUP - No SSL, instant, no memory issues!
+                ESP_LOGI(TAG, "Looking up postal code in local database (instant, no SSL)...");
+                esp_err_t geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
 
                 if (geocode_result == ESP_OK) {
                     // Save auto-detected timezone to NVS (timezone was set during geocoding)
@@ -1207,11 +1010,7 @@ void weather_update_task(void *pvParameters) {
                 }
             }
 
-            // MEMORY OPTIMIZATION: Re-open Dexcom persistent client ONLY if we closed it
-            if (dexcom_was_closed) {
-                ESP_LOGI(TAG, "Weather operations complete, re-opening Dexcom client...");
-                dexcom_reopen_persistent_client();
-            }
+            // No need to reopen Dexcom client - we never closed it!
         } else {
             ESP_LOGD(TAG, "Skipping weather update (WiFi: %d, Zipcode: %s)",
                     wifi_manager_is_connected(), user_zipcode);
