@@ -33,6 +33,7 @@ typedef struct {
     char geocoded_zipcode[MAX_ZIPCODE_LEN]; // Zipcode that was geocoded (to detect changes)
     char location[MAX_LOCATION_LEN];   // Location name (e.g., "Bethel, ME")
     bool coords_valid;                 // True if lat/lon have been geocoded
+    bool use_postal_code_entry;        // true = postal code, false = city dropdown
 } weather_settings_t;
 
 // Initialize NVS

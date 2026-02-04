@@ -255,6 +255,7 @@ extern char geocoded_zipcode[11];  // Geocoded zipcode tracker
 extern bool user_temp_celsius;
 extern uint8_t user_weather_interval_min;
 extern char user_location[64];
+extern bool use_postal_code_entry;  // true = postal code, false = city dropdown
 
 // ==================== Weather Data ====================
 

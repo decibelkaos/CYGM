@@ -260,6 +260,7 @@ char user_zipcode[11] = "";  // US zipcode (5 or 9 digits)
 bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
 uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
 char user_location[64] = "";  // City, State from geocoding
+bool use_postal_code_entry = true;  // true = postal code, false = city dropdown
 
 // Weather display data
 int current_temp_f = 72;  // Current temperature in Fahrenheit
