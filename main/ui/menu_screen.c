@@ -24,21 +24,17 @@ void create_menu_screen(void) {
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
     
-    // Back button
+    // Back button (matching alarm settings style)
     lv_obj_t *back_btn = lv_btn_create(screen_menu);
-    lv_obj_set_size(back_btn, 50, 30);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 8);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_radius(back_btn, 8, 0);
-    lv_obj_set_style_border_width(back_btn, 0, 0);
-    lv_obj_set_style_shadow_width(back_btn, 0, 0);
-    
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(back_lbl);
-
-    // Attach event handler
     lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Menu list container

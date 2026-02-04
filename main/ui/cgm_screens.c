@@ -262,14 +262,16 @@ void create_cgm_menu_screen(void) {
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button
+    // Back button (matching alarm settings style)
     lv_obj_t *back_btn = lv_btn_create(screen_cgm_menu);
-    lv_obj_set_size(back_btn, 60, 30);
+    lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
     lv_obj_t *back_label = lv_label_create(back_btn);
-    lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
-    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(back_label);
     lv_obj_add_event_cb(back_btn, cgm_back_event_cb, LV_EVENT_CLICKED, NULL);
 
@@ -310,14 +312,16 @@ void create_dexcom_auth_screen(void) {
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button
+    // Back button (matching alarm settings style)
     lv_obj_t *back_btn = lv_btn_create(screen_dexcom_auth);
-    lv_obj_set_size(back_btn, 60, 30);
+    lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_add_style(back_btn, &style_card, 0);
+
     lv_obj_t *back_label = lv_label_create(back_btn);
-    lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
-    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(back_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(back_label);
     lv_obj_add_event_cb(back_btn, dexcom_back_event_cb, LV_EVENT_CLICKED, NULL);
 
