@@ -1588,7 +1588,7 @@ void menu_item_event_cb(lv_event_t *e) {
                 ESP_LOGI(TAG, "Entering deep sleep mode...");
                 ESP_LOGI(TAG, "Device will wake on button press (GPIO 0)");
                 vTaskDelay(pdMS_TO_TICKS(500));  // Brief delay for UI feedback
-                esp_deep_sleep_enable_gpio_wakeup(1ULL << 0, ESP_GPIO_WAKEUP_GPIO_LOW);  // Wake on boot button
+                esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);  // Wake on GPIO 0 (boot button), 0 = low level
                 esp_deep_sleep_start();
                 break;
             default:
