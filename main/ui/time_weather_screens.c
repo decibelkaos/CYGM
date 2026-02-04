@@ -198,7 +198,7 @@ static void city_lookup_dropdown_event_cb(lv_event_t *e) {
 
                 // Update result label
                 if (city_lookup_result_label != NULL) {
-                    char result[128];
+                    char result[200];
                     snprintf(result, sizeof(result), "%s, %s, %s\n(%.4f, %.4f)",
                              selected_city_entry->city, selected_city_entry->state,
                              selected_city_entry->country,
@@ -288,7 +288,7 @@ static void zipcode_field_update_event_cb(lv_event_t *e) {
         const postal_code_entry_t *entry = find_location_unified(txt);
         if (entry != NULL) {
             // Format: "City, State, Country\n(Lat: XX.XX, Lon: XX.XX)"
-            char result[128];
+            char result[200];
             snprintf(result, sizeof(result), "%s, %s, %s\n(%.4f, %.4f)",
                      entry->city, entry->state, entry->country,
                      entry->latitude, entry->longitude);
@@ -690,7 +690,7 @@ static void update_city_lookup_dropdown(void) {
         // Populate states for selected country
         lv_label_set_text(city_lookup_title_label, "State/Province");
 
-        char result[128];
+        char result[200];
         snprintf(result, sizeof(result), "Country: %s\nSelect state/province", selected_country);
         lv_label_set_text(city_lookup_result_label, result);
 
@@ -705,7 +705,7 @@ static void update_city_lookup_dropdown(void) {
         // Populate cities for selected country/state
         lv_label_set_text(city_lookup_title_label, "City");
 
-        char result[128];
+        char result[200];
         if (selected_state[0] != '\0') {
             snprintf(result, sizeof(result), "%s, %s\nSelect city", selected_state, selected_country);
         } else {
