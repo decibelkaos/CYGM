@@ -1288,7 +1288,12 @@ void glucose_update_task(void *pvParameters) {
 
     while (1) {
         // Only fetch if authenticated
-        if (dexcom_is_authenticated()) {
+        bool is_auth = dexcom_is_authenticated();
+        ESP_LOGI(TAG, "[Glucose Task] Auth status: %s, Free heap: %lu bytes",
+                 is_auth ? "AUTHENTICATED" : "NOT AUTHENTICATED",
+                 esp_get_free_heap_size());
+
+        if (is_auth) {
             dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
             ESP_LOGI(TAG, "Fetching periodic glucose reading...");
 

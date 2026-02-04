@@ -44,8 +44,8 @@ static const char *BASE_URL_JP  = "https://share.dexcom.jp/ShareWebServices/Serv
 #define HTTP_BUFFER_SIZE 2048
 
 // Rate limiting and session timeout
-#define RATE_LIMIT_MS       90000   // 90 seconds between glucose requests
-#define SESSION_TIMEOUT_MS  43200000  // 12 hours
+#define RATE_LIMIT_MS       90000ULL    // 90 seconds between glucose requests
+#define SESSION_TIMEOUT_MS  43200000ULL // 12 hours
 
 // ============================================================================
 // State Variables
@@ -57,8 +57,8 @@ static char session_id[64] = {0};
 static char stored_username[64] = {0};
 static char stored_password[64] = {0};
 static bool is_authenticated = false;
-static uint32_t last_login_time = 0;
-static uint32_t last_glucose_fetch_time = 0;
+static uint64_t last_login_time = 0;
+static uint64_t last_glucose_fetch_time = 0;
 
 // HTTP response buffer
 static char http_response[HTTP_BUFFER_SIZE];
@@ -597,7 +597,7 @@ success:
     nvs_set_dexcom_credentials(username, password);
 
     is_authenticated = true;
-    last_login_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    last_login_time = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
     ESP_LOGI(TAG, "Dexcom authentication successful on %s region!",
              current_region == DEXCOM_REGION_US ? "US" :
              current_region == DEXCOM_REGION_OUS ? "Outside US" : "Japan");
@@ -622,8 +622,8 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     }
 
     // Check session timeout (12 hours)
-    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    if (last_login_time > 0 && (now - last_login_time) > SESSION_TIMEOUT_MS) {
+    uint64_t now_ms = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    if (last_login_time > 0 && (now_ms - last_login_time) > SESSION_TIMEOUT_MS) {
         ESP_LOGW(TAG, "Session expired (12 hours), re-authenticating...");
         is_authenticated = false;
 
@@ -638,9 +638,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     }
 
     // Rate limiting (90 seconds)
-    if (last_glucose_fetch_time > 0 && (now - last_glucose_fetch_time) < RATE_LIMIT_MS) {
-        uint32_t wait_time = (RATE_LIMIT_MS - (now - last_glucose_fetch_time)) / 1000;
-        ESP_LOGW(TAG, "Rate limited - wait %lu seconds", wait_time);
+    if (last_glucose_fetch_time > 0 && (now_ms - last_glucose_fetch_time) < RATE_LIMIT_MS) {
+        uint64_t wait_time = RATE_LIMIT_MS - (now_ms - last_glucose_fetch_time);
+        ESP_LOGW(TAG, "Rate limited - wait %llu seconds", wait_time / 1000);
         glucose->status = GLUCOSE_STATUS_OK;  // Authenticated and working, just rate limited
         return ESP_ERR_INVALID_STATE;
     }
@@ -821,7 +821,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         glucose->valid = true;
     }
 
-    last_glucose_fetch_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    last_glucose_fetch_time = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
 
     ESP_LOGI(TAG, "Glucose: %d mg/dL, Trend: %s (Status: %d)",
              glucose->value, dexcom_trend_description(glucose->trend), glucose->status);
@@ -845,8 +845,8 @@ bool dexcom_is_authenticated(void) {
     }
 
     // Check if session has timed out (12 hours)
-    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    if (last_login_time > 0 && (now - last_login_time) > SESSION_TIMEOUT_MS) {
+    uint64_t now_ms = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    if (last_login_time > 0 && (now_ms - last_login_time) > SESSION_TIMEOUT_MS) {
         ESP_LOGW(TAG, "Session has timed out (12 hours)");
         is_authenticated = false;
         memset(session_id, 0, sizeof(session_id));
