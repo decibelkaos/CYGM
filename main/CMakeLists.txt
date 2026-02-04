@@ -11,6 +11,7 @@
                             "hardware/display.c"
                             "features/time_system.c"
                             "features/weather_system.c"
+                            "features/postal_code_database.c"
                             "ui/menu_screen.c"
                             "ui/home_screen.c"
                             "ui/wifi_screens.c"
