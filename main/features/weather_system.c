@@ -949,40 +949,8 @@ void weather_update_task(void *pvParameters) {
                 // Using cached coordinates - no geocoding needed
                 ESP_LOGI(TAG, "Using cached coordinates for zipcode %s (no geocoding needed)", geocoded_zipcode);
 
-                // If location name is not set, do reverse geocoding to populate it
-                // reverse_geocode() also auto-detects and sets the timezone
-                if (strlen(user_location) == 0) {
-                    ESP_LOGI(TAG, "Location name not set, doing reverse geocoding to get city name and timezone...");
-                    ESP_LOGI(TAG, "Closing Dexcom client to free memory for reverse geocoding SSL...");
-                    dexcom_close_persistent_client();
-                    dexcom_was_closed = true;
-                    ESP_LOGI(TAG, "Free heap before reverse geocoding: %lu bytes", esp_get_free_heap_size());
-
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        if (reverse_geocode(user_latitude, user_longitude) == ESP_OK) {
-                            ESP_LOGI(TAG, "Reverse geocoding successful: %s", user_location);
-
-                            // Save location and coordinates to NVS
-                            nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
-
-                            // Save and apply the auto-detected timezone
-                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
-                            const char *posix_tz = get_posix_timezone(user_timezone);
-                            setenv("TZ", posix_tz, 1);
-                            tzset();
-                            update_time_display();
-                            ESP_LOGI(TAG, "Timezone applied from reverse geocoding: %s", user_timezone);
-
-                            update_location_display();
-                            break;
-                        } else {
-                            ESP_LOGW(TAG, "Reverse geocoding attempt %d/3 failed", attempt);
-                            if (attempt < 3) {
-                                vTaskDelay(pdMS_TO_TICKS(5000));
-                            }
-                        }
-                    }
-                }
+                // Location name comes from cached NVS or from database lookup - no reverse geocoding needed!
+                ESP_LOGI(TAG, "Location: %s (%.4f, %.4f)", user_location, user_latitude, user_longitude);
             }
 
             // Fetch weather if we have coordinates
