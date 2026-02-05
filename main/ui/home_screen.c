@@ -273,9 +273,9 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
 
-    // Brightness icon (top center) - lightbulb symbol
+    // Brightness icon (top center) - eye symbol for visibility/brightness
     brightness_icon = lv_label_create(right_card);
-    lv_label_set_text(brightness_icon, LV_SYMBOL_BULB);
+    lv_label_set_text(brightness_icon, LV_SYMBOL_EYE_OPEN);
     lv_obj_set_style_text_font(brightness_icon, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(brightness_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_align(brightness_icon, LV_ALIGN_TOP_MID, 0, 2);

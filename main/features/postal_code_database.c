@@ -29867,18 +29867,6 @@ static const postal_code_entry_t postal_code_database[] = {
 
 static const int database_size = 29845;
 
-// Helper: case-insensitive string compare
-static int strcicmp(const char *a, const char *b) {
-    while (*a && *b) {
-        char ca = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a;
-        char cb = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
-        if (ca != cb) return ca - cb;
-        a++;
-        b++;
-    }
-    return *a - *b;
-}
-
 // Helper: normalize postal code (remove spaces, uppercase)
 static void normalize_code(const char *input, char *output, int max_len) {
     int j = 0;

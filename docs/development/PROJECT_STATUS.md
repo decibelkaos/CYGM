@@ -1,6 +1,6 @@
 # CYGM Project Status
 ## Continuous Glucose Monitor Display for ESP32
-### Last Updated: February 1, 2026
+### Last Updated: February 4, 2026
 
 ---
 
@@ -14,6 +14,10 @@ All core features are implemented and functional. Device is ready for real-world
 
 #### 1. Hardware Integration ✅
 - **Display**: ST7789 320x240 TFT (55MHz SPI, RGB565)
+  - **Brightness Control** (v1.3.3): PWM-based backlight (0-100%), saved to NVS
+  - Lightbulb icon on CGM card opens brightness overlay
+  - Real-time adjustment with slider (0-100%)
+  - Automatically sets to 100% during visual alarms
 - **Touch**: CST820 capacitive touch with polling mode
 - **LED**: RGB LED (active-low PWM control) with visual feedback system
 - **Speaker**: DTMF tone generation for alarms
@@ -38,8 +42,18 @@ All core features are implemented and functional. Device is ready for real-world
 - **SSL/TLS**: mbedTLS with dynamic buffers (see SSL_MEMORY_FIX.md)
 
 #### 3. Weather Integration ✅
-- **Geocoding**: ZIP code to coordinates (nominatim.openstreetmap.org)
-- **Reverse Geocoding**: Coordinates to city/state
+- **Location Lookup** (v1.3.3): Dual-mode system with offline database
+  - **City Lookup**: Hierarchical Country → State → City dropdowns
+    - USA first, Canada second, then alphabetical
+    - Real-time result display with coordinates
+  - **Code Lookup**: Real-time postal code search (types as you go)
+    - Searches 29,845-entry local database instantly
+    - No SSL/network required - 100% offline
+  - Both modes: Cancel/OK buttons, timezone auto-detection
+- **Local Postal Database**: 2.28MB database with 47 countries
+  - US ZIP codes grouped by city (saves space)
+  - Covers all USA, Canada, major EU/UK cities
+  - Creative Commons Attribution 4.0 (GeoNames)
 - **Weather Data**: Current temperature and 7-day forecast (open-meteo.com)
 - **Weather Icons**: 7 custom-drawn weather conditions with LVGL canvas
 
