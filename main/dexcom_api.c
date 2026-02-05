@@ -66,6 +66,8 @@ static int http_response_len = 0;
 
 // Persistent HTTP client for connection reuse (saves SSL handshake overhead)
 static esp_http_client_handle_t persistent_client = NULL;
+static int consecutive_failures = 0;  // Track consecutive fetch failures
+#define MAX_CONSECUTIVE_FAILURES 5  // Force fresh connection after 5 failures
 
 // ============================================================================
 // Helper Functions
@@ -705,7 +707,19 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Network error, but still authenticated
-        cleanup_persistent_client();
+
+        consecutive_failures++;
+        ESP_LOGW(TAG, "Consecutive failures: %d/%d", consecutive_failures, MAX_CONSECUTIVE_FAILURES);
+
+        // CRITICAL FIX: Don't cleanup on transient network errors!
+        // But after many consecutive failures, force a fresh connection
+        if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
+            ESP_LOGW(TAG, "Too many consecutive failures - forcing fresh SSL connection");
+            cleanup_persistent_client();
+            consecutive_failures = 0;  // Reset counter
+        } else {
+            ESP_LOGW(TAG, "Keeping persistent client alive (will retry)");
+        }
         return err;
     }
 
@@ -733,7 +747,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         // SD logging removed: sd_log_http_response(status, http_response);
         // SD logging removed: sd_log_error(TAG, "Non-200 status code", ...);
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Server error, but still authenticated
-        cleanup_persistent_client();
+
+        // Don't cleanup on server errors - keep client alive for retry
+        ESP_LOGW(TAG, "Keeping persistent client alive despite server error");
         return ESP_FAIL;
     }
 
@@ -746,7 +762,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         ESP_LOGW(TAG, "Response length: %d, strlen: %zu", http_response_len, strlen(http_response));
         // SD logging removed: sd_log_error(TAG, "Empty HTTP response", "Likely SSL timeout - will retry with fresh connection");
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Still authenticated, just empty data
-        cleanup_persistent_client();  // Force new connection on next attempt
+
+        // Don't cleanup - empty response might be transient issue
+        ESP_LOGW(TAG, "Keeping persistent client alive - will retry on next fetch");
         return ESP_FAIL;
     }
 
@@ -757,7 +775,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         ESP_LOGE(TAG, "Response that failed to parse: %s", http_response);
         // SD logging removed: sd_log_error(TAG, "JSON parse failed", http_response);
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Still authenticated, just bad data
-        cleanup_persistent_client();
+
+        // Don't cleanup on parse errors - might be transient server issue
+        ESP_LOGW(TAG, "Keeping persistent client alive despite parse error");
         return ESP_FAIL;
     }
 
@@ -785,7 +805,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         ESP_LOGE(TAG, "Failed to get reading from array");
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Data parsing error, but still authenticated
         cJSON_Delete(root);
-        cleanup_persistent_client();
+
+        // Don't cleanup on data extraction errors
+        ESP_LOGW(TAG, "Keeping persistent client alive despite extraction error");
         return ESP_FAIL;
     }
     
@@ -835,6 +857,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     // fragmentation issues when recreating connections every 90 seconds.
     // The client will be cleaned up on authentication errors or shutdown.
     ESP_LOGD(TAG, "Keeping persistent client alive. Free heap: %lu bytes", esp_get_free_heap_size());
+
+    // Reset consecutive failure counter on success
+    consecutive_failures = 0;
 
     return ESP_OK;
 }
