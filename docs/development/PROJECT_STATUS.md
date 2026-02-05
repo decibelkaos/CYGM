@@ -1,12 +1,12 @@
 # CYGM Project Status
 ## Continuous Glucose Monitor Display for ESP32
-### Last Updated: February 4, 2026
+### Last Updated: February 5, 2026
 
 ---
 
 ## 🎉 BETA STAGE - Ready for Field Testing
 
-**Current Version**: 1.3.3
+**Current Version**: 1.3.4
 
 All core features are implemented and functional. Device is ready for real-world testing and feedback.
 
@@ -14,10 +14,15 @@ All core features are implemented and functional. Device is ready for real-world
 
 #### 1. Hardware Integration ✅
 - **Display**: ST7789 320x240 TFT (55MHz SPI, RGB565)
-  - **Brightness Control** (v1.3.3): PWM-based backlight (0-100%), saved to NVS
+  - **Brightness Control** (v1.3.3): PWM-based backlight (1-100%), saved to NVS
   - Lightbulb icon on CGM card opens brightness overlay
-  - Real-time adjustment with slider (0-100%)
+  - Real-time adjustment with slider (minimum 1%, no off option)
   - Automatically sets to 100% during visual alarms
+- **Battery Monitor** (v1.3.4): Custom drawn battery icon with bars
+  - 26x20 pixel canvas with rectangular body and terminal
+  - 1-4 vertical bars showing charge level (75%, 50%, 25% thresholds)
+  - Color coded: Green (80%+), Orange (20-80%), Red (0-20%)
+  - Flashing red animation for critically low battery (<10%)
 - **Touch**: CST820 capacitive touch with polling mode
 - **LED**: RGB LED (active-low PWM control) with visual feedback system
 - **Speaker**: DTMF tone generation for alarms
@@ -80,9 +85,12 @@ All core features are implemented and functional. Device is ready for real-world
   - Low Warning: Default 80 mg/dL, amber text
   - Low Alarm (urgent): Default 55 mg/dL, red text
 
-- **Visual Alarm System**:
+- **Visual Alarm System** (v1.3.4: Unified overlay design):
   - Pulsing white screen overlay at 2 Hz (250ms on/off)
-  - Full-screen slider dismissal (must slide to 100%)
+  - Alarm overlay (280x200px, centered, red border):
+    - Shows alarm type (HIGH, LOW, etc.) and current glucose value
+    - Slider dismissal (240px wide, must slide to 100%)
+    - Matches brightness/snooze overlay design system
   - LVGL timer-based pulsing for consistent timing
   - Always appears above all UI elements
 
@@ -94,10 +102,12 @@ All core features are implemented and functional. Device is ready for real-world
   - One-shot alarms for warnings
   - Tone preview in settings
 
-- **Snooze Functionality**:
-  - Snooze/dismiss screen after slider activation
-  - Snooze options: 5, 10, 15, 30 minutes
-  - Dismiss button for permanent alarm dismissal
+- **Snooze Functionality** (v1.3.4: Centered overlay design):
+  - Snooze overlay after slider activation (280x200px, matches alarm style)
+  - Shows alarm type and current glucose value
+  - 4 centered snooze buttons: 5, 10, 15, 30 minutes
+  - Dismiss button at bottom (3-hour snooze)
+  - Proper spacing: glucose value → snooze buttons → dismiss
   - Unix timestamp-based snooze timer
   - Automatic re-triggering when snooze expires
 
@@ -300,6 +310,26 @@ Shared State (1 module):
 - `main/ui/alarm_screens.c` (alarm_snooze_event_cb function)
 
 **Result**: Snooze buttons now properly dismiss screen and return to home ✅
+
+### Alarm Slider Dismissal Crash Fix (Feb 5, 2026)
+
+**Problem**: Device crashed with LoadProhibited exception when dismissing alarm via slider.
+
+**Root Cause**:
+- After redesigning alarm as overlay system, slider became child of container
+- Cleanup code attempted to delete container first, then separately delete slider
+- This caused double-free: slider was already freed when container was deleted
+
+**Solution**:
+- Only delete the container object in stop_visual_alarm()
+- Container deletion automatically frees all children (slider, label)
+- Set child pointers to NULL after container deletion
+- Prevents attempting to delete already-freed objects
+
+**Files Modified**:
+- `main/main.c` (stop_visual_alarm function, lines 1244-1255)
+
+**Result**: Alarm dismissal now works without crashes ✅
 
 ---
 
