@@ -26,6 +26,7 @@
 #include "esp_sntp.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "cJSON.h"
 
 // LCD & LVGL
@@ -1383,10 +1384,20 @@ void glucose_update_task(void *pvParameters) {
             if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
                 ESP_LOGI(TAG, "Network mutex acquired for glucose fetch");
 
-                // Check if we have enough memory for SSL connection (~60KB minimum)
-                size_t free_heap = esp_get_free_heap_size();
-                if (free_heap < 60000) {
-                    ESP_LOGE(TAG, "Insufficient memory for SSL connection: %lu bytes (need 60KB minimum)", free_heap);
+                // Check if we have enough INTERNAL memory for SSL connection
+                // SSL MUST use internal DRAM, not external PSRAM
+                size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+                size_t free_total = esp_get_free_heap_size();
+                size_t min_ever = esp_get_minimum_free_heap_size();
+
+                ESP_LOGI(TAG, "===== GLUCOSE FETCH MEMORY CHECK =====");
+                ESP_LOGI(TAG, "Free internal (DRAM): %lu bytes", free_internal);
+                ESP_LOGI(TAG, "Free total: %lu bytes", free_total);
+                ESP_LOGI(TAG, "Minimum ever: %lu bytes", min_ever);
+
+                // LOWERED from 60KB to 40KB based on actual usage
+                if (free_internal < 40000) {
+                    ESP_LOGE(TAG, "Insufficient INTERNAL memory for SSL: %lu bytes (need 40KB minimum)", free_internal);
                     ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
 
                     // Release mutex before error handling
@@ -1402,6 +1413,8 @@ void glucose_update_task(void *pvParameters) {
                     vTaskDelay(pdMS_TO_TICKS(90000));
                     continue;
                 }
+
+                ESP_LOGI(TAG, "Memory check PASSED - %lu bytes internal available", free_internal);
 
                 dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
                 ESP_LOGI(TAG, "Fetching periodic glucose reading...");
