@@ -34,36 +34,50 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
     rect_dsc.bg_opa = LV_OPA_COVER;
     rect_dsc.border_width = 0;
 
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-    line_dsc.color = lv_color_hex(color);
-    line_dsc.width = 2;
-
-    // Bulb (circle at top) - draw as filled circle
     lv_draw_arc_dsc_t arc_dsc;
     lv_draw_arc_dsc_init(&arc_dsc);
     arc_dsc.color = lv_color_hex(color);
-    arc_dsc.width = 6;  // Thick arc to fill the circle
+    arc_dsc.width = 2;
+    arc_dsc.rounded = 1;
 
-    // Draw bulb outline (centered at 7, 5 with radius 4)
-    lv_point_t bulb_center = {7, 5};
-    for (int r = 1; r <= 4; r++) {
+    // Draw bulb (large circle at top) - centered at 10, 7 with radius 6
+    lv_point_t bulb_center = {10, 7};
+
+    // Fill the bulb circle
+    for (int r = 1; r <= 6; r++) {
         lv_canvas_draw_arc(canvas, bulb_center.x, bulb_center.y, r, 0, 360, &arc_dsc);
     }
 
-    // Base rectangle (bulb socket)
-    rect_dsc.radius = 1;
-    lv_canvas_draw_rect(canvas, 5, 9, 4, 3, &rect_dsc);
+    // Filament (small cross inside bulb)
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = lv_color_hex(color);
+    line_dsc.width = 1;
 
-    // Bottom cap (wider)
-    lv_canvas_draw_rect(canvas, 4, 12, 6, 2, &rect_dsc);
+    lv_point_t filament_h1 = {8, 7};
+    lv_point_t filament_h2 = {12, 7};
+    lv_canvas_draw_line(canvas, &filament_h1, &filament_h2, &line_dsc);
+
+    lv_point_t filament_v1 = {10, 5};
+    lv_point_t filament_v2 = {10, 9};
+    lv_canvas_draw_line(canvas, &filament_v1, &filament_v2, &line_dsc);
+
+    // Screw base (3 rectangles stacked)
+    rect_dsc.radius = 0;
+    lv_canvas_draw_rect(canvas, 8, 14, 4, 2, &rect_dsc);  // Top screw thread
+    lv_canvas_draw_rect(canvas, 8, 16, 4, 2, &rect_dsc);  // Middle screw thread
+    lv_canvas_draw_rect(canvas, 8, 18, 4, 2, &rect_dsc);  // Bottom screw thread
+
+    // Bottom contact (wider)
+    lv_canvas_draw_rect(canvas, 7, 20, 6, 2, &rect_dsc);
 }
 
 // Brightness control functions
 static void brightness_icon_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
+    ESP_LOGI(TAG, "Brightness icon event: %d", code);
     if (code == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Brightness icon clicked");
+        ESP_LOGI(TAG, "Brightness icon clicked - opening overlay");
         create_brightness_overlay();
     }
 }
@@ -97,8 +111,11 @@ static void brightness_ok_event_cb(lv_event_t *e) {
 
 static void create_brightness_overlay(void) {
     if (brightness_overlay != NULL) {
+        ESP_LOGI(TAG, "Brightness overlay already open");
         return;  // Already open
     }
+
+    ESP_LOGI(TAG, "Creating brightness overlay");
 
     // Create semi-transparent overlay
     brightness_overlay = lv_obj_create(screen_home);
@@ -309,14 +326,22 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
 
-    // Brightness icon (top center) - custom lightbulb
-    static lv_color_t brightness_icon_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(14, 14)];
-    brightness_icon = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 14, 14, LV_IMG_CF_TRUE_COLOR);
+    // Brightness icon (top center) - custom lightbulb in clickable button
+    lv_obj_t *brightness_btn = lv_btn_create(right_card);
+    lv_obj_set_size(brightness_btn, 24, 24);
+    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(brightness_btn, LV_OPA_TRANSP, 0);  // Transparent background
+    lv_obj_set_style_border_width(brightness_btn, 0, 0);
+    lv_obj_set_style_shadow_width(brightness_btn, 0, 0);
+    lv_obj_set_style_pad_all(brightness_btn, 0, 0);
+    lv_obj_add_event_cb(brightness_btn, brightness_icon_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Canvas for lightbulb drawing (inside button)
+    static lv_color_t brightness_icon_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(20, 24)];
+    brightness_icon = lv_canvas_create(brightness_btn);
+    lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 20, 24, LV_IMG_CF_TRUE_COLOR);
     draw_lightbulb_icon(brightness_icon, COLOR_ACCENT_BLUE);
-    lv_obj_align(brightness_icon, LV_ALIGN_TOP_MID, 0, 2);
-    lv_obj_add_flag(brightness_icon, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(brightness_icon, brightness_icon_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_center(brightness_icon);
 
     // Glucose value (huge, bright blue)
     label_glucose = lv_label_create(right_card);
