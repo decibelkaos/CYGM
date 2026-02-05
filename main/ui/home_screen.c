@@ -54,13 +54,13 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
     line_dsc.color = lv_color_hex(color);
     line_dsc.width = 1;
 
-    lv_point_t filament_h1 = {8, 7};
-    lv_point_t filament_h2 = {12, 7};
-    lv_canvas_draw_line(canvas, &filament_h1, &filament_h2, &line_dsc);
+    // Horizontal filament line
+    lv_point_t filament_h[] = {{8, 7}, {12, 7}};
+    lv_canvas_draw_line(canvas, filament_h, 2, &line_dsc);
 
-    lv_point_t filament_v1 = {10, 5};
-    lv_point_t filament_v2 = {10, 9};
-    lv_canvas_draw_line(canvas, &filament_v1, &filament_v2, &line_dsc);
+    // Vertical filament line
+    lv_point_t filament_v[] = {{10, 5}, {10, 9}};
+    lv_canvas_draw_line(canvas, filament_v, 2, &line_dsc);
 
     // Screw base (3 rectangles stacked)
     rect_dsc.radius = 0;
