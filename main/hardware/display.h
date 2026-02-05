@@ -47,6 +47,19 @@ uint8_t cardkb_read(void);
  */
 esp_err_t lvgl_init(void);
 
+/**
+ * Set LCD backlight brightness using PWM
+ * @param brightness_percent Brightness level (0-100%)
+ * @return ESP_OK on success
+ */
+esp_err_t display_set_brightness(uint8_t brightness_percent);
+
+/**
+ * Initialize LCD backlight PWM channel
+ * @return ESP_OK on success
+ */
+esp_err_t display_backlight_init(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -198,6 +198,14 @@ lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
 lv_obj_t *battery_percent_label = NULL;  // Battery percent label
 lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
 
+// Brightness control
+uint8_t screen_brightness_percent = 80;  // Default 80%
+uint8_t saved_brightness_percent = 80;   // Saved before alarm override
+lv_obj_t *brightness_icon = NULL;
+lv_obj_t *brightness_overlay = NULL;
+lv_obj_t *brightness_slider = NULL;
+lv_obj_t *brightness_value_label = NULL;
+
 // Splash screen boot log
 lv_obj_t *boot_log_label = NULL;
 char boot_log_buffer[512] = {0};  // Buffer for boot messages
@@ -1110,6 +1118,12 @@ static void start_visual_alarm(void) {
     visual_alarm_active = true;
     visual_alarm_pulse_state = 0;
 
+    // Save current brightness and set to 100% for visual alarm
+    saved_brightness_percent = screen_brightness_percent;
+    screen_brightness_percent = 100;
+    display_set_brightness(100);
+    ESP_LOGI(TAG, "Brightness set to 100%% for visual alarm (saved: %d%%)", saved_brightness_percent);
+
     // Start fast red LED flash for alarm
     led_start_alarm_flash();
 
@@ -1163,6 +1177,11 @@ static void stop_visual_alarm(void) {
 
     ESP_LOGI(TAG, "Stopping visual alarm");
     visual_alarm_active = false;
+
+    // Restore saved brightness
+    screen_brightness_percent = saved_brightness_percent;
+    display_set_brightness(saved_brightness_percent);
+    ESP_LOGI(TAG, "Brightness restored to %d%%", saved_brightness_percent);
 
     // Stop LED alarm flash
     led_stop_alarm_flash();
@@ -1790,9 +1809,16 @@ void app_main(void) {
         ESP_LOGI(TAG, "Alarm settings loaded from NVS");
     }
 
+    // Load brightness settings from NVS
+    nvs_load_brightness(&screen_brightness_percent);
+    saved_brightness_percent = screen_brightness_percent;
+
     // Initialize display (before LVGL)
     add_boot_log("Init display");
     ESP_ERROR_CHECK(display_init());
+
+    // Apply saved brightness
+    display_set_brightness(screen_brightness_percent);
 
     // Initialize LED
     add_boot_log("Init LED");

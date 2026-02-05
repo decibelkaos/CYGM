@@ -30101,14 +30101,25 @@ int get_unique_country_count(void) {
     return count;
 }
 
-// Get unique country by index (sorted alphabetically)
+// Get unique country by index (USA first, Canada second, then alphabetically)
 const char* get_unique_country(int index) {
-    int count = 0;
+    // Priority countries
+    if (index == 0) return "United States";
+    if (index == 1) return "Canada";
+
+    // Get remaining countries alphabetically
+    int count = 2;  // Start after USA and Canada
     const char *last_country = NULL;
 
     for (int i = 0; i < database_size; i++) {
         const char *country = postal_code_database[i].country;
         if (last_country == NULL || strcmp(country, last_country) != 0) {
+            // Skip USA and Canada (already handled)
+            if (strcmp(country, "United States") == 0 || strcmp(country, "Canada") == 0) {
+                last_country = country;
+                continue;
+            }
+
             if (count == index) {
                 return country;
             }

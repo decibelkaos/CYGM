@@ -9,6 +9,7 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
+#include "driver/ledc.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
@@ -19,10 +20,59 @@
 
 static const char *TAG = "DISPLAY";
 
+#define LCD_BL_LEDC_CHANNEL   LEDC_CHANNEL_4
+#define LCD_BL_LEDC_TIMER     LEDC_TIMER_2
+
+esp_err_t display_backlight_init(void) {
+    ESP_LOGI(TAG, "Initializing LCD backlight PWM");
+
+    // Configure LEDC timer for backlight
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_8_BIT,  // 0-255 duty cycle
+        .timer_num = LCD_BL_LEDC_TIMER,
+        .freq_hz = 5000,  // 5kHz PWM frequency
+        .clk_cfg = LEDC_AUTO_CLK
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+
+    // Configure LEDC channel for backlight
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num = LCD_BL,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = LCD_BL_LEDC_CHANNEL,
+        .timer_sel = LCD_BL_LEDC_TIMER,
+        .duty = 204,  // Start at 80% (204/255)
+        .hpoint = 0
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+
+    ESP_LOGI(TAG, "LCD backlight PWM initialized");
+    return ESP_OK;
+}
+
+esp_err_t display_set_brightness(uint8_t brightness_percent) {
+    if (brightness_percent > 100) {
+        brightness_percent = 100;
+    }
+
+    // Convert percentage to 8-bit duty cycle (0-255)
+    uint32_t duty = (brightness_percent * 255) / 100;
+
+    esp_err_t ret = ledc_set_duty(LEDC_LOW_SPEED_MODE, LCD_BL_LEDC_CHANNEL, duty);
+    if (ret == ESP_OK) {
+        ret = ledc_update_duty(LEDC_LOW_SPEED_MODE, LCD_BL_LEDC_CHANNEL);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Brightness set to %d%% (duty: %ld/255)", brightness_percent, duty);
+        }
+    }
+
+    return ret;
+}
+
 esp_err_t display_init(void) {
-    ESP_LOGI(TAG, "Initializing LCD backlight");
-    gpio_set_direction(LCD_BL, GPIO_MODE_OUTPUT);
-    gpio_set_level(LCD_BL, 1);
+    // Initialize backlight with PWM
+    ESP_ERROR_CHECK(display_backlight_init());
 
     ESP_LOGI(TAG, "Initializing SPI bus");
     spi_bus_config_t buscfg = {

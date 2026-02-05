@@ -18,6 +18,7 @@ static const char *NVS_CGM_TYPE_KEY = "cgm_type";
 static const char *NVS_ACCESS_TOKEN_KEY = "access_token";
 static const char *NVS_REFRESH_TOKEN_KEY = "refresh_token";
 static const char *NVS_TOKEN_EXPIRY_KEY = "token_expiry";
+static const char *NVS_BRIGHTNESS_KEY = "brightness";
 
 esp_err_t nvs_config_init(void) {
     esp_err_t ret = nvs_flash_init();
@@ -799,4 +800,53 @@ esp_err_t nvs_load_alarm_settings(cgm_alarms_t *alarms) {
 bool nvs_has_alarm_settings(void) {
     cgm_alarms_t temp;
     return (nvs_load_alarm_settings(&temp) == ESP_OK);
+}
+
+// ========== Brightness Settings ==========
+
+esp_err_t nvs_save_brightness(uint8_t brightness_percent) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for writing brightness");
+        return ret;
+    }
+
+    ret = nvs_set_u8(nvs_handle, NVS_BRIGHTNESS_KEY, brightness_percent);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Brightness saved to NVS: %d%%", brightness_percent);
+        }
+    } else {
+        ESP_LOGE(TAG, "Failed to save brightness to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_brightness(uint8_t *brightness_percent) {
+    if (brightness_percent == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for reading brightness, using default 80%%");
+        *brightness_percent = 80;  // Default brightness
+        return ret;
+    }
+
+    ret = nvs_get_u8(nvs_handle, NVS_BRIGHTNESS_KEY, brightness_percent);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Brightness not found in NVS, using default 80%%");
+        *brightness_percent = 80;  // Default brightness
+    } else {
+        ESP_LOGI(TAG, "Brightness loaded from NVS: %d%%", *brightness_percent);
+    }
+
+    nvs_close(nvs_handle);
+    return ESP_OK;  // Always return OK, with default if not found
 }

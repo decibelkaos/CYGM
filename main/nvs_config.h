@@ -142,4 +142,8 @@ esp_err_t nvs_load_alarm_settings(cgm_alarms_t *alarms);
 bool nvs_has_alarm_settings(void);
 void nvs_get_default_alarm_settings(cgm_alarms_t *alarms);
 
+// Brightness settings
+esp_err_t nvs_save_brightness(uint8_t brightness_percent);
+esp_err_t nvs_load_brightness(uint8_t *brightness_percent);
+
 #endif // NVS_CONFIG_H

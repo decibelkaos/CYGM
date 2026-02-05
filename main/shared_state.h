@@ -188,6 +188,15 @@ extern lv_obj_t *battery_icon;
 extern lv_obj_t *battery_percent_label;
 extern lv_timer_t *battery_flash_timer;
 
+// ==================== Brightness Control ====================
+
+extern uint8_t screen_brightness_percent;  // 0-100%
+extern uint8_t saved_brightness_percent;   // Saved before alarm override
+extern lv_obj_t *brightness_icon;
+extern lv_obj_t *brightness_overlay;
+extern lv_obj_t *brightness_slider;
+extern lv_obj_t *brightness_value_label;
+
 // ==================== Boot Log ====================
 
 extern lv_obj_t *boot_log_label;

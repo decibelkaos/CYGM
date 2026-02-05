@@ -8,11 +8,121 @@
 #include "shared_state.h"
 #include "main.h"
 #include "features/weather_system.h"
+#include "hardware/display.h"
+#include "nvs_config.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 
-// TAG removed - not used in this module
+static const char *TAG = "HOME_SCREEN";
+
+// Forward declarations
+static void brightness_icon_event_cb(lv_event_t *e);
+static void brightness_slider_event_cb(lv_event_t *e);
+static void brightness_ok_event_cb(lv_event_t *e);
+static void create_brightness_overlay(void);
+static void close_brightness_overlay(void);
+
+// Brightness control functions
+static void brightness_icon_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Brightness icon clicked");
+        create_brightness_overlay();
+    }
+}
+
+static void brightness_slider_event_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    screen_brightness_percent = (uint8_t)lv_slider_get_value(slider);
+
+    // Update label
+    if (brightness_value_label != NULL) {
+        lv_label_set_text_fmt(brightness_value_label, "%d%%", screen_brightness_percent);
+    }
+
+    // Apply brightness in real-time
+    display_set_brightness(screen_brightness_percent);
+}
+
+static void brightness_ok_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Brightness OK clicked - saving %d%%", screen_brightness_percent);
+
+        // Save to NVS
+        nvs_save_brightness(screen_brightness_percent);
+        saved_brightness_percent = screen_brightness_percent;
+
+        // Close overlay
+        close_brightness_overlay();
+    }
+}
+
+static void create_brightness_overlay(void) {
+    if (brightness_overlay != NULL) {
+        return;  // Already open
+    }
+
+    // Create semi-transparent overlay
+    brightness_overlay = lv_obj_create(screen_home);
+    lv_obj_set_size(brightness_overlay, 200, 150);
+    lv_obj_center(brightness_overlay);
+    lv_obj_set_style_bg_color(brightness_overlay, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(brightness_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(brightness_overlay, 2, 0);
+    lv_obj_set_style_border_color(brightness_overlay, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_radius(brightness_overlay, 12, 0);
+    lv_obj_clear_flag(brightness_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Title label
+    lv_obj_t *title = lv_label_create(brightness_overlay);
+    lv_label_set_text(title, "Brightness");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 10, 10);
+
+    // Value label (percentage)
+    brightness_value_label = lv_label_create(brightness_overlay);
+    lv_label_set_text_fmt(brightness_value_label, "%d%%", screen_brightness_percent);
+    lv_obj_set_style_text_font(brightness_value_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(brightness_value_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(brightness_value_label, LV_ALIGN_TOP_RIGHT, -10, 10);
+
+    // Brightness slider
+    brightness_slider = lv_slider_create(brightness_overlay);
+    lv_obj_set_size(brightness_slider, 170, 12);  // Shrunk horizontally to keep knob inside
+    lv_obj_align(brightness_slider, LV_ALIGN_TOP_MID, 0, 50);
+    lv_slider_set_range(brightness_slider, 0, 100);
+    lv_slider_set_value(brightness_slider, screen_brightness_percent, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_KNOB);
+    lv_obj_add_event_cb(brightness_slider, brightness_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // OK button
+    lv_obj_t *ok_btn = lv_btn_create(brightness_overlay);
+    lv_obj_set_size(ok_btn, 80, 35);
+    lv_obj_align(ok_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_radius(ok_btn, 8, 0);
+
+    lv_obj_t *ok_lbl = lv_label_create(ok_btn);
+    lv_label_set_text(ok_lbl, "OK");
+    lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(ok_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(ok_lbl);
+    lv_obj_add_event_cb(ok_btn, brightness_ok_event_cb, LV_EVENT_CLICKED, NULL);
+}
+
+static void close_brightness_overlay(void) {
+    if (brightness_overlay != NULL) {
+        lv_obj_del(brightness_overlay);
+        brightness_overlay = NULL;
+        brightness_slider = NULL;
+        brightness_value_label = NULL;
+    }
+}
 
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
@@ -162,6 +272,15 @@ void create_home_screen(void) {
     lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
+
+    // Brightness icon (top center) - lightbulb symbol
+    brightness_icon = lv_label_create(right_card);
+    lv_label_set_text(brightness_icon, LV_SYMBOL_BULB);
+    lv_obj_set_style_text_font(brightness_icon, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(brightness_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(brightness_icon, LV_ALIGN_TOP_MID, 0, 2);
+    lv_obj_add_flag(brightness_icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(brightness_icon, brightness_icon_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Glucose value (huge, bright blue)
     label_glucose = lv_label_create(right_card);
