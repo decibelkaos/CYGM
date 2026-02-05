@@ -1395,9 +1395,15 @@ void glucose_update_task(void *pvParameters) {
                 ESP_LOGI(TAG, "Free total: %lu bytes", free_total);
                 ESP_LOGI(TAG, "Minimum ever: %lu bytes", min_ever);
 
-                // LOWERED from 60KB to 40KB based on actual usage
-                if (free_internal < 40000) {
-                    ESP_LOGE(TAG, "Insufficient INTERNAL memory for SSL: %lu bytes (need 40KB minimum)", free_internal);
+                // WARNING: If minimum ever is critically low, log it
+                if (min_ever < 10000) {
+                    ESP_LOGW(TAG, "CRITICAL: System went down to %lu bytes at some point! Risk of crashes!", min_ever);
+                }
+
+                // LOWERED from 60KB to 40KB to 35KB based on actual available memory
+                // We have ~38KB available, so 35KB threshold gives 3KB safety margin
+                if (free_internal < 35000) {
+                    ESP_LOGE(TAG, "Insufficient INTERNAL memory for SSL: %lu bytes (need 35KB minimum)", free_internal);
                     ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
 
                     // Release mutex before error handling
