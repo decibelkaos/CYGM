@@ -13,6 +13,7 @@
 #include <time.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "driver/i2c_master.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
@@ -136,6 +137,7 @@ extern volatile uint8_t led_breathe_b;
 
 extern bool home_screen_active;       // True when home screen is displayed
 extern bool pause_background_tasks;   // Set to true to pause Dexcom/Weather fetching
+extern SemaphoreHandle_t network_mutex;  // Mutex to prevent simultaneous network operations
 
 // ==================== UI Screens ====================
 

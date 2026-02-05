@@ -21,6 +21,7 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "freertos/task.h"
 
 static const char *TAG = "BACKGROUND_TASKS";
@@ -218,9 +219,12 @@ void wifi_task_core0(void *pvParameters) {
                                 }
 
                                 // CRITICAL: Close persistent Dexcom SSL client to free memory for weather
+                                ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial Dexcom fetch =====");
                                 ESP_LOGI(TAG, "Closing Dexcom persistent client to free SSL memory");
                                 dexcom_close_persistent_client();
                                 ESP_LOGI(TAG, "Free heap after Dexcom cleanup: %lu bytes", esp_get_free_heap_size());
+                                ESP_LOGI(TAG, "Free heap (internal): %lu bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+                                ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
 
                                 // Start weather task (uses HTTP - no SSL overhead!)
                                 if (weather_task_handle == NULL) {
@@ -235,8 +239,11 @@ void wifi_task_core0(void *pvParameters) {
 
                                 // Start glucose update task (90 second periodic fetches)
                                 if (glucose_task_handle == NULL) {
+                                    ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: Before starting glucose task =====");
+                                    ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+                                    ESP_LOGI(TAG, "Free heap (internal): %lu bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+                                    ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
                                     ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
-                                    ESP_LOGI(TAG, "Free heap before starting glucose task: %lu bytes", esp_get_free_heap_size());
                                     xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
                                 }
 

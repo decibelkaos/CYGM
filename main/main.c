@@ -147,6 +147,7 @@ volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
 // Background Task Control
 bool home_screen_active = false;       // True when home screen is displayed
 bool pause_background_tasks = false;   // Pause Dexcom/Weather when not on home screen
+SemaphoreHandle_t network_mutex = NULL;  // Mutex to prevent simultaneous network operations
 
 // UI Screens
 lv_obj_t *screen_splash = NULL;
@@ -1377,29 +1378,38 @@ void glucose_update_task(void *pvParameters) {
                  esp_get_free_heap_size());
 
         if (is_auth) {
-            // Check if we have enough memory for SSL connection (~60KB minimum)
-            size_t free_heap = esp_get_free_heap_size();
-            if (free_heap < 60000) {
-                ESP_LOGE(TAG, "Insufficient memory for SSL connection: %lu bytes (need 60KB minimum)", free_heap);
-                ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+            // CRITICAL: Take network mutex to ensure exclusive access
+            ESP_LOGI(TAG, "Waiting for network mutex...");
+            if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
+                ESP_LOGI(TAG, "Network mutex acquired for glucose fetch");
 
-                // Show error LED
-                led_start_error_blink();
-                vTaskDelay(pdMS_TO_TICKS(5000));
-                led_stop_error_blink();
+                // Check if we have enough memory for SSL connection (~60KB minimum)
+                size_t free_heap = esp_get_free_heap_size();
+                if (free_heap < 60000) {
+                    ESP_LOGE(TAG, "Insufficient memory for SSL connection: %lu bytes (need 60KB minimum)", free_heap);
+                    ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
 
-                // Wait and try again
-                vTaskDelay(pdMS_TO_TICKS(90000));
-                continue;
-            }
+                    // Release mutex before error handling
+                    xSemaphoreGive(network_mutex);
+                    ESP_LOGI(TAG, "Network mutex released (insufficient memory)");
 
-            dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
-            ESP_LOGI(TAG, "Fetching periodic glucose reading...");
+                    // Show error LED
+                    led_start_error_blink();
+                    vTaskDelay(pdMS_TO_TICKS(5000));
+                    led_stop_error_blink();
 
-            // Blink blue to indicate Dexcom poll starting
-            led_blink_blue();
+                    // Wait and try again
+                    vTaskDelay(pdMS_TO_TICKS(90000));
+                    continue;
+                }
 
-            esp_err_t ret = dexcom_fetch_glucose(&glucose);
+                dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
+                ESP_LOGI(TAG, "Fetching periodic glucose reading...");
+
+                // Blink blue to indicate Dexcom poll starting
+                led_blink_blue();
+
+                esp_err_t ret = dexcom_fetch_glucose(&glucose);
 
             if (ret == ESP_OK && glucose.valid) {
                 // Update glucose data - "Last Known Good" approach
@@ -1451,10 +1461,17 @@ void glucose_update_task(void *pvParameters) {
                 // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
             }
 
-            // CRITICAL: Close persistent client to free SSL memory (~40KB)
-            ESP_LOGI(TAG, "Closing Dexcom persistent client to free memory");
-            dexcom_close_persistent_client();
-            ESP_LOGI(TAG, "Free heap after cleanup: %lu bytes", esp_get_free_heap_size());
+                // CRITICAL: Close persistent client to free SSL memory (~40KB)
+                ESP_LOGI(TAG, "Closing Dexcom persistent client to free memory");
+                dexcom_close_persistent_client();
+                ESP_LOGI(TAG, "Free heap after cleanup: %lu bytes", esp_get_free_heap_size());
+
+                // Release network mutex
+                xSemaphoreGive(network_mutex);
+                ESP_LOGI(TAG, "Network mutex released after glucose fetch");
+            } else {
+                ESP_LOGE(TAG, "Failed to acquire network mutex - this should never happen!");
+            }
         } else {
             ESP_LOGW(TAG, "Not authenticated - skipping glucose fetch");
         }
@@ -1879,6 +1896,14 @@ void app_main(void) {
     // Initialize NVS
     add_boot_log("Init NVS storage");
     ESP_ERROR_CHECK(nvs_config_init());
+
+    // Create network mutex for memory management
+    network_mutex = xSemaphoreCreateMutex();
+    if (network_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create network mutex!");
+    } else {
+        ESP_LOGI(TAG, "Network mutex created for memory management");
+    }
 
     // Initialize UI configuration system
     add_boot_log("Init UI config");

@@ -833,26 +833,38 @@ void weather_update_task(void *pvParameters) {
 
             // Fetch weather if we have coordinates
             if (user_latitude != 0.0f && user_longitude != 0.0f) {
-                // Wait a bit before weather fetch to let HTTP connections close
-                vTaskDelay(pdMS_TO_TICKS(2000));
+                // CRITICAL: Take network mutex to ensure exclusive access
+                ESP_LOGI(TAG, "Waiting for network mutex...");
+                if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
+                    ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
 
-                ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
-                ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
+                    // Wait a bit before weather fetch to let HTTP connections close
+                    vTaskDelay(pdMS_TO_TICKS(2000));
 
-                // Retry logic for weather fetch (may fail due to HTTP connection pool exhaustion)
-                for (int attempt = 1; attempt <= 3; attempt++) {
-                    if (fetch_weather(user_latitude, user_longitude) == ESP_OK) {
-                        ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
-                        update_weather_display();
-                        break;
-                    } else {
-                        ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
-                        ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
-                        if (attempt < 3) {
-                            ESP_LOGI(TAG, "Retrying in 5 seconds...");
-                            vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
+                    ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
+                    ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
+
+                    // Retry logic for weather fetch (may fail due to HTTP connection pool exhaustion)
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        if (fetch_weather(user_latitude, user_longitude) == ESP_OK) {
+                            ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
+                            update_weather_display();
+                            break;
+                        } else {
+                            ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
+                            ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
+                            if (attempt < 3) {
+                                ESP_LOGI(TAG, "Retrying in 5 seconds...");
+                                vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
+                            }
                         }
                     }
+
+                    // Release network mutex
+                    xSemaphoreGive(network_mutex);
+                    ESP_LOGI(TAG, "Network mutex released after weather fetch");
+                } else {
+                    ESP_LOGE(TAG, "Failed to acquire network mutex - this should never happen!");
                 }
             }
 
