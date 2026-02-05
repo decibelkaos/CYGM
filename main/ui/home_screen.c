@@ -28,48 +28,58 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color);
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
     lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
 
-    lv_draw_rect_dsc_t rect_dsc;
-    lv_draw_rect_dsc_init(&rect_dsc);
-    rect_dsc.bg_color = lv_color_hex(color);
-    rect_dsc.bg_opa = LV_OPA_COVER;
-    rect_dsc.border_width = 0;
-
+    // Draw yellow bulb (filled circle)
     lv_draw_arc_dsc_t arc_dsc;
     lv_draw_arc_dsc_init(&arc_dsc);
-    arc_dsc.color = lv_color_hex(color);
+    arc_dsc.color = lv_color_hex(0xFFD700);  // Gold/yellow color for bulb
     arc_dsc.width = 2;
-    arc_dsc.rounded = 1;
 
-    // Draw bulb (large circle at top) - centered at 10, 7 with radius 6
-    lv_point_t bulb_center = {10, 7};
-
-    // Fill the bulb circle
-    for (int r = 1; r <= 6; r++) {
+    // Bulb center at 10, 6, radius 5
+    lv_point_t bulb_center = {10, 6};
+    for (int r = 1; r <= 5; r++) {
         lv_canvas_draw_arc(canvas, bulb_center.x, bulb_center.y, r, 0, 360, &arc_dsc);
     }
 
-    // Filament (small cross inside bulb)
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-    line_dsc.color = lv_color_hex(color);
-    line_dsc.width = 1;
+    // Draw light rays (grey dashed lines at 45 degrees)
+    lv_draw_line_dsc_t ray_dsc;
+    lv_draw_line_dsc_init(&ray_dsc);
+    ray_dsc.color = lv_color_hex(0x808080);  // Grey color
+    ray_dsc.width = 1;
 
-    // Horizontal filament line
-    lv_point_t filament_h[] = {{8, 7}, {12, 7}};
-    lv_canvas_draw_line(canvas, filament_h, 2, &line_dsc);
+    // Top-left ray (45 degrees)
+    lv_point_t ray1[] = {{6, 3}, {4, 1}};
+    lv_canvas_draw_line(canvas, ray1, 2, &ray_dsc);
 
-    // Vertical filament line
-    lv_point_t filament_v[] = {{10, 5}, {10, 9}};
-    lv_canvas_draw_line(canvas, filament_v, 2, &line_dsc);
+    // Top-right ray (45 degrees)
+    lv_point_t ray2[] = {{14, 3}, {16, 1}};
+    lv_canvas_draw_line(canvas, ray2, 2, &ray_dsc);
 
-    // Screw base (3 rectangles stacked)
-    rect_dsc.radius = 0;
-    lv_canvas_draw_rect(canvas, 8, 14, 4, 2, &rect_dsc);  // Top screw thread
-    lv_canvas_draw_rect(canvas, 8, 16, 4, 2, &rect_dsc);  // Middle screw thread
-    lv_canvas_draw_rect(canvas, 8, 18, 4, 2, &rect_dsc);  // Bottom screw thread
+    // Left ray (horizontal-ish)
+    lv_point_t ray3[] = {{5, 6}, {2, 6}};
+    lv_canvas_draw_line(canvas, ray3, 2, &ray_dsc);
 
-    // Bottom contact (wider)
-    lv_canvas_draw_rect(canvas, 7, 20, 6, 2, &rect_dsc);
+    // Right ray (horizontal-ish)
+    lv_point_t ray4[] = {{15, 6}, {18, 6}};
+    lv_canvas_draw_line(canvas, ray4, 2, &ray_dsc);
+
+    // Bottom-left ray (45 degrees)
+    lv_point_t ray5[] = {{6, 9}, {4, 11}};
+    lv_canvas_draw_line(canvas, ray5, 2, &ray_dsc);
+
+    // Bottom-right ray (45 degrees)
+    lv_point_t ray6[] = {{14, 9}, {16, 11}};
+    lv_canvas_draw_line(canvas, ray6, 2, &ray_dsc);
+
+    // Grey base/socket (simple rectangle)
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+    rect_dsc.bg_color = lv_color_hex(0x808080);  // Grey
+    rect_dsc.bg_opa = LV_OPA_COVER;
+    rect_dsc.border_width = 0;
+    rect_dsc.radius = 1;
+
+    // Socket base
+    lv_canvas_draw_rect(canvas, 8, 12, 4, 3, &rect_dsc);
 }
 
 // Brightness control functions
@@ -326,10 +336,10 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
 
-    // Brightness icon (top center) - custom lightbulb in clickable button
+    // Brightness icon (top center, shifted right) - custom lightbulb in clickable button
     lv_obj_t *brightness_btn = lv_btn_create(right_card);
     lv_obj_set_size(brightness_btn, 24, 24);
-    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 8, 0);  // Shifted 8px to the right
     lv_obj_set_style_bg_opa(brightness_btn, LV_OPA_TRANSP, 0);  // Transparent background
     lv_obj_set_style_border_width(brightness_btn, 0, 0);
     lv_obj_set_style_shadow_width(brightness_btn, 0, 0);
