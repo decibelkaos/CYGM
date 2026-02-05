@@ -1400,10 +1400,19 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "CRITICAL: System went down to %lu bytes at some point! Risk of crashes!", min_ever);
                 }
 
-                // LOWERED from 60KB to 40KB to 35KB based on actual available memory
-                // We have ~38KB available, so 35KB threshold gives 3KB safety margin
-                if (free_internal < 35000) {
-                    ESP_LOGE(TAG, "Insufficient INTERNAL memory for SSL: %lu bytes (need 35KB minimum)", free_internal);
+                // Dynamic memory threshold based on whether persistent client is open
+                // - Client CLOSED (needs new SSL handshake): 35KB minimum
+                // - Client OPEN (reusing connection): 20KB minimum
+                bool client_open = dexcom_persistent_client_is_open();
+                size_t required_memory = client_open ? 20000 : 35000;
+                const char *connection_type = client_open ? "REUSING existing SSL connection" : "CREATING new SSL connection";
+
+                ESP_LOGI(TAG, "Persistent client status: %s", client_open ? "OPEN" : "CLOSED");
+                ESP_LOGI(TAG, "Memory requirement: %lu bytes (%s)", required_memory, connection_type);
+
+                if (free_internal < required_memory) {
+                    ESP_LOGE(TAG, "Insufficient INTERNAL memory: %lu bytes (need %lu for %s)",
+                             free_internal, required_memory, connection_type);
                     ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
 
                     // Release mutex before error handling
@@ -1420,7 +1429,8 @@ void glucose_update_task(void *pvParameters) {
                     continue;
                 }
 
-                ESP_LOGI(TAG, "Memory check PASSED - %lu bytes internal available", free_internal);
+                ESP_LOGI(TAG, "Memory check PASSED - %lu bytes available (%s)",
+                         free_internal, connection_type);
 
                 dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
                 ESP_LOGI(TAG, "Fetching periodic glucose reading...");
@@ -1480,10 +1490,9 @@ void glucose_update_task(void *pvParameters) {
                 // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
             }
 
-                // CRITICAL: Close persistent client to free SSL memory (~40KB)
-                ESP_LOGI(TAG, "Closing Dexcom persistent client to free memory");
-                dexcom_close_persistent_client();
-                ESP_LOGI(TAG, "Free heap after cleanup: %lu bytes", esp_get_free_heap_size());
+                // KEEP persistent client alive for next fetch (reuse SSL connection)
+                // This avoids expensive SSL handshakes every 90 seconds
+                ESP_LOGI(TAG, "Keeping Dexcom persistent client alive for next fetch");
 
                 // Release network mutex
                 xSemaphoreGive(network_mutex);

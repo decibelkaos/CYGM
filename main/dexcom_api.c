@@ -926,6 +926,11 @@ const char* dexcom_trend_description(dexcom_trend_t trend) {
     }
 }
 
+// Check if persistent client is currently open
+bool dexcom_persistent_client_is_open(void) {
+    return (persistent_client != NULL);
+}
+
 // Close persistent HTTP client to free ~30KB memory
 // Use before weather operations to free memory for SSL
 void dexcom_close_persistent_client(void) {

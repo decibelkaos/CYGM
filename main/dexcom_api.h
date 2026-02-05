@@ -86,4 +86,9 @@ const char* dexcom_trend_description(dexcom_trend_t trend);
 void dexcom_close_persistent_client(void);
 esp_err_t dexcom_reopen_persistent_client(void);
 
+// Check if persistent client is currently open
+// Returns true if client exists (reusing connection, needs ~15-20KB for fetch)
+// Returns false if client needs to be created (needs ~35-40KB for SSL handshake)
+bool dexcom_persistent_client_is_open(void);
+
 #endif // DEXCOM_API_H

@@ -179,76 +179,65 @@ void update_battery_display(void) {
 void battery_monitor_task(void *arg) {
     ESP_LOGI(TAG, "Battery monitor task started");
 
-    while (1) {
-        // Read battery voltage
-        battery_voltage = battery_read_voltage();
+    // Read battery voltage once at boot
+    battery_voltage = battery_read_voltage();
 
-        // Calculate battery percentage
-        battery_percent = battery_voltage_to_percent(battery_voltage);
+    // Calculate battery percentage
+    battery_percent = battery_voltage_to_percent(battery_voltage);
 
-        ESP_LOGI(TAG, "Battery: %.3fV, %d%%", battery_voltage, battery_percent);
+    ESP_LOGI(TAG, "Battery: %.3fV, %d%%", battery_voltage, battery_percent);
 
-        // Update display
-        update_battery_display();
+    // Update display
+    update_battery_display();
 
-        // Check for critical low battery (3.2V or below) - shut down to prevent damage
-        if (battery_voltage <= BATTERY_LOW_VOLTAGE) {
-            ESP_LOGE(TAG, "CRITICAL: Battery voltage %.3fV <= %.3fV - SHUTTING DOWN",
-                     battery_voltage, BATTERY_LOW_VOLTAGE);
+    // Check for critical low battery (3.2V or below) - shut down to prevent damage
+    if (battery_voltage <= BATTERY_LOW_VOLTAGE) {
+        ESP_LOGE(TAG, "CRITICAL: Battery voltage %.3fV <= %.3fV - SHUTTING DOWN",
+                 battery_voltage, BATTERY_LOW_VOLTAGE);
 
-            // Show critical battery message on display
-            if (lvgl_port_lock(0)) {
-                // Create full-screen message
-                lv_obj_t *shutdown_screen = lv_obj_create(NULL);
-                lv_obj_set_style_bg_color(shutdown_screen, lv_color_black(), 0);
+        // Show critical battery message on display
+        if (lvgl_port_lock(0)) {
+            // Create full-screen message
+            lv_obj_t *shutdown_screen = lv_obj_create(NULL);
+            lv_obj_set_style_bg_color(shutdown_screen, lv_color_black(), 0);
 
-                lv_obj_t *label = lv_label_create(shutdown_screen);
-                lv_label_set_text(label, "CRITICAL LOW BATTERY\n\nShutting down...\n\nPlease charge device");
-                lv_obj_set_style_text_color(label, lv_color_hex(COLOR_RED), 0);
-                lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
-                lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-                lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+            lv_obj_t *label = lv_label_create(shutdown_screen);
+            lv_label_set_text(label, "CRITICAL LOW BATTERY\n\nShutting down...\n\nPlease charge device");
+            lv_obj_set_style_text_color(label, lv_color_hex(COLOR_RED), 0);
+            lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+            lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
-                lv_scr_load(shutdown_screen);
-                lvgl_port_unlock();
-            }
-
-            // Play shutdown tone
-            buzzer_tone(400, 80);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_stop();
-
-            // Wait a moment for user to see message
-            vTaskDelay(pdMS_TO_TICKS(3000));
-
-            // Deep sleep until external wake (USB plug-in)
-            ESP_LOGI(TAG, "Entering deep sleep...");
-            esp_deep_sleep_start();
+            lv_scr_load(shutdown_screen);
+            lvgl_port_unlock();
         }
 
-        // Check for 10% battery warning
-        if (battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
-            battery_low_warning_shown = true;
+        // Play shutdown tone
+        buzzer_tone(400, 80);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        buzzer_stop();
 
-            // Play warning beeps
-            battery_low_alert();
+        // Wait a moment for user to see message
+        vTaskDelay(pdMS_TO_TICKS(3000));
 
-            // Start flashing timer
-            if (battery_flash_timer == NULL) {
-                battery_flash_timer = lv_timer_create(battery_flash_timer_cb, 500, NULL);  // Flash every 500ms
-            }
-        } else if (battery_percent > BATTERY_CRITICAL_PERCENT) {
-            // Reset warning flag when battery recovers
-            battery_low_warning_shown = false;
-
-            // Stop flashing timer
-            if (battery_flash_timer != NULL) {
-                lv_timer_del(battery_flash_timer);
-                battery_flash_timer = NULL;
-            }
-        }
-
-        // Update every 30 seconds
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        // Deep sleep until external wake (USB plug-in)
+        ESP_LOGI(TAG, "Entering deep sleep...");
+        esp_deep_sleep_start();
     }
+
+    // Check for 10% battery warning
+    if (battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
+        battery_low_warning_shown = true;
+
+        // Play warning beeps
+        battery_low_alert();
+
+        // Start flashing timer
+        if (battery_flash_timer == NULL) {
+            battery_flash_timer = lv_timer_create(battery_flash_timer_cb, 500, NULL);  // Flash every 500ms
+        }
+    }
+
+    ESP_LOGI(TAG, "Battery check complete - task exiting (checked once at boot)");
+    vTaskDelete(NULL);  // Exit task after single check
 }

@@ -9,6 +9,7 @@
 #include "shared_state.h"
 #include "nvs_config.h"
 #include "wifi_manager.h"
+#include "dexcom_api.h"
 #include "postal_code_database.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -838,7 +839,12 @@ void weather_update_task(void *pvParameters) {
                 if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
                     ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
 
-                    // Wait a bit before weather fetch to let HTTP connections close
+                    // Close Dexcom persistent client to free SSL memory (~30KB) for weather
+                    ESP_LOGI(TAG, "Closing Dexcom persistent client before weather fetch");
+                    dexcom_close_persistent_client();
+                    ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes", esp_get_free_heap_size());
+
+                    // Wait a bit to let connections fully close
                     vTaskDelay(pdMS_TO_TICKS(2000));
 
                     ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
@@ -868,7 +874,7 @@ void weather_update_task(void *pvParameters) {
                 }
             }
 
-            // No need to reopen Dexcom client - we never closed it!
+            // Dexcom client will reopen automatically on next glucose fetch
         } else {
             ESP_LOGD(TAG, "Skipping weather update (WiFi: %d, Zipcode: %s)",
                     wifi_manager_is_connected(), user_zipcode);

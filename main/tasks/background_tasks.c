@@ -218,11 +218,11 @@ void wifi_task_core0(void *pvParameters) {
                                     update_glucose_display();
                                 }
 
-                                // CRITICAL: Close persistent Dexcom SSL client to free memory for weather
+                                // KEEP persistent client alive for periodic fetches (don't close it!)
+                                // The SSL connection will be reused every 90 seconds, avoiding expensive handshakes
                                 ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial Dexcom fetch =====");
-                                ESP_LOGI(TAG, "Closing Dexcom persistent client to free SSL memory");
-                                dexcom_close_persistent_client();
-                                ESP_LOGI(TAG, "Free heap after Dexcom cleanup: %lu bytes", esp_get_free_heap_size());
+                                ESP_LOGI(TAG, "Keeping Dexcom persistent client alive for periodic fetches");
+                                ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
                                 ESP_LOGI(TAG, "Free heap (internal): %lu bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
                                 ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
 
