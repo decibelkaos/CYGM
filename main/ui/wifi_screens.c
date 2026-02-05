@@ -24,6 +24,8 @@ static const char *TAG = "WIFI_SCREENS";
 static void network_item_event_cb(lv_event_t *e);
 static void keyboard_event_cb(lv_event_t *e);
 static void password_field_event_cb(lv_event_t *e);
+static void wifi_password_cancel_btn_cb(lv_event_t *e);
+static void wifi_password_ok_btn_cb(lv_event_t *e);
 
 // WiFi scan task
 void wifi_scan_task(void *pvParameters) {
@@ -176,12 +178,44 @@ void create_wifi_password_screen(void) {
     screen_wifi_password = lv_obj_create(NULL);
     lv_obj_add_style(screen_wifi_password, &style_bg, 0);
 
-    // Header
+    // Cancel button (red, top-left)
+    lv_obj_t *cancel_btn = lv_btn_create(screen_wifi_password);
+    lv_obj_set_size(cancel_btn, 70, 30);
+    lv_obj_align(cancel_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_radius(cancel_btn, 6, 0);
+    lv_obj_set_style_border_width(cancel_btn, 0, 0);
+    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+
+    lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_set_style_text_font(cancel_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cancel_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(cancel_lbl);
+    lv_obj_add_event_cb(cancel_btn, wifi_password_cancel_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    // OK button (green, top-right)
+    lv_obj_t *ok_btn = lv_btn_create(screen_wifi_password);
+    lv_obj_set_size(ok_btn, 70, 30);
+    lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
+    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_radius(ok_btn, 6, 0);
+    lv_obj_set_style_border_width(ok_btn, 0, 0);
+    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+
+    lv_obj_t *ok_lbl = lv_label_create(ok_btn);
+    lv_label_set_text(ok_lbl, "OK");
+    lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(ok_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(ok_lbl);
+    lv_obj_add_event_cb(ok_btn, wifi_password_ok_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    // Header (centered between buttons)
     lv_obj_t *header = lv_label_create(screen_wifi_password);
     lv_label_set_text(header, "Enter Password");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 8);
 
     // Password card
     lv_obj_t *card = lv_obj_create(screen_wifi_password);
@@ -259,6 +293,75 @@ static void password_field_event_cb(lv_event_t *e) {
         strncpy(wifi_password, text, sizeof(wifi_password) - 1);
         wifi_password[sizeof(wifi_password) - 1] = '\0';
         wifi_password_len = strlen(wifi_password);
+    }
+}
+
+// Cancel button callback for WiFi password screen
+static void wifi_password_cancel_btn_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Password entry cancelled, returning to network list");
+        if (lvgl_port_lock(0)) {
+            lv_scr_load(screen_wifi_list);
+            lvgl_port_unlock();
+        }
+    }
+}
+
+// OK button callback for WiFi password screen
+static void wifi_password_ok_btn_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        // OK button pressed - connect to WiFi
+        ESP_LOGI(TAG, "Connecting to WiFi: %s with password: %s", selected_ssid, wifi_password);
+
+        // Save WiFi credentials
+        nvs_save_wifi_credentials(selected_ssid, wifi_password);
+
+        // Connect to WiFi in background
+        led_set_breathing_color(0, 0, 127);  // Blue = connecting
+        if (wifi_manager_connect() == ESP_OK) {
+            ESP_LOGI(TAG, "WiFi connection successful");
+            wifi_connected = true;
+            led_set_breathing_color(0, 127, 0);  // Green = connected
+
+            // Update WiFi status on home screen
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (lvgl_port_lock(0)) {
+                ESP_LOGI(TAG, "Updating WiFi status label to Connected");
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " WiFi");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
+                lvgl_port_unlock();
+            } else {
+                ESP_LOGW(TAG, "Failed to acquire LVGL lock for WiFi status update");
+            }
+
+            // Initialize SNTP
+            initialize_sntp();
+
+            // Note: Time and weather tasks are started in app_main(), not here
+
+            // Return to home screen
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            if (lvgl_port_lock(0)) {
+                lv_scr_load(screen_home);
+                lvgl_port_unlock();
+            }
+        } else {
+            ESP_LOGE(TAG, "WiFi connection failed");
+            led_set_breathing_color(127, 0, 0);  // Red = failed
+
+            // Update WiFi status on home screen
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (lvgl_port_lock(0)) {
+                ESP_LOGI(TAG, "Updating WiFi status label to Failed");
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " Failed");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_RED), 0);
+                lvgl_port_unlock();
+            } else {
+                ESP_LOGW(TAG, "Failed to acquire LVGL lock for WiFi status update");
+            }
+        }
     }
 }
 

@@ -1667,6 +1667,12 @@ void menu_item_event_cb(lv_event_t *e) {
             case 1:  // WiFi Setup
                 ESP_LOGI(TAG, "Launching WiFi setup...");
 
+                // Close Dexcom persistent client to free ~30KB memory for WiFi scan/UI
+                ESP_LOGI(TAG, "Closing Dexcom persistent client before WiFi scan");
+                dexcom_close_persistent_client();
+                ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes (internal: %lu)",
+                         esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
                 // Show scanning message with animated loading bar
                 if (lvgl_port_lock(0)) {
                     lv_scr_load(screen_wifi_list);
