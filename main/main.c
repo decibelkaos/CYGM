@@ -176,6 +176,7 @@ bool alarm_acknowledged = false;
 
 // Visual alarm components
 lv_obj_t *visual_alarm_overlay = NULL;      // White overlay for visual alarm
+lv_obj_t *visual_alarm_container = NULL;    // Container overlay for alarm slider (styled)
 lv_obj_t *visual_alarm_slider = NULL;       // Slider to dismiss visual alarm
 lv_obj_t *visual_alarm_slider_label = NULL; // Label for slider
 lv_obj_t *screen_alarm_snooze = NULL;       // Snooze/dismiss screen
@@ -195,7 +196,7 @@ float battery_voltage = 0.0f;
 int battery_percent = 100;
 bool battery_low_warning_shown = false;  // Track if low battery warning played
 lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
-lv_obj_t *battery_percent_label = NULL;  // Battery percent label
+lv_obj_t *battery_canvas = NULL;         // Battery canvas for custom drawn icon
 lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
 
 // Brightness control
@@ -1083,18 +1084,17 @@ static void visual_alarm_slider_event_cb(lv_event_t *e) {
 
         // Slider must be moved to 100 to dismiss
         if (value >= 100) {
-            ESP_LOGI(TAG, "Visual alarm slider activated - showing snooze/dismiss screen");
+            ESP_LOGI(TAG, "Visual alarm slider activated - showing snooze/dismiss overlay");
             stop_visual_alarm();
             stop_audio_alarm();  // Stop audio alarm when slider is dismissed
 
-            // Show snooze/dismiss screen
+            // Show snooze/dismiss overlay on home screen
             if (lvgl_port_lock(0)) {
                 if (screen_alarm_snooze != NULL) {
                     lv_obj_del(screen_alarm_snooze);
                     screen_alarm_snooze = NULL;
                 }
-                create_alarm_snooze_screen();
-                lv_scr_load(screen_alarm_snooze);
+                create_alarm_snooze_screen();  // Creates overlay on home screen
                 lvgl_port_unlock();
             }
         }
@@ -1128,7 +1128,7 @@ static void start_visual_alarm(void) {
     led_start_alarm_flash();
 
     if (lvgl_port_lock(0)) {
-        // Create white overlay that covers entire screen
+        // Create white overlay that covers entire screen (for pulsing effect)
         visual_alarm_overlay = lv_obj_create(lv_scr_act());
         lv_obj_set_size(visual_alarm_overlay, LV_HOR_RES, LV_VER_RES);
         lv_obj_set_pos(visual_alarm_overlay, 0, 0);
@@ -1141,18 +1141,70 @@ static void start_visual_alarm(void) {
         lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_move_foreground(visual_alarm_overlay);  // Move to front
 
-        // Create slider to dismiss (on top of overlay)
-        visual_alarm_slider = lv_slider_create(lv_scr_act());
-        lv_obj_set_size(visual_alarm_slider, 280, 40);  // Increased height to fit label inside
-        lv_obj_align(visual_alarm_slider, LV_ALIGN_BOTTOM_MID, 0, -10);
+        // Determine which alarm triggered
+        const char *alarm_type = "Unknown";
+        uint32_t alarm_color = COLOR_RED;
+        if (current_alarm_state == ALARM_STATE_HIGH_ALARM) {
+            alarm_type = "HIGH";
+            alarm_color = current_alarm_settings.high_alarm.text_color;
+        } else if (current_alarm_state == ALARM_STATE_HIGH_WARNING) {
+            alarm_type = "HIGH WARN";
+            alarm_color = current_alarm_settings.high_warning.text_color;
+        } else if (current_alarm_state == ALARM_STATE_LOW_WARNING) {
+            alarm_type = "LOW WARN";
+            alarm_color = current_alarm_settings.low_warning.text_color;
+        } else if (current_alarm_state == ALARM_STATE_LOW_ALARM) {
+            alarm_type = "LOW";
+            alarm_color = current_alarm_settings.low_alarm.text_color;
+        }
+
+        // Create styled container overlay (matches brightness/snooze overlay style)
+        visual_alarm_container = lv_obj_create(lv_scr_act());
+        lv_obj_set_size(visual_alarm_container, 280, 200);
+        lv_obj_center(visual_alarm_container);
+        lv_obj_set_style_bg_color(visual_alarm_container, lv_color_hex(COLOR_CARD_BG), 0);
+        lv_obj_set_style_bg_opa(visual_alarm_container, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(visual_alarm_container, 2, 0);
+        lv_obj_set_style_border_color(visual_alarm_container, lv_color_hex(COLOR_RED), 0);  // Red border
+        lv_obj_set_style_radius(visual_alarm_container, 12, 0);
+        lv_obj_clear_flag(visual_alarm_container, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_move_foreground(visual_alarm_container);
+
+        // Title "ALARM" (top left)
+        lv_obj_t *title = lv_label_create(visual_alarm_container);
+        lv_label_set_text(title, "ALARM");
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(title, LV_ALIGN_TOP_LEFT, 10, 10);
+
+        // Alarm type (top right)
+        lv_obj_t *type_label = lv_label_create(visual_alarm_container);
+        lv_label_set_text(type_label, alarm_type);
+        lv_obj_set_style_text_font(type_label, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(type_label, lv_color_hex(alarm_color), 0);
+        lv_obj_align(type_label, LV_ALIGN_TOP_RIGHT, -10, 10);
+
+        // Current glucose value (centered, prominent)
+        lv_obj_t *glucose_label = lv_label_create(visual_alarm_container);
+        char glucose_text[32];
+        snprintf(glucose_text, sizeof(glucose_text), "%d mg/dL", current_glucose);
+        lv_label_set_text(glucose_label, glucose_text);
+        lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_color(glucose_label, lv_color_hex(alarm_color), 0);
+        lv_obj_align(glucose_label, LV_ALIGN_TOP_MID, 0, 45);
+
+        // Create slider to dismiss (inside container)
+        visual_alarm_slider = lv_slider_create(visual_alarm_container);
+        lv_obj_set_size(visual_alarm_slider, 240, 30);
+        lv_obj_align(visual_alarm_slider, LV_ALIGN_BOTTOM_MID, 0, -15);
         lv_slider_set_range(visual_alarm_slider, 0, 100);
         lv_slider_set_value(visual_alarm_slider, 0, LV_ANIM_OFF);
         lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0xFF0000), LV_PART_MAIN);
         lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
         lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_KNOB);
+        lv_obj_set_style_pad_all(visual_alarm_slider, 2, LV_PART_KNOB);  // Smaller knob padding
         lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
         lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_RELEASED, NULL);
-        lv_obj_move_foreground(visual_alarm_slider);  // Ensure slider is on top
 
         // Slider label INSIDE slider (white text)
         visual_alarm_slider_label = lv_label_create(visual_alarm_slider);
@@ -1160,7 +1212,6 @@ static void start_visual_alarm(void) {
         lv_obj_set_style_text_color(visual_alarm_slider_label, lv_color_white(), 0);
         lv_obj_set_style_text_font(visual_alarm_slider_label, &lv_font_montserrat_14, 0);
         lv_obj_align(visual_alarm_slider_label, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_move_foreground(visual_alarm_slider_label);  // Ensure label is on top
 
         lvgl_port_unlock();
     }
@@ -1196,11 +1247,12 @@ static void stop_visual_alarm(void) {
             lv_obj_del(visual_alarm_overlay);
             visual_alarm_overlay = NULL;
         }
-        if (visual_alarm_slider != NULL) {
-            // Label is a child of slider, so it gets deleted automatically
-            visual_alarm_slider_label = NULL;  // Set to NULL before deleting parent
-            lv_obj_del(visual_alarm_slider);
+        if (visual_alarm_container != NULL) {
+            // Deleting container also deletes slider and label (they are children)
+            lv_obj_del(visual_alarm_container);
+            visual_alarm_container = NULL;
             visual_alarm_slider = NULL;
+            visual_alarm_slider_label = NULL;
         }
         lvgl_port_unlock();
     }

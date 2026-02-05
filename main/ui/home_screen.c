@@ -82,6 +82,48 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
     lv_canvas_draw_rect(canvas, 8, 12, 4, 3, &rect_dsc);
 }
 
+// Draw custom battery icon with bars
+void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int bars) {
+    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+
+    // Battery body (rectangle)
+    lv_draw_rect_dsc_t body_dsc;
+    lv_draw_rect_dsc_init(&body_dsc);
+    body_dsc.bg_opa = LV_OPA_TRANSP;
+    body_dsc.border_color = lv_color_hex(color);
+    body_dsc.border_width = 2;
+    body_dsc.radius = 2;
+    lv_canvas_draw_rect(canvas, 2, 4, 20, 12, &body_dsc);
+
+    // Battery terminal (small rectangle on right)
+    lv_draw_rect_dsc_t terminal_dsc;
+    lv_draw_rect_dsc_init(&terminal_dsc);
+    terminal_dsc.bg_color = lv_color_hex(color);
+    terminal_dsc.bg_opa = LV_OPA_COVER;
+    terminal_dsc.border_width = 0;
+    terminal_dsc.radius = 1;
+    lv_canvas_draw_rect(canvas, 22, 8, 3, 4, &terminal_dsc);
+
+    // Draw bars inside battery (1-4 bars based on charge level)
+    lv_draw_rect_dsc_t bar_dsc;
+    lv_draw_rect_dsc_init(&bar_dsc);
+    bar_dsc.bg_color = lv_color_hex(color);
+    bar_dsc.bg_opa = LV_OPA_COVER;
+    bar_dsc.border_width = 0;
+    bar_dsc.radius = 0;
+
+    int bar_width = 3;
+    int bar_height = 8;
+    int bar_x_start = 5;
+    int bar_y = 6;
+    int bar_spacing = 1;
+
+    for (int i = 0; i < bars; i++) {
+        int x = bar_x_start + (i * (bar_width + bar_spacing));
+        lv_canvas_draw_rect(canvas, x, bar_y, bar_width, bar_height, &bar_dsc);
+    }
+}
+
 // Brightness control functions
 static void brightness_icon_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -322,19 +364,18 @@ void create_home_screen(void) {
     lv_obj_add_style(right_card, &style_card, 0);
     lv_obj_clear_flag(right_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Battery icon (top left corner)
+    // Battery icon (kept for compatibility - not displayed)
     battery_icon = lv_label_create(right_card);
-    lv_label_set_text(battery_icon, LV_SYMBOL_BATTERY_FULL);
-    lv_obj_set_style_text_font(battery_icon, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(battery_icon, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_align(battery_icon, LV_ALIGN_TOP_LEFT, 2, 2);
+    lv_label_set_text(battery_icon, "");
+    lv_obj_add_flag(battery_icon, LV_OBJ_FLAG_HIDDEN);
 
-    // Battery percent (to the right of icon, 4px spacing)
-    battery_percent_label = lv_label_create(right_card);
-    lv_label_set_text(battery_percent_label, "100%");
-    lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
+    // Battery canvas - custom drawn battery with bars
+    static lv_color_t canvas_buf_battery[LV_CANVAS_BUF_SIZE_TRUE_COLOR(26, 20)];
+    battery_canvas = lv_canvas_create(right_card);
+    lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 26, 20, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(battery_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    draw_battery_icon(battery_canvas, COLOR_GREEN, 4);  // Start with 4 bars (full)
+    lv_obj_align(battery_canvas, LV_ALIGN_TOP_LEFT, 2, 0);
 
     // Brightness icon (top center, shifted right) - custom lightbulb in clickable button
     lv_obj_t *brightness_btn = lv_btn_create(right_card);

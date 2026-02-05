@@ -303,40 +303,71 @@ void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_
 }
 
 void create_alarm_snooze_screen(void) {
-    screen_alarm_snooze = lv_obj_create(NULL);
-    lv_obj_add_style(screen_alarm_snooze, &style_bg, 0);
+    // Create overlay on home screen (matches brightness overlay style)
+    screen_alarm_snooze = lv_obj_create(screen_home);
+    lv_obj_set_size(screen_alarm_snooze, 280, 200);
+    lv_obj_center(screen_alarm_snooze);
+    lv_obj_set_style_bg_color(screen_alarm_snooze, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(screen_alarm_snooze, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(screen_alarm_snooze, 2, 0);
+    lv_obj_set_style_border_color(screen_alarm_snooze, lv_color_hex(COLOR_RED), 0);  // Red border for alarm
+    lv_obj_set_style_radius(screen_alarm_snooze, 12, 0);
+    lv_obj_clear_flag(screen_alarm_snooze, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Header
-    lv_obj_t *header = lv_label_create(screen_alarm_snooze);
-    lv_label_set_text(header, "Alarm Alert");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+    // Title "ALARM" (top left, like brightness overlay)
+    lv_obj_t *title = lv_label_create(screen_alarm_snooze);
+    lv_label_set_text(title, "ALARM");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 10, 10);
 
-    // Current glucose value
+    // Determine which alarm triggered
+    const char *alarm_type = "Unknown";
+    uint32_t alarm_color = COLOR_RED;
+    if (current_alarm_state == ALARM_STATE_HIGH_ALARM) {
+        alarm_type = "HIGH";
+        alarm_color = current_alarm_settings.high_alarm.text_color;
+    } else if (current_alarm_state == ALARM_STATE_HIGH_WARNING) {
+        alarm_type = "HIGH WARN";
+        alarm_color = current_alarm_settings.high_warning.text_color;
+    } else if (current_alarm_state == ALARM_STATE_LOW_WARNING) {
+        alarm_type = "LOW WARN";
+        alarm_color = current_alarm_settings.low_warning.text_color;
+    } else if (current_alarm_state == ALARM_STATE_LOW_ALARM) {
+        alarm_type = "LOW";
+        alarm_color = current_alarm_settings.low_alarm.text_color;
+    }
+
+    // Alarm type (top right, like brightness percentage)
+    lv_obj_t *type_label = lv_label_create(screen_alarm_snooze);
+    lv_label_set_text(type_label, alarm_type);
+    lv_obj_set_style_text_font(type_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(type_label, lv_color_hex(alarm_color), 0);
+    lv_obj_align(type_label, LV_ALIGN_TOP_RIGHT, -10, 10);
+
+    // Current glucose value (centered, prominent)
     lv_obj_t *glucose_label = lv_label_create(screen_alarm_snooze);
     char glucose_text[32];
     snprintf(glucose_text, sizeof(glucose_text), "%d mg/dL", current_glucose);
     lv_label_set_text(glucose_label, glucose_text);
-    lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(glucose_label, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(glucose_label, lv_color_hex(alarm_color), 0);
     lv_obj_align(glucose_label, LV_ALIGN_TOP_MID, 0, 40);
 
-    // Snooze label
-    lv_obj_t *snooze_label = lv_label_create(screen_alarm_snooze);
-    lv_label_set_text(snooze_label, "Snooze for:");
-    lv_obj_set_style_text_font(snooze_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(snooze_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(snooze_label, LV_ALIGN_TOP_MID, 0, 100);
-
-    // Snooze buttons in a row
+    // Snooze buttons (4 in a row, centered as a group, closer to glucose value)
     int snooze_times[] = {5, 10, 15, 30};
+    int button_width = 55;  // Slightly smaller buttons
+
+    // Calculate x positions relative to center for perfect centering
+    // Button centers: -90, -30, +30, +90 from center
+    int x_offsets[] = {-90, -30, 30, 90};
+
     for (int i = 0; i < 4; i++) {
         lv_obj_t *btn = lv_btn_create(screen_alarm_snooze);
-        lv_obj_set_size(btn, 70, 35);
-        lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 10 + (i * 75), 125);
-        lv_obj_add_style(btn, &style_card, 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x007AFF), 0);  // Blue
+        lv_obj_set_size(btn, button_width, 30);
+        lv_obj_align(btn, LV_ALIGN_TOP_MID, x_offsets[i], 90);  // Centered from middle
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x3B82F6), 0);  // Blue
+        lv_obj_set_style_radius(btn, 6, 0);
 
         lv_obj_t *label = lv_label_create(btn);
         char text[16];
@@ -349,15 +380,15 @@ void create_alarm_snooze_screen(void) {
         lv_obj_add_event_cb(btn, alarm_snooze_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)snooze_times[i]);
     }
 
-    // Disarm button (snooze for 3 hours)
+    // Dismiss button (bottom, full width)
     lv_obj_t *dismiss_btn = lv_btn_create(screen_alarm_snooze);
-    lv_obj_set_size(dismiss_btn, 300, 35);
+    lv_obj_set_size(dismiss_btn, 260, 35);
     lv_obj_align(dismiss_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_add_style(dismiss_btn, &style_card, 0);
     lv_obj_set_style_bg_color(dismiss_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_radius(dismiss_btn, 8, 0);
 
     lv_obj_t *dismiss_label = lv_label_create(dismiss_btn);
-    lv_label_set_text(dismiss_label, "Disarm All Alarms (3 Hours)");
+    lv_label_set_text(dismiss_label, "Dismiss (3 Hours)");
     lv_obj_set_style_text_font(dismiss_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(dismiss_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(dismiss_label);

@@ -7,6 +7,7 @@
 #include "battery.h"
 #include "buzzer.h"
 #include "shared_state.h"
+#include "ui/home_screen.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -127,19 +128,16 @@ static void battery_flash_timer_cb(lv_timer_t *timer) {
     // Flash battery icon red when battery is at 10%
     static bool flash_state = false;
 
-    if (battery_icon != NULL && lvgl_port_lock(0)) {
-        if (flash_state) {
-            lv_obj_set_style_text_color(battery_icon, lv_color_hex(COLOR_RED), 0);
-        } else {
-            lv_obj_set_style_text_color(battery_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        }
+    if (battery_canvas != NULL && lvgl_port_lock(0)) {
+        uint32_t color = flash_state ? COLOR_RED : COLOR_TEXT_WHITE;
+        draw_battery_icon(battery_canvas, color, 1);  // 1 bar for low battery
         flash_state = !flash_state;
         lvgl_port_unlock();
     }
 }
 
 void update_battery_display(void) {
-    if (battery_icon == NULL || battery_percent_label == NULL) {
+    if (battery_canvas == NULL) {
         return;  // UI not initialized yet
     }
 
@@ -147,37 +145,32 @@ void update_battery_display(void) {
         return;
     }
 
-    // Update battery percent label
-    char percent_str[8];
-    snprintf(percent_str, sizeof(percent_str), "%d%%", battery_percent);
-    lv_label_set_text(battery_percent_label, percent_str);
-
-    // Update battery icon based on level
-    const char *icon;
-    uint32_t color;
-
-    if (battery_percent >= 90) {
-        icon = LV_SYMBOL_BATTERY_FULL;
-        color = COLOR_GREEN;
-    } else if (battery_percent >= 60) {
-        icon = LV_SYMBOL_BATTERY_3;
-        color = COLOR_TEXT_WHITE;
-    } else if (battery_percent >= 30) {
-        icon = LV_SYMBOL_BATTERY_2;
-        color = COLOR_ORANGE;
-    } else if (battery_percent >= 10) {
-        icon = LV_SYMBOL_BATTERY_1;
-        color = COLOR_ORANGE;
+    // Determine number of bars based on percentage (1-4 bars)
+    int bars;
+    if (battery_percent >= 75) {
+        bars = 4;
+    } else if (battery_percent >= 50) {
+        bars = 3;
+    } else if (battery_percent >= 25) {
+        bars = 2;
     } else {
-        icon = LV_SYMBOL_BATTERY_EMPTY;
-        color = COLOR_RED;  // Will flash via timer
+        bars = 1;
     }
 
-    lv_label_set_text(battery_icon, icon);
+    // Determine color based on percentage
+    uint32_t color;
+    if (battery_percent >= 80) {
+        color = COLOR_GREEN;  // Green for 80%+
+    } else if (battery_percent >= 20) {
+        color = COLOR_ORANGE;  // Amber/Orange for 20-80%
+    } else {
+        color = COLOR_RED;  // Red for 0-20% (will flash if < 10%)
+    }
 
-    // Only set color if not flashing (< 10%)
+    // Redraw battery icon with current bars and color
+    // Only redraw with color if not flashing (< 10%)
     if (battery_percent >= 10) {
-        lv_obj_set_style_text_color(battery_icon, lv_color_hex(color), 0);
+        draw_battery_icon(battery_canvas, color, bars);
     }
 
     lvgl_port_unlock();

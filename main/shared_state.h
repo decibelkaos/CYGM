@@ -185,7 +185,7 @@ extern float battery_voltage;
 extern int battery_percent;
 extern bool battery_low_warning_shown;
 extern lv_obj_t *battery_icon;
-extern lv_obj_t *battery_percent_label;
+extern lv_obj_t *battery_canvas;
 extern lv_timer_t *battery_flash_timer;
 
 // ==================== Brightness Control ====================
