@@ -132,6 +132,11 @@ extern volatile uint8_t led_breathe_r;
 extern volatile uint8_t led_breathe_g;
 extern volatile uint8_t led_breathe_b;
 
+// ==================== Background Task Control ====================
+
+extern bool home_screen_active;       // True when home screen is displayed
+extern bool pause_background_tasks;   // Set to true to pause Dexcom/Weather fetching
+
 // ==================== UI Screens ====================
 
 extern lv_obj_t *screen_splash;

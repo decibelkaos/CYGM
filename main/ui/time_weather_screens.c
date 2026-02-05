@@ -474,6 +474,12 @@ void create_zipcode_entry_screen(void) {
 }
 
 void create_time_weather_settings_screen(void) {
+    // Delete old screen if it exists
+    if (screen_time_weather_settings != NULL) {
+        lv_obj_del(screen_time_weather_settings);
+        screen_time_weather_settings = NULL;
+    }
+
     screen_time_weather_settings = lv_obj_create(NULL);
     lv_obj_add_style(screen_time_weather_settings, &style_bg, 0);
 
@@ -484,14 +490,11 @@ void create_time_weather_settings_screen(void) {
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button
+    // Back button (matching Settings screen style)
     lv_obj_t *back_btn = lv_btn_create(screen_time_weather_settings);
     lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_radius(back_btn, 8, 0);
-    lv_obj_set_style_border_width(back_btn, 0, 0);
-    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_add_style(back_btn, &style_card, 0);
 
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);

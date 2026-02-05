@@ -66,6 +66,11 @@ void ui_task_core1(void *pvParameters) {
     // Switch to home screen
     lv_scr_load(screen_home);
 
+    // Mark home screen as active - allow background tasks to run
+    home_screen_active = true;
+    pause_background_tasks = false;
+    ESP_LOGI(TAG, "Home screen loaded - background tasks enabled");
+
     // Stop WiFi boot blink when home screen loads
     led_stop_wifi_boot_blink();
 
@@ -212,15 +217,26 @@ void wifi_task_core0(void *pvParameters) {
                                     update_glucose_display();
                                 }
 
+                                // CRITICAL: Close persistent Dexcom SSL client to free memory for weather
+                                ESP_LOGI(TAG, "Closing Dexcom persistent client to free SSL memory");
+                                dexcom_close_persistent_client();
+                                ESP_LOGI(TAG, "Free heap after Dexcom cleanup: %lu bytes", esp_get_free_heap_size());
+
                                 // Start weather task (uses HTTP - no SSL overhead!)
                                 if (weather_task_handle == NULL) {
                                     ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
                                     xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 1, &weather_task_handle);
                                 }
 
+                                // Wait for weather to complete first fetch before starting glucose task
+                                // This prevents both tasks from running simultaneously and competing for memory
+                                ESP_LOGI(TAG, "Waiting 30 seconds for weather to complete first fetch...");
+                                vTaskDelay(pdMS_TO_TICKS(30000));  // 30 seconds (weather waits 15s + fetch time)
+
                                 // Start glucose update task (90 second periodic fetches)
                                 if (glucose_task_handle == NULL) {
                                     ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
+                                    ESP_LOGI(TAG, "Free heap before starting glucose task: %lu bytes", esp_get_free_heap_size());
                                     xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
                                 }
 

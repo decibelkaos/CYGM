@@ -765,6 +765,13 @@ void weather_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
 
     while (1) {
+        // Check if background tasks are paused (not on home screen)
+        if (pause_background_tasks) {
+            ESP_LOGI(TAG, "[Weather Task] Paused - not on home screen (waiting 10s)");
+            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+            continue;
+        }
+
         // Local database lookup - no need to manage Dexcom client memory
 
         if (wifi_manager_is_connected() && strlen(user_zipcode) > 0) {

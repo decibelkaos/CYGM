@@ -144,6 +144,10 @@ TaskHandle_t glucose_task_handle = NULL;
 // LED breathing (disabled to save power - variables kept for future use)
 volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
 
+// Background Task Control
+bool home_screen_active = false;       // True when home screen is displayed
+bool pause_background_tasks = false;   // Pause Dexcom/Weather when not on home screen
+
 // UI Screens
 lv_obj_t *screen_splash = NULL;
 lv_obj_t *screen_home = NULL;
@@ -1359,6 +1363,13 @@ void glucose_update_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(90000));  // 90 seconds
 
     while (1) {
+        // Check if background tasks are paused (not on home screen)
+        if (pause_background_tasks) {
+            ESP_LOGI(TAG, "[Glucose Task] Paused - not on home screen (waiting 10s)");
+            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+            continue;
+        }
+
         // Only fetch if authenticated
         bool is_auth = dexcom_is_authenticated();
         ESP_LOGI(TAG, "[Glucose Task] Auth status: %s, Free heap: %lu bytes",
@@ -1366,6 +1377,22 @@ void glucose_update_task(void *pvParameters) {
                  esp_get_free_heap_size());
 
         if (is_auth) {
+            // Check if we have enough memory for SSL connection (~60KB minimum)
+            size_t free_heap = esp_get_free_heap_size();
+            if (free_heap < 60000) {
+                ESP_LOGE(TAG, "Insufficient memory for SSL connection: %lu bytes (need 60KB minimum)", free_heap);
+                ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+
+                // Show error LED
+                led_start_error_blink();
+                vTaskDelay(pdMS_TO_TICKS(5000));
+                led_stop_error_blink();
+
+                // Wait and try again
+                vTaskDelay(pdMS_TO_TICKS(90000));
+                continue;
+            }
+
             dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
             ESP_LOGI(TAG, "Fetching periodic glucose reading...");
 
@@ -1423,6 +1450,11 @@ void glucose_update_task(void *pvParameters) {
 
                 // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
             }
+
+            // CRITICAL: Close persistent client to free SSL memory (~40KB)
+            ESP_LOGI(TAG, "Closing Dexcom persistent client to free memory");
+            dexcom_close_persistent_client();
+            ESP_LOGI(TAG, "Free heap after cleanup: %lu bytes", esp_get_free_heap_size());
         } else {
             ESP_LOGW(TAG, "Not authenticated - skipping glucose fetch");
         }
@@ -1502,6 +1534,12 @@ void menu_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Settings button clicked - switching to menu screen");
+
+        // Pause background tasks when leaving home screen
+        home_screen_active = false;
+        pause_background_tasks = true;
+        ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
+
         if (lvgl_port_lock(0)) {
             lv_scr_load(screen_menu);
             lvgl_port_unlock();
@@ -1513,6 +1551,12 @@ void back_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Back button clicked - returning to home screen");
+
+        // Resume background tasks when returning to home screen
+        home_screen_active = true;
+        pause_background_tasks = false;
+        ESP_LOGI(TAG, "Background tasks resumed (returned to home screen)");
+
         if (lvgl_port_lock(0)) {
             lv_scr_load(screen_home);
             lvgl_port_unlock();
