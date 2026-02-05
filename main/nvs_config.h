@@ -39,17 +39,27 @@ typedef struct {
 // Initialize NVS
 esp_err_t nvs_config_init(void);
 
-// Save WiFi credentials to NVS
+// Maximum number of saved WiFi networks
+#define MAX_SAVED_WIFI_NETWORKS 3
+
+// Save WiFi credentials to NVS (legacy - saves as first network)
 esp_err_t nvs_save_wifi_credentials(const char *ssid, const char *password);
 
-// Load WiFi credentials from NVS
+// Load WiFi credentials from NVS (legacy - loads first network)
 esp_err_t nvs_load_wifi_credentials(wifi_credentials_t *creds);
 
-// Check if WiFi credentials exist in NVS
+// Check if WiFi credentials exist in NVS (legacy - checks if any networks saved)
 bool nvs_has_wifi_credentials(void);
 
-// Clear WiFi credentials from NVS
+// Clear WiFi credentials from NVS (legacy - clears all networks)
 esp_err_t nvs_clear_wifi_credentials(void);
+
+// Multi-network WiFi functions
+esp_err_t nvs_add_wifi_network(const char *ssid, const char *password);  // Add or update network (max 3)
+esp_err_t nvs_remove_wifi_network(const char *ssid);  // Remove network by SSID
+esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *count);  // Get all saved networks
+uint8_t nvs_get_saved_wifi_count(void);  // Get number of saved networks
+bool nvs_is_wifi_saved(const char *ssid);  // Check if specific SSID is saved
 
 // Save time settings to NVS
 esp_err_t nvs_save_time_settings(const char *timezone, bool dst_enabled, bool format_24hr);

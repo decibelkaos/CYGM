@@ -32,6 +32,22 @@ void wifi_scan_task(void *pvParameters);
  */
 void wifi_scan_and_show_networks(void);
 
+/**
+ * Show WiFi scanning overlay (with animation)
+ */
+void show_wifi_scanning_overlay(void);
+
+/**
+ * Hide WiFi scanning overlay
+ */
+void hide_wifi_scanning_overlay(void);
+
+/**
+ * Show WiFi removal confirmation overlay with slider
+ * @param ssid SSID of network to remove
+ */
+void show_wifi_removal_overlay(const char *ssid);
+
 #ifdef __cplusplus
 }
 #endif

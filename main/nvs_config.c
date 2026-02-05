@@ -39,86 +39,31 @@ esp_err_t nvs_config_init(void) {
 }
 
 esp_err_t nvs_save_wifi_credentials(const char *ssid, const char *password) {
-    nvs_handle_t nvs_handle;
-    esp_err_t ret;
-
-    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    // Save SSID
-    ret = nvs_set_str(nvs_handle, NVS_SSID_KEY, ssid);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save SSID: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Save password
-    ret = nvs_set_str(nvs_handle, NVS_PASSWORD_KEY, password);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save password: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Commit changes
-    ret = nvs_commit(nvs_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "WiFi credentials saved to NVS");
-    }
-
-    nvs_close(nvs_handle);
-    return ret;
+    // Legacy function - now uses multi-network storage
+    return nvs_add_wifi_network(ssid, password);
 }
 
 esp_err_t nvs_load_wifi_credentials(wifi_credentials_t *creds) {
-    nvs_handle_t nvs_handle;
-    esp_err_t ret;
-    size_t ssid_len = MAX_SSID_LEN;
-    size_t pass_len = MAX_PASSWORD_LEN;
-
+    // Legacy function - loads first saved network
     if (creds == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
-    if (ret != ESP_OK) {
-        // Don't warn on first boot when credentials don't exist yet
-        if (ret != ESP_ERR_NVS_NOT_FOUND) {
-            ESP_LOGW(TAG, "Failed to open NVS for reading: %s", esp_err_to_name(ret));
-        }
-        return ret;
+    uint8_t count = 0;
+    wifi_credentials_t networks[MAX_SAVED_WIFI_NETWORKS];
+    esp_err_t ret = nvs_get_saved_wifi_networks(networks, &count);
+
+    if (ret == ESP_OK && count > 0) {
+        memcpy(creds, &networks[0], sizeof(wifi_credentials_t));
+        ESP_LOGI(TAG, "WiFi credentials loaded from NVS (SSID: %s)", creds->ssid);
+        return ESP_OK;
     }
 
-    // Load SSID
-    ret = nvs_get_str(nvs_handle, NVS_SSID_KEY, creds->ssid, &ssid_len);
-    if (ret != ESP_OK) {
-        // Expected on first boot, no need to warn
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Load password
-    ret = nvs_get_str(nvs_handle, NVS_PASSWORD_KEY, creds->password, &pass_len);
-    if (ret != ESP_OK) {
-        // Expected on first boot, no need to warn
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    ESP_LOGI(TAG, "WiFi credentials loaded from NVS (SSID: %s)", creds->ssid);
-    nvs_close(nvs_handle);
-    return ESP_OK;
+    return ESP_ERR_NOT_FOUND;
 }
 
 bool nvs_has_wifi_credentials(void) {
-    wifi_credentials_t creds;
-    return (nvs_load_wifi_credentials(&creds) == ESP_OK);
+    return (nvs_get_saved_wifi_count() > 0);
 }
 
 esp_err_t nvs_clear_wifi_credentials(void) {
@@ -130,12 +75,300 @@ esp_err_t nvs_clear_wifi_credentials(void) {
         return ret;
     }
 
+    // Clear legacy keys
     nvs_erase_key(nvs_handle, NVS_SSID_KEY);
     nvs_erase_key(nvs_handle, NVS_PASSWORD_KEY);
+
+    // Clear multi-network keys
+    nvs_erase_key(nvs_handle, "wifi_count");
+    for (int i = 0; i < MAX_SAVED_WIFI_NETWORKS; i++) {
+        char ssid_key[16], pass_key[16];
+        snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
+        snprintf(pass_key, sizeof(pass_key), "wifi_%d_pass", i);
+        nvs_erase_key(nvs_handle, ssid_key);
+        nvs_erase_key(nvs_handle, pass_key);
+    }
+
     ret = nvs_commit(nvs_handle);
 
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "WiFi credentials cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+// ==================== Multi-Network WiFi Functions ====================
+
+// Get number of saved WiFi networks
+uint8_t nvs_get_saved_wifi_count(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    uint8_t count = 0;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return 0;
+    }
+
+    ret = nvs_get_u8(nvs_handle, "wifi_count", &count);
+    nvs_close(nvs_handle);
+
+    return (ret == ESP_OK) ? count : 0;
+}
+
+// Check if specific SSID is saved
+bool nvs_is_wifi_saved(const char *ssid) {
+    if (ssid == NULL) {
+        return false;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return false;
+    }
+
+    uint8_t count = 0;
+    ret = nvs_get_u8(nvs_handle, "wifi_count", &count);
+    if (ret != ESP_OK || count == 0) {
+        nvs_close(nvs_handle);
+        return false;
+    }
+
+    // Check each saved network
+    for (int i = 0; i < count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
+        char ssid_key[16];
+        char saved_ssid[MAX_SSID_LEN];
+        size_t ssid_len = MAX_SSID_LEN;
+
+        snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
+        ret = nvs_get_str(nvs_handle, ssid_key, saved_ssid, &ssid_len);
+
+        if (ret == ESP_OK && strcmp(saved_ssid, ssid) == 0) {
+            nvs_close(nvs_handle);
+            return true;
+        }
+    }
+
+    nvs_close(nvs_handle);
+    return false;
+}
+
+// Get all saved WiFi networks
+esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *count) {
+    if (networks == NULL || count == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *count = 0;
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    uint8_t saved_count = 0;
+    ret = nvs_get_u8(nvs_handle, "wifi_count", &saved_count);
+    if (ret != ESP_OK || saved_count == 0) {
+        nvs_close(nvs_handle);
+        return (ret == ESP_OK) ? ESP_OK : ret;
+    }
+
+    // Load each saved network
+    for (int i = 0; i < saved_count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
+        char ssid_key[16], pass_key[16];
+        size_t ssid_len = MAX_SSID_LEN;
+        size_t pass_len = MAX_PASSWORD_LEN;
+
+        snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
+        snprintf(pass_key, sizeof(pass_key), "wifi_%d_pass", i);
+
+        ret = nvs_get_str(nvs_handle, ssid_key, networks[i].ssid, &ssid_len);
+        if (ret != ESP_OK) continue;
+
+        ret = nvs_get_str(nvs_handle, pass_key, networks[i].password, &pass_len);
+        if (ret != ESP_OK) continue;
+
+        (*count)++;
+    }
+
+    nvs_close(nvs_handle);
+    ESP_LOGI(TAG, "Loaded %d saved WiFi networks from NVS", *count);
+    return ESP_OK;
+}
+
+// Add or update WiFi network (max 3)
+esp_err_t nvs_add_wifi_network(const char *ssid, const char *password) {
+    if (ssid == NULL || password == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Get current count
+    uint8_t count = 0;
+    nvs_get_u8(nvs_handle, "wifi_count", &count);
+
+    // Check if network already exists (update password)
+    int existing_index = -1;
+    for (int i = 0; i < count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
+        char ssid_key[16];
+        char saved_ssid[MAX_SSID_LEN];
+        size_t ssid_len = MAX_SSID_LEN;
+
+        snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
+        ret = nvs_get_str(nvs_handle, ssid_key, saved_ssid, &ssid_len);
+
+        if (ret == ESP_OK && strcmp(saved_ssid, ssid) == 0) {
+            existing_index = i;
+            break;
+        }
+    }
+
+    // If network exists, update it
+    if (existing_index >= 0) {
+        char pass_key[16];
+        snprintf(pass_key, sizeof(pass_key), "wifi_%d_pass", existing_index);
+        ret = nvs_set_str(nvs_handle, pass_key, password);
+        if (ret == ESP_OK) {
+            ret = nvs_commit(nvs_handle);
+            ESP_LOGI(TAG, "Updated WiFi network: %s", ssid);
+        }
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // If we're at max capacity, return error
+    if (count >= MAX_SAVED_WIFI_NETWORKS) {
+        ESP_LOGW(TAG, "Cannot add WiFi network - maximum %d networks reached", MAX_SAVED_WIFI_NETWORKS);
+        nvs_close(nvs_handle);
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Add new network
+    char ssid_key[16], pass_key[16];
+    snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", count);
+    snprintf(pass_key, sizeof(pass_key), "wifi_%d_pass", count);
+
+    ret = nvs_set_str(nvs_handle, ssid_key, ssid);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save SSID: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, pass_key, password);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save password: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Increment count
+    count++;
+    ret = nvs_set_u8(nvs_handle, "wifi_count", count);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save WiFi count: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Added WiFi network: %s (%d/%d)", ssid, count, MAX_SAVED_WIFI_NETWORKS);
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+// Remove WiFi network by SSID
+esp_err_t nvs_remove_wifi_network(const char *ssid) {
+    if (ssid == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Get current count
+    uint8_t count = 0;
+    ret = nvs_get_u8(nvs_handle, "wifi_count", &count);
+    if (ret != ESP_OK || count == 0) {
+        nvs_close(nvs_handle);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    // Find the network to remove
+    int remove_index = -1;
+    for (int i = 0; i < count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
+        char ssid_key[16];
+        char saved_ssid[MAX_SSID_LEN];
+        size_t ssid_len = MAX_SSID_LEN;
+
+        snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
+        ret = nvs_get_str(nvs_handle, ssid_key, saved_ssid, &ssid_len);
+
+        if (ret == ESP_OK && strcmp(saved_ssid, ssid) == 0) {
+            remove_index = i;
+            break;
+        }
+    }
+
+    if (remove_index < 0) {
+        nvs_close(nvs_handle);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    // Shift remaining networks down to fill the gap
+    for (int i = remove_index; i < count - 1; i++) {
+        char src_ssid_key[16], src_pass_key[16];
+        char dst_ssid_key[16], dst_pass_key[16];
+        char temp_ssid[MAX_SSID_LEN], temp_pass[MAX_PASSWORD_LEN];
+        size_t ssid_len = MAX_SSID_LEN;
+        size_t pass_len = MAX_PASSWORD_LEN;
+
+        // Read from next slot
+        snprintf(src_ssid_key, sizeof(src_ssid_key), "wifi_%d_ssid", i + 1);
+        snprintf(src_pass_key, sizeof(src_pass_key), "wifi_%d_pass", i + 1);
+
+        nvs_get_str(nvs_handle, src_ssid_key, temp_ssid, &ssid_len);
+        nvs_get_str(nvs_handle, src_pass_key, temp_pass, &pass_len);
+
+        // Write to current slot
+        snprintf(dst_ssid_key, sizeof(dst_ssid_key), "wifi_%d_ssid", i);
+        snprintf(dst_pass_key, sizeof(dst_pass_key), "wifi_%d_pass", i);
+
+        nvs_set_str(nvs_handle, dst_ssid_key, temp_ssid);
+        nvs_set_str(nvs_handle, dst_pass_key, temp_pass);
+    }
+
+    // Erase the last slot
+    char last_ssid_key[16], last_pass_key[16];
+    snprintf(last_ssid_key, sizeof(last_ssid_key), "wifi_%d_ssid", count - 1);
+    snprintf(last_pass_key, sizeof(last_pass_key), "wifi_%d_pass", count - 1);
+    nvs_erase_key(nvs_handle, last_ssid_key);
+    nvs_erase_key(nvs_handle, last_pass_key);
+
+    // Decrement count
+    count--;
+    nvs_set_u8(nvs_handle, "wifi_count", count);
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Removed WiFi network: %s (%d remaining)", ssid, count);
     }
 
     nvs_close(nvs_handle);

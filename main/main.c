@@ -1673,57 +1673,16 @@ void menu_item_event_cb(lv_event_t *e) {
                 ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes (internal: %lu)",
                          esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
-                // Show scanning message with animated loading bar
+                // Load WiFi list screen
                 if (lvgl_port_lock(0)) {
                     lv_scr_load(screen_wifi_list);
-                    lv_obj_clean(screen_wifi_list);
-
-                    // Back button
-                    lv_obj_t *back_btn = lv_btn_create(screen_wifi_list);
-                    lv_obj_set_size(back_btn, 50, 30);
-                    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 8);
-                    lv_obj_set_style_bg_color(back_btn, lv_color_hex(COLOR_CARD_BG), 0);
-                    lv_obj_set_style_radius(back_btn, 8, 0);
-                    lv_obj_set_style_border_width(back_btn, 0, 0);
-                    lv_obj_set_style_shadow_width(back_btn, 0, 0);
-
-                    lv_obj_t *back_lbl = lv_label_create(back_btn);
-                    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
-                    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-                    lv_obj_center(back_lbl);
-                    lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
-
-                    // "Scanning..." text
-                    lv_obj_t *scanning = lv_label_create(screen_wifi_list);
-                    lv_label_set_text(scanning, "Scanning...");
-                    lv_obj_set_style_text_font(scanning, &lv_font_montserrat_24, 0);
-                    lv_obj_set_style_text_color(scanning, lv_color_hex(COLOR_TEXT_WHITE), 0);
-                    lv_obj_align(scanning, LV_ALIGN_CENTER, 0, -30);
-
-                    // Animated loading bar below text
-                    lv_obj_t *bar = lv_bar_create(screen_wifi_list);
-                    lv_obj_set_size(bar, 200, 8);
-                    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 20);
-                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_CARD_BG), LV_PART_MAIN);
-                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                    lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
-                    lv_bar_set_range(bar, 0, 100);
-                    lv_bar_set_value(bar, 0, LV_ANIM_OFF);
-
-                    // Create animation for the bar
-                    lv_anim_t a;
-                    lv_anim_init(&a);
-                    lv_anim_set_var(&a, bar);
-                    lv_anim_set_values(&a, 0, 100);
-                    lv_anim_set_time(&a, 2000);
-                    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-                    lv_anim_set_exec_cb(&a, anim_bar_set_value);
-                    lv_anim_start(&a);
-
                     lvgl_port_unlock();
                 }
 
-                // Start WiFi scan in background task so animation can run
+                // Show scanning overlay on top of WiFi list screen
+                show_wifi_scanning_overlay();
+
+                // Start WiFi scan in background task - overlay will be hidden when done
                 xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
                 break;
             case 2:  // Time/Date/Weather Settings (combined)
