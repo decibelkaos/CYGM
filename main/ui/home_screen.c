@@ -22,6 +22,42 @@ static void brightness_slider_event_cb(lv_event_t *e);
 static void brightness_ok_event_cb(lv_event_t *e);
 static void create_brightness_overlay(void);
 static void close_brightness_overlay(void);
+static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color);
+
+// Draw custom lightbulb icon on canvas
+static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
+    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
+
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+    rect_dsc.bg_color = lv_color_hex(color);
+    rect_dsc.bg_opa = LV_OPA_COVER;
+    rect_dsc.border_width = 0;
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = lv_color_hex(color);
+    line_dsc.width = 2;
+
+    // Bulb (circle at top) - draw as filled circle
+    lv_draw_arc_dsc_t arc_dsc;
+    lv_draw_arc_dsc_init(&arc_dsc);
+    arc_dsc.color = lv_color_hex(color);
+    arc_dsc.width = 6;  // Thick arc to fill the circle
+
+    // Draw bulb outline (centered at 7, 5 with radius 4)
+    lv_point_t bulb_center = {7, 5};
+    for (int r = 1; r <= 4; r++) {
+        lv_canvas_draw_arc(canvas, bulb_center.x, bulb_center.y, r, 0, 360, &arc_dsc);
+    }
+
+    // Base rectangle (bulb socket)
+    rect_dsc.radius = 1;
+    lv_canvas_draw_rect(canvas, 5, 9, 4, 3, &rect_dsc);
+
+    // Bottom cap (wider)
+    lv_canvas_draw_rect(canvas, 4, 12, 6, 2, &rect_dsc);
+}
 
 // Brightness control functions
 static void brightness_icon_event_cb(lv_event_t *e) {
@@ -89,11 +125,11 @@ static void create_brightness_overlay(void) {
     lv_obj_set_style_text_color(brightness_value_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_align(brightness_value_label, LV_ALIGN_TOP_RIGHT, -10, 10);
 
-    // Brightness slider
+    // Brightness slider (1-100%, minimum 1%)
     brightness_slider = lv_slider_create(brightness_overlay);
     lv_obj_set_size(brightness_slider, 170, 12);  // Shrunk horizontally to keep knob inside
     lv_obj_align(brightness_slider, LV_ALIGN_TOP_MID, 0, 50);
-    lv_slider_set_range(brightness_slider, 0, 100);
+    lv_slider_set_range(brightness_slider, 1, 100);  // Minimum 1%, maximum 100%
     lv_slider_set_value(brightness_slider, screen_brightness_percent, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
@@ -273,11 +309,11 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(battery_percent_label, LV_ALIGN_TOP_LEFT, 20, 2);  // Icon width ~14px + 4px spacing
 
-    // Brightness icon (top center) - eye symbol for visibility/brightness
-    brightness_icon = lv_label_create(right_card);
-    lv_label_set_text(brightness_icon, LV_SYMBOL_EYE_OPEN);
-    lv_obj_set_style_text_font(brightness_icon, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(brightness_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    // Brightness icon (top center) - custom lightbulb
+    static lv_color_t brightness_icon_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(14, 14)];
+    brightness_icon = lv_canvas_create(right_card);
+    lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 14, 14, LV_IMG_CF_TRUE_COLOR);
+    draw_lightbulb_icon(brightness_icon, COLOR_ACCENT_BLUE);
     lv_obj_align(brightness_icon, LV_ALIGN_TOP_MID, 0, 2);
     lv_obj_add_flag(brightness_icon, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(brightness_icon, brightness_icon_event_cb, LV_EVENT_CLICKED, NULL);

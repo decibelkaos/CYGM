@@ -844,6 +844,10 @@ esp_err_t nvs_load_brightness(uint8_t *brightness_percent) {
         ESP_LOGW(TAG, "Brightness not found in NVS, using default 80%%");
         *brightness_percent = 80;  // Default brightness
     } else {
+        // Enforce minimum 1%
+        if (*brightness_percent < 1) {
+            *brightness_percent = 1;
+        }
         ESP_LOGI(TAG, "Brightness loaded from NVS: %d%%", *brightness_percent);
     }
 

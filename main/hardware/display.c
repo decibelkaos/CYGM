@@ -52,11 +52,15 @@ esp_err_t display_backlight_init(void) {
 }
 
 esp_err_t display_set_brightness(uint8_t brightness_percent) {
+    // Enforce minimum 1% and maximum 100%
+    if (brightness_percent < 1) {
+        brightness_percent = 1;
+    }
     if (brightness_percent > 100) {
         brightness_percent = 100;
     }
 
-    // Convert percentage to 8-bit duty cycle (0-255)
+    // Convert percentage to 8-bit duty cycle (3-255, where 3 = 1%)
     uint32_t duty = (brightness_percent * 255) / 100;
 
     esp_err_t ret = ledc_set_duty(LEDC_LOW_SPEED_MODE, LCD_BL_LEDC_CHANNEL, duty);
