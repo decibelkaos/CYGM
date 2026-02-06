@@ -10,7 +10,7 @@
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
-#include "postal_code_database.h"
+#include "geocoding_api.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -74,67 +74,11 @@ void load_weather_settings(void) {
             if (strlen(settings.location) > 0) {
                 strncpy(user_location, settings.location, sizeof(user_location) - 1);
                 user_location[sizeof(user_location) - 1] = '\0';
-                ESP_LOGI(TAG, "Using cached weather location: %s (%.4f, %.4f, zipcode: %s)",
-                         user_location, user_latitude, user_longitude, geocoded_zipcode);
-
-                // Auto-detect timezone from location (in case it was changed manually before)
-                // Extract state abbreviation from location (format: "City, ST")
-                char *comma = strrchr(user_location, ',');
-                if (comma != NULL && strlen(comma) > 2) {
-                    char state_abbr[3];
-                    strncpy(state_abbr, comma + 2, 2);  // Skip comma and space
-                    state_abbr[2] = '\0';
-
-                    // Map state abbreviation to full name
-                    const char *state_full = NULL;
-                    if (strcmp(state_abbr, "WA") == 0) state_full = "Washington";
-                    else if (strcmp(state_abbr, "CA") == 0) state_full = "California";
-                    else if (strcmp(state_abbr, "OR") == 0) state_full = "Oregon";
-                    else if (strcmp(state_abbr, "TX") == 0) state_full = "Texas";
-                    else if (strcmp(state_abbr, "NY") == 0) state_full = "New York";
-                    else if (strcmp(state_abbr, "FL") == 0) state_full = "Florida";
-                    else if (strcmp(state_abbr, "ME") == 0) state_full = "Maine";
-                    else if (strcmp(state_abbr, "IL") == 0) state_full = "Illinois";
-                    else if (strcmp(state_abbr, "PA") == 0) state_full = "Pennsylvania";
-                    else if (strcmp(state_abbr, "OH") == 0) state_full = "Ohio";
-                    else if (strcmp(state_abbr, "GA") == 0) state_full = "Georgia";
-                    else if (strcmp(state_abbr, "NC") == 0) state_full = "North Carolina";
-                    else if (strcmp(state_abbr, "MI") == 0) state_full = "Michigan";
-                    else if (strcmp(state_abbr, "NJ") == 0) state_full = "New Jersey";
-                    else if (strcmp(state_abbr, "VA") == 0) state_full = "Virginia";
-                    else if (strcmp(state_abbr, "AZ") == 0) state_full = "Arizona";
-                    else if (strcmp(state_abbr, "MA") == 0) state_full = "Massachusetts";
-                    else if (strcmp(state_abbr, "IN") == 0) state_full = "Indiana";
-                    else if (strcmp(state_abbr, "TN") == 0) state_full = "Tennessee";
-                    else if (strcmp(state_abbr, "MO") == 0) state_full = "Missouri";
-                    // Add more states as needed
-
-                    if (state_full != NULL) {
-                        const char *detected_tz = state_to_timezone(state_full);
-
-                        // Check if detected timezone differs from loaded timezone
-                        if (strcmp(detected_tz, user_timezone) != 0) {
-                            ESP_LOGI(TAG, "Timezone mismatch detected! Location '%s' suggests %s, but loaded %s",
-                                     user_location, detected_tz, user_timezone);
-                            ESP_LOGI(TAG, "Updating timezone to match location...");
-
-                            strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
-                            user_timezone[sizeof(user_timezone) - 1] = '\0';
-
-                            // Save and apply the corrected timezone
-                            nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
-                            const char *posix_tz = get_posix_timezone(user_timezone);
-                            setenv("TZ", posix_tz, 1);
-                            tzset();
-                            ESP_LOGI(TAG, "Timezone corrected to: %s", user_timezone);
-                        } else {
-                            ESP_LOGI(TAG, "Timezone matches location: %s", user_timezone);
-                        }
-                    }
-                }
+                ESP_LOGI(TAG, "Using cached location: %s (%.4f, %.4f)",
+                         user_location, user_latitude, user_longitude);
             } else {
-                ESP_LOGI(TAG, "Using cached weather coordinates: %.4f, %.4f (for zipcode: %s)",
-                         user_latitude, user_longitude, geocoded_zipcode);
+                ESP_LOGI(TAG, "Using cached coordinates: %.4f, %.4f",
+                         user_latitude, user_longitude);
             }
         }
 
@@ -212,35 +156,52 @@ const char* state_to_timezone(const char *state) {
     return "America/New_York";  // Eastern Time as default
 }
 esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
-    // LOCAL DATABASE LOOKUP - No SSL, No Internet Required, Instant!
-    ESP_LOGI(TAG, "Looking up postal code '%s' in local database...", zipcode);
+    // ONLINE GEOCODING - Uses Open-Meteo Geocoding API (free, worldwide)
+    ESP_LOGI(TAG, "Searching for location '%s' using online geocoding...", zipcode);
 
-    const postal_code_entry_t *entry = find_postal_code(zipcode);
-    if (entry == NULL) {
-        // Try fuzzy match for partial codes
-        entry = find_postal_code_fuzzy(zipcode);
+    geocode_result_t results[MAX_GEOCODE_RESULTS];
+    uint8_t result_count = 0;
+
+    esp_err_t err = geocoding_search(zipcode, results, &result_count);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Geocoding API request failed: %s", esp_err_to_name(err));
+        return err;
     }
 
-    if (entry != NULL) {
-        *lat = entry->latitude;
-        *lon = entry->longitude;
+    if (result_count == 0) {
+        ESP_LOGW(TAG, "No results found for: %s", zipcode);
+        return ESP_FAIL;
+    }
 
-        // Format location as "City, ST" (max 64 chars)
-        snprintf(user_location, sizeof(user_location), "%s, %s", entry->city, entry->state);
+    // Use first result (most relevant)
+    geocode_result_t *result = &results[0];
+    *lat = result->latitude;
+    *lon = result->longitude;
 
-        // Auto-detect timezone from state
-        const char *detected_tz = state_to_timezone(entry->state);
-        strncpy(user_timezone, detected_tz, sizeof(user_timezone) - 1);
+    // Format location name: "City, State" or "City, Country"
+    // Safely truncate strings to fit in user_location buffer (64 bytes)
+    if (result->admin1[0] != '\0') {
+        // Has state/province - limit to ~30 chars each
+        snprintf(user_location, sizeof(user_location), "%.30s, %.30s", result->name, result->admin1);
+    } else {
+        // No state, use country - limit to ~30 chars each
+        snprintf(user_location, sizeof(user_location), "%.30s, %.30s", result->name, result->country);
+    }
+
+    // Use timezone from geocoding result
+    if (result->timezone[0] != '\0') {
+        strncpy(user_timezone, result->timezone, sizeof(user_timezone) - 1);
         user_timezone[sizeof(user_timezone) - 1] = '\0';
-
-        ESP_LOGI(TAG, "Postal code %s -> %.4f, %.4f (%s, %s, %s) [Timezone: %s]",
-                 zipcode, *lat, *lon, entry->city, entry->state, entry->country, user_timezone);
-
-        return ESP_OK;
+    } else {
+        // Fallback to Eastern Time if no timezone provided
+        strncpy(user_timezone, "America/New_York", sizeof(user_timezone) - 1);
+        ESP_LOGW(TAG, "No timezone in result, using default: America/New_York");
     }
 
-    ESP_LOGW(TAG, "Postal code '%s' not found in local database", zipcode);
-    return ESP_FAIL;
+    ESP_LOGI(TAG, "Location '%s' -> %.4f, %.4f (%s, %s) [Timezone: %s]",
+             zipcode, *lat, *lon, result->name, result->country, user_timezone);
+
+    return ESP_OK;
 }
 
 // ===== COLOR PALETTE - Dark Blue Theme =====
@@ -773,7 +734,7 @@ void weather_update_task(void *pvParameters) {
             continue;
         }
 
-        // Local database lookup - no need to manage Dexcom client memory
+        // Online geocoding - uses Open-Meteo Geocoding API (free, worldwide coverage)
 
         if (wifi_manager_is_connected() && strlen(user_zipcode) > 0) {
             // Only geocode if:
@@ -784,15 +745,13 @@ void weather_update_task(void *pvParameters) {
 
             if (need_geocode) {
                 if (strcmp(user_zipcode, geocoded_zipcode) != 0) {
-                    ESP_LOGI(TAG, "Zipcode changed (%s -> %s), re-geocoding...", geocoded_zipcode, user_zipcode);
+                    ESP_LOGI(TAG, "Location changed (%s -> %s), re-geocoding...", geocoded_zipcode, user_zipcode);
                 } else {
-                    ESP_LOGI(TAG, "No cached coordinates - need to geocode zipcode: %s", user_zipcode);
+                    ESP_LOGI(TAG, "No cached coordinates - need to geocode location: %s", user_zipcode);
                 }
 
-                // No time sync needed for local database lookup!
-
-                // LOCAL DATABASE LOOKUP - No SSL, instant, no memory issues!
-                ESP_LOGI(TAG, "Looking up postal code in local database (instant, no SSL)...");
+                // ONLINE GEOCODING - Free API, worldwide coverage, includes timezone
+                ESP_LOGI(TAG, "Searching for location using Open-Meteo Geocoding API...");
                 esp_err_t geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
 
                 if (geocode_result == ESP_OK) {
@@ -809,26 +768,24 @@ void weather_update_task(void *pvParameters) {
                     update_time_display();
                     ESP_LOGI(TAG, "Time display updated with new timezone: %s", user_timezone);
 
-                    // Update geocoded zipcode tracker
+                    // Update geocoded location tracker
                     strncpy(geocoded_zipcode, user_zipcode, sizeof(geocoded_zipcode) - 1);
                     geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
 
-                    ESP_LOGI(TAG, "Coordinates and location for zipcode: %s", geocoded_zipcode);
-                    ESP_LOGI(TAG, "Location: %s (%.4f, %.4f)", user_location, user_latitude, user_longitude);
+                    ESP_LOGI(TAG, "Geocoded location: %s", geocoded_zipcode);
+                    ESP_LOGI(TAG, "Result: %s (%.4f, %.4f) [%s]", user_location, user_latitude, user_longitude, user_timezone);
 
-                    // Save location and coordinates to NVS (location already set from local database)
+                    // Save location, coordinates, and timezone to NVS (from geocoding API)
                     nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
 
                     // Update location label immediately
                     update_location_display();
                 } else {
-                    ESP_LOGW(TAG, "Geocoding failed after 3 attempts - skipping weather update this cycle");
+                    ESP_LOGW(TAG, "Online geocoding failed - skipping weather update this cycle");
                 }
             } else {
                 // Using cached coordinates - no geocoding needed
-                ESP_LOGI(TAG, "Using cached coordinates for zipcode %s (no geocoding needed)", geocoded_zipcode);
-
-                // Location name comes from cached NVS or from database lookup - no reverse geocoding needed!
+                ESP_LOGI(TAG, "Using cached coordinates for %s (no geocoding needed)", geocoded_zipcode);
                 ESP_LOGI(TAG, "Location: %s (%.4f, %.4f)", user_location, user_latitude, user_longitude);
             }
 

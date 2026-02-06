@@ -2,7 +2,8 @@
  * weather_system.h
  *
  * Weather data fetching and display module
- * Geocoding (zipcode to lat/lon), reverse geocoding, Open-Meteo API integration
+ * Worldwide location search using Open-Meteo Geocoding API (free, no API key)
+ * Weather forecasts from Open-Meteo Weather API
  */
 
 #ifndef FEATURES_WEATHER_SYSTEM_H
@@ -22,12 +23,14 @@ extern "C" {
 void load_weather_settings(void);
 
 /**
- * Convert US zipcode to latitude/longitude coordinates
- * Uses Nominatim (OpenStreetMap) geocoding API
- * @param zipcode US zipcode (5 or 9 digits)
+ * Search for location and get coordinates (worldwide)
+ * Uses Open-Meteo Geocoding API (free, no API key required)
+ * Accepts city names, postal codes, addresses (e.g., "Paris", "98092", "Tokyo, Japan")
+ * Also sets user_location and user_timezone from search result
+ * @param zipcode Search query (city name, postal code, or address)
  * @param lat Output latitude
  * @param lon Output longitude
- * @return ESP_OK on success
+ * @return ESP_OK on success, ESP_FAIL if no results found
  */
 esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon);
 
@@ -86,9 +89,10 @@ void weather_update_task(void *pvParameters);
 bool is_night_time(void);
 
 /**
- * Auto-detect timezone from US state or province name
- * @param state State or province name
- * @return IANA timezone string (e.g., "America/New_York")
+ * Auto-detect timezone from US state name (legacy fallback)
+ * Note: New geocoding API provides timezone directly, so this is rarely used
+ * @param state US state name (e.g., "Washington", "California")
+ * @return IANA timezone string (e.g., "America/Los_Angeles")
  */
 const char* state_to_timezone(const char *state);
 

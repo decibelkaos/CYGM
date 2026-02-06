@@ -1,0 +1,2388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYGM Firmware Flasher</title>
+    <meta name="description" content="Flash CYGM firmware to your ESP32-based CGM display directly from your browser. No software installation required.">
+
+    <!-- ESP Web Tools -->
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-deep: #0a0e17;
+            --bg-surface: #111827;
+            --bg-card: #1a2234;
+            --bg-elevated: #1f2b3f;
+            --accent-glucose: #22d3ee;
+            --accent-glow: rgba(34, 211, 238, 0.15);
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-dim: #64748b;
+            --border: #1e293b;
+            --border-accent: rgba(34, 211, 238, 0.2);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Subtle animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .page-wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+
+        /* ── Header ── */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .logo-mark {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 0 30px rgba(34, 211, 238, 0.3);
+        }
+
+        .logo-text {
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-glucose) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-subtitle {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            font-weight: 400;
+            line-height: 1.6;
+            max-width: 520px;
+            margin: 0 auto;
+        }
+
+        .header-subtitle strong {
+            color: var(--accent-glucose);
+            font-weight: 600;
+        }
+
+        /* ── Browser Support Banner ── */
+        .browser-notice {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent-orange);
+            border-radius: 8px;
+            padding: 14px 20px;
+            margin-bottom: 32px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .browser-notice .icon { font-size: 1.2rem; flex-shrink: 0; }
+
+        .browser-notice a {
+            color: var(--accent-glucose);
+            text-decoration: none;
+        }
+        .browser-notice a:hover { text-decoration: underline; }
+
+        /* ── Section Card ── */
+        .section-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .section-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-glucose), transparent);
+            opacity: 0.4;
+        }
+
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--accent-glucose);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title .step-num {
+            background: var(--accent-glucose);
+            color: var(--bg-deep);
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+
+        .expert-mode-btn {
+            margin-left: auto;
+            padding: 6px 14px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 6px;
+            color: var(--accent-blue);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .expert-mode-btn:hover {
+            background: rgba(59, 130, 246, 0.25);
+            border-color: var(--accent-blue);
+            transform: translateY(-1px);
+        }
+
+        /* ── Firmware Selector ── */
+        .version-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .version-dropdown {
+            position: relative;
+        }
+
+        .version-dropdown select {
+            width: 100%;
+            padding: 14px 48px 14px 16px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 500;
+            appearance: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .version-dropdown select:hover,
+        .version-dropdown select:focus {
+            border-color: var(--accent-glucose);
+            outline: none;
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .version-dropdown::after {
+            content: '▾';
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            pointer-events: none;
+            font-size: 1.1rem;
+        }
+
+        .version-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .info-chip {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+
+        .info-chip-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+
+        .info-chip-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .stage-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stage-alpha { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+        .stage-beta { background: rgba(245, 158, 11, 0.15); color: var(--accent-orange); }
+        .stage-release { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+
+        .release-notes {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-top: 12px;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .release-notes-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+
+        /* ── Wizard ── */
+        .wizard-container {
+            position: relative;
+        }
+
+        .wizard-step {
+            display: none;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .wizard-step.active {
+            display: block;
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .wizard-icon {
+            font-size: 3.5rem;
+            margin-bottom: 16px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .wizard-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .wizard-text {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .wizard-text strong {
+            color: var(--accent-glucose);
+            font-weight: 600;
+        }
+
+        .wizard-checklist {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            text-align: left;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .wizard-check {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        .wizard-check:hover {
+            color: var(--text-primary);
+        }
+
+        .wizard-check input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--accent-glucose);
+        }
+
+        .wizard-btn {
+            padding: 14px 40px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .wizard-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .wizard-btn:not(:disabled):hover {
+            background: var(--accent-glucose);
+            color: var(--bg-deep);
+            border-color: var(--accent-glucose);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(34, 211, 238, 0.3);
+        }
+
+        .wizard-btn-primary {
+            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
+            border: none;
+            color: var(--bg-deep);
+            font-size: 1.1rem;
+            padding: 16px 48px;
+            box-shadow: 0 4px 20px rgba(34, 211, 238, 0.3);
+        }
+
+        .wizard-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(34, 211, 238, 0.5);
+        }
+
+        .button-guide {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin: 24px 0;
+            flex-wrap: wrap;
+        }
+
+        .button-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px;
+            text-align: center;
+            flex: 1;
+            min-width: 180px;
+            max-width: 220px;
+        }
+
+        .button-visual {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            border: 3px solid;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+
+        .button-visual.boot {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border-color: #60a5fa;
+            color: white;
+        }
+
+        .button-visual.reset {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border-color: #f87171;
+            color: white;
+        }
+
+        .button-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .instruction-sequence {
+            background: var(--bg-surface);
+            border: 2px solid var(--border-accent);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px auto;
+            max-width: 600px;
+            text-align: left;
+        }
+
+        .instruction-step {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+        }
+
+        .instruction-step:last-child {
+            border-bottom: none;
+        }
+
+        .step-num-big {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent-glucose);
+            color: var(--bg-deep);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content strong {
+            display: block;
+            font-size: 1rem;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .step-detail {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        .wizard-alert {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 24px auto;
+            max-width: 600px;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .wizard-alert strong {
+            color: var(--accent-orange);
+        }
+
+        /* ── Flash Status Large ── */
+        .flash-status-large {
+            background: var(--bg-surface);
+            border: 2px solid var(--border-accent);
+            border-radius: 16px;
+            padding: 48px 32px;
+            text-align: center;
+        }
+
+        .status-icon-large {
+            font-size: 5rem;
+            margin-bottom: 24px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-icon-large.spinning {
+            animation: spin 1s linear infinite;
+        }
+
+        .status-icon-large.pulse-big {
+            animation: pulseBig 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulseBig {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.15); opacity: 0.8; }
+        }
+
+        .status-text-large {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .status-detail-large {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .status-progress {
+            margin-top: 32px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 32px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-glucose), var(--accent-blue));
+            border-radius: 16px;
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
+        }
+
+        .progress-text {
+            margin-top: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--accent-glucose);
+        }
+
+        /* ── Device Monitor ── */
+        .device-monitor {
+            background: #0d1117;
+            border: 1px solid var(--border-accent);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 24px;
+            font-family: 'JetBrains Mono', monospace;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .monitor-header {
+            background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .monitor-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent-glucose);
+            letter-spacing: 0.05em;
+            flex: 1;
+        }
+
+        .monitor-clear,
+        .monitor-connect {
+            padding: 4px 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-dim);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .monitor-connect {
+            background: rgba(34, 211, 238, 0.1);
+            border-color: rgba(34, 211, 238, 0.3);
+            color: var(--accent-glucose);
+        }
+
+        .monitor-clear:hover {
+            color: var(--accent-orange);
+            border-color: var(--accent-orange);
+        }
+
+        .monitor-connect:hover {
+            background: rgba(34, 211, 238, 0.2);
+            border-color: var(--accent-glucose);
+        }
+
+        .monitor-connect:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .monitor-output {
+            padding: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+            background: #0d1117;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+
+        .monitor-output::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .monitor-output::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .monitor-output::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .monitor-output::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-glucose);
+        }
+
+        .monitor-line {
+            padding: 2px 0;
+            color: #e6edf3;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .monitor-line.info { color: var(--accent-blue); }
+        .monitor-line.warning { color: var(--accent-orange); }
+        .monitor-line.error { color: var(--accent-red); }
+        .monitor-line.success { color: var(--accent-green); }
+
+        /* ── Collapsible Section ── */
+        .collapsible-header {
+            width: 100%;
+            padding: 16px 20px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: color 0.2s;
+            border-radius: 8px;
+        }
+
+        .collapsible-header:hover {
+            color: var(--text-primary);
+            background: rgba(34, 211, 238, 0.05);
+        }
+
+        .collapsible-icon {
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+        }
+
+        .collapsible-header.open .collapsible-icon {
+            transform: rotate(90deg);
+        }
+
+        .collapsible-title {
+            flex: 1;
+        }
+
+        .collapsible-content {
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 600px;
+            }
+        }
+
+        /* ── Flash Button Area ── */
+        .flash-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        /* ESP Web Tools button styling */
+        esp-web-install-button {
+            --ewt-install-button-color: var(--accent-glucose);
+        }
+
+        esp-web-install-button button {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 40px;
+            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
+            color: var(--bg-deep);
+            border: none;
+            border-radius: 10px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s;
+            box-shadow:
+                0 4px 20px rgba(34, 211, 238, 0.3),
+                0 0 60px rgba(34, 211, 238, 0.1);
+            letter-spacing: 0.02em;
+        }
+
+        esp-web-install-button button:hover {
+            transform: translateY(-2px);
+            box-shadow:
+                0 6px 30px rgba(34, 211, 238, 0.45),
+                0 0 80px rgba(34, 211, 238, 0.15);
+        }
+
+        esp-web-install-button button:active {
+            transform: translateY(0);
+        }
+
+        .flash-hint {
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        /* ── Manual Upload Option ── */
+        .manual-section {
+            border-top: 1px solid var(--border);
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+
+        .manual-toggle {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+
+        .manual-toggle:hover { color: var(--text-secondary); }
+
+        .manual-toggle .arrow {
+            transition: transform 0.2s;
+            font-size: 0.7rem;
+        }
+
+        .manual-toggle.open .arrow { transform: rotate(90deg); }
+
+        .manual-content {
+            display: none;
+            margin-top: 16px;
+        }
+
+        .manual-content.visible { display: block; }
+
+        .file-drop {
+            border: 2px dashed var(--border);
+            border-radius: 10px;
+            padding: 32px;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .file-drop:hover,
+        .file-drop.dragover {
+            border-color: var(--accent-glucose);
+            background: var(--accent-glow);
+        }
+
+        .file-drop-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .file-drop-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .file-drop-text strong {
+            color: var(--accent-glucose);
+        }
+
+        .file-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .selected-file {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--bg-surface);
+            border: 1px solid var(--accent-glucose);
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+
+        .selected-file.visible {
+            display: flex;
+        }
+
+        .selected-file-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+            color: var(--accent-glucose);
+            flex: 1;
+        }
+
+        .selected-file-size {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .btn-flash-manual {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
+            color: var(--bg-deep);
+            border: none;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: none;
+            transition: all 0.2s;
+        }
+
+        .btn-flash-manual.visible { display: block; }
+        .btn-flash-manual:hover { opacity: 0.9; }
+        .btn-flash-manual:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── Instructions ── */
+        .instructions-list {
+            list-style: none;
+            counter-reset: steps;
+        }
+
+        .instructions-list li {
+            counter-increment: steps;
+            padding: 10px 0 10px 40px;
+            position: relative;
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            line-height: 1.6;
+            border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+        }
+
+        .instructions-list li:last-child { border-bottom: none; }
+
+        .instructions-list li::before {
+            content: counter(steps);
+            position: absolute;
+            left: 0;
+            top: 10px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--accent-glucose);
+        }
+
+        .instructions-list li strong {
+            color: var(--text-primary);
+        }
+
+        .instructions-list li code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            background: var(--bg-surface);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent-glucose);
+        }
+
+        /* ── FAQ Accordion ── */
+        .faq-item {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .faq-item:last-child { border-bottom: none; }
+
+        .faq-q {
+            width: 100%;
+            padding: 14px 0;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: color 0.2s;
+        }
+
+        .faq-q:hover { color: var(--accent-glucose); }
+
+        .faq-q .chevron {
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .faq-q.open .chevron { transform: rotate(180deg); }
+
+        .faq-a {
+            display: none;
+            padding: 0 0 14px;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            line-height: 1.7;
+        }
+
+        .faq-a.visible { display: block; }
+
+        /* ── Footer ── */
+        .footer {
+            text-align: center;
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            line-height: 1.8;
+        }
+
+        .footer a {
+            color: var(--accent-glucose);
+            text-decoration: none;
+        }
+        .footer a:hover { text-decoration: underline; }
+
+        .footer .disclaimer {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+        }
+
+        /* ── Terminal ── */
+        .terminal-container {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', monospace;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .terminal-header {
+            background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .terminal-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .terminal-dots .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            opacity: 0.7;
+        }
+
+        .terminal-dots .dot.red { background: #ff5f56; }
+        .terminal-dots .dot.yellow { background: #ffbd2e; }
+        .terminal-dots .dot.green { background: #27c93f; }
+
+        .terminal-title {
+            flex: 1;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            letter-spacing: 0.05em;
+        }
+
+        .terminal-status {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: rgba(34, 211, 238, 0.1);
+            color: var(--accent-glucose);
+            font-weight: 600;
+        }
+
+        .terminal-status.connected {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .terminal-status.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .terminal-clear {
+            padding: 4px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-dim);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: auto;
+        }
+
+        .terminal-clear:hover {
+            color: var(--accent-glucose);
+            border-color: var(--accent-glucose);
+        }
+
+        .terminal-output {
+            padding: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: #0d1117;
+            font-size: 0.82rem;
+            line-height: 1.6;
+        }
+
+        .terminal-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal-output::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .terminal-output::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        .terminal-output::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-glucose);
+        }
+
+        .terminal-line {
+            padding: 3px 0;
+            color: #e6edf3;
+            word-wrap: break-word;
+        }
+
+        .terminal-line.system { color: var(--accent-glucose); }
+        .terminal-line.success { color: var(--accent-green); }
+        .terminal-line.error { color: var(--accent-red); }
+        .terminal-line.warning { color: var(--accent-orange); }
+        .terminal-line.progress { color: var(--accent-blue); }
+        .terminal-line.dim { color: var(--text-dim); }
+
+        .terminal-line .timestamp {
+            color: var(--text-dim);
+            margin-right: 8px;
+            font-size: 0.75rem;
+        }
+
+        /* ── Loading State ── */
+        .loading-versions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 24px;
+            color: var(--text-dim);
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent-glucose);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .page-wrapper { padding: 24px 16px 60px; }
+            .logo-text { font-size: 1.8rem; }
+            .section-card { padding: 20px; }
+            .version-info { grid-template-columns: 1fr; }
+            .header-subtitle { font-size: 0.95rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+
+        <!-- Header -->
+        <header class="header">
+            <div class="logo-mark">
+                <div class="logo-icon">📊</div>
+                <span class="logo-text">CYGM</span>
+            </div>
+            <p class="header-subtitle">
+                Flash firmware to your <strong>CGM Display</strong> directly from the browser.
+                No drivers, no software — just plug in and go.
+            </p>
+        </header>
+
+        <!-- Browser Support Notice -->
+        <div class="browser-notice" id="browser-notice">
+            <span class="icon">💡</span>
+            <span>
+                Requires <strong>Chrome</strong> or <strong>Edge</strong> desktop browser with
+                <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API" target="_blank">Web Serial</a> support.
+                Not supported on mobile or Safari.
+            </span>
+        </div>
+
+        <!-- Step 1: Choose Firmware -->
+        <div class="section-card">
+            <div class="section-title">
+                <span class="step-num">1</span>
+                Choose Firmware Version
+            </div>
+
+            <div class="version-selector">
+                <div class="version-dropdown">
+                    <select id="version-select" disabled>
+                        <option value="">Loading versions...</option>
+                    </select>
+                </div>
+
+                <div class="version-info" id="version-info" style="display: none;">
+                    <div class="info-chip">
+                        <div class="info-chip-label">Version</div>
+                        <div class="info-chip-value" id="info-version">—</div>
+                    </div>
+                    <div class="info-chip">
+                        <div class="info-chip-label">Stage</div>
+                        <div class="info-chip-value" id="info-stage">—</div>
+                    </div>
+                    <div class="info-chip">
+                        <div class="info-chip-label">Release Date</div>
+                        <div class="info-chip-value" id="info-date">—</div>
+                    </div>
+                    <div class="info-chip">
+                        <div class="info-chip-label">Target</div>
+                        <div class="info-chip-value" id="info-target">ESP32 (4MB)</div>
+                    </div>
+                </div>
+
+                <div class="release-notes" id="release-notes" style="display: none;">
+                    <div class="release-notes-label">Release Notes</div>
+                    <div id="notes-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Connect & Flash -->
+        <div class="section-card">
+            <div class="section-title">
+                <span class="step-num">2</span>
+                Connect &amp; Flash
+                <button class="expert-mode-btn" onclick="skipToFlash()" title="Skip wizard for experienced users">
+                    ⚡ Expert Mode
+                </button>
+            </div>
+
+            <!-- Pre-Flash Wizard -->
+            <div class="wizard-container" id="wizard-container">
+                <div class="wizard-step active" id="wizard-step-1">
+                    <div class="wizard-icon">🔌</div>
+                    <h3 class="wizard-title">Step 1: Plug in your device</h3>
+                    <p class="wizard-text">
+                        Connect your CYGM device to your computer using a <strong>USB cable</strong>.
+                        <br>Make sure it's a <strong>data cable</strong>, not just a charging cable.
+                    </p>
+                    <div class="wizard-checklist">
+                        <label class="wizard-check">
+                            <input type="checkbox" id="check-cable">
+                            <span>Device is plugged into computer via USB</span>
+                        </label>
+                        <label class="wizard-check">
+                            <input type="checkbox" id="check-port">
+                            <span>I'm using a data cable (not charge-only)</span>
+                        </label>
+                    </div>
+                    <button class="wizard-btn" id="wizard-next-1" disabled onclick="wizardNext(2)">
+                        Continue →
+                    </button>
+                </div>
+
+                <div class="wizard-step" id="wizard-step-2">
+                    <div class="wizard-icon">👆</div>
+                    <h3 class="wizard-title">Step 2: Find the BOOT and RESET buttons</h3>
+                    <p class="wizard-text">
+                        Your device has two small buttons on it:
+                    </p>
+                    <div class="button-guide">
+                        <div class="button-card">
+                            <div class="button-visual boot">BOOT</div>
+                            <div class="button-label">Usually labeled "BOOT" or "IO0"</div>
+                        </div>
+                        <div class="button-card">
+                            <div class="button-visual reset">RESET</div>
+                            <div class="button-label">Usually labeled "RESET" or "EN"</div>
+                        </div>
+                    </div>
+                    <div class="wizard-checklist">
+                        <label class="wizard-check">
+                            <input type="checkbox" id="check-buttons">
+                            <span>I can see both buttons on my device</span>
+                        </label>
+                    </div>
+                    <button class="wizard-btn" id="wizard-next-2" disabled onclick="wizardNext(3)">
+                        Continue →
+                    </button>
+                </div>
+
+                <div class="wizard-step" id="wizard-step-3">
+                    <div class="wizard-icon">⏱️</div>
+                    <h3 class="wizard-title">Step 3: Get ready for button sequence</h3>
+                    <p class="wizard-text" style="font-size: 1.05rem; line-height: 1.8;">
+                        In the next step, your computer will ask you to choose your device from a list. <strong>First</strong>, let's review the button sequence:
+                    </p>
+                    <div class="instruction-sequence">
+                        <div class="instruction-step">
+                            <div class="step-num-big">1</div>
+                            <div class="step-content">
+                                <strong>Press and HOLD the BOOT button</strong>
+                                <div class="step-detail">Keep your finger on it!</div>
+                            </div>
+                        </div>
+                        <div class="instruction-step">
+                            <div class="step-num-big">2</div>
+                            <div class="step-content">
+                                <strong>While holding BOOT, press RESET once</strong>
+                                <div class="step-detail">Quick press, then release RESET</div>
+                            </div>
+                        </div>
+                        <div class="instruction-step">
+                            <div class="step-num-big">3</div>
+                            <div class="step-content">
+                                <strong>Keep holding BOOT for 3 seconds</strong>
+                                <div class="step-detail">Count: one-one-thousand, two-one-thousand, three-one-thousand</div>
+                            </div>
+                        </div>
+                        <div class="instruction-step">
+                            <div class="step-num-big">4</div>
+                            <div class="step-content">
+                                <strong>Release BOOT button</strong>
+                                <div class="step-detail">Your device is now ready to flash!</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wizard-checklist">
+                        <label class="wizard-check">
+                            <input type="checkbox" id="check-ready">
+                            <span>I understand the button sequence and I'm ready to try it</span>
+                        </label>
+                    </div>
+                    <button class="wizard-btn wizard-btn-primary" id="wizard-next-3" disabled onclick="wizardNext(4)">
+                        Continue →
+                    </button>
+                </div>
+
+                <div class="wizard-step" id="wizard-step-4">
+                    <div class="wizard-icon">🎯</div>
+                    <h3 class="wizard-title">Step 4: Select your device and do the button sequence</h3>
+                    <p class="wizard-text" style="font-size: 1.05rem; line-height: 1.8;">
+                        When you click the button below:
+                    </p>
+                    <div class="wizard-alert" style="background: rgba(34, 211, 238, 0.1); border-color: rgba(34, 211, 238, 0.3);">
+                        <strong style="color: var(--accent-glucose);">📱 A window will pop up</strong> asking you to choose your device. Look for something like <strong>"USB Serial"</strong>, <strong>"CH340"</strong>, or <strong>"CP2102"</strong>. Click on it and press <strong>"Connect"</strong>.
+                    </div>
+                    <div class="instruction-sequence" style="margin-top: 20px;">
+                        <div class="instruction-step">
+                            <div class="step-num-big" style="background: var(--accent-orange);">!</div>
+                            <div class="step-content">
+                                <strong>IMMEDIATELY after selecting your device:</strong>
+                                <div class="step-detail" style="color: var(--text-primary); margin-top: 8px;">
+                                    Do the BOOT + RESET button sequence we just practiced.<br>
+                                    You have about 10 seconds - don't panic, you've got this!
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="wizard-btn wizard-btn-primary" onclick="startFlashingProcess()" style="font-size: 1.2rem; padding: 18px 56px; margin-top: 24px;">
+                        🚀 Start Flashing Now
+                    </button>
+                    <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: 16px;">
+                        Don't worry if it doesn't work the first time - you can try again!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Flash Progress (hidden initially) -->
+            <div class="flash-area" id="flash-area" style="display: none;">
+                <div class="flash-status-large" id="flash-status-large">
+                    <div class="status-icon-large" id="status-icon">⏳</div>
+                    <h3 class="status-text-large" id="status-text">Connecting...</h3>
+                    <p class="status-detail-large" id="status-detail">
+                        Do the BOOT + RESET button sequence now!
+                    </p>
+                    <div class="status-progress" id="status-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="progress-text">0%</div>
+                    </div>
+                </div>
+
+                <!-- Device Serial Monitor -->
+                <div class="device-monitor" id="device-monitor" style="display: none;">
+                    <div class="monitor-header">
+                        <span class="monitor-title">📡 Device Serial Output (115200 baud)</span>
+                        <button class="monitor-clear" onclick="clearDeviceMonitor()">Clear</button>
+                        <button class="monitor-connect" id="monitor-connect-btn" onclick="connectSerialMonitor()">
+                            🔌 Connect Serial
+                        </button>
+                    </div>
+                    <div class="monitor-output" id="monitor-output">
+                        <div class="monitor-line">Click "Connect Serial" to see real-time device output...</div>
+                        <div class="monitor-line info">Tip: Watch boot messages, WiFi connection, and debug logs here</div>
+                    </div>
+                </div>
+
+                <button class="wizard-btn" onclick="retryFlash()" id="retry-btn" style="display: none; margin-top: 20px;">
+                    🔄 Try Again
+                </button>
+
+                <!-- ESP Web Tools install button — manifest is set dynamically (hidden) -->
+                <esp-web-install-button id="install-button" style="display: none;">
+                    <button slot="activate" disabled id="flash-btn">
+                        ⚡ Install Firmware
+                    </button>
+                    <span slot="unsupported">
+                        <div style="padding: 16px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; color: var(--accent-red); text-align: center;">
+                            Your browser does not support Web Serial.<br>
+                            Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.
+                        </div>
+                    </span>
+                    <span slot="not-allowed">
+                        <div style="padding: 16px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 8px; color: var(--accent-orange); text-align: center;">
+                            Web Serial is not available in this context.<br>
+                            Make sure you're using HTTPS or localhost.
+                        </div>
+                    </span>
+                </esp-web-install-button>
+
+                <p class="flash-hint">
+                    Connect your CYGM device via USB, then click the button above.<br>
+                    <strong style="color: var(--accent-green);">✓ Your WiFi and settings will be preserved!</strong>
+                </p>
+
+                <button class="wizard-btn" onclick="restartWizard()" style="margin-top: 20px;">
+                    ↻ Start Over
+                </button>
+            </div>
+
+            <!-- Manual upload for local .bin files -->
+            <div class="manual-section">
+                <button class="manual-toggle" id="manual-toggle" onclick="toggleManual()">
+                    <span class="arrow">▶</span>
+                    Or flash a local .bin file from your computer
+                </button>
+                <div class="manual-content" id="manual-content">
+                    <div class="file-drop" id="file-drop">
+                        <div class="file-drop-icon">📁</div>
+                        <div class="file-drop-text">
+                            <strong>Drop a merged .bin file here</strong> or click to browse
+                        </div>
+                        <input type="file" accept=".bin" id="file-input" onchange="handleFileSelect(event)">
+                    </div>
+                    <div class="selected-file" id="selected-file">
+                        <span class="selected-file-name" id="selected-file-name"></span>
+                        <span class="selected-file-size" id="selected-file-size"></span>
+                    </div>
+                    <button class="btn-flash-manual" id="btn-flash-manual" disabled onclick="flashLocalFile()">
+                        ⚡ Flash Local File
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="section-card">
+            <div class="section-title">
+                📋 What to Expect
+            </div>
+            <ol class="instructions-list">
+                <li><strong>Plug in your device</strong> using a USB cable that can transfer data (some cables only charge).</li>
+                <li><strong>Choose your firmware version</strong> from the list above. We've already selected the newest one for you.</li>
+                <li><strong>Follow the button pressing steps</strong> when you click "Start Flashing". Don't worry - we'll guide you through it with clear timing.</li>
+                <li><strong>Wait about 1-2 minutes</strong> while your device updates. You'll see a progress bar. Please don't unplug the cable during this time.</li>
+                <li><strong>Done!</strong> Your device will turn back on automatically with the new software. You can then set up your WiFi and glucose monitor settings.</li>
+            </ol>
+        </div>
+
+        <!-- FAQ -->
+        <div class="section-card">
+            <div class="section-title">
+                ❓ Troubleshooting
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">
+                    I can't find my device / No serial port appears
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="faq-a">
+                    First, make sure your USB cable can transfer data - some cables only charge phones. Try a different cable if you have one. Also try plugging it into a different USB port on your computer. If that doesn't work, you may need to install a small driver program. Your device uses a chip called <strong>CH340</strong>. Download the driver from <a href="http://www.wch-ic.com/downloads/CH341SER_ZIP.html" target="_blank" style="color: var(--accent-glucose);">wch-ic.com</a> and install it, then restart your computer.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">
+                    The update keeps failing / Says "timeout" or "can't connect"
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="faq-a">
+                    This usually means the button pressing wasn't timed right. Here's the trick: When you see "NOW: Press and hold BOOT", you need to act quickly. Put your finger on the BOOT button and press and hold it. While still holding BOOT, quickly press the RESET button once and let go of RESET. Keep holding BOOT for 3 more seconds. Once you see "Connected" you can let go. It might take a couple tries to get the timing right - that's normal! Click "Start Over" and try again.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">
+                    I'm nervous about pressing the wrong buttons
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="faq-a">
+                    Don't worry! You can't break your device by pressing these buttons. The worst that happens is the update doesn't work and you just try again. The wizard will guide you step-by-step. If you're unsure, you can practice pressing the buttons before you start - nothing will happen unless the computer is actively trying to connect. Take your time and follow each step carefully.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">
+                    Can I go back to a previous firmware version?
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="faq-a">
+                    Yes! Simply select the older version from the dropdown and flash it. Note that downgrading may reset your settings if the NVS storage format changed between versions.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">
+                    Will flashing erase my WiFi and CGM settings?
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="faq-a">
+                    <strong>First-time install</strong>: Yes, the device will be fully erased for a clean install. <strong>Subsequent updates</strong>: Your settings in NVS storage are preserved — only the firmware and SPIFFS web files are updated.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">
+                    How do I create a merged .bin for manual upload?
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="faq-a">
+                    Use esptool to merge all partition files into one binary:<br>
+                    <code style="display: block; margin-top: 8px; padding: 10px; background: var(--bg-surface); border-radius: 6px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; white-space: pre;">esptool --chip esp32 merge_bin -o cygm-merged.bin \
+  --flash_mode dio --flash_freq 40m --flash_size 4MB \
+  0x1000 bootloader.bin \
+  0x8000 partition-table.bin \
+  0x10000 cygm.bin \
+  0x310000 spiffs.bin</code>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technical Log (Collapsible) -->
+        <div class="section-card" id="terminal-section" style="display: none;">
+            <button class="collapsible-header" id="terminal-toggle" onclick="toggleTerminal()">
+                <span class="collapsible-icon" id="terminal-icon">▶</span>
+                <span class="collapsible-title">📟 Technical Log (for troubleshooting)</span>
+            </button>
+
+            <div class="collapsible-content" id="terminal-content" style="display: none;">
+                <div class="terminal-container" style="margin-top: 16px;">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        <div class="terminal-title">ESP32 Console</div>
+                        <div class="terminal-status" id="terminal-status">Ready</div>
+                        <button class="terminal-clear" id="terminal-clear" onclick="clearTerminal()">Clear</button>
+                    </div>
+                    <div class="terminal-output" id="terminal-output">
+                        <div class="terminal-line system">$ Ready</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>
+                <strong>CYGM</strong> — Open-source CGM Display &nbsp;|&nbsp;
+                <a href="https://github.com/YOUR_GITHUB/CYGM" target="_blank">GitHub</a> &nbsp;|&nbsp;
+                MIT License
+            </p>
+            <div class="disclaimer">
+                ⚕️ <strong>Medical Disclaimer:</strong> CYGM is not a medical device. It is an informational display only.
+                Always confirm glucose readings with your approved CGM device. Do not make medical decisions based solely on this display.
+            </div>
+        </footer>
+
+    </div>
+
+    <script>
+        // ══════════════════════════════════════════════
+        //  CYGM Web Flasher — Dynamic Manifest Builder
+        // ══════════════════════════════════════════════
+
+        let releasesData = null;
+        let selectedVersion = null;
+        let localFileData = null;
+
+        // ── Serial Monitor Management ──
+        let serialPort = null;
+        let serialReader = null;
+        let serialReadLoop = null;
+
+        async function connectSerialMonitor() {
+            const connectBtn = document.getElementById('monitor-connect-btn');
+
+            try {
+                if (serialPort && serialPort.readable) {
+                    // Disconnect
+                    await disconnectSerialMonitor();
+                    return;
+                }
+
+                // Request a port
+                serialPort = await navigator.serial.requestPort();
+                await serialPort.open({ baudRate: 115200 });
+
+                connectBtn.textContent = '🔌 Connected';
+                connectBtn.style.background = 'rgba(16, 185, 129, 0.15)';
+                connectBtn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                connectBtn.style.color = 'var(--accent-green)';
+
+                appendMonitorLine('✓ Serial connected at 115200 baud', 'success');
+                appendTerminalLine('📡 Serial monitor connected', 'system');
+
+                // Start reading
+                readSerialData();
+            } catch (err) {
+                console.error('Serial connection error:', err);
+                appendMonitorLine(`✗ Connection failed: ${err.message}`, 'error');
+            }
+        }
+
+        async function disconnectSerialMonitor() {
+            const connectBtn = document.getElementById('monitor-connect-btn');
+
+            try {
+                if (serialReader) {
+                    await serialReader.cancel();
+                    serialReader = null;
+                }
+
+                if (serialPort) {
+                    await serialPort.close();
+                    serialPort = null;
+                }
+
+                connectBtn.textContent = '🔌 Connect Serial';
+                connectBtn.style.background = 'rgba(34, 211, 238, 0.1)';
+                connectBtn.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                connectBtn.style.color = 'var(--accent-glucose)';
+
+                appendMonitorLine('✓ Disconnected', 'info');
+            } catch (err) {
+                console.error('Disconnect error:', err);
+            }
+        }
+
+        async function readSerialData() {
+            const textDecoder = new TextDecoderStream();
+            const readableStreamClosed = serialPort.readable.pipeTo(textDecoder.writable);
+            serialReader = textDecoder.readable.getReader();
+
+            let buffer = '';
+
+            try {
+                while (true) {
+                    const { value, done } = await serialReader.read();
+                    if (done) {
+                        break;
+                    }
+
+                    // Add to buffer
+                    buffer += value;
+
+                    // Process complete lines
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            const colorClass = classifyLogLine(line);
+                            appendMonitorLine(line.trim(), colorClass);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Read error:', err);
+                if (err.name !== 'AbortError' && err.name !== 'NetworkError') {
+                    appendMonitorLine(`✗ Connection lost: ${err.message}`, 'error');
+                    appendMonitorLine('ℹ Device may have restarted. Click "Connect Serial" to reconnect.', 'info');
+                }
+            } finally {
+                if (serialReader) {
+                    try {
+                        serialReader.releaseLock();
+                    } catch (e) {
+                        // Ignore
+                    }
+                }
+            }
+
+            await readableStreamClosed.catch(() => {});
+
+            // Auto-reset button state
+            const connectBtn = document.getElementById('monitor-connect-btn');
+            if (connectBtn) {
+                connectBtn.textContent = '🔌 Connect Serial';
+                connectBtn.style.background = 'rgba(34, 211, 238, 0.1)';
+                connectBtn.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                connectBtn.style.color = 'var(--accent-glucose)';
+            }
+        }
+
+        function classifyLogLine(line) {
+            const lower = line.toLowerCase();
+            if (lower.includes('error') || lower.includes('fail') || lower.includes('exception')) {
+                return 'error';
+            } else if (lower.includes('warn')) {
+                return 'warning';
+            } else if (lower.includes('ok') || lower.includes('success') || lower.includes('ready') || lower.includes('connected')) {
+                return 'success';
+            } else if (lower.includes('info') || lower.includes('i (')) {
+                return 'info';
+            }
+            return '';
+        }
+
+        function appendMonitorLine(text, className = '') {
+            const monitorOutput = document.getElementById('monitor-output');
+            const line = document.createElement('div');
+            line.className = `monitor-line ${className}`;
+            line.textContent = text;
+            monitorOutput.appendChild(line);
+
+            // Auto-scroll to bottom
+            monitorOutput.scrollTop = monitorOutput.scrollHeight;
+
+            // Limit to 200 lines
+            while (monitorOutput.children.length > 200) {
+                monitorOutput.removeChild(monitorOutput.firstChild);
+            }
+        }
+
+        function clearDeviceMonitor() {
+            const monitorOutput = document.getElementById('monitor-output');
+            monitorOutput.innerHTML = '<div class="monitor-line">Monitor cleared</div>';
+        }
+
+        // ── Terminal Management ──
+        const terminalOutput = document.getElementById('terminal-output');
+        const terminalSection = document.getElementById('terminal-section');
+        const terminalStatus = document.getElementById('terminal-status');
+
+        function appendTerminalLine(message, className = '') {
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const line = document.createElement('div');
+            line.className = `terminal-line ${className}`;
+            line.innerHTML = `<span class="timestamp">[${timestamp}]</span>${escapeHtml(message)}`;
+            terminalOutput.appendChild(line);
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+
+        function clearTerminal() {
+            terminalOutput.innerHTML = '<div class="terminal-line system">$ Terminal cleared</div>';
+        }
+
+        function setTerminalStatus(status, text) {
+            terminalStatus.textContent = text;
+            terminalStatus.className = `terminal-status ${status}`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ── Wizard Flow ──
+        let currentWizardStep = 1;
+
+        // Enable wizard step 1 next button when both checkboxes checked
+        document.addEventListener('DOMContentLoaded', () => {
+            const check1 = document.getElementById('check-cable');
+            const check2 = document.getElementById('check-port');
+            const next1 = document.getElementById('wizard-next-1');
+
+            [check1, check2].forEach(cb => {
+                cb.addEventListener('change', () => {
+                    next1.disabled = !(check1.checked && check2.checked);
+                });
+            });
+
+            // Enable wizard step 2 next button
+            const check3 = document.getElementById('check-buttons');
+            const next2 = document.getElementById('wizard-next-2');
+            check3.addEventListener('change', () => {
+                next2.disabled = !check3.checked;
+            });
+
+            // Enable wizard step 3 next button
+            const check4 = document.getElementById('check-ready');
+            const next3 = document.getElementById('wizard-next-3');
+            check4.addEventListener('change', () => {
+                next3.disabled = !check4.checked;
+            });
+
+            loadReleases();
+            setupTerminalCapture();
+        });
+
+        function wizardNext(step) {
+            document.getElementById(`wizard-step-${currentWizardStep}`).classList.remove('active');
+            currentWizardStep = step;
+            document.getElementById(`wizard-step-${step}`).classList.add('active');
+        }
+
+        function restartWizard() {
+            // Reset to step 1
+            document.getElementById('flash-area').style.display = 'none';
+            document.getElementById('wizard-container').style.display = 'block';
+
+            // Hide all steps, show step 1
+            for (let i = 1; i <= 4; i++) {
+                const step = document.getElementById(`wizard-step-${i}`);
+                if (step) step.classList.remove('active');
+            }
+            currentWizardStep = 1;
+            document.getElementById('wizard-step-1').classList.add('active');
+
+            // Uncheck all checkboxes
+            document.getElementById('check-cable').checked = false;
+            document.getElementById('check-port').checked = false;
+            document.getElementById('check-buttons').checked = false;
+            document.getElementById('check-ready').checked = false;
+            document.getElementById('wizard-next-1').disabled = true;
+            document.getElementById('wizard-next-2').disabled = true;
+            document.getElementById('wizard-next-3').disabled = true;
+
+            // Hide retry button
+            document.getElementById('retry-btn').style.display = 'none';
+
+            appendTerminalLine('🔄 Starting over from the beginning', 'system');
+        }
+
+        function startFlashingProcess() {
+            // Hide wizard, show flash area
+            document.getElementById('wizard-container').style.display = 'none';
+            document.getElementById('flash-area').style.display = 'flex';
+            terminalSection.style.display = 'block';
+
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+            const statusDetail = document.getElementById('status-detail');
+
+            statusIcon.textContent = '👆';
+            statusIcon.classList.add('pulse-big');
+            statusText.textContent = 'Do the button sequence NOW!';
+            statusDetail.innerHTML = '<strong style="color: var(--accent-orange); font-size: 1.15rem;">Press and HOLD BOOT → Press RESET once → Keep holding BOOT for 3 seconds</strong>';
+
+            appendTerminalLine('🚀 Flash process started', 'system');
+
+            // Trigger the ESP Web Tools button immediately
+            const flashBtn = document.getElementById('flash-btn');
+            flashBtn.disabled = false;
+
+            // Small delay to let user read the instruction
+            setTimeout(() => {
+                flashBtn.click();
+            }, 500);
+        }
+
+        function retryFlash() {
+            document.getElementById('retry-btn').style.display = 'none';
+            document.getElementById('status-progress').style.display = 'none';
+
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+            const statusDetail = document.getElementById('status-detail');
+
+            statusIcon.textContent = '👆';
+            statusIcon.classList.remove('spinning');
+            statusIcon.classList.add('pulse-big');
+            statusText.textContent = 'Let\'s try again - Do the button sequence!';
+            statusDetail.innerHTML = '<strong style="color: var(--accent-orange); font-size: 1.15rem;">Press and HOLD BOOT → Press RESET once → Keep holding BOOT for 3 seconds</strong>';
+
+            appendTerminalLine('🔄 Retrying flash...', 'system');
+
+            // Trigger the ESP Web Tools button
+            const flashBtn = document.getElementById('flash-btn');
+            setTimeout(() => {
+                flashBtn.click();
+            }, 500);
+        }
+
+        function toggleTerminal() {
+            const content = document.getElementById('terminal-content');
+            const toggle = document.getElementById('terminal-toggle');
+            const icon = document.getElementById('terminal-icon');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.classList.add('open');
+            } else {
+                content.style.display = 'none';
+                toggle.classList.remove('open');
+            }
+        }
+
+        function skipToFlash() {
+            // Skip directly to flash (for experts)
+            document.getElementById('wizard-container').style.display = 'none';
+            document.getElementById('flash-area').style.display = 'flex';
+            terminalSection.style.display = 'block';
+
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+            const statusDetail = document.getElementById('status-detail');
+
+            statusIcon.textContent = '⚡';
+            statusText.textContent = 'Ready to flash';
+            statusDetail.innerHTML = 'Click the button below, select your device port, then do BOOT+RESET sequence';
+
+            // Show the actual ESP Web Tools button for direct access
+            const installButton = document.getElementById('install-button');
+            installButton.style.display = 'block';
+
+            // Show device monitor
+            document.getElementById('device-monitor').style.display = 'block';
+
+            appendTerminalLine('⚡ Expert mode - direct flash access', 'system');
+            appendTerminalLine('ℹ️  Select device port, then do BOOT+RESET sequence', 'system');
+            appendMonitorLine('📡 Serial monitor ready - connect to see device output', 'info');
+        }
+
+        // Capture ESP Web Tools events
+        function setupTerminalCapture() {
+            const installButton = document.getElementById('install-button');
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+            const statusDetail = document.getElementById('status-detail');
+            const statusProgress = document.getElementById('status-progress');
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            const retryBtn = document.getElementById('retry-btn');
+
+            installButton.addEventListener('state-changed', (e) => {
+                terminalSection.style.display = 'block';
+                const state = e.detail.state;
+
+                switch(state) {
+                    case 'INITIALIZING':
+                        appendTerminalLine('🔌 Connecting to device...', 'system');
+                        setTerminalStatus('', 'Connecting');
+                        statusIcon.textContent = '🔌';
+                        statusIcon.classList.remove('pulse-big');
+                        statusIcon.classList.add('spinning');
+                        statusText.textContent = 'Connecting...';
+                        statusDetail.innerHTML = '<span style="color: var(--accent-green); font-size: 1.1rem;">✅ Great! You can release the BOOT button now!</span>';
+                        break;
+
+                    case 'PREPARING':
+                        appendTerminalLine('✅ Device connected successfully!', 'success');
+                        appendTerminalLine('📦 Preparing firmware...', 'system');
+                        setTerminalStatus('connected', 'Preparing');
+                        statusIcon.textContent = '📦';
+                        statusIcon.classList.remove('spinning');
+                        statusText.textContent = 'Connected! Preparing...';
+                        statusDetail.textContent = 'Reading firmware and getting ready to flash';
+                        statusProgress.style.display = 'block';
+                        progressFill.style.width = '0%';
+                        progressText.textContent = '0%';
+
+                        // Disconnect serial monitor if connected (flashing will reset it)
+                        if (serialPort && serialPort.readable) {
+                            disconnectSerialMonitor();
+                            appendMonitorLine('⚠ Disconnected for flashing - reconnect after flash completes', 'warning');
+                        }
+                        break;
+
+                    case 'INSTALLING':
+                        appendTerminalLine('⚡ Flashing firmware to device...', 'progress');
+                        appendTerminalLine('⚠️  DO NOT unplug the device!', 'warning');
+                        setTerminalStatus('connected', 'Flashing');
+                        statusIcon.textContent = '⚡';
+                        statusIcon.classList.add('spinning');
+                        statusText.textContent = 'Flashing in progress...';
+                        statusDetail.innerHTML = '<strong style="color: var(--accent-orange);">Please wait - this takes 1-2 minutes</strong><br>Keep your device plugged in!';
+                        break;
+
+                    case 'FINISHED':
+                        appendTerminalLine('✅ Firmware installed successfully!', 'success');
+                        appendTerminalLine('🎉 Your device will restart automatically', 'success');
+                        appendTerminalLine('ℹ️  You can now unplug the device', 'system');
+                        setTerminalStatus('connected', 'Complete');
+                        statusIcon.textContent = '🎉';
+                        statusIcon.classList.remove('spinning');
+                        statusText.textContent = 'Success!';
+                        statusDetail.innerHTML = '<span style="color: var(--accent-green); font-size: 1.15rem; font-weight: 600;">✅ All done! Your device will restart with the new firmware.</span><br><br>Click "Connect Serial" below to watch it boot up!';
+                        progressFill.style.width = '100%';
+                        progressText.textContent = '100%';
+
+                        // Show device monitor
+                        document.getElementById('device-monitor').style.display = 'block';
+                        appendMonitorLine('✓ Flash complete! Click "Connect Serial" to see device output', 'success');
+                        break;
+
+                    case 'ERROR':
+                        const errorMsg = e.detail.message || 'Flash failed';
+                        appendTerminalLine(`❌ Error: ${errorMsg}`, 'error');
+                        setTerminalStatus('error', 'Error');
+                        statusIcon.textContent = '😕';
+                        statusIcon.classList.remove('spinning');
+                        statusText.textContent = 'Oops, something went wrong';
+
+                        if (errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('failed to connect')) {
+                            statusDetail.innerHTML = `<span style="color: var(--accent-orange); font-size: 1.05rem;">The button timing didn't work this time.</span><br><br>
+                            <strong>Let's try again:</strong><br>
+                            1. Unplug your device and plug it back in<br>
+                            2. Click "Try Again" below<br>
+                            3. Do the button sequence carefully`;
+                            appendTerminalLine('💡 Tip: Press and HOLD BOOT first, then quickly press RESET while still holding BOOT', 'warning');
+                        } else {
+                            statusDetail.innerHTML = `<span style="color: var(--accent-red);">${errorMsg}</span><br><br>
+                            Try unplugging your device, waiting 5 seconds, then plugging it back in. Click "Try Again" below.`;
+                        }
+
+                        retryBtn.style.display = 'block';
+                        break;
+                }
+            });
+
+            installButton.addEventListener('error', (e) => {
+                appendTerminalLine(`❌ ${e.detail.message}`, 'error');
+                setTerminalStatus('error', 'Error');
+                retryBtn.style.display = 'block';
+            });
+
+            installButton.addEventListener('progress', (e) => {
+                const pct = e.detail.progress;
+                const total = e.detail.total;
+                if (pct !== undefined) {
+                    progressFill.style.width = `${pct}%`;
+                    progressText.textContent = `${pct.toFixed(0)}%`;
+
+                    if (pct % 25 === 0) { // Log every 25%
+                        appendTerminalLine(`📊 Progress: ${pct.toFixed(0)}%`, 'dim');
+                    }
+                }
+            });
+        }
+
+        async function loadReleases() {
+            try {
+                const resp = await fetch('releases.json');
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                }
+                releasesData = await resp.json();
+                console.log('Loaded releases:', releasesData);
+                populateVersions();
+            } catch (err) {
+                console.error('Failed to load releases:', err);
+                appendTerminalLine(`❌ Failed to load releases.json: ${err.message}`, 'error');
+                const sel = document.getElementById('version-select');
+                sel.innerHTML = '<option value="">Failed to load versions — check releases.json</option>';
+            }
+        }
+
+        function populateVersions() {
+            const sel = document.getElementById('version-select');
+            sel.innerHTML = '';
+
+            releasesData.versions.forEach((v, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = `v${v.version} ${v.stage}${v.latest ? ' (Latest)' : ''} — ${v.date}`;
+                sel.appendChild(opt);
+            });
+
+            sel.disabled = false;
+            sel.addEventListener('change', onVersionChange);
+
+            // Auto-select latest
+            const latestIdx = releasesData.versions.findIndex(v => v.latest);
+            if (latestIdx >= 0) {
+                sel.value = latestIdx;
+            } else {
+                sel.value = 0;
+            }
+            onVersionChange();
+        }
+
+        function onVersionChange() {
+            const sel = document.getElementById('version-select');
+            const idx = parseInt(sel.value);
+            if (isNaN(idx)) return;
+
+            selectedVersion = releasesData.versions[idx];
+
+            // Update info chips
+            document.getElementById('version-info').style.display = 'grid';
+            document.getElementById('info-version').textContent = `v${selectedVersion.version}`;
+
+            const stageEl = document.getElementById('info-stage');
+            const stageClass = selectedVersion.stage.toLowerCase();
+            stageEl.innerHTML = `<span class="stage-badge stage-${stageClass}">${selectedVersion.stage}</span>`;
+
+            document.getElementById('info-date').textContent = selectedVersion.date;
+
+            // Show release notes
+            if (selectedVersion.notes) {
+                document.getElementById('release-notes').style.display = 'block';
+                document.getElementById('notes-content').textContent = selectedVersion.notes;
+            } else {
+                document.getElementById('release-notes').style.display = 'none';
+            }
+
+            // Build and set the ESP Web Tools manifest
+            updateManifest();
+        }
+
+        function updateManifest() {
+            if (!selectedVersion) return;
+
+            // Get base URL for resolving relative paths
+            const baseUrl = window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+
+            // Build manifest for ESP Web Tools
+            // Using merged binary approach (single file at offset 0)
+            const manifest = {
+                name: "CYGM Firmware",
+                version: selectedVersion.version,
+                new_install_prompt_erase: false,  // Don't erase NVS - preserve WiFi/settings
+                builds: [
+                    {
+                        chipFamily: releasesData.chip || "ESP32",
+                        improv: false,
+                        parts: []
+                    }
+                ]
+            };
+
+            // Check if a merged binary exists
+            if (selectedVersion.files.merged) {
+                manifest.builds[0].parts.push({
+                    path: baseUrl + selectedVersion.files.merged,
+                    offset: 0
+                });
+            } else {
+                // Use individual files with offsets
+                const offsets = releasesData.offsets;
+                if (selectedVersion.files.bootloader) {
+                    manifest.builds[0].parts.push({
+                        path: baseUrl + selectedVersion.files.bootloader,
+                        offset: parseInt(offsets.bootloader)
+                    });
+                }
+                if (selectedVersion.files.partitions) {
+                    manifest.builds[0].parts.push({
+                        path: baseUrl + selectedVersion.files.partitions,
+                        offset: parseInt(offsets.partitions)
+                    });
+                }
+                if (selectedVersion.files.app) {
+                    manifest.builds[0].parts.push({
+                        path: baseUrl + selectedVersion.files.app,
+                        offset: parseInt(offsets.app)
+                    });
+                }
+                if (selectedVersion.files.spiffs) {
+                    manifest.builds[0].parts.push({
+                        path: baseUrl + selectedVersion.files.spiffs,
+                        offset: parseInt(offsets.spiffs)
+                    });
+                }
+            }
+
+            // Log manifest for debugging
+            console.log('Generated manifest:', manifest);
+            appendTerminalLine(`📦 Manifest created with ${manifest.builds[0].parts.length} file(s)`, 'system');
+
+            // Verify firmware files exist
+            verifyFirmwareFiles(manifest.builds[0].parts);
+
+            // Create blob URL for the manifest
+            const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            // Set the manifest on the install button
+            const installBtn = document.getElementById('install-button');
+            installBtn.manifest = url;
+
+            // Enable the flash button
+            document.getElementById('flash-btn').disabled = false;
+        }
+
+        async function verifyFirmwareFiles(parts) {
+            for (const part of parts) {
+                try {
+                    const response = await fetch(part.path, { method: 'HEAD' });
+                    if (response.ok) {
+                        const size = response.headers.get('content-length');
+                        console.log(`✓ ${part.path} (${formatBytes(parseInt(size))})`);
+                        appendTerminalLine(`✓ Found: ${part.path.split('/').pop()} (${formatBytes(parseInt(size))})`, 'dim');
+                    } else {
+                        console.error(`✗ ${part.path} - HTTP ${response.status}`);
+                        appendTerminalLine(`❌ Missing: ${part.path}`, 'error');
+                    }
+                } catch (err) {
+                    console.error(`✗ ${part.path} - ${err.message}`);
+                    appendTerminalLine(`❌ Cannot access: ${part.path}`, 'error');
+                }
+            }
+        }
+
+        // ── Manual File Upload ──
+
+        function toggleManual() {
+            const toggle = document.getElementById('manual-toggle');
+            const content = document.getElementById('manual-content');
+            toggle.classList.toggle('open');
+            content.classList.toggle('visible');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Validate it's a .bin file
+            if (!file.name.endsWith('.bin')) {
+                alert('Please select a .bin firmware file.');
+                return;
+            }
+
+            localFileData = file;
+
+            // Show file info
+            document.getElementById('selected-file').classList.add('visible');
+            document.getElementById('selected-file-name').textContent = file.name;
+            document.getElementById('selected-file-size').textContent = formatBytes(file.size);
+            document.getElementById('btn-flash-manual').classList.add('visible');
+            document.getElementById('btn-flash-manual').disabled = false;
+        }
+
+        async function flashLocalFile() {
+            if (!localFileData) return;
+
+            // Build a manifest for the local file
+            const manifest = {
+                name: "CYGM Firmware (Local)",
+                version: "local",
+                new_install_prompt_erase: true,
+                builds: [
+                    {
+                        chipFamily: "ESP32",
+                        improv: false,
+                        parts: [
+                            {
+                                path: URL.createObjectURL(localFileData),
+                                offset: 0
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            const installBtn = document.getElementById('install-button');
+            installBtn.manifest = url;
+
+            // Trigger click on the install button
+            const btn = installBtn.querySelector('button[slot="activate"]') || document.getElementById('flash-btn');
+            if (btn) btn.click();
+        }
+
+        // ── Drag & Drop ──
+
+        const fileDrop = document.getElementById('file-drop');
+        if (fileDrop) {
+            fileDrop.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileDrop.classList.add('dragover');
+            });
+            fileDrop.addEventListener('dragleave', () => {
+                fileDrop.classList.remove('dragover');
+            });
+            fileDrop.addEventListener('drop', (e) => {
+                e.preventDefault();
+                fileDrop.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    document.getElementById('file-input').files = e.dataTransfer.files;
+                    handleFileSelect({ target: { files: e.dataTransfer.files } });
+                }
+            });
+        }
+
+        // ── FAQ Toggle ──
+
+        function toggleFaq(btn) {
+            btn.classList.toggle('open');
+            const answer = btn.nextElementSibling;
+            answer.classList.toggle('visible');
+        }
+
+        // ── Utilities ──
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(2) + ' MB';
+        }
+    </script>
+</body>
+</html>

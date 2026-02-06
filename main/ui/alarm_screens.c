@@ -13,9 +13,14 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include <stdio.h>
 
 static const char *TAG = "ALARM_SCREENS";
+
+// Tone picker pagination
+static int tone_picker_current_page = 0;
+static alarm_config_t *tone_picker_alarm_ref = NULL;
 
 // Forward declarations for internal event callbacks
 static void alarm_toggle_event_cb(lv_event_t *e);
@@ -26,7 +31,8 @@ static void alarm_audio_toggle_event_cb(lv_event_t *e);
 static void alarm_visual_toggle_event_cb(lv_event_t *e);
 static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
 static void alarm_settings_back_event_cb(lv_event_t *e);
-static void tone_picker_back_event_cb(lv_event_t *e);
+static void tone_picker_prev_page_event_cb(lv_event_t *e);
+static void tone_picker_next_page_event_cb(lv_event_t *e);
 static void tone_select_btn_event_cb(lv_event_t *e);
 static void tone_preview_btn_event_cb(lv_event_t *e);
 static void alarm_detail_editor_back_event_cb(lv_event_t *e);
@@ -37,7 +43,13 @@ static void alarm_preview_back_event_cb(lv_event_t *e);
 // Public function implementations
 
 void create_alarm_settings_screen(void) {
+    ESP_LOGI(TAG, "Creating alarm settings screen - free heap: %lu bytes", esp_get_free_heap_size());
+
     screen_alarm_settings = lv_obj_create(NULL);
+    if (screen_alarm_settings == NULL) {
+        ESP_LOGE(TAG, "Failed to create alarm settings screen - out of memory!");
+        return;
+    }
     lv_obj_add_style(screen_alarm_settings, &style_bg, 0);
 
     // Header
@@ -66,23 +78,29 @@ void create_alarm_settings_screen(void) {
     int card_spacing = 4;
 
     // High Alarm
+    ESP_LOGI(TAG, "Creating High Alarm card...");
     create_alarm_card(screen_alarm_settings, "High Alarm", &current_alarm_settings.high_alarm,
                       card_y, card_height);
     card_y += card_height + card_spacing;
 
     // High Warning
+    ESP_LOGI(TAG, "Creating High Warning card...");
     create_alarm_card(screen_alarm_settings, "High Warning", &current_alarm_settings.high_warning,
                       card_y, card_height);
     card_y += card_height + card_spacing;
 
     // Low Warning
+    ESP_LOGI(TAG, "Creating Low Warning card...");
     create_alarm_card(screen_alarm_settings, "Low Warning", &current_alarm_settings.low_warning,
                       card_y, card_height);
     card_y += card_height + card_spacing;
 
     // Low Alarm
+    ESP_LOGI(TAG, "Creating Low Alarm card...");
     create_alarm_card(screen_alarm_settings, "Low Alarm", &current_alarm_settings.low_alarm,
                       card_y, card_height);
+
+    ESP_LOGI(TAG, "Alarm settings screen created - free heap: %lu bytes", esp_get_free_heap_size());
 }
 
 void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alarm,
@@ -91,11 +109,24 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
         ESP_LOGE(TAG, "create_alarm_card: alarm is NULL!");
         return;
     }
+    if (parent == NULL) {
+        ESP_LOGE(TAG, "create_alarm_card: parent is NULL!");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Creating alarm card: %s (heap: %lu)", title, esp_get_free_heap_size());
 
     // Card container
     lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_size(card, 310, height);
-    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y_pos);
+    if (card == NULL) {
+        ESP_LOGE(TAG, "Failed to create card container for %s!", title);
+        return;
+    }
+
+    // Set size first, then align (avoid potential circular layout issues)
+    lv_obj_set_width(card, 310);
+    lv_obj_set_height(card, height);
+    lv_obj_set_pos(card, 5, y_pos);  // Use set_pos instead of align for first card
     lv_obj_add_style(card, &style_card, 0);
     lv_obj_set_style_pad_all(card, 8, 0);
 
@@ -104,8 +135,19 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
 
     // Enable/Disable toggle (left)
     lv_obj_t *toggle = lv_switch_create(card);
-    lv_obj_set_size(toggle, 40, 20);
+    if (toggle == NULL) {
+        ESP_LOGE(TAG, "Failed to create toggle for %s!", title);
+        return;
+    }
+    lv_obj_set_width(toggle, 40);
+    lv_obj_set_height(toggle, 20);
     lv_obj_align(toggle, LV_ALIGN_LEFT_MID, 0, 0);
+
+    // Clear style transitions to prevent animation hangs
+    lv_obj_set_style_transition(toggle, NULL, LV_PART_MAIN | LV_STATE_ANY);
+    lv_obj_set_style_transition(toggle, NULL, LV_PART_INDICATOR | LV_STATE_ANY);
+    lv_obj_set_style_transition(toggle, NULL, LV_PART_KNOB | LV_STATE_ANY);
+
     if (alarm->enabled) {
         lv_obj_add_state(toggle, LV_STATE_CHECKED);
     }
@@ -129,7 +171,12 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
 
     // Edit button (right)
     lv_obj_t *edit_btn = lv_btn_create(card);
-    lv_obj_set_size(edit_btn, 60, 30);
+    if (edit_btn == NULL) {
+        ESP_LOGE(TAG, "Failed to create edit button for %s!", title);
+        return;
+    }
+    lv_obj_set_width(edit_btn, 60);
+    lv_obj_set_height(edit_btn, 30);
     lv_obj_align(edit_btn, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_add_style(edit_btn, &style_card, 0);
     lv_obj_set_style_bg_color(edit_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
@@ -140,83 +187,176 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
     lv_obj_set_style_text_color(edit_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(edit_lbl);
     lv_obj_add_event_cb(edit_btn, alarm_edit_btn_event_cb, LV_EVENT_CLICKED, alarm);
+
+    ESP_LOGI(TAG, "Alarm card created: %s", title);
 }
 
 void create_tone_picker_screen(alarm_config_t *alarm) {
-    screen_tone_picker = lv_obj_create(NULL);
+    // Save alarm reference for pagination
+    tone_picker_alarm_ref = alarm;
+
+    // Create overlay matching WiFi overlay style
+    screen_tone_picker = lv_obj_create(lv_scr_act());
     if (screen_tone_picker == NULL) {
-        ESP_LOGE(TAG, "Failed to create tone picker screen - LVGL out of memory!");
+        ESP_LOGE(TAG, "Failed to create tone picker overlay - LVGL out of memory!");
         return;
     }
-    lv_obj_add_style(screen_tone_picker, &style_bg, 0);
 
-    // Header
-    lv_obj_t *header = lv_label_create(screen_tone_picker);
-    lv_label_set_text(header, "Select Tone");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
+    // Style matching existing overlays (wifi_screens.c style)
+    lv_obj_set_size(screen_tone_picker, 280, 220);
+    lv_obj_center(screen_tone_picker);
+    lv_obj_set_style_bg_color(screen_tone_picker, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_border_color(screen_tone_picker, lv_color_hex(COLOR_BORDER), 0);
+    lv_obj_set_style_border_width(screen_tone_picker, 2, 0);
+    lv_obj_set_style_radius(screen_tone_picker, 12, 0);
+    lv_obj_set_style_pad_all(screen_tone_picker, 5, 0);
+    lv_obj_clear_flag(screen_tone_picker, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Back button
-    lv_obj_t *back_btn = lv_btn_create(screen_tone_picker);
-    lv_obj_set_size(back_btn, 36, 36);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    // Page content area
+    if (tone_picker_current_page == 0) {
+        // Page 1: Basic tones - 4 tones
+        const char *tone_names[] = {
+            "Beep 1 (Single)",
+            "Beep 2 (Double)",
+            "Beep 3 (Triple)",
+            "Chime (Gentle)"
+        };
 
-    lv_obj_t *back_lbl = lv_label_create(back_btn);
-    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
-    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_center(back_lbl);
-    lv_obj_add_event_cb(back_btn, tone_picker_back_event_cb, LV_EVENT_CLICKED, NULL);
+        int y_start = 10;
+        int button_height = 38;
+        int button_spacing = 8;
 
-    // Tone options - 5 tones
-    const char *tone_names[] = {
-        "Beep 1 (Single)",
-        "Beep 2 (Double)",
-        "Beep 3 (Triple)",
-        "Chime (Gentle)",
-        "Alert (Urgent)"
-    };
+        for (int i = 0; i < 4; i++) {
+            lv_obj_t *tone_btn = lv_btn_create(screen_tone_picker);
+            lv_obj_set_size(tone_btn, 220, button_height);
+            lv_obj_align(tone_btn, LV_ALIGN_TOP_MID, 0, y_start + i * (button_height + button_spacing));
+            lv_obj_add_style(tone_btn, &style_card, 0);
 
-    int y_start = 60;
-    int button_height = 45;
-    int button_spacing = 8;
+            // Highlight if this is the current tone
+            if (alarm->tone == i) {
+                lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+            }
 
-    for (int i = 0; i < ALARM_TONE_COUNT; i++) {
-        lv_obj_t *tone_btn = lv_btn_create(screen_tone_picker);
-        lv_obj_set_size(tone_btn, 280, button_height);
-        lv_obj_align(tone_btn, LV_ALIGN_TOP_MID, 0, y_start + i * (button_height + button_spacing));
-        lv_obj_add_style(tone_btn, &style_card, 0);
+            lv_obj_t *tone_lbl = lv_label_create(tone_btn);
+            lv_label_set_text(tone_lbl, tone_names[i]);
+            lv_obj_set_style_text_font(tone_lbl, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_color(tone_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+            lv_obj_align(tone_lbl, LV_ALIGN_LEFT_MID, 10, 0);
 
-        // Highlight if this is the current tone
-        if (alarm->tone == i) {
-            lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+            // Preview button (play icon)
+            lv_obj_t *play_btn = lv_btn_create(tone_btn);
+            lv_obj_set_size(play_btn, 28, 28);
+            lv_obj_align(play_btn, LV_ALIGN_RIGHT_MID, -3, 0);
+            lv_obj_add_style(play_btn, &style_card, 0);
+            lv_obj_set_style_bg_color(play_btn, lv_color_hex(0x00AA00), 0);
+            lv_obj_set_style_border_width(play_btn, 0, 0);
+
+            lv_obj_t *play_lbl = lv_label_create(play_btn);
+            lv_label_set_text(play_lbl, LV_SYMBOL_PLAY);
+            lv_obj_set_style_text_font(play_lbl, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_color(play_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+            lv_obj_center(play_lbl);
+            lv_obj_add_event_cb(play_btn, tone_preview_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+
+            // Select this tone when button clicked
+            lv_obj_add_event_cb(tone_btn, tone_select_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         }
+    } else if (tone_picker_current_page == 1) {
+        // Page 2: Classic melodies - 4 tones
+        const char *melody_names[] = {
+            "Twinkle Twinkle",
+            "Happy Birthday",
+            "Mary Had a Little Lamb",
+            "Jingle Bells"
+        };
 
-        lv_obj_t *tone_lbl = lv_label_create(tone_btn);
-        lv_label_set_text(tone_lbl, tone_names[i]);
-        lv_obj_set_style_text_font(tone_lbl, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(tone_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_align(tone_lbl, LV_ALIGN_LEFT_MID, 15, 0);
+        int y_start = 10;
+        int button_height = 38;
+        int button_spacing = 8;
 
-        // Preview button (play icon)
-        lv_obj_t *play_btn = lv_btn_create(tone_btn);
-        lv_obj_set_size(play_btn, 35, 35);
-        lv_obj_align(play_btn, LV_ALIGN_RIGHT_MID, -5, 0);
-        lv_obj_add_style(play_btn, &style_card, 0);
-        lv_obj_set_style_bg_color(play_btn, lv_color_hex(0x00AA00), 0);
+        for (int i = 0; i < 4; i++) {
+            int tone_index = 4 + i;  // Tones 4-7
+            lv_obj_t *tone_btn = lv_btn_create(screen_tone_picker);
+            lv_obj_set_size(tone_btn, 220, button_height);
+            lv_obj_align(tone_btn, LV_ALIGN_TOP_MID, 0, y_start + i * (button_height + button_spacing));
+            lv_obj_add_style(tone_btn, &style_card, 0);
 
-        lv_obj_t *play_lbl = lv_label_create(play_btn);
-        lv_label_set_text(play_lbl, LV_SYMBOL_PLAY);
-        lv_obj_set_style_text_font(play_lbl, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(play_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_center(play_lbl);
-        lv_obj_add_event_cb(play_btn, tone_preview_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+            // Highlight if this is the current tone
+            if (alarm->tone == tone_index) {
+                lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+            }
 
-        // Select this tone when button clicked
-        lv_obj_add_event_cb(tone_btn, tone_select_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+            lv_obj_t *tone_lbl = lv_label_create(tone_btn);
+            lv_label_set_text(tone_lbl, melody_names[i]);
+            lv_obj_set_style_text_font(tone_lbl, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_color(tone_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+            lv_obj_align(tone_lbl, LV_ALIGN_LEFT_MID, 10, 0);
+
+            // Preview button (play icon)
+            lv_obj_t *play_btn = lv_btn_create(tone_btn);
+            lv_obj_set_size(play_btn, 28, 28);
+            lv_obj_align(play_btn, LV_ALIGN_RIGHT_MID, -3, 0);
+            lv_obj_add_style(play_btn, &style_card, 0);
+            lv_obj_set_style_bg_color(play_btn, lv_color_hex(0x00AA00), 0);
+            lv_obj_set_style_border_width(play_btn, 0, 0);
+
+            lv_obj_t *play_lbl = lv_label_create(play_btn);
+            lv_label_set_text(play_lbl, LV_SYMBOL_PLAY);
+            lv_obj_set_style_text_font(play_lbl, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_color(play_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+            lv_obj_center(play_lbl);
+            lv_obj_add_event_cb(play_btn, tone_preview_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)tone_index);
+
+            // Select this tone when button clicked
+            lv_obj_add_event_cb(tone_btn, tone_select_btn_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)tone_index);
+        }
+    } else {
+        // Page 3: Placeholder
+        lv_obj_t *placeholder = lv_label_create(screen_tone_picker);
+        lv_label_set_text(placeholder, "More alarms\ncoming soon");
+        lv_obj_set_style_text_font(placeholder, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(placeholder, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_set_style_text_align(placeholder, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_center(placeholder);
     }
+
+    // Vertical pagination buttons on sides
+    // Previous button (< - left side, tall and narrow)
+    lv_obj_t *prev_btn = lv_btn_create(screen_tone_picker);
+    lv_obj_set_size(prev_btn, 20, 200);
+    lv_obj_align(prev_btn, LV_ALIGN_LEFT_MID, 5, 0);
+    lv_obj_set_style_bg_color(prev_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_radius(prev_btn, 6, 0);
+    lv_obj_set_style_border_width(prev_btn, 0, 0);
+
+    lv_obj_t *prev_lbl = lv_label_create(prev_btn);
+    lv_label_set_text(prev_lbl, LV_SYMBOL_LEFT);
+    lv_obj_set_style_text_font(prev_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(prev_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(prev_lbl);
+    lv_obj_add_event_cb(prev_btn, tone_picker_prev_page_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Next button (> - right side, tall and narrow)
+    lv_obj_t *next_btn = lv_btn_create(screen_tone_picker);
+    lv_obj_set_size(next_btn, 20, 200);
+    lv_obj_align(next_btn, LV_ALIGN_RIGHT_MID, -5, 0);
+    lv_obj_set_style_bg_color(next_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_radius(next_btn, 6, 0);
+    lv_obj_set_style_border_width(next_btn, 0, 0);
+
+    lv_obj_t *next_lbl = lv_label_create(next_btn);
+    lv_label_set_text(next_lbl, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_font(next_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(next_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(next_lbl);
+    lv_obj_add_event_cb(next_btn, tone_picker_next_page_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Page indicator at bottom
+    lv_obj_t *page_lbl = lv_label_create(screen_tone_picker);
+    lv_label_set_text_fmt(page_lbl, "%d / 3", tone_picker_current_page + 1);
+    lv_obj_set_style_text_font(page_lbl, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(page_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(page_lbl, LV_ALIGN_BOTTOM_MID, 0, -5);
 }
 
 void create_alarm_preview_screen(void) {
@@ -482,6 +622,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *audio_toggle = lv_switch_create(screen_alarm_detail_editor);
     lv_obj_set_size(audio_toggle, 40, 20);
     lv_obj_align(audio_toggle, LV_ALIGN_TOP_RIGHT, -15, 92);
+
+    // Clear style transitions to prevent animation hangs
+    lv_obj_set_style_transition(audio_toggle, NULL, LV_PART_MAIN | LV_STATE_ANY);
+    lv_obj_set_style_transition(audio_toggle, NULL, LV_PART_INDICATOR | LV_STATE_ANY);
+    lv_obj_set_style_transition(audio_toggle, NULL, LV_PART_KNOB | LV_STATE_ANY);
+
     if (alarm->audio_enabled) {
         lv_obj_add_state(audio_toggle, LV_STATE_CHECKED);
     }
@@ -496,10 +642,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
 
     // Get tone name
     const char *tone_names[] = {
-        "Beep 1", "Beep 2", "Beep 3", "Chime", "Alert"
+        "Beep 1", "Beep 2", "Beep 3", "Chime",
+        "Twinkle Twinkle", "Happy Birthday", "Mary Lamb", "Jingle Bells"
     };
     char tone_text[32];
-    snprintf(tone_text, sizeof(tone_text), "Tone: %s", tone_names[alarm->tone]);
+    int tone_idx = (alarm->tone >= 0 && alarm->tone < 8) ? alarm->tone : 0;
+    snprintf(tone_text, sizeof(tone_text), "Tone: %s", tone_names[tone_idx]);
 
     lv_obj_t *tone_lbl = lv_label_create(tone_btn);
     lv_label_set_text(tone_lbl, tone_text);
@@ -545,6 +693,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *visual_toggle = lv_switch_create(screen_alarm_detail_editor);
     lv_obj_set_size(visual_toggle, 40, 20);
     lv_obj_align(visual_toggle, LV_ALIGN_TOP_RIGHT, -15, 177);
+
+    // Clear style transitions to prevent animation hangs
+    lv_obj_set_style_transition(visual_toggle, NULL, LV_PART_MAIN | LV_STATE_ANY);
+    lv_obj_set_style_transition(visual_toggle, NULL, LV_PART_INDICATOR | LV_STATE_ANY);
+    lv_obj_set_style_transition(visual_toggle, NULL, LV_PART_KNOB | LV_STATE_ANY);
+
     if (alarm->visual_enabled) {
         lv_obj_add_state(visual_toggle, LV_STATE_CHECKED);
     }
@@ -561,6 +715,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *repeat_toggle = lv_switch_create(screen_alarm_detail_editor);
     lv_obj_set_size(repeat_toggle, 40, 20);
     lv_obj_align(repeat_toggle, LV_ALIGN_TOP_RIGHT, -15, 204);
+
+    // Clear style transitions to prevent animation hangs
+    lv_obj_set_style_transition(repeat_toggle, NULL, LV_PART_MAIN | LV_STATE_ANY);
+    lv_obj_set_style_transition(repeat_toggle, NULL, LV_PART_INDICATOR | LV_STATE_ANY);
+    lv_obj_set_style_transition(repeat_toggle, NULL, LV_PART_KNOB | LV_STATE_ANY);
+
     if (alarm->audio_repeat) {
         lv_obj_add_state(repeat_toggle, LV_STATE_CHECKED);
     }
@@ -712,19 +872,45 @@ static void alarm_settings_back_event_cb(lv_event_t *e) {
     }
 }
 
-static void tone_picker_back_event_cb(lv_event_t *e) {
+static void tone_picker_prev_page_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Tone picker back - returning to detail editor");
+        tone_picker_current_page--;
+        if (tone_picker_current_page < 0) {
+            tone_picker_current_page = 2;  // Wrap to last page (page 3)
+        }
+
+        ESP_LOGI(TAG, "Tone picker: previous page -> %d", tone_picker_current_page);
 
         if (lvgl_port_lock(0)) {
-            if (screen_alarm_detail_editor != NULL) {
-                lv_scr_load(screen_alarm_detail_editor);
-            }
-
             if (screen_tone_picker != NULL) {
                 lv_obj_del(screen_tone_picker);
                 screen_tone_picker = NULL;
             }
+
+            create_tone_picker_screen(tone_picker_alarm_ref);
+
+            lvgl_port_unlock();
+        }
+    }
+}
+
+static void tone_picker_next_page_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        tone_picker_current_page++;
+        if (tone_picker_current_page > 2) {
+            tone_picker_current_page = 0;  // Wrap to first page
+        }
+
+        ESP_LOGI(TAG, "Tone picker: next page -> %d", tone_picker_current_page);
+
+        if (lvgl_port_lock(0)) {
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+
+            create_tone_picker_screen(tone_picker_alarm_ref);
+
             lvgl_port_unlock();
         }
     }
@@ -739,8 +925,19 @@ static void tone_select_btn_event_cb(lv_event_t *e) {
             ESP_LOGI(TAG, "Tone selected: %d", tone_index);
         }
 
-        // Return to detail editor
+        // Close overlay and refresh detail editor
         if (lvgl_port_lock(0)) {
+            // Delete tone picker overlay FIRST before screen transition
+            if (screen_tone_picker != NULL) {
+                lv_obj_del(screen_tone_picker);
+                screen_tone_picker = NULL;
+            }
+
+            // Reset pagination
+            tone_picker_current_page = 0;
+            tone_picker_alarm_ref = NULL;
+
+            // Recreate detail editor to refresh tone button text
             if (screen_alarm_detail_editor != NULL) {
                 lv_obj_del(screen_alarm_detail_editor);
                 screen_alarm_detail_editor = NULL;
@@ -752,10 +949,6 @@ static void tone_select_btn_event_cb(lv_event_t *e) {
                 lv_scr_load(screen_alarm_detail_editor);
             }
 
-            if (screen_tone_picker != NULL) {
-                lv_obj_del(screen_tone_picker);
-                screen_tone_picker = NULL;
-            }
             lvgl_port_unlock();
         }
     }
@@ -803,7 +996,7 @@ static void alarm_tone_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
 
-        ESP_LOGI(TAG, "Tone button clicked - opening tone picker");
+        ESP_LOGI(TAG, "Tone button clicked - opening tone picker overlay");
 
         if (lvgl_port_lock(0)) {
             if (screen_tone_picker != NULL) {
@@ -811,11 +1004,12 @@ static void alarm_tone_btn_event_cb(lv_event_t *e) {
                 screen_tone_picker = NULL;
             }
 
+            // Reset to first page when opening
+            tone_picker_current_page = 0;
+
+            // Create overlay (no lv_scr_load needed - it's an overlay on current screen)
             create_tone_picker_screen(alarm);
 
-            if (screen_tone_picker != NULL) {
-                lv_scr_load(screen_tone_picker);
-            }
             lvgl_port_unlock();
         }
     }

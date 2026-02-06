@@ -1,0 +1,28 @@
+{
+  "versions": [
+    {
+      "version": "1.5.1",
+      "date": "2026-02-05",
+      "stage": "Beta",
+      "notes": "Tick overflow fix, battery monitoring improvements, visual alarm refinements, SD card logging",
+      "files": {
+        "merged": "firmware/v1.5.1/cygm-merged.bin",
+        "app": "firmware/v1.5.1/cygm.bin",
+        "bootloader": "firmware/v1.5.1/bootloader.bin",
+        "partitions": "firmware/v1.5.1/partition-table.bin",
+        "spiffs": "firmware/v1.5.1/spiffs.bin"
+      },
+      "latest": true
+    }
+  ],
+  "chip": "ESP32",
+  "flash_mode": "dio",
+  "flash_freq": "40m",
+  "flash_size": "4MB",
+  "offsets": {
+    "bootloader": "0x1000",
+    "partitions": "0x8000",
+    "app": "0x10000",
+    "spiffs": "0x310000"
+  }
+}

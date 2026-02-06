@@ -151,14 +151,86 @@ void play_alarm_tone(alarm_tone_t tone, uint8_t volume) {
             buzzer_stop();
             break;
 
-        case ALARM_TONE_ALERT:
-            // Rapid pulsing alert: 1000Hz, 3 pulses
-            for (int i = 0; i < 3; i++) {
-                buzzer_tone(1000, volume);
-                vTaskDelay(pdMS_TO_TICKS(100));
-                buzzer_stop();
-                vTaskDelay(pdMS_TO_TICKS(50));
-            }
+        case ALARM_TONE_TWINKLE:
+            // Twinkle Twinkle Little Star: C C G G A A G
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(784, volume);  // G
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(784, volume);  // G
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(880, volume);  // A
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(880, volume);  // A
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(784, volume);  // G
+            vTaskDelay(pdMS_TO_TICKS(600));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_HAPPY_BIRTHDAY:
+            // Happy Birthday: C C D C F E
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(587, volume);  // D
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_tone(698, volume);  // F
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_MARY_LAMB:
+            // Mary Had a Little Lamb: E D C D E E E
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(587, volume);  // D
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(587, volume);  // D
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(600));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_JINGLE_BELLS:
+            // Jingle Bells: E E E - E E E - E G C D E
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(784, volume);  // G
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(523, volume);  // C
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(587, volume);  // D
+            vTaskDelay(pdMS_TO_TICKS(250));
+            buzzer_tone(659, volume);  // E
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            buzzer_stop();
             break;
 
         default:

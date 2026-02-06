@@ -986,7 +986,7 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
     alarms->high_alarm.text_color = 0xFF3333;  // Red
     alarms->high_alarm.audio_enabled = true;
     alarms->high_alarm.visual_enabled = true;
-    alarms->high_alarm.tone = ALARM_TONE_ALERT;
+    alarms->high_alarm.tone = ALARM_TONE_BEEP_3;
     alarms->high_alarm.volume = 80;
     alarms->high_alarm.audio_repeat = true;  // Urgent alarms repeat
 
@@ -1016,7 +1016,7 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
     alarms->low_alarm.text_color = 0xFF3333;  // Red
     alarms->low_alarm.audio_enabled = true;
     alarms->low_alarm.visual_enabled = true;
-    alarms->low_alarm.tone = ALARM_TONE_ALERT;
+    alarms->low_alarm.tone = ALARM_TONE_BEEP_3;
     alarms->low_alarm.volume = 80;
     alarms->low_alarm.audio_repeat = true;  // Urgent alarms repeat
 }

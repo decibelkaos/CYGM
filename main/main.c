@@ -2020,8 +2020,13 @@ void menu_item_event_cb(lv_event_t *e) {
                 ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes (internal: %lu)",
                          esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
-                // Load WiFi list screen
+                // Load WiFi list screen (create if needed)
                 if (lvgl_port_lock(0)) {
+                    if (screen_wifi_list != NULL) {
+                        lv_obj_del(screen_wifi_list);
+                        screen_wifi_list = NULL;
+                    }
+                    create_wifi_list_screen();
                     lv_scr_load(screen_wifi_list);
                     lvgl_port_unlock();
                 }
@@ -2199,12 +2204,6 @@ void draw_sunset_icon(lv_obj_t *canvas) {
     ray[0].x = 8; ray[0].y = 6;
     ray[1].x = 10; ray[1].y = 4;
     lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
-}
-
-// ===== SPLASH SCREEN ANIMATION WRAPPERS =====
-// Wrapper function for shadow opacity animation (breathing glow effect)
-static void anim_set_shadow_opa(void *obj, int32_t v) {
-    lv_obj_set_style_shadow_opa((lv_obj_t *)obj, (lv_opa_t)v, 0);
 }
 
 // ===== SPLASH SCREEN =====
