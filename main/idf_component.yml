@@ -1,5 +1,5 @@
 ﻿dependencies:
   idf: ">=5.0"
   kodediy/esp_lcd_touch_cst820: "^1.0.0"
-  espressif/esp_lvgl_port: "^2.4.1"
+  espressif/esp_lvgl_port: "^2.5.0"
   lvgl/lvgl: "^8.4.0"

@@ -12,11 +12,13 @@
                             "features/time_system.c"
                             "features/weather_system.c"
                             "features/geocoding_api.c"
+                            "features/glucose_history.c"
                             "ui/menu_screen.c"
                             "ui/home_screen.c"
                             "ui/wifi_screens.c"
                             "ui/cgm_screens.c"
                             "ui/alarm_screens.c"
                             "ui/time_weather_screens.c"
+                            "ui/glucose_chart.c"
                             "tasks/background_tasks.c"
                        INCLUDE_DIRS "." "hardware" "features" "ui" "tasks")

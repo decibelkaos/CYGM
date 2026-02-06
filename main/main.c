@@ -51,6 +51,7 @@
 #include "hardware/display.h"
 #include "features/time_system.h"
 #include "features/weather_system.h"
+#include "features/glucose_history.h"
 #include "ui/menu_screen.h"
 #include "ui/home_screen.h"
 #include "ui/wifi_screens.h"
@@ -1599,6 +1600,9 @@ void glucose_update_task(void *pvParameters) {
                 ESP_LOGI(TAG, "Glucose updated: %d mg/dL, trend: %s",
                          glucose.value, dexcom_trend_description(glucose.trend));
 
+                // Add to history for trend chart (convert seconds to milliseconds)
+                glucose_history_add(glucose.value, (int64_t)glucose.timestamp * 1000);
+
                 // Mark fetch as successful
                 glucose_fetch_failed = false;
                 glucose_fetch_in_progress = false;
@@ -2345,6 +2349,10 @@ void app_main(void) {
     } else {
         ESP_LOGI(TAG, "Alarm settings loaded from NVS");
     }
+
+    // Initialize glucose history system (loads from NVS if exists)
+    add_boot_log("Load glucose history");
+    ESP_ERROR_CHECK(glucose_history_init());
 
     // Load brightness settings from NVS
     nvs_load_brightness(&screen_brightness_percent);

@@ -8,8 +8,10 @@
 #include "shared_state.h"
 #include "main.h"
 #include "features/weather_system.h"
+#include "features/glucose_history.h"
 #include "hardware/display.h"
 #include "nvs_config.h"
+#include "ui/glucose_chart.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -25,6 +27,7 @@ static void create_brightness_overlay(void);
 static void close_brightness_overlay(void);
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color);
 static void glucose_timer_update_cb(lv_timer_t *timer);
+static void trend_arrow_event_cb(lv_event_t *e);
 
 // Glucose fetch timer update callback (updates progress bar)
 static void glucose_timer_update_cb(lv_timer_t *timer) {
@@ -185,6 +188,24 @@ static void brightness_ok_event_cb(lv_event_t *e) {
 
         // Close overlay
         close_brightness_overlay();
+    }
+}
+
+static void trend_arrow_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "Trend arrow clicked - opening glucose history chart");
+
+        int count = glucose_history_get_count();
+        if (count == 0) {
+            ESP_LOGW(TAG, "No glucose history available yet");
+            return;
+        }
+
+        if (lvgl_port_lock(0)) {
+            create_glucose_chart_overlay();
+            lvgl_port_unlock();
+        }
     }
 }
 
@@ -449,6 +470,10 @@ void create_home_screen(void) {
     lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
     lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
+
+    // Make trend arrow clickable to open glucose history chart
+    lv_obj_add_flag(trend_canvas, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(trend_canvas, trend_arrow_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Time ago
     label_time_ago = lv_label_create(right_card);

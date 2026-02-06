@@ -93,6 +93,7 @@ extern "C" {
 #define COLOR_ACCENT_BLUE   0x3B82F6  // Bright blue accent
 #define COLOR_ACCENT_LIGHT  0x60A5FA  // Lighter blue
 #define COLOR_GREEN         0x22C55E  // Green for good
+#define COLOR_YELLOW        0xFACC15  // Yellow warning
 #define COLOR_ORANGE        0xF59E0B  // Orange warning
 #define COLOR_RED           0xEF4444  // Red alert
 #define COLOR_BORDER        0xFFFFFF  // White border/outline

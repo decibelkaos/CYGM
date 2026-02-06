@@ -1,0 +1,67 @@
+/*
+ * glucose_history.h
+ *
+ * Glucose reading history management (circular buffer + NVS persistence)
+ * Stores last 6 hours of readings (24 points at 15-min intervals)
+ */
+
+#ifndef GLUCOSE_HISTORY_H
+#define GLUCOSE_HISTORY_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "esp_err.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Maximum history: 6 hours at 15-minute intervals = 24 readings
+#define GLUCOSE_HISTORY_MAX_POINTS 24
+
+// Single glucose reading with timestamp
+typedef struct {
+    int64_t timestamp;  // Unix timestamp (milliseconds)
+    int glucose;        // mg/dL value
+    bool valid;         // True if this slot contains valid data
+} glucose_history_point_t;
+
+// Circular buffer containing glucose history
+typedef struct {
+    glucose_history_point_t readings[GLUCOSE_HISTORY_MAX_POINTS];
+    int count;  // Number of valid readings (0-24)
+    int head;   // Next write position (circular buffer index)
+} glucose_history_t;
+
+// Initialize glucose history system (load from NVS if exists)
+esp_err_t glucose_history_init(void);
+
+// Add a new glucose reading to the history
+void glucose_history_add(int glucose_value, int64_t timestamp);
+
+// Get the current history buffer (read-only access)
+const glucose_history_t* glucose_history_get(void);
+
+// Get reading at specific index (0 = oldest, count-1 = newest)
+const glucose_history_point_t* glucose_history_get_at(int index);
+
+// Get number of valid readings in history
+int glucose_history_get_count(void);
+
+// Find the closest reading to a given timestamp
+const glucose_history_point_t* glucose_history_find_closest(int64_t timestamp);
+
+// Clear all history (rarely needed)
+void glucose_history_clear(void);
+
+// Save current history to NVS
+esp_err_t glucose_history_save_to_nvs(void);
+
+// Load history from NVS
+esp_err_t glucose_history_load_from_nvs(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // GLUCOSE_HISTORY_H
