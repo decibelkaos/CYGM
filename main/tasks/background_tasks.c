@@ -22,6 +22,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "freertos/task.h"
 
 static const char *TAG = "BACKGROUND_TASKS";
@@ -29,11 +30,9 @@ static const char *TAG = "BACKGROUND_TASKS";
 void ui_task_core1(void *pvParameters) {
     ESP_LOGI(TAG, "UI Task started on Core 1");
 
-    // Initialize touch and keyboard on Core 1
+    // Initialize touch on Core 1
     add_boot_log("Init touch screen");
     ESP_ERROR_CHECK(touch_init_core1());
-    add_boot_log("Init keyboard");
-    ESP_ERROR_CHECK(cardkb_init());
 
     // Initialize LVGL
     add_boot_log("Init LVGL");
@@ -46,10 +45,10 @@ void ui_task_core1(void *pvParameters) {
     add_boot_log("Create UI screens");
     create_splash_screen();
     create_home_screen();
-    create_menu_screen();
-    create_wifi_list_screen();
-    // Don't create password screen yet - create on demand
-    // create_wifi_password_screen();
+    // MEMORY OPTIMIZATION: Don't create menu/WiFi screens at boot - create on-demand to save RAM
+    // create_menu_screen();      // Created when user presses settings button
+    // create_wifi_list_screen();  // Created when user opens WiFi settings
+    // create_wifi_password_screen();  // Created when needed
 
     // Show splash screen with all buffered boot messages
     lv_scr_load(screen_splash);
@@ -64,8 +63,20 @@ void ui_task_core1(void *pvParameters) {
     // Show splash screen for 5 seconds
     vTaskDelay(pdMS_TO_TICKS(5000));
 
-    // Switch to home screen
-    lv_scr_load(screen_home);
+    // Update progress bar to 100% before transition
+    add_boot_log("Loading home...");
+
+    // Small delay to show 100% completion
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    // Switch to home screen with smooth fade animation
+    if (lvgl_port_lock(0)) {
+        lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+        lvgl_port_unlock();
+    }
+
+    // Wait for animation to complete
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // Mark home screen as active - allow background tasks to run
     home_screen_active = true;
@@ -102,27 +113,107 @@ void wifi_task_core0(void *pvParameters) {
     ESP_ERROR_CHECK(wifi_manager_init());
 
     // Check for saved credentials
-    wifi_credentials_t creds;
-    bool has_credentials = (nvs_load_wifi_credentials(&creds) == ESP_OK);
+    uint8_t saved_count = nvs_get_saved_wifi_count();
 
-    if (!has_credentials) {
+    if (saved_count == 0) {
         ESP_LOGI(TAG, "No saved WiFi credentials - setup required");
         add_boot_log("WiFi: Setup needed");
         led_set_breathing_color(127, 127, 0);  // Yellow = setup needed
-        // TODO: Implement WiFi setup UI
-    } else {
-        ESP_LOGI(TAG, "Connecting to WiFi: %s", creds.ssid);
-        add_boot_log("Connecting WiFi...");
-        led_set_breathing_color(127, 127, 0);  // Yellow = connecting
 
-        if (wifi_manager_connect() == ESP_OK) {
+        // Update WiFi status icon to show not connected (only if LVGL is initialized)
+        if (label_wifi_status != NULL && lvgl_port_lock(0)) {
+            lv_label_set_recolor(label_wifi_status, true);
+            lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+            lvgl_port_unlock();
+        }
+    } else {
+        // Smart WiFi connection: Try last connected network first, then fall back to others
+        ESP_LOGI(TAG, "Found %d saved WiFi network(s)", saved_count);
+
+        // Load all saved networks
+        wifi_credentials_t networks[MAX_SAVED_WIFI_NETWORKS];
+        uint8_t network_count = 0;
+        nvs_get_saved_wifi_networks(networks, &network_count);
+
+        // Try to get last connected WiFi
+        char last_ssid[MAX_SSID_LEN] = {0};
+        bool has_last_wifi = (nvs_load_last_wifi_ssid(last_ssid, sizeof(last_ssid)) == ESP_OK);
+
+        // Build connection order: last connected first, then others
+        int connection_order[MAX_SAVED_WIFI_NETWORKS];
+        int order_count = 0;
+
+        if (has_last_wifi) {
+            // Find last connected network in saved list
+            for (int i = 0; i < network_count; i++) {
+                if (strcmp(networks[i].ssid, last_ssid) == 0) {
+                    connection_order[order_count++] = i;
+                    ESP_LOGI(TAG, "Last connected WiFi found: %s (will try first)", last_ssid);
+                    break;
+                }
+            }
+        }
+
+        // Add remaining networks to connection order
+        for (int i = 0; i < network_count; i++) {
+            bool already_added = false;
+            for (int j = 0; j < order_count; j++) {
+                if (connection_order[j] == i) {
+                    already_added = true;
+                    break;
+                }
+            }
+            if (!already_added) {
+                connection_order[order_count++] = i;
+            }
+        }
+
+        // Try connecting to networks in order
+        bool connected = false;
+        for (int attempt = 0; attempt < order_count; attempt++) {
+            int idx = connection_order[attempt];
+            ESP_LOGI(TAG, "Trying WiFi network %d/%d: %s", attempt + 1, order_count, networks[idx].ssid);
+            add_boot_log("Connecting WiFi...");
+            led_set_breathing_color(127, 127, 0);  // Yellow = connecting
+
+            // Temporarily save this network as first entry for wifi_manager_connect()
+            nvs_save_wifi_credentials(networks[idx].ssid, networks[idx].password);
+
+            if (wifi_manager_connect() == ESP_OK) {
+                // Get the ACTUAL connected SSID from WiFi stack (might differ from attempted SSID due to fallback)
+                wifi_config_t wifi_config;
+                if (esp_wifi_get_config(WIFI_IF_STA, &wifi_config) == ESP_OK) {
+                    char actual_ssid[33] = {0};
+                    memcpy(actual_ssid, wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid));
+                    actual_ssid[32] = '\0';  // Ensure null termination
+                    ESP_LOGI(TAG, "Successfully connected to: %s", actual_ssid);
+                    nvs_save_last_wifi_ssid(actual_ssid);  // Save as last successful connection
+                } else {
+                    ESP_LOGI(TAG, "Successfully connected to: %s", networks[idx].ssid);
+                    nvs_save_last_wifi_ssid(networks[idx].ssid);  // Fallback to attempted SSID
+                }
+                connected = true;
+                break;
+            } else {
+                ESP_LOGW(TAG, "Failed to connect to: %s", networks[idx].ssid);
+                if (attempt < order_count - 1) {
+                    ESP_LOGI(TAG, "Trying next saved network...");
+                    vTaskDelay(pdMS_TO_TICKS(2000));  // Brief delay before next attempt
+                }
+            }
+        }
+
+        if (connected) {
             ESP_LOGI(TAG, "WiFi connected successfully");
             add_boot_log("WiFi connected!");
             wifi_connected = true;
             led_start_wifi_boot_blink();  // Start green blink during boot
 
-            // Update WiFi status icon color
-            if (lvgl_port_lock(0)) {
+            // Update WiFi status icon - just green icon, no text (only if LVGL is initialized)
+            if (label_wifi_status != NULL && lvgl_port_lock(0)) {
+                lv_label_set_recolor(label_wifi_status, false);  // Disable recolor
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
                 lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
                 lvgl_port_unlock();
             }
@@ -197,6 +288,10 @@ void wifi_task_core0(void *pvParameters) {
                                     glucose_timestamp = glucose.timestamp;
                                     glucose_data_valid = true;
                                     glucose_status = glucose.status;
+
+                                    // Update timer for progress bar
+                                    last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
+
                                     ESP_LOGI(TAG, "Initial glucose: %d mg/dL, trend: %s",
                                              glucose.value, dexcom_trend_description(glucose.trend));
 
@@ -218,13 +313,16 @@ void wifi_task_core0(void *pvParameters) {
                                     update_glucose_display();
                                 }
 
-                                // KEEP persistent client alive for periodic fetches (don't close it!)
-                                // The SSL connection will be reused every 90 seconds, avoiding expensive handshakes
+                                // AGGRESSIVE MEMORY FIX: Close SSL after initial fetch to free ~30KB
+                                // Periodic fetches will reopen SSL each time (prevents memory leaks)
                                 ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial Dexcom fetch =====");
-                                ESP_LOGI(TAG, "Keeping Dexcom persistent client alive for periodic fetches");
-                                ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
+                                ESP_LOGI(TAG, "Free heap before SSL close: %lu bytes", esp_get_free_heap_size());
                                 ESP_LOGI(TAG, "Free heap (internal): %lu bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
                                 ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
+
+                                ESP_LOGI(TAG, "Closing Dexcom SSL connection to free memory (aggressive mode)");
+                                dexcom_close_persistent_client();
+                                ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
 
                                 // Start weather task (uses HTTP - no SSL overhead!)
                                 if (weather_task_handle == NULL) {
@@ -275,10 +373,11 @@ void wifi_task_core0(void *pvParameters) {
             ESP_LOGE(TAG, "WiFi connection failed");
             led_start_error_blink();  // Red blink for error
 
-            // Update WiFi status on home screen
-            if (lvgl_port_lock(0)) {
-                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " Failed");
-                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_RED), 0);
+            // Update WiFi status on home screen - gray WiFi icon with RED warning (only if LVGL is initialized)
+            if (label_wifi_status != NULL && lvgl_port_lock(0)) {
+                lv_label_set_recolor(label_wifi_status, true);
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
                 lvgl_port_unlock();
             }
         }

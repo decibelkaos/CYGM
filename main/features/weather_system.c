@@ -839,14 +839,8 @@ void weather_update_task(void *pvParameters) {
                 if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
                     ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
 
-                    // Close Dexcom persistent client to free SSL memory (~30KB) for weather
-                    ESP_LOGI(TAG, "Closing Dexcom persistent client before weather fetch");
-                    dexcom_close_persistent_client();
-                    ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes", esp_get_free_heap_size());
-
-                    // Wait a bit to let connections fully close
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-
+                    // Weather uses HTTP (not HTTPS), so we don't need to close Dexcom SSL client
+                    // This keeps the Dexcom persistent connection alive for next glucose fetch
                     ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
                     ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
 

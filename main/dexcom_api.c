@@ -67,7 +67,7 @@ static int http_response_len = 0;
 // Persistent HTTP client for connection reuse (saves SSL handshake overhead)
 static esp_http_client_handle_t persistent_client = NULL;
 static int consecutive_failures = 0;  // Track consecutive fetch failures
-#define MAX_CONSECUTIVE_FAILURES 5  // Force fresh connection after 5 failures
+#define MAX_CONSECUTIVE_FAILURES 3  // Force fresh connection after 3 failures (memory-conscious)
 
 // ============================================================================
 // Helper Functions
@@ -675,10 +675,19 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     memset(http_response, 0, sizeof(http_response));
     http_response_len = 0;
 
+    // CRITICAL MEMORY FIX: Check if memory is critically low
+    // If under 15KB free, close and reopen SSL connection to prevent read errors
+    size_t free_heap = esp_get_free_heap_size();
+    if (persistent_client != NULL && free_heap < 15000) {
+        ESP_LOGW(TAG, "CRITICAL: Free heap only %lu bytes - reopening SSL connection to prevent errors", free_heap);
+        cleanup_persistent_client();
+        consecutive_failures = 0;  // Reset failure counter
+    }
+
     // Client should already be initialized from authentication (reusing SSL session!)
     // But check anyway (in case session was restored from NVS after reboot)
     if (persistent_client == NULL) {
-        ESP_LOGI(TAG, "Creating new persistent client (session restored from NVS)");
+        ESP_LOGI(TAG, "Creating new persistent client (session restored from NVS or memory fix)");
         esp_err_t init_err = init_persistent_client();
         if (init_err != ESP_OK) {
             free(body_str);

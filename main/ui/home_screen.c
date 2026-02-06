@@ -13,6 +13,7 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 static const char *TAG = "HOME_SCREEN";
 
@@ -23,6 +24,32 @@ static void brightness_ok_event_cb(lv_event_t *e);
 static void create_brightness_overlay(void);
 static void close_brightness_overlay(void);
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color);
+static void glucose_timer_update_cb(lv_timer_t *timer);
+
+// Glucose fetch timer update callback (updates progress bar)
+static void glucose_timer_update_cb(lv_timer_t *timer) {
+    if (!home_screen_active || glucose_fetch_timer_bar == NULL) {
+        return;
+    }
+
+    // Calculate elapsed time since last fetch (in milliseconds)
+    int64_t now = esp_timer_get_time() / 1000;  // Convert microseconds to milliseconds
+    int64_t elapsed = now - last_glucose_fetch_time;
+
+    // Glucose task runs every 90 seconds (90000 ms)
+    const int64_t FETCH_INTERVAL_MS = 90000;
+
+    // Calculate percentage (0-100%)
+    int percentage = (int)((elapsed * 100) / FETCH_INTERVAL_MS);
+    if (percentage > 100) percentage = 100;
+    if (percentage < 0) percentage = 0;
+
+    // Update bar
+    if (lvgl_port_lock(0)) {
+        lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
+        lvgl_port_unlock();
+    }
+}
 
 // Draw custom lightbulb icon on canvas
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
@@ -240,12 +267,14 @@ void create_home_screen(void) {
     lv_obj_add_style(left_card, &style_card, 0);
     lv_obj_clear_flag(left_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // WiFi status icon (very top left corner)
+    // WiFi status icon (very top left corner, clickable to open WiFi setup)
     label_wifi_status = lv_label_create(left_card);
     lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
     lv_obj_set_style_text_font(label_wifi_status, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_wifi_status, LV_ALIGN_TOP_LEFT, 2, 2);
+    lv_obj_add_flag(label_wifi_status, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(label_wifi_status, wifi_icon_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Time (large, white, centered at top, clickable to toggle format)
     label_clock = lv_label_create(left_card);
@@ -394,11 +423,16 @@ void create_home_screen(void) {
     draw_lightbulb_icon(brightness_icon, COLOR_ACCENT_BLUE);
     lv_obj_center(brightness_icon);
 
-    // Glucose value (huge, bright blue)
+    // Glucose value (huge, bright blue with glow effect)
     label_glucose = lv_label_create(right_card);
     lv_label_set_text(label_glucose, "---");
     lv_obj_set_style_text_font(label_glucose, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+
+    // Make label background transparent for cleaner appearance
+    lv_obj_set_style_bg_opa(label_glucose, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(label_glucose, 0, 0);  // Remove padding
+
     lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
     
     // Unit
@@ -415,13 +449,44 @@ void create_home_screen(void) {
     lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
     lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
-    
+
     // Time ago
     label_time_ago = lv_label_create(right_card);
     lv_label_set_text(label_time_ago, "-- min ago");
     lv_obj_set_style_text_font(label_time_ago, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
+
+    // Glucose fetch countdown bar (shows progress to next fetch, tap to force fetch)
+    // Card width is 150px with 10px padding = 130px usable, 75% = ~98px
+    glucose_fetch_timer_bar = lv_bar_create(right_card);
+    lv_obj_set_size(glucose_fetch_timer_bar, 100, 12);  // Increased from 8 to 12 pixels for easier tapping
+    lv_obj_align(glucose_fetch_timer_bar, LV_ALIGN_BOTTOM_MID, 0, -5);  // Closer to bottom
+    lv_bar_set_range(glucose_fetch_timer_bar, 0, 100);
+    lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(0x2C2C2E), LV_PART_MAIN);  // Darker background
+    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, LV_OPA_80, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(glucose_fetch_timer_bar, 4, 0);  // More rounded
+    lv_obj_set_style_shadow_width(glucose_fetch_timer_bar, 8, LV_PART_INDICATOR);  // Add glow
+    lv_obj_set_style_shadow_spread(glucose_fetch_timer_bar, 2, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_opa(glucose_fetch_timer_bar, LV_OPA_60, LV_PART_INDICATOR);
+
+    // Make timer bar clickable to force immediate glucose fetch
+    // Note: Bars might not respond to clicks reliably, so create an invisible button overlay
+    lv_obj_add_flag(glucose_fetch_timer_bar, LV_OBJ_FLAG_CLICKABLE);
+    extern void glucose_timer_bar_event_cb(lv_event_t *e);
+    lv_obj_add_event_cb(glucose_fetch_timer_bar, glucose_timer_bar_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Create invisible button overlay for more reliable touch detection (30px tall for easier tapping)
+    lv_obj_t *timer_bar_touch_overlay = lv_btn_create(right_card);
+    lv_obj_set_size(timer_bar_touch_overlay, 120, 30);  // Larger touch target
+    lv_obj_align(timer_bar_touch_overlay, LV_ALIGN_BOTTOM_MID, 0, -2);  // Cover bar area
+    lv_obj_set_style_bg_opa(timer_bar_touch_overlay, LV_OPA_TRANSP, 0);  // Completely invisible
+    lv_obj_set_style_border_width(timer_bar_touch_overlay, 0, 0);
+    lv_obj_set_style_shadow_width(timer_bar_touch_overlay, 0, 0);
+    lv_obj_add_event_cb(timer_bar_touch_overlay, glucose_timer_bar_event_cb, LV_EVENT_CLICKED, NULL);
     
     // --- MENU BUTTON (top right) - transparent, just icon ---
     lv_obj_t *menu_btn = lv_btn_create(screen_home);
@@ -439,4 +504,20 @@ void create_home_screen(void) {
 
     // Attach event handler
     lv_obj_add_event_cb(menu_btn, menu_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Set initial WiFi status icon based on current connection state
+    if (wifi_connected) {
+        lv_label_set_recolor(label_wifi_status, false);
+        lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
+        lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
+    } else {
+        lv_label_set_recolor(label_wifi_status, true);
+        lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
+        lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+    }
+
+    // Create glucose fetch timer (updates every 1 second)
+    if (glucose_timer_update == NULL) {
+        glucose_timer_update = lv_timer_create(glucose_timer_update_cb, 1000, NULL);
+    }
 }

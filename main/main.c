@@ -78,11 +78,6 @@ static const char *TAG = "CYGM";
 #define TOUCH_INT       GPIO_NUM_NC  // Use polling mode (WiFi conflict fix)
 #define TOUCH_RST       25
 
-#define CARDKB_I2C_NUM  I2C_NUM_1
-#define CARDKB_SDA      21
-#define CARDKB_SCL      22
-#define CARDKB_ADDR     0x5F
-
 #define LED_RED         4
 #define LED_GREEN       16
 #define LED_BLUE        17
@@ -133,8 +128,6 @@ esp_lcd_panel_handle_t lcd_panel = NULL;
 esp_lcd_panel_io_handle_t lcd_io_handle = NULL;
 esp_lcd_touch_handle_t touch_handle = NULL;
 i2c_master_bus_handle_t touch_i2c_bus = NULL;
-i2c_master_bus_handle_t cardkb_i2c_bus = NULL;
-i2c_master_dev_handle_t cardkb_dev = NULL;
 
 // Task handles
 TaskHandle_t wifi_task_handle = NULL;
@@ -213,8 +206,10 @@ lv_obj_t *brightness_overlay = NULL;
 lv_obj_t *brightness_slider = NULL;
 lv_obj_t *brightness_value_label = NULL;
 
+
 // Splash screen boot log
 lv_obj_t *boot_log_label = NULL;
+lv_obj_t *boot_progress_bar = NULL;  // Animated progress bar
 char boot_log_buffer[512] = {0};  // Buffer for boot messages
 
 // Dexcom login UI elements
@@ -249,6 +244,13 @@ lv_obj_t *label_ampm = NULL;  // AM/PM indicator (12hr mode only)
 lv_obj_t *label_glucose = NULL;
 lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
 lv_obj_t *label_time_ago = NULL;
+lv_obj_t *glucose_fetch_timer_bar = NULL;  // Progress bar showing time until next glucose fetch
+lv_timer_t *glucose_timer_update = NULL;    // Timer to update the progress bar
+int64_t last_glucose_fetch_time = 0;        // Timestamp of last glucose fetch (milliseconds)
+bool glucose_fetch_in_progress = false;     // True when actively fetching glucose
+bool glucose_fetch_failed = false;          // True if last fetch failed
+bool glucose_force_fetch_requested = false; // True when user requested manual fetch
+lv_timer_t *glucose_fetch_animation_timer = NULL;  // Animation timer for bouncing indicator
 lv_obj_t *label_wifi_status = NULL;
 
 // WiFi state
@@ -585,125 +587,125 @@ void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
 
     switch (trend) {
         case TREND_FLAT: {
-            // Green glow - SINGLE_UP rotated 90° clockwise
+            // Green glow - horizontal arrow (LARGER, 1.3x scale)
             glow_dsc.color = lv_color_hex(0x10B981);
-            glow_dsc.width = 11;
-            // Horizontal shaft (38 pixels, centered vertically)
-            points[0] = (lv_point_t){8, 30};
-            points[1] = (lv_point_t){46, 30};
+            glow_dsc.width = 12;
+            // Horizontal shaft (centered at 30,30)
+            points[0] = (lv_point_t){6, 30};
+            points[1] = (lv_point_t){50, 30};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead V-shape (same proportions as SINGLE_UP)
-            points[0] = (lv_point_t){46, 30};
-            points[1] = (lv_point_t){39, 22};
+            // Arrowhead V-shape (perfectly symmetric)
+            points[0] = (lv_point_t){50, 30};  // Tip
+            points[1] = (lv_point_t){41, 21};  // Upper winglet
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){46, 30};
-            points[1] = (lv_point_t){39, 38};
+            points[0] = (lv_point_t){50, 30};  // Tip
+            points[1] = (lv_point_t){41, 39};  // Lower winglet (symmetric: 30-9=21, 30+9=39)
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
 
             // Blue arrow
             line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            points[0] = (lv_point_t){8, 30};
-            points[1] = (lv_point_t){46, 30};
+            line_dsc.width = 9;
+            points[0] = (lv_point_t){6, 30};
+            points[1] = (lv_point_t){50, 30};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){46, 30};
-            points[1] = (lv_point_t){39, 22};
+            points[0] = (lv_point_t){50, 30};
+            points[1] = (lv_point_t){41, 21};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){46, 30};
-            points[1] = (lv_point_t){39, 38};
+            points[0] = (lv_point_t){50, 30};
+            points[1] = (lv_point_t){41, 39};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
             break;
         }
 
         case TREND_FORTY_FIVE_UP: {
-            // Green glow - SINGLE_UP rotated 45° counterclockwise
+            // Green glow (LARGER, 1.3x scale)
             glow_dsc.color = lv_color_hex(0x10B981);
-            glow_dsc.width = 11;
-            // Diagonal shaft (30 pixels diagonal)
-            points[0] = (lv_point_t){12, 48};
-            points[1] = (lv_point_t){42, 18};
+            glow_dsc.width = 12;
+            // Diagonal shaft
+            points[0] = (lv_point_t){10, 50};
+            points[1] = (lv_point_t){47, 13};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
             // Arrowhead V-shape (rotated 45°)
-            points[0] = (lv_point_t){42, 18};
-            points[1] = (lv_point_t){31, 17};
+            points[0] = (lv_point_t){47, 13};
+            points[1] = (lv_point_t){35, 12};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){42, 18};
-            points[1] = (lv_point_t){43, 29};
+            points[0] = (lv_point_t){47, 13};
+            points[1] = (lv_point_t){48, 25};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
 
             // Blue arrow
             line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            points[0] = (lv_point_t){12, 48};
-            points[1] = (lv_point_t){42, 18};
+            line_dsc.width = 9;
+            points[0] = (lv_point_t){10, 50};
+            points[1] = (lv_point_t){47, 13};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){42, 18};
-            points[1] = (lv_point_t){31, 17};
+            points[0] = (lv_point_t){47, 13};
+            points[1] = (lv_point_t){35, 12};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){42, 18};
-            points[1] = (lv_point_t){43, 29};
+            points[0] = (lv_point_t){47, 13};
+            points[1] = (lv_point_t){48, 25};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
             break;
         }
 
         case TREND_FORTY_FIVE_DOWN: {
-            // Green glow - SINGLE_UP rotated 45° clockwise
+            // Green glow (LARGER, 1.3x scale)
             glow_dsc.color = lv_color_hex(0x10B981);
-            glow_dsc.width = 11;
-            // Diagonal shaft (30 pixels diagonal)
-            points[0] = (lv_point_t){12, 12};
-            points[1] = (lv_point_t){42, 42};
+            glow_dsc.width = 12;
+            // Diagonal shaft
+            points[0] = (lv_point_t){10, 10};
+            points[1] = (lv_point_t){47, 47};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
             // Arrowhead V-shape (rotated -45°)
-            points[0] = (lv_point_t){42, 42};
-            points[1] = (lv_point_t){31, 43};
+            points[0] = (lv_point_t){47, 47};
+            points[1] = (lv_point_t){35, 48};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){42, 42};
-            points[1] = (lv_point_t){43, 31};
+            points[0] = (lv_point_t){47, 47};
+            points[1] = (lv_point_t){48, 35};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
 
             // Blue arrow
             line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            points[0] = (lv_point_t){12, 12};
-            points[1] = (lv_point_t){42, 42};
+            line_dsc.width = 9;
+            points[0] = (lv_point_t){10, 10};
+            points[1] = (lv_point_t){47, 47};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){42, 42};
-            points[1] = (lv_point_t){31, 43};
+            points[0] = (lv_point_t){47, 47};
+            points[1] = (lv_point_t){35, 48};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){42, 42};
-            points[1] = (lv_point_t){43, 31};
+            points[0] = (lv_point_t){47, 47};
+            points[1] = (lv_point_t){48, 35};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
             break;
         }
 
         case TREND_SINGLE_UP: {
-            // Orange glow
+            // Orange glow (LARGER, 1.3x scale)
             glow_dsc.color = lv_color_hex(0xFFA500);
-            glow_dsc.width = 11;
-            // Vertical shaft (36 pixels)
-            points[0] = (lv_point_t){30, 52};
-            points[1] = (lv_point_t){30, 16};
+            glow_dsc.width = 12;
+            // Vertical shaft
+            points[0] = (lv_point_t){30, 54};
+            points[1] = (lv_point_t){30, 13};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead
-            points[0] = (lv_point_t){30, 16};
-            points[1] = (lv_point_t){22, 23};
+            // Arrowhead (symmetric)
+            points[0] = (lv_point_t){30, 13};
+            points[1] = (lv_point_t){21, 22};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){30, 16};
-            points[1] = (lv_point_t){38, 23};
+            points[0] = (lv_point_t){30, 13};
+            points[1] = (lv_point_t){39, 22};
             lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
 
             // Blue arrow
             line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            points[0] = (lv_point_t){30, 52};
-            points[1] = (lv_point_t){30, 16};
+            line_dsc.width = 9;
+            points[0] = (lv_point_t){30, 54};
+            points[1] = (lv_point_t){30, 13};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){30, 16};
-            points[1] = (lv_point_t){22, 23};
+            points[0] = (lv_point_t){30, 13};
+            points[1] = (lv_point_t){21, 22};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){30, 16};
-            points[1] = (lv_point_t){38, 23};
+            points[0] = (lv_point_t){30, 13};
+            points[1] = (lv_point_t){39, 22};
             lv_canvas_draw_line(canvas, points, 2, &line_dsc);
             break;
         }
@@ -867,6 +869,8 @@ static void audio_alarm_repeat_timer_cb(lv_timer_t *timer);
 static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
 void check_glucose_alarms(int glucose_mg_dl);
 void update_glucose_display(void);
+void glucose_timer_bar_event_cb(lv_event_t *e);
+static void glucose_fetch_animation_timer_cb(lv_timer_t *timer);
 static void visual_alarm_slider_event_cb(lv_event_t *e);
 
 // Get alarm color based on glucose value and alarm thresholds
@@ -1360,11 +1364,51 @@ void update_glucose_display(void) {
 void glucose_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Glucose update task started (90 second interval)");
 
-    // Wait 90 seconds before first fetch (initial fetch already done during auth)
-    // This prevents rate limiting (Dexcom allows 1 fetch per 90 seconds)
-    vTaskDelay(pdMS_TO_TICKS(90000));  // 90 seconds
+    // Smart wait: Only wait remaining time if an initial fetch already happened
+    const int64_t FETCH_INTERVAL_MS = 90000;  // 90 seconds
+    int64_t wait_time_ms = FETCH_INTERVAL_MS;
+
+    if (last_glucose_fetch_time > 0) {
+        // Calculate time since last fetch
+        int64_t now = esp_timer_get_time() / 1000;
+        int64_t elapsed = now - last_glucose_fetch_time;
+
+        if (elapsed < FETCH_INTERVAL_MS) {
+            wait_time_ms = FETCH_INTERVAL_MS - elapsed;
+            ESP_LOGI(TAG, "Last fetch was %lld ms ago, waiting %lld ms until next fetch", elapsed, wait_time_ms);
+        } else {
+            ESP_LOGI(TAG, "Last fetch was %lld ms ago (>90s), fetching immediately", elapsed);
+            wait_time_ms = 0;
+        }
+    } else {
+        ESP_LOGI(TAG, "No previous fetch detected, waiting full 90 seconds");
+    }
+
+    // Initial wait - check every second for force-fetch
+    if (wait_time_ms > 0) {
+        int wait_seconds = wait_time_ms / 1000;
+        for (int i = 0; i < wait_seconds; i++) {
+            if (glucose_force_fetch_requested) {
+                ESP_LOGI(TAG, "Force-fetch requested during initial wait, breaking early");
+                glucose_force_fetch_requested = false;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 
     while (1) {
+        // Wait for 90 seconds OR until force-fetch is requested
+        // Check every 1 second to allow responsive force-fetch
+        for (int i = 0; i < 90; i++) {
+            if (glucose_force_fetch_requested) {
+                ESP_LOGI(TAG, "Force-fetch requested, breaking wait loop early");
+                glucose_force_fetch_requested = false;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1000));  // Check every 1 second
+        }
+
         // Check if background tasks are paused (not on home screen)
         if (pause_background_tasks) {
             ESP_LOGI(TAG, "[Glucose Task] Paused - not on home screen (waiting 10s)");
@@ -1395,6 +1439,57 @@ void glucose_update_task(void *pvParameters) {
                 ESP_LOGI(TAG, "Free total: %lu bytes", free_total);
                 ESP_LOGI(TAG, "Minimum ever: %lu bytes", min_ever);
 
+                // Detailed memory breakdown by heap capabilities
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "=== DETAILED MEMORY BREAKDOWN ===");
+                ESP_LOGI(TAG, "DMA-capable memory (MALLOC_CAP_DMA):   %6lu bytes free",
+                         heap_caps_get_free_size(MALLOC_CAP_DMA));
+                ESP_LOGI(TAG, "32-bit aligned memory (MALLOC_CAP_32BIT): %6lu bytes free",
+                         heap_caps_get_free_size(MALLOC_CAP_32BIT));
+                ESP_LOGI(TAG, "Internal memory (MALLOC_CAP_INTERNAL): %6lu bytes free",
+                         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+                ESP_LOGI(TAG, "Default memory (MALLOC_CAP_DEFAULT):  %6lu bytes free",
+                         heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "Largest free blocks by type:");
+                ESP_LOGI(TAG, "  INTERNAL:  %6lu bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+                ESP_LOGI(TAG, "  DMA:       %6lu bytes", heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+                ESP_LOGI(TAG, "  DEFAULT:   %6lu bytes", heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+                ESP_LOGI(TAG, "");
+                multi_heap_info_t heap_info;
+                heap_caps_get_info(&heap_info, MALLOC_CAP_INTERNAL);
+                ESP_LOGI(TAG, "Internal heap fragmentation info:");
+                ESP_LOGI(TAG, "  Total free: %lu bytes", heap_info.total_free_bytes);
+                ESP_LOGI(TAG, "  Allocated: %lu bytes", heap_info.total_allocated_bytes);
+                ESP_LOGI(TAG, "  Largest block: %lu bytes", heap_info.largest_free_block);
+                ESP_LOGI(TAG, "  Min free ever: %lu bytes", heap_info.minimum_free_bytes);
+                ESP_LOGI(TAG, "  Allocated blocks: %lu", heap_info.allocated_blocks);
+                ESP_LOGI(TAG, "  Free blocks: %lu", heap_info.free_blocks);
+                ESP_LOGI(TAG, "  Total blocks: %lu", heap_info.total_blocks);
+
+                // Calculate fragmentation percentage
+                float fragmentation = 0;
+                if (heap_info.total_free_bytes > 0) {
+                    fragmentation = 100.0f * (1.0f - ((float)heap_info.largest_free_block / (float)heap_info.total_free_bytes));
+                }
+                ESP_LOGI(TAG, "  Fragmentation: %.1f%% (largest block is %.1f%% of total free)",
+                         fragmentation,
+                         100.0f * ((float)heap_info.largest_free_block / (float)heap_info.total_free_bytes));
+
+                // Warn if severely fragmented
+                if (fragmentation > 50.0f) {
+                    ESP_LOGW(TAG, "  WARNING: Severe memory fragmentation! %lu allocated blocks, only %lu free blocks",
+                             heap_info.allocated_blocks, heap_info.free_blocks);
+                    ESP_LOGW(TAG, "  Average allocated block size: %lu bytes",
+                             heap_info.total_allocated_bytes / heap_info.allocated_blocks);
+                    if (heap_info.free_blocks > 0) {
+                        ESP_LOGW(TAG, "  Average free block size: %lu bytes",
+                                 heap_info.total_free_bytes / heap_info.free_blocks);
+                    }
+                }
+                ESP_LOGI(TAG, "=================================");
+                ESP_LOGI(TAG, "");
+
                 // WARNING: If minimum ever is critically low, log it
                 if (min_ever < 10000) {
                     ESP_LOGW(TAG, "CRITICAL: System went down to %lu bytes at some point! Risk of crashes!", min_ever);
@@ -1407,6 +1502,35 @@ void glucose_update_task(void *pvParameters) {
                 size_t required_memory = client_open ? 20000 : 35000;
                 const char *connection_type = client_open ? "REUSING existing SSL connection" : "CREATING new SSL connection";
 
+                // Check largest free block to detect fragmentation
+                size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+                ESP_LOGI(TAG, "Largest contiguous block: %lu bytes", largest_block);
+
+                if (largest_block < 30000 && !client_open) {
+                    ESP_LOGW(TAG, "Memory fragmented! Largest block: %lu (need ~30KB for SSL)", largest_block);
+                    ESP_LOGW(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+
+                    // Mark fetch as failed due to memory
+                    glucose_fetch_failed = true;
+                    glucose_fetch_in_progress = false;
+
+                    // Stop animation and update bar to red
+                    if (lvgl_port_lock(0)) {
+                        if (glucose_fetch_animation_timer != NULL) {
+                            lv_timer_del(glucose_fetch_animation_timer);
+                            glucose_fetch_animation_timer = NULL;
+                        }
+                        if (glucose_fetch_timer_bar != NULL) {
+                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                        }
+                        lvgl_port_unlock();
+                    }
+
+                    xSemaphoreGive(network_mutex);
+                    continue;
+                }
+
                 ESP_LOGI(TAG, "Persistent client status: %s", client_open ? "OPEN" : "CLOSED");
                 ESP_LOGI(TAG, "Memory requirement: %lu bytes (%s)", required_memory, connection_type);
 
@@ -1414,6 +1538,25 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGE(TAG, "Insufficient INTERNAL memory: %lu bytes (need %lu for %s)",
                              free_internal, required_memory, connection_type);
                     ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+
+                    // Mark fetch as failed due to memory
+                    glucose_fetch_failed = true;
+                    glucose_fetch_in_progress = false;
+
+                    // Stop animation and update bar to red
+                    if (lvgl_port_lock(0)) {
+                        if (glucose_fetch_animation_timer != NULL) {
+                            lv_timer_del(glucose_fetch_animation_timer);
+                            glucose_fetch_animation_timer = NULL;
+                        }
+                        if (glucose_fetch_timer_bar != NULL) {
+                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                            // Keep blue glow even on failure
+                            lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                        }
+                        lvgl_port_unlock();
+                    }
 
                     // Release mutex before error handling
                     xSemaphoreGive(network_mutex);
@@ -1424,13 +1567,14 @@ void glucose_update_task(void *pvParameters) {
                     vTaskDelay(pdMS_TO_TICKS(5000));
                     led_stop_error_blink();
 
-                    // Wait and try again
-                    vTaskDelay(pdMS_TO_TICKS(90000));
                     continue;
                 }
 
                 ESP_LOGI(TAG, "Memory check PASSED - %lu bytes available (%s)",
                          free_internal, connection_type);
+
+                // Mark fetch as in progress
+                glucose_fetch_in_progress = true;
 
                 dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
                 ESP_LOGI(TAG, "Fetching periodic glucose reading...");
@@ -1449,8 +1593,28 @@ void glucose_update_task(void *pvParameters) {
                 glucose_data_fresh = true;    // This fetch succeeded
                 glucose_status = glucose.status;
 
+                // Update timer for progress bar
+                last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
+
                 ESP_LOGI(TAG, "Glucose updated: %d mg/dL, trend: %s",
                          glucose.value, dexcom_trend_description(glucose.trend));
+
+                // Mark fetch as successful
+                glucose_fetch_failed = false;
+                glucose_fetch_in_progress = false;
+
+                // Stop animation and restore blue bar
+                if (lvgl_port_lock(0)) {
+                    if (glucose_fetch_animation_timer != NULL) {
+                        lv_timer_del(glucose_fetch_animation_timer);
+                        glucose_fetch_animation_timer = NULL;
+                    }
+                    if (glucose_fetch_timer_bar != NULL) {
+                        lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                        lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                    }
+                    lvgl_port_unlock();
+                }
 
                 // Show success LED (green fade)
                 led_show_success();
@@ -1479,6 +1643,25 @@ void glucose_update_task(void *pvParameters) {
                     glucose_data_valid = false;
                 }
 
+                // Mark fetch as failed
+                glucose_fetch_failed = true;
+                glucose_fetch_in_progress = false;
+
+                // Stop animation and update bar to red (but keep blue glow)
+                if (lvgl_port_lock(0)) {
+                    if (glucose_fetch_animation_timer != NULL) {
+                        lv_timer_del(glucose_fetch_animation_timer);
+                        glucose_fetch_animation_timer = NULL;
+                    }
+                    if (glucose_fetch_timer_bar != NULL) {
+                        lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+                        lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                        // Keep blue glow even on failure
+                        lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                    }
+                    lvgl_port_unlock();
+                }
+
                 update_glucose_display();
                 ESP_LOGW(TAG, "Periodic glucose fetch failed: %s", esp_err_to_name(ret));
 
@@ -1490,9 +1673,11 @@ void glucose_update_task(void *pvParameters) {
                 // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
             }
 
-                // KEEP persistent client alive for next fetch (reuse SSL connection)
-                // This avoids expensive SSL handshakes every 90 seconds
-                ESP_LOGI(TAG, "Keeping Dexcom persistent client alive for next fetch");
+                // AGGRESSIVE MEMORY FIX: Close SSL connection after EVERY fetch to prevent memory leaks
+                // Forces fresh SSL handshake every 90 seconds, but prevents memory accumulation
+                ESP_LOGI(TAG, "Closing Dexcom SSL connection to free memory (aggressive mode)");
+                dexcom_close_persistent_client();
+                ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
 
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
@@ -1504,8 +1689,7 @@ void glucose_update_task(void *pvParameters) {
             ESP_LOGW(TAG, "Not authenticated - skipping glucose fetch");
         }
 
-        // Wait 90 seconds before next fetch
-        vTaskDelay(pdMS_TO_TICKS(90000));
+        // Wait loop is at the beginning of while(1) - checks every second for force-fetch
     }
 }
 
@@ -1575,6 +1759,118 @@ void temp_toggle_event_cb(lv_event_t *e) {
     }
 }
 
+// Animation timer for glucose fetch bouncing indicator (Knight Rider style for errors)
+static lv_obj_t *knight_rider_pill = NULL;  // Moving indicator for errors
+
+static void glucose_fetch_animation_timer_cb(lv_timer_t *timer) {
+    if (!glucose_fetch_in_progress || glucose_fetch_timer_bar == NULL) {
+        // Stop animation if fetch completed
+        if (glucose_fetch_animation_timer != NULL) {
+            lv_timer_del(glucose_fetch_animation_timer);
+            glucose_fetch_animation_timer = NULL;
+        }
+        // Clean up knight rider pill if it exists
+        if (knight_rider_pill != NULL && lvgl_port_lock(0)) {
+            lv_obj_del(knight_rider_pill);
+            knight_rider_pill = NULL;
+            lvgl_port_unlock();
+        }
+        return;
+    }
+
+    if (lvgl_port_lock(0)) {
+        if (glucose_fetch_failed) {
+            // Knight Rider style: Small red pill bouncing left-right
+            static int pill_pos = 0;
+            static int pill_direction = 1;
+            const int PILL_WIDTH = 20;  // 20% of bar width
+            const int BAR_WIDTH = 100;  // Logical bar width
+
+            // Create pill on first run
+            if (knight_rider_pill == NULL) {
+                knight_rider_pill = lv_obj_create(lv_obj_get_parent(glucose_fetch_timer_bar));
+                lv_obj_set_size(knight_rider_pill, (BAR_WIDTH * PILL_WIDTH) / 100, 12);  // Scale to actual pixels
+                lv_obj_set_style_bg_color(knight_rider_pill, lv_color_hex(COLOR_RED), 0);
+                lv_obj_set_style_bg_opa(knight_rider_pill, LV_OPA_80, 0);
+                lv_obj_set_style_border_width(knight_rider_pill, 0, 0);
+                lv_obj_set_style_radius(knight_rider_pill, 6, 0);  // Rounded pill shape
+                lv_obj_clear_flag(knight_rider_pill, LV_OBJ_FLAG_CLICKABLE);  // Not clickable
+            }
+
+            // Move pill position
+            pill_pos += pill_direction * 5;
+            if (pill_pos >= (BAR_WIDTH - PILL_WIDTH)) {
+                pill_pos = BAR_WIDTH - PILL_WIDTH;
+                pill_direction = -1;
+            } else if (pill_pos <= 0) {
+                pill_pos = 0;
+                pill_direction = 1;
+            }
+
+            // Update pill position relative to bar
+            lv_coord_t bar_x = lv_obj_get_x(glucose_fetch_timer_bar);
+            lv_coord_t bar_y = lv_obj_get_y(glucose_fetch_timer_bar);
+            lv_obj_set_pos(knight_rider_pill, bar_x + pill_pos, bar_y);
+        } else {
+            // Normal fetch in progress: Fill bar back and forth (loading animation)
+            static int anim_direction = 1;
+            static int anim_value = 0;
+
+            // Clean up knight rider pill if it exists
+            if (knight_rider_pill != NULL) {
+                lv_obj_del(knight_rider_pill);
+                knight_rider_pill = NULL;
+            }
+
+            anim_value += anim_direction * 10;
+            if (anim_value >= 100) {
+                anim_value = 100;
+                anim_direction = -1;
+            } else if (anim_value <= 0) {
+                anim_value = 0;
+                anim_direction = 1;
+            }
+
+            lv_bar_set_value(glucose_fetch_timer_bar, anim_value, LV_ANIM_OFF);
+        }
+        lvgl_port_unlock();
+    }
+}
+
+// Event handler for tapping glucose timer bar to force immediate fetch
+void glucose_timer_bar_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    ESP_LOGI(TAG, "Timer bar event received: code=%d (CLICKED=%d)", code, LV_EVENT_CLICKED);
+
+    if (code == LV_EVENT_CLICKED) {
+        if (glucose_fetch_in_progress) {
+            ESP_LOGI(TAG, "Glucose fetch already in progress, ignoring click");
+            return;
+        }
+
+        ESP_LOGI(TAG, "Force glucose fetch requested by user (timer bar tapped)");
+        glucose_force_fetch_requested = true;
+        glucose_fetch_failed = false;
+
+        // Start fetching animation
+        glucose_fetch_in_progress = true;
+
+        ESP_LOGI(TAG, "Starting fetch animation timer...");
+        if (lvgl_port_lock(0)) {
+            // Start bouncing animation timer (100ms interval for smooth animation)
+            if (glucose_fetch_animation_timer == NULL) {
+                glucose_fetch_animation_timer = lv_timer_create(glucose_fetch_animation_timer_cb, 100, NULL);
+                ESP_LOGI(TAG, "Fetch animation timer created successfully");
+            } else {
+                ESP_LOGI(TAG, "Fetch animation timer already exists");
+            }
+            lvgl_port_unlock();
+        } else {
+            ESP_LOGE(TAG, "Failed to acquire LVGL lock for animation timer");
+        }
+    }
+}
+
 void menu_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
@@ -1586,9 +1882,50 @@ void menu_btn_event_cb(lv_event_t *e) {
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
         if (lvgl_port_lock(0)) {
+            // MEMORY OPTIMIZATION: Create menu screen on-demand if it doesn't exist
+            if (screen_menu == NULL) {
+                ESP_LOGI(TAG, "Creating menu screen on-demand (freed previously)");
+                create_menu_screen();
+                ESP_LOGI(TAG, "Menu screen created. Free heap: %lu bytes", esp_get_free_heap_size());
+            }
             lv_scr_load(screen_menu);
             lvgl_port_unlock();
         }
+    }
+}
+
+void wifi_icon_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED) {
+        ESP_LOGI(TAG, "WiFi icon clicked - launching WiFi setup...");
+
+        // Pause background tasks when leaving home screen
+        home_screen_active = false;
+        pause_background_tasks = true;
+        ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
+
+        // Close Dexcom persistent client to free ~30KB memory for WiFi scan/UI
+        ESP_LOGI(TAG, "Closing Dexcom persistent client before WiFi scan");
+        dexcom_close_persistent_client();
+        ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes (internal: %lu)",
+                 esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+        // Recreate WiFi list screen fresh (delete old one if exists)
+        if (lvgl_port_lock(0)) {
+            if (screen_wifi_list != NULL) {
+                lv_obj_del(screen_wifi_list);
+                screen_wifi_list = NULL;
+            }
+            create_wifi_list_screen();
+            lv_scr_load(screen_wifi_list);
+            lvgl_port_unlock();
+        }
+
+        // Show scanning overlay on top of WiFi list screen
+        show_wifi_scanning_overlay();
+
+        // Start WiFi scan in background task
+        xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
     }
 }
 
@@ -1604,6 +1941,20 @@ void back_btn_event_cb(lv_event_t *e) {
 
         if (lvgl_port_lock(0)) {
             lv_scr_load(screen_home);
+            lvgl_port_unlock();
+        }
+
+        // Small delay to let screen transition complete
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        // MEMORY OPTIMIZATION: Delete menu screen after returning to home to free memory
+        if (lvgl_port_lock(0)) {
+            if (screen_menu != NULL) {
+                ESP_LOGI(TAG, "Deleting menu screen to free memory");
+                lv_obj_del(screen_menu);
+                screen_menu = NULL;
+                ESP_LOGI(TAG, "Menu screen deleted. Free heap: %lu bytes", esp_get_free_heap_size());
+            }
             lvgl_port_unlock();
         }
     }
@@ -1641,10 +1992,6 @@ void clock_label_event_cb(lv_event_t *e) {
 }
 
 // Animation callback wrapper for lv_bar_set_value
-static void anim_bar_set_value(void *bar, int32_t value) {
-    lv_bar_set_value((lv_obj_t *)bar, value, LV_ANIM_OFF);
-}
-
 void menu_item_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
@@ -1744,6 +2091,34 @@ void add_boot_log(const char *msg) {
             lvgl_port_unlock();
         }
     }
+
+    // Update progress bar based on boot milestones
+    if (boot_progress_bar != NULL) {
+        if (lvgl_port_lock(0)) {
+            int progress = 0;
+
+            // Map boot messages to progress percentage
+            if (strstr(msg, "CYGM Starting") != NULL) progress = 5;
+            else if (strstr(msg, "NVS") != NULL) progress = 10;
+            else if (strstr(msg, "Network mutex") != NULL) progress = 15;
+            else if (strstr(msg, "LCD") != NULL) progress = 25;
+            else if (strstr(msg, "LED") != NULL) progress = 30;
+            else if (strstr(msg, "Buzzer") != NULL) progress = 35;
+            else if (strstr(msg, "Battery") != NULL) progress = 40;
+            else if (strstr(msg, "Init WiFi") != NULL) progress = 50;
+            else if (strstr(msg, "Display ready") != NULL) progress = 60;
+            else if (strstr(msg, "WiFi") != NULL) progress = 75;
+            else if (strstr(msg, "connected") != NULL) progress = 85;
+            else if (strstr(msg, "Home") != NULL) progress = 100;
+
+            // Animate progress bar update
+            if (progress > 0) {
+                lv_bar_set_value(boot_progress_bar, progress, LV_ANIM_ON);
+            }
+
+            lvgl_port_unlock();
+        }
+    }
 }
 
 // Draw small sunrise icon (12x12)
@@ -1826,51 +2201,100 @@ void draw_sunset_icon(lv_obj_t *canvas) {
     lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
 }
 
+// ===== SPLASH SCREEN ANIMATION WRAPPERS =====
+// Wrapper function for shadow opacity animation (breathing glow effect)
+static void anim_set_shadow_opa(void *obj, int32_t v) {
+    lv_obj_set_style_shadow_opa((lv_obj_t *)obj, (lv_opa_t)v, 0);
+}
+
 // ===== SPLASH SCREEN =====
 void create_splash_screen(void) {
     screen_splash = lv_obj_create(NULL);
     lv_obj_add_style(screen_splash, &style_bg, 0);
 
-    // App name (top half)
+    // App name (top half) - Clean blue text (no glow, no effects)
     lv_obj_t *title = lv_label_create(screen_splash);
     lv_label_set_text(title, "CYGM");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+
+    // Completely remove any background box
+    lv_obj_set_style_bg_opa(title, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(title, 0, 0);
+    lv_obj_set_style_outline_width(title, 0, 0);
+    lv_obj_set_style_pad_all(title, 0, 0);
+    lv_obj_set_style_radius(title, 0, 0);
+
+    // No glow effect (saves memory and looks cleaner)
+    lv_obj_set_style_shadow_width(title, 0, 0);
+
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
 
-    // Tagline
+    // Website URL - slide in from left with fade
+    lv_obj_t *website = lv_label_create(screen_splash);
+    lv_label_set_text(website, "DigitalKaos.tech");
+    lv_obj_set_style_text_font(website, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(website, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(website, LV_ALIGN_TOP_MID, 0, 85);
+
+    // Tagline - fade in
     lv_obj_t *sub = lv_label_create(screen_splash);
     lv_label_set_text(sub, "Glucose Monitor");
     lv_obj_set_style_text_font(sub, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 85);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 110);
 
-    // Attribution
+    // Attribution - slide in from right
     lv_obj_t *author = lv_label_create(screen_splash);
     lv_label_set_text(author, "Carl Brothers\ndecibelkaos@gmail.com");
     lv_obj_set_style_text_font(author, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(author, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_set_style_text_align(author, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(author, LV_ALIGN_TOP_MID, 0, 110);
+    lv_obj_align(author, LV_ALIGN_TOP_MID, 0, 135);
 
-    // Version info
+    // Version info - fade in
     lv_obj_t *version = lv_label_create(screen_splash);
     char version_str[32];
-    snprintf(version_str, sizeof(version_str), "v%s %s", CYGM_VERSION, CYGM_STAGE);
+    snprintf(version_str, sizeof(version_str), "v%s", CYGM_VERSION_STRING);
     lv_label_set_text(version, version_str);
     lv_obj_set_style_text_font(version, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(version, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_set_style_text_align(version, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(version, LV_ALIGN_TOP_MID, 0, 150);
+    lv_obj_align(version, LV_ALIGN_TOP_MID, 0, 175);
 
-    // Boot log (bottom half) - scrollable text area
+    // Boot log (bottom half) - fade in last
     boot_log_label = lv_label_create(screen_splash);
     lv_label_set_text(boot_log_label, "Initializing...");
-    lv_label_set_long_mode(boot_log_label, LV_LABEL_LONG_WRAP);  // Wrap long lines
-    lv_obj_set_width(boot_log_label, 300);  // Set width for wrapping
+    lv_label_set_long_mode(boot_log_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(boot_log_label, 300);
     lv_obj_set_style_text_font(boot_log_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(boot_log_label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
-    lv_obj_align(boot_log_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);  // Bottom left corner
+    lv_obj_align(boot_log_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+
+    // Progress bar (bottom right) - animated during boot
+    boot_progress_bar = lv_bar_create(screen_splash);
+    lv_obj_set_size(boot_progress_bar, 280, 6);
+    lv_obj_align(boot_progress_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_bar_set_value(boot_progress_bar, 0, LV_ANIM_OFF);
+
+    // Style progress bar
+    lv_obj_set_style_bg_color(boot_progress_bar, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(boot_progress_bar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(boot_progress_bar, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_MAIN);
+    lv_obj_set_style_border_opa(boot_progress_bar, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_radius(boot_progress_bar, 3, LV_PART_MAIN);
+
+    // Indicator (filled part)
+    lv_obj_set_style_bg_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(boot_progress_bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(boot_progress_bar, 2, LV_PART_INDICATOR);
+
+    // Add glow to progress bar
+    lv_obj_set_style_shadow_width(boot_progress_bar, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_spread(boot_progress_bar, 2, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_opa(boot_progress_bar, LV_OPA_70, LV_PART_INDICATOR);
 
     // Clear buffer
     memset(boot_log_buffer, 0, sizeof(boot_log_buffer));

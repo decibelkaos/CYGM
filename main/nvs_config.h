@@ -61,6 +61,10 @@ esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *cou
 uint8_t nvs_get_saved_wifi_count(void);  // Get number of saved networks
 bool nvs_is_wifi_saved(const char *ssid);  // Check if specific SSID is saved
 
+// Last connected WiFi tracking
+esp_err_t nvs_save_last_wifi_ssid(const char *ssid);  // Save last successfully connected SSID
+esp_err_t nvs_load_last_wifi_ssid(char *ssid, size_t max_len);  // Load last connected SSID (ESP_ERR_NOT_FOUND if none)
+
 // Save time settings to NVS
 esp_err_t nvs_save_time_settings(const char *timezone, bool dst_enabled, bool format_24hr);
 

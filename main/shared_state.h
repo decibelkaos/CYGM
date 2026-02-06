@@ -30,8 +30,15 @@ extern "C" {
 #endif
 
 // ==================== Version Information ====================
-#define CYGM_VERSION "1.3.6"
-#define CYGM_STAGE "Beta"  // "Alpha", "Beta", or "Release"
+// Version format: major.minor.patch.YYYY-MM-DD.stage
+#define CYGM_VERSION_MAJOR 1
+#define CYGM_VERSION_MINOR 5
+#define CYGM_VERSION_PATCH 1
+#define CYGM_VERSION_DATE "2026-02-05"
+#define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
+
+// Full version string
+#define CYGM_VERSION_STRING "1.5.1.2026-02-05.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -50,12 +57,6 @@ extern "C" {
 #define TOUCH_SCL       32
 #define TOUCH_INT       GPIO_NUM_NC
 #define TOUCH_RST       25
-
-// CardKB
-#define CARDKB_I2C_NUM  I2C_NUM_1
-#define CARDKB_SDA      21
-#define CARDKB_SCL      22
-#define CARDKB_ADDR     0x5F
 
 // LED
 #define LED_RED         4
@@ -118,8 +119,6 @@ extern esp_lcd_panel_handle_t lcd_panel;
 extern esp_lcd_panel_io_handle_t lcd_io_handle;
 extern esp_lcd_touch_handle_t touch_handle;
 extern i2c_master_bus_handle_t touch_i2c_bus;
-extern i2c_master_bus_handle_t cardkb_i2c_bus;
-extern i2c_master_dev_handle_t cardkb_dev;
 
 // Task handles
 extern TaskHandle_t wifi_task_handle;
@@ -207,6 +206,7 @@ extern lv_obj_t *brightness_value_label;
 // ==================== Boot Log ====================
 
 extern lv_obj_t *boot_log_label;
+extern lv_obj_t *boot_progress_bar;  // Animated progress bar on splash screen
 extern char boot_log_buffer[512];
 
 // ==================== Dexcom Login UI ====================
@@ -242,6 +242,13 @@ extern lv_obj_t *label_ampm;
 extern lv_obj_t *label_glucose;
 extern lv_obj_t *trend_canvas;
 extern lv_obj_t *label_time_ago;
+extern lv_obj_t *glucose_fetch_timer_bar;  // Progress bar showing time until next glucose fetch
+extern lv_timer_t *glucose_timer_update;    // Timer to update the progress bar
+extern int64_t last_glucose_fetch_time;     // Timestamp of last glucose fetch (milliseconds)
+extern bool glucose_fetch_in_progress;      // True when actively fetching glucose
+extern bool glucose_fetch_failed;           // True if last fetch failed
+extern bool glucose_force_fetch_requested;  // True when user requested manual fetch
+extern lv_timer_t *glucose_fetch_animation_timer;  // Animation timer for bouncing indicator
 extern lv_obj_t *label_wifi_status;
 
 // ==================== WiFi State ====================

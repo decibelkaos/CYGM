@@ -97,6 +97,11 @@ void back_btn_event_cb(lv_event_t *e);
 void menu_btn_event_cb(lv_event_t *e);
 
 /**
+ * WiFi icon click event callback (navigates to WiFi setup)
+ */
+void wifi_icon_event_cb(lv_event_t *e);
+
+/**
  * Clock label tap event callback (navigates to time settings)
  */
 void clock_label_event_cb(lv_event_t *e);

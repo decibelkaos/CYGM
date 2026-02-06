@@ -2,7 +2,7 @@
  * display.h
  *
  * Display and input initialization module
- * LCD, touch, CardKB keyboard, and LVGL setup
+ * LCD, touch, and LVGL setup
  */
 
 #ifndef HARDWARE_DISPLAY_H
@@ -27,18 +27,6 @@ esp_err_t display_init(void);
  * @return ESP_OK on success
  */
 esp_err_t touch_init_core1(void);
-
-/**
- * Initialize CardKB keyboard (I2C)
- * @return ESP_OK on success
- */
-esp_err_t cardkb_init(void);
-
-/**
- * Read character from CardKB keyboard
- * @return Character code (0 if no key pressed)
- */
-uint8_t cardkb_read(void);
 
 /**
  * Initialize LVGL framework

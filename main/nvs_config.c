@@ -156,6 +156,54 @@ bool nvs_is_wifi_saved(const char *ssid) {
     return false;
 }
 
+// Save last successfully connected WiFi SSID
+esp_err_t nvs_save_last_wifi_ssid(const char *ssid) {
+    if (ssid == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, "last_wifi", ssid);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+
+    ESP_LOGI(TAG, "Last connected WiFi saved: %s", ssid);
+    return ret;
+}
+
+// Load last successfully connected WiFi SSID
+esp_err_t nvs_load_last_wifi_ssid(char *ssid, size_t max_len) {
+    if (ssid == NULL || max_len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    size_t len = max_len;
+    ret = nvs_get_str(nvs_handle, "last_wifi", ssid, &len);
+    nvs_close(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Last connected WiFi loaded: %s", ssid);
+    }
+
+    return ret;
+}
+
 // Get all saved WiFi networks
 esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *count) {
     if (networks == NULL || count == NULL) {
@@ -1087,3 +1135,4 @@ esp_err_t nvs_load_brightness(uint8_t *brightness_percent) {
     nvs_close(nvs_handle);
     return ESP_OK;  // Always return OK, with default if not found
 }
+

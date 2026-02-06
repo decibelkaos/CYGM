@@ -177,46 +177,6 @@ esp_err_t touch_init_core1(void) {
     return ret;
 }
 
-esp_err_t cardkb_init(void) {
-    ESP_LOGI(TAG, "Initializing CardKB I2C bus");
-
-    i2c_master_bus_config_t bus_config = {
-        .i2c_port = CARDKB_I2C_NUM,
-        .sda_io_num = CARDKB_SDA,
-        .scl_io_num = CARDKB_SCL,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-
-    esp_err_t ret = i2c_new_master_bus(&bus_config, &cardkb_i2c_bus);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "CardKB I2C bus init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    i2c_device_config_t dev_config = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = CARDKB_ADDR,
-        .scl_speed_hz = 100000,
-    };
-
-    ret = i2c_master_bus_add_device(cardkb_i2c_bus, &dev_config, &cardkb_dev);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "CardKB initialized");
-    } else {
-        ESP_LOGE(TAG, "CardKB device add failed: %s", esp_err_to_name(ret));
-    }
-
-    return ret;
-}
-
-uint8_t cardkb_read(void) {
-    uint8_t data = 0;
-    i2c_master_receive(cardkb_dev, &data, 1, 100);
-    return data;
-}
-
 esp_err_t lvgl_init(void) {
     ESP_LOGI(TAG, "Initializing LVGL");
 
@@ -225,7 +185,7 @@ esp_err_t lvgl_init(void) {
         .task_stack = 8192,
         .task_affinity = 1,  // Pin LVGL task to Core 1
         .task_max_sleep_ms = 500,
-        .timer_period_ms = 5
+        .timer_period_ms = 30  // Increased from 5ms to 30ms (no animations, reduces memory churn)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
 
@@ -233,7 +193,7 @@ esp_err_t lvgl_init(void) {
     const lvgl_port_display_cfg_t disp_cfg = {
         .panel_handle = lcd_panel,
         .io_handle = lcd_io_handle,
-        .buffer_size = LCD_WIDTH * 60,
+        .buffer_size = LCD_WIDTH * 30,  // Reduced from 60 to 30 lines (1/8 screen) to reduce memory fragmentation (saves ~38KB)
         .double_buffer = true,
         .hres = LCD_WIDTH,
         .vres = LCD_HEIGHT,
