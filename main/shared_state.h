@@ -82,7 +82,7 @@ extern "C" {
 #define BATTERY_CRITICAL_PERCENT 10
 
 // Feature flags
-#define ENABLE_WEB_SERVER 0
+#define ENABLE_WEB_SERVER 0  // Disabled (insufficient RAM for screenshots)
 
 // ==================== Color Palette ====================
 #define COLOR_BG            0x000000  // Pure black background

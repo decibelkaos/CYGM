@@ -18,6 +18,7 @@
 #include "ui/wifi_screens.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
+#include "web_server.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"

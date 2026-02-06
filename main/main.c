@@ -108,9 +108,8 @@ static const char *TAG = "CYGM";
 // Clear WiFi credentials flag
 #define CLEAR_WIFI_CREDENTIALS 0
 
-// Web server flag (DISABLE by default to save ~30KB heap for SSL)
-// Set to 1 to enable web configuration interface
-#define ENABLE_WEB_SERVER 0
+// Web server flag moved to shared_state.h
+// Enabled for screenshot functionality
 
 // SD Card Logging: REMOVED PERMANENTLY (2026-01-30)
 // Reason: This is a monitoring device, not a data logger. SD card consumed 15KB RAM constantly,

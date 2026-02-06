@@ -8,6 +8,8 @@
 #include "esp_spiffs.h"
 #include "esp_vfs.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
+#include "esp_http_client.h"
 #include "cJSON.h"
 #include <string.h>
 #include <sys/stat.h>
@@ -18,12 +20,46 @@
 #include "nvs_config.h"
 #include "dexcom_api.h"
 #include "ui_config.h"
+#include "shared_state.h"
+#include "esp_lvgl_port.h"
 
 static const char *TAG = "WebServer";
+
+// ==================== Screenshot Configuration ====================
+
+// Set this to your computer's IP address (shown in the screenshot server GUI)
+#define SCREENSHOT_SERVER_IP "192.168.7.61"  // Your computer's IP from the GUI
+#define SCREENSHOT_SERVER_PORT 8080
 
 // ==================== Global State ====================
 
 static httpd_handle_t server = NULL;
+
+// ==================== BMP File Structures ====================
+
+// BMP file header (14 bytes)
+typedef struct __attribute__((packed)) {
+    uint16_t file_type;      // 0x4D42 = 'BM'
+    uint32_t file_size;      // Total file size
+    uint16_t reserved1;      // Always 0
+    uint16_t reserved2;      // Always 0
+    uint32_t offset_data;    // Offset to image data
+} bmp_file_header_t;
+
+// BMP info header (40 bytes)
+typedef struct __attribute__((packed)) {
+    uint32_t size;              // Header size (40)
+    int32_t width;              // Image width
+    int32_t height;             // Image height
+    uint16_t planes;            // Color planes (always 1)
+    uint16_t bit_count;         // Bits per pixel (24)
+    uint32_t compression;       // Compression type (0 = none)
+    uint32_t size_image;        // Image size (can be 0 for uncompressed)
+    int32_t x_pixels_per_meter; // Horizontal resolution
+    int32_t y_pixels_per_meter; // Vertical resolution
+    uint32_t colors_used;       // Number of colors (0 = all)
+    uint32_t colors_important;  // Important colors (0 = all)
+} bmp_info_header_t;
 
 // ==================== MIME Type Detection ====================
 
@@ -568,20 +604,15 @@ static esp_err_t ui_defaults_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// GET /api/ui/screenshot - Get display screenshot as base64
+// GET /api/ui/screenshot - Screenshot disabled (insufficient memory)
 static esp_err_t ui_screenshot_handler(httpd_req_t *req) {
-    // This is a stub - actual implementation requires LVGL display buffer access
-    // For now, return a placeholder response
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "status", "not_implemented");
-    cJSON_AddStringToObject(root, "message", "Screenshot capture requires LVGL integration");
+    // Screenshot feature disabled - ESP32 has insufficient free RAM (~50KB available, 230KB needed)
+    // The Python GUI screenshot_server.py is ready for future use with devices that have SPIRAM
 
-    char *json_str = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
+    ESP_LOGW(TAG, "Screenshot requested but feature is disabled (insufficient memory)");
 
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json_str);
-    free(json_str);
+    httpd_resp_sendstr(req, "{\"status\":\"disabled\",\"message\":\"Screenshot feature disabled due to insufficient memory. Device has ~50KB free RAM but requires 230KB for screenshots. Enable SPIRAM to use this feature.\"}");
 
     return ESP_OK;
 }
