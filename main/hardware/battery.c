@@ -173,6 +173,14 @@ void update_battery_display(void) {
         draw_battery_icon(battery_canvas, color, bars);
     }
 
+    // Update percentage label text and color
+    if (battery_percent_label != NULL) {
+        lv_label_set_text_fmt(battery_percent_label, "%d%%", battery_percent);
+
+        // Update label color to match battery status
+        lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(color), 0);
+    }
+
     lvgl_port_unlock();
 }
 

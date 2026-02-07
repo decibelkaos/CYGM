@@ -1,3 +1,45 @@
+# CYGM Screenshot Tools
+
+## Serial Screenshot Tool (WORKING! ✅)
+
+The **serial_screenshot.py** tool captures screenshots from your ESP32 via the serial port - no extra memory needed on the device!
+
+### Quick Start
+
+1. **Install Python dependencies:**
+   ```bash
+   pip install pyserial pillow
+   ```
+
+2. **Run the screenshot tool:**
+   ```bash
+   python serial_screenshot.py
+   ```
+
+3. **In the GUI:**
+   - Select your ESP32's COM port (auto-detected)
+   - Click "Connect"
+   - Click "📷 Take Screenshot"
+   - Screenshots are automatically saved to `screenshots/` folder
+
+### How It Works
+
+- ESP32 streams raw RGB565 pixel data over serial
+- Python converts it to PNG on your computer
+- Uses almost ZERO extra RAM on ESP32
+- Works with your current hardware!
+
+### Commands Available on ESP32 Serial Monitor
+
+You can also type these commands in your serial monitor:
+- `screenshot` - Capture and send screenshot
+- `status` - Show system status
+- `help` - List available commands
+
+---
+
+## HTTP Screenshot Server (Disabled)
+
 # CYGM Screenshot Server
 
 ## Quick Start

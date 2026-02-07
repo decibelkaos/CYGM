@@ -193,6 +193,7 @@ extern int battery_percent;
 extern bool battery_low_warning_shown;
 extern lv_obj_t *battery_icon;
 extern lv_obj_t *battery_canvas;
+extern lv_obj_t *battery_percent_label;
 extern lv_timer_t *battery_flash_timer;
 
 // ==================== Brightness Control ====================
@@ -303,6 +304,10 @@ extern lv_obj_t *home_sunrise_canvas;
 extern lv_obj_t *home_sunrise_label;
 extern lv_obj_t *home_sunset_canvas;
 extern lv_obj_t *home_sunset_label;
+
+// Weather icon animation
+extern lv_timer_t *weather_icon_anim_timer;
+extern uint8_t weather_icon_anim_frame;
 
 // ==================== Global LVGL Styles ====================
 

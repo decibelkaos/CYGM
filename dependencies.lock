@@ -72,6 +72,6 @@ direct_dependencies:
 - idf
 - kodediy/esp_lcd_touch_cst820
 - lvgl/lvgl
-manifest_hash: aa3a0c2929faeb2c3312c27f541fd2b0f51c68ff984f7a20576a915eb19e923d
+manifest_hash: ef9942c63024908e15b03bb08e192d04e1cf820fe004b858ef5e9d4b4c1065d5
 target: esp32
 version: 2.0.0

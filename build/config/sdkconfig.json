@@ -720,7 +720,7 @@
     "LV_USE_BTNMATRIX": true,
     "LV_USE_CALENDAR": false,
     "LV_USE_CANVAS": true,
-    "LV_USE_CHART": false,
+    "LV_USE_CHART": true,
     "LV_USE_CHECKBOX": false,
     "LV_USE_COLORWHEEL": false,
     "LV_USE_DEMO_BENCHMARK": false,

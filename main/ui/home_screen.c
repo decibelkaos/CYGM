@@ -112,45 +112,44 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
     lv_canvas_draw_rect(canvas, 8, 12, 4, 3, &rect_dsc);
 }
 
-// Draw custom battery icon with bars
+// Draw custom battery icon with percentage fill (modern rounded design)
 void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int bars) {
     lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
 
-    // Battery body (rectangle)
+    // Battery body (compact vertical design)
     lv_draw_rect_dsc_t body_dsc;
     lv_draw_rect_dsc_init(&body_dsc);
     body_dsc.bg_opa = LV_OPA_TRANSP;
     body_dsc.border_color = lv_color_hex(color);
     body_dsc.border_width = 2;
     body_dsc.radius = 2;
-    lv_canvas_draw_rect(canvas, 2, 4, 20, 12, &body_dsc);
+    lv_canvas_draw_rect(canvas, 1, 2, 24, 10, &body_dsc);
 
-    // Battery terminal (small rectangle on right)
+    // Battery terminal (rounded nub on right)
     lv_draw_rect_dsc_t terminal_dsc;
     lv_draw_rect_dsc_init(&terminal_dsc);
     terminal_dsc.bg_color = lv_color_hex(color);
     terminal_dsc.bg_opa = LV_OPA_COVER;
     terminal_dsc.border_width = 0;
     terminal_dsc.radius = 1;
-    lv_canvas_draw_rect(canvas, 22, 8, 3, 4, &terminal_dsc);
+    lv_canvas_draw_rect(canvas, 25, 5, 4, 4, &terminal_dsc);
 
-    // Draw bars inside battery (1-4 bars based on charge level)
-    lv_draw_rect_dsc_t bar_dsc;
-    lv_draw_rect_dsc_init(&bar_dsc);
-    bar_dsc.bg_color = lv_color_hex(color);
-    bar_dsc.bg_opa = LV_OPA_COVER;
-    bar_dsc.border_width = 0;
-    bar_dsc.radius = 0;
+    // Draw continuous fill bar inside battery (based on bars level)
+    // bars: 1-4 maps to 25%, 50%, 75%, 100%
+    int fill_width = 0;
+    if (bars == 4) fill_width = 20;       // 100% - full
+    else if (bars == 3) fill_width = 15;  // 75%
+    else if (bars == 2) fill_width = 10;  // 50%
+    else if (bars == 1) fill_width = 5;   // 25%
 
-    int bar_width = 3;
-    int bar_height = 8;
-    int bar_x_start = 5;
-    int bar_y = 6;
-    int bar_spacing = 1;
-
-    for (int i = 0; i < bars; i++) {
-        int x = bar_x_start + (i * (bar_width + bar_spacing));
-        lv_canvas_draw_rect(canvas, x, bar_y, bar_width, bar_height, &bar_dsc);
+    if (fill_width > 0) {
+        lv_draw_rect_dsc_t fill_dsc;
+        lv_draw_rect_dsc_init(&fill_dsc);
+        fill_dsc.bg_color = lv_color_hex(color);
+        fill_dsc.bg_opa = LV_OPA_COVER;
+        fill_dsc.border_width = 0;
+        fill_dsc.radius = 1;
+        lv_canvas_draw_rect(canvas, 3, 4, fill_width, 6, &fill_dsc);
     }
 }
 
@@ -419,18 +418,25 @@ void create_home_screen(void) {
     lv_label_set_text(battery_icon, "");
     lv_obj_add_flag(battery_icon, LV_OBJ_FLAG_HIDDEN);
 
-    // Battery canvas - custom drawn battery with bars
-    static lv_color_t canvas_buf_battery[LV_CANVAS_BUF_SIZE_TRUE_COLOR(26, 20)];
+    // Battery canvas - custom drawn battery with modern fill design
+    static lv_color_t canvas_buf_battery[LV_CANVAS_BUF_SIZE_TRUE_COLOR(30, 14)];
     battery_canvas = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 26, 20, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 30, 14, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(battery_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
     draw_battery_icon(battery_canvas, COLOR_GREEN, 4);  // Start with 4 bars (full)
     lv_obj_align(battery_canvas, LV_ALIGN_TOP_LEFT, 2, 0);
 
+    // Battery percentage label (next to icon)
+    battery_percent_label = lv_label_create(right_card);
+    lv_label_set_text(battery_percent_label, "100%");
+    lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
+    lv_obj_align_to(battery_percent_label, battery_canvas, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
+
     // Brightness icon (top center, shifted right) - custom lightbulb in clickable button
     lv_obj_t *brightness_btn = lv_btn_create(right_card);
     lv_obj_set_size(brightness_btn, 24, 24);
-    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 8, 0);  // Shifted 8px to the right
+    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 22, 0);  // Shifted 22px to the right
     lv_obj_set_style_bg_opa(brightness_btn, LV_OPA_TRANSP, 0);  // Transparent background
     lv_obj_set_style_border_width(brightness_btn, 0, 0);
     lv_obj_set_style_shadow_width(brightness_btn, 0, 0);
@@ -544,5 +550,10 @@ void create_home_screen(void) {
     // Create glucose fetch timer (updates every 1 second)
     if (glucose_timer_update == NULL) {
         glucose_timer_update = lv_timer_create(glucose_timer_update_cb, 1000, NULL);
+    }
+
+    // Create weather icon animation timer (updates every 100ms for smooth animation)
+    if (weather_icon_anim_timer == NULL) {
+        weather_icon_anim_timer = lv_timer_create(weather_icon_animation_timer_cb, 100, NULL);
     }
 }

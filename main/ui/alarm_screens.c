@@ -14,6 +14,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <stdio.h>
 
 static const char *TAG = "ALARM_SCREENS";
@@ -82,18 +84,21 @@ void create_alarm_settings_screen(void) {
     create_alarm_card(screen_alarm_settings, "High Alarm", &current_alarm_settings.high_alarm,
                       card_y, card_height);
     card_y += card_height + card_spacing;
+    vTaskDelay(pdMS_TO_TICKS(1));  // Brief yield to prevent watchdog timeout
 
     // High Warning
     ESP_LOGI(TAG, "Creating High Warning card...");
     create_alarm_card(screen_alarm_settings, "High Warning", &current_alarm_settings.high_warning,
                       card_y, card_height);
     card_y += card_height + card_spacing;
+    vTaskDelay(pdMS_TO_TICKS(1));  // Brief yield to prevent watchdog timeout
 
     // Low Warning
     ESP_LOGI(TAG, "Creating Low Warning card...");
     create_alarm_card(screen_alarm_settings, "Low Warning", &current_alarm_settings.low_warning,
                       card_y, card_height);
     card_y += card_height + card_spacing;
+    vTaskDelay(pdMS_TO_TICKS(1));  // Brief yield to prevent watchdog timeout
 
     // Low Alarm
     ESP_LOGI(TAG, "Creating Low Alarm card...");
@@ -537,6 +542,8 @@ void create_alarm_snooze_screen(void) {
 }
 
 void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
+    ESP_LOGI(TAG, "Creating alarm detail editor screen - free heap: %lu bytes", esp_get_free_heap_size());
+
     if (alarm == NULL) {
         ESP_LOGE(TAG, "create_alarm_detail_editor_screen: alarm is NULL!");
         return;
@@ -544,7 +551,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
 
     screen_alarm_detail_editor = lv_obj_create(NULL);
     if (screen_alarm_detail_editor == NULL) {
-        ESP_LOGE(TAG, "Failed to create alarm detail editor screen - out of memory?");
+        ESP_LOGE(TAG, "Failed to create alarm detail editor screen - out of memory!");
+        ESP_LOGE(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
         return;
     }
     lv_obj_add_style(screen_alarm_detail_editor, &style_bg, 0);
@@ -725,6 +733,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
         lv_obj_add_state(repeat_toggle, LV_STATE_CHECKED);
     }
     lv_obj_add_event_cb(repeat_toggle, alarm_audio_repeat_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    ESP_LOGI(TAG, "Alarm detail editor screen created successfully - free heap: %lu bytes", esp_get_free_heap_size());
 }
 
 // Event handler implementations
@@ -947,6 +957,9 @@ static void tone_select_btn_event_cb(lv_event_t *e) {
 
             if (screen_alarm_detail_editor != NULL) {
                 lv_scr_load(screen_alarm_detail_editor);
+            } else {
+                ESP_LOGE(TAG, "Failed to create detail editor screen after tone selection - OOM?");
+                ESP_LOGE(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
             }
 
             lvgl_port_unlock();

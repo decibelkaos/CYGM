@@ -196,6 +196,7 @@ int battery_percent = 100;
 bool battery_low_warning_shown = false;  // Track if low battery warning played
 lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
 lv_obj_t *battery_canvas = NULL;         // Battery canvas for custom drawn icon
+lv_obj_t *battery_percent_label = NULL;  // Battery percentage text label
 lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
 
 // Brightness control
@@ -301,11 +302,38 @@ lv_obj_t *home_sunrise_label = NULL;
 lv_obj_t *home_sunset_canvas = NULL;
 lv_obj_t *home_sunset_label = NULL;
 
+// Weather icon animation
+lv_timer_t *weather_icon_anim_timer = NULL;
+uint8_t weather_icon_anim_frame = 0;
+
 // ===== HELPER FUNCTIONS =====
+
+// Weather icon animation timer callback
+void weather_icon_animation_timer_cb(lv_timer_t *timer) {
+    if (!home_screen_active || home_weather_canvas == NULL) {
+        return;
+    }
+
+    // Increment animation frame
+    weather_icon_anim_frame++;
+
+    // Redraw weather icon with new frame
+    if (lvgl_port_lock(0)) {
+        draw_weather_icon(home_weather_canvas, current_weather_code);
+        lvgl_port_unlock();
+    }
+}
 
 // Draw weather icon on a canvas
 void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
-    ESP_LOGI(TAG, "Drawing weather icon code: %d (%s)", weather_code, get_weather_condition_text(weather_code));
+    draw_weather_icon_animated(canvas, weather_code, weather_icon_anim_frame);
+}
+
+void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t frame) {
+    if (canvas == NULL) return;
+
+    // Clear canvas before redrawing
+    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
 
     // Initialize drawing descriptors
     lv_draw_arc_dsc_t arc_dsc;
@@ -330,6 +358,67 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
                 arc_dsc.color = lv_color_hex(COLOR_CARD_BG);  // Same as background
                 arc_dsc.width = 20;
                 lv_canvas_draw_arc(canvas, 36, 22, 10, 0, 360, &arc_dsc);
+
+                // Draw twinkling stars with random positions that change over time
+                // Slow and subtle - multiple stars appear, shine, then disappear and relocate
+                const int num_stars = 12;  // More stars for better coverage
+
+                for (uint32_t i = 0; i < num_stars; i++) {
+                    // Each star has a moderate lifecycle (200-350 frames = 20-35 seconds at 100ms)
+                    uint32_t star_lifecycle = 200 + (i * 47) % 150;
+
+                    // Current position in this star's lifecycle
+                    uint32_t life_position = (frame + (i * 79)) % star_lifecycle;
+
+                    // Determine random position based on current lifecycle epoch
+                    uint32_t epoch = (frame + (i * 79)) / star_lifecycle;
+                    uint32_t position_seed = (epoch * 1103515245U + i * 12345U);
+
+                    // Random X and Y for this epoch
+                    int star_x = ((position_seed >> 16) % 58);
+                    position_seed = position_seed * 1103515245U + 12345U;
+                    int star_y = ((position_seed >> 16) % 48);
+
+                    // Random star size for this epoch (mostly 1px, occasionally 2px)
+                    position_seed = position_seed * 1103515245U + 12345U;
+                    int star_size = ((position_seed >> 8) % 10 < 2) ? 2 : 1;  // 20% chance of 2px
+
+                    // Slow, subtle brightness curve
+                    // Star is visible for about 40-50% of its lifecycle
+                    uint16_t brightness = 0;
+
+                    // Visible for a larger portion of lifecycle
+                    uint32_t visible_start = star_lifecycle / 5;
+                    uint32_t visible_duration = 50 + ((position_seed >> 12) % 60);  // 50-110 frames visible
+
+                    if (life_position >= visible_start && life_position < visible_start + visible_duration) {
+                        uint32_t vis_pos = life_position - visible_start;
+                        uint32_t fade_in = visible_duration / 4;
+                        uint32_t fade_out = visible_duration / 4;
+
+                        if (vis_pos < fade_in) {
+                            // Slow fade in
+                            brightness = (vis_pos * 200) / fade_in;
+                        } else if (vis_pos > visible_duration - fade_out) {
+                            // Slow fade out
+                            brightness = ((visible_duration - vis_pos) * 200) / fade_out;
+                        } else {
+                            // Steady glow (with slight random variation)
+                            brightness = 180 + ((position_seed >> 4) % 40);
+                        }
+                    }
+
+                    // Draw star only if visible
+                    if (brightness > 50) {
+                        lv_draw_rect_dsc_t star_dsc;
+                        lv_draw_rect_dsc_init(&star_dsc);
+                        star_dsc.bg_color = lv_color_hex(0xFFFFFF);
+                        star_dsc.bg_opa = (brightness > 255) ? 255 : (uint8_t)brightness;
+                        star_dsc.radius = 0;  // Square pixel
+
+                        lv_canvas_draw_rect(canvas, star_x, star_y, star_size, star_size, &star_dsc);
+                    }
+                }
             } else {
                 // Draw filled sun circle
                 rect_dsc.bg_color = lv_color_hex(0xFFAA00); // Orange
@@ -340,13 +429,16 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
                 // lv_canvas_draw_rect signature: (canvas, x, y, w, h, &dsc)
                 lv_canvas_draw_rect(canvas, 30 - 12, 25 - 12, 24, 24, &rect_dsc);
 
-                // Draw 8 rays around the sun
+                // Draw 8 rays around the sun with gentle rotation animation
                 line_dsc.color = lv_color_hex(0xFFAA00);
                 line_dsc.width = 2;
                 lv_point_t ray_points[2];
 
+                // Slow rotation offset (one full rotation every 256 frames * 100ms = 25.6 seconds)
+                float rotation_offset = (frame * 3.14159 / 128.0);  // Slow rotation
+
                 for (int i = 0; i < 8; i++) {
-                    float angle = i * 45.0 * 3.14159 / 180.0;
+                    float angle = (i * 45.0 * 3.14159 / 180.0) + rotation_offset;
                     ray_points[0].x = 30 + (int)(18 * cos(angle));
                     ray_points[0].y = 25 + (int)(18 * sin(angle));
                     ray_points[1].x = 30 + (int)(26 * cos(angle));
@@ -390,27 +482,33 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
                 }
             }
 
-            // Draw cloud in lower right (partially covering sun/moon)
+            // Draw cloud in lower right (partially covering sun/moon) with gentle drift
+            // Subtle horizontal drift animation
+            int drift = ((frame / 8) % 20) - 10;  // Drifts -10 to +10 pixels slowly
+
             arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
             arc_dsc.width = 14;
-            lv_canvas_draw_arc(canvas, 28, 28, 7, 0, 360, &arc_dsc);   // Left bump
-            lv_canvas_draw_arc(canvas, 38, 24, 9, 0, 360, &arc_dsc);   // Middle bump
-            lv_canvas_draw_arc(canvas, 46, 28, 7, 0, 360, &arc_dsc);   // Right bump
+            lv_canvas_draw_arc(canvas, 28 + drift, 28, 7, 0, 360, &arc_dsc);   // Left bump
+            lv_canvas_draw_arc(canvas, 38 + drift, 24, 9, 0, 360, &arc_dsc);   // Middle bump
+            lv_canvas_draw_arc(canvas, 46 + drift, 28, 7, 0, 360, &arc_dsc);   // Right bump
             break;
         }
 
-        case 2: { // CLOUD - Simple cloud shape
-            // Draw cloud using overlapping filled circles (arcs with thick width)
+        case 2: { // CLOUD - Drifting cloud shape
+            // Draw cloud using overlapping filled circles (arcs with thick width) with drift
+            // Gentle horizontal drift animation
+            int drift = ((frame / 8) % 20) - 10;  // Drifts -10 to +10 pixels slowly
+
             arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
             arc_dsc.width = 16;  // Thick arc creates filled circle effect
 
-            lv_canvas_draw_arc(canvas, 20, 25, 8, 0, 360, &arc_dsc);   // Left bump
-            lv_canvas_draw_arc(canvas, 30, 20, 10, 0, 360, &arc_dsc);  // Middle bump (larger)
-            lv_canvas_draw_arc(canvas, 40, 25, 8, 0, 360, &arc_dsc);   // Right bump
+            lv_canvas_draw_arc(canvas, 20 + drift, 25, 8, 0, 360, &arc_dsc);   // Left bump
+            lv_canvas_draw_arc(canvas, 30 + drift, 20, 10, 0, 360, &arc_dsc);  // Middle bump (larger)
+            lv_canvas_draw_arc(canvas, 40 + drift, 25, 8, 0, 360, &arc_dsc);   // Right bump
             break;
         }
 
-        case 3: { // RAIN - Cloud + rain drops
+        case 3: { // RAIN - Cloud + animated rain drops
             // Draw cloud
             arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
             arc_dsc.width = 16;
@@ -419,22 +517,29 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
             lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
             lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
 
-            // Draw rain drops (3 vertical lines)
+            // Draw animated rain drops (falling animation)
             line_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
             line_dsc.width = 2;
             lv_point_t rain[2];
 
+            // Animate rain drops falling (cycle through 12 pixels)
+            int drop_offset = (frame / 4) % 12;
+
             for (int i = 0; i < 3; i++) {
                 rain[0].x = 18 + i * 12;
-                rain[0].y = 32;
+                rain[0].y = 32 + drop_offset;
                 rain[1].x = 18 + i * 12;
-                rain[1].y = 44;
-                lv_canvas_draw_line(canvas, rain, 2, &line_dsc);
+                rain[1].y = 38 + drop_offset;
+
+                // Only draw if drop is visible below cloud
+                if (rain[0].y < 46) {
+                    lv_canvas_draw_line(canvas, rain, 2, &line_dsc);
+                }
             }
             break;
         }
 
-        case 4: { // SNOW - Cloud + snowflakes
+        case 4: { // SNOW - Cloud + falling snowflakes
             // Draw cloud
             arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
             arc_dsc.width = 16;
@@ -443,33 +548,45 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
             lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
             lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
 
-            // Draw snowflakes (small crosses)
+            // Draw animated snowflakes (falling and drifting)
             line_dsc.color = lv_color_hex(COLOR_TEXT_WHITE);
             line_dsc.width = 2;
             lv_point_t snow[2];
-            int positions[] = {20, 30, 40};
+
+            // Base positions for snowflakes
+            int base_positions[] = {20, 30, 40};
+
+            // Animate snowflakes falling (slower than rain)
+            int fall_offset = (frame / 6) % 16;
 
             for (int i = 0; i < 3; i++) {
-                int x = positions[i];
-                int y = 38;
-                // Vertical line
-                snow[0].x = x;
-                snow[0].y = y - 4;
-                snow[1].x = x;
-                snow[1].y = y + 4;
-                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+                // Add slight horizontal drift (sine wave approximation)
+                int drift = ((frame + i * 30) % 60 < 30) ? ((frame + i * 30) % 30) / 5 - 3 : 3 - ((frame + i * 30) % 30) / 5;
 
-                // Horizontal line
-                snow[0].x = x - 4;
-                snow[0].y = y;
-                snow[1].x = x + 4;
-                snow[1].y = y;
-                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+                int x = base_positions[i] + drift;
+                int y = 30 + fall_offset + (i * 4);  // Stagger vertically
+
+                // Only draw if visible below cloud
+                if (y > 28 && y < 48) {
+                    // Vertical line
+                    snow[0].x = x;
+                    snow[0].y = y - 3;
+                    snow[1].x = x;
+                    snow[1].y = y + 3;
+                    lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+
+                    // Horizontal line
+                    snow[0].x = x - 3;
+                    snow[0].y = y;
+                    snow[1].x = x + 3;
+                    snow[1].y = y;
+                    lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+                }
             }
             break;
         }
 
-        case 5: { // STORM - Dark cloud + lightning
+        case 5: { // STORM - Dark cloud + flashing lightning
             // Draw dark cloud
             arc_dsc.color = lv_color_hex(0x555555); // Dark gray
             arc_dsc.width = 16;
@@ -478,52 +595,64 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
             lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
             lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
 
-            // Draw lightning bolt (zigzag using connected lines)
-            line_dsc.color = lv_color_hex(0xFFFF00); // Yellow
-            line_dsc.width = 3;
-            lv_point_t bolt[2];
+            // Draw flashing lightning bolt (appears periodically)
+            // Lightning flashes every ~2 seconds (frame cycles every 256 frames)
+            // Show lightning for frames 0-15, 80-95, 200-215
+            bool show_lightning = (frame < 15) || (frame >= 80 && frame < 95) || (frame >= 200 && frame < 215);
 
-            // First segment
-            bolt[0].x = 30; bolt[0].y = 28;
-            bolt[1].x = 28; bolt[1].y = 36;
-            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+            if (show_lightning) {
+                line_dsc.color = lv_color_hex(0xFFFF00); // Yellow
+                line_dsc.width = 3;
+                lv_point_t bolt[2];
 
-            // Second segment
-            bolt[0].x = 28; bolt[0].y = 36;
-            bolt[1].x = 32; bolt[1].y = 36;
-            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+                // First segment
+                bolt[0].x = 30; bolt[0].y = 28;
+                bolt[1].x = 28; bolt[1].y = 36;
+                lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
 
-            // Third segment
-            bolt[0].x = 32; bolt[0].y = 36;
-            bolt[1].x = 30; bolt[1].y = 46;
-            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+                // Second segment
+                bolt[0].x = 28; bolt[0].y = 36;
+                bolt[1].x = 32; bolt[1].y = 36;
+                lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+                // Third segment
+                bolt[0].x = 32; bolt[0].y = 36;
+                bolt[1].x = 30; bolt[1].y = 46;
+                lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+            }
             break;
         }
 
-        case 6: { // FOG - Horizontal wavy layers
-            // Draw multiple horizontal fog layers (wavy lines)
+        case 6: { // FOG - Drifting horizontal layers
+            // Draw multiple horizontal fog layers with drifting animation
             line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
             line_dsc.width = 3;
             lv_point_t fog[2];
 
+            // Drift offset (each layer drifts at different speed)
+            int drift1 = (frame / 3) % 20 - 5;
+            int drift2 = (frame / 4) % 20 - 5;
+            int drift3 = (frame / 5) % 20 - 5;
+            int drift4 = (frame / 6) % 20 - 5;
+
             // Top fog layer
-            fog[0].x = 15; fog[0].y = 20;
-            fog[1].x = 45; fog[1].y = 20;
+            fog[0].x = 15 + drift1; fog[0].y = 20;
+            fog[1].x = 45 + drift1; fog[1].y = 20;
             lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
 
             // Middle fog layer (slightly offset)
-            fog[0].x = 10; fog[0].y = 28;
-            fog[1].x = 50; fog[1].y = 28;
+            fog[0].x = 10 + drift2; fog[0].y = 28;
+            fog[1].x = 50 + drift2; fog[1].y = 28;
             lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
 
             // Lower-middle fog layer
-            fog[0].x = 12; fog[0].y = 36;
-            fog[1].x = 48; fog[1].y = 36;
+            fog[0].x = 12 + drift3; fog[0].y = 36;
+            fog[1].x = 48 + drift3; fog[1].y = 36;
             lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
 
             // Bottom fog layer
-            fog[0].x = 18; fog[0].y = 44;
-            fog[1].x = 42; fog[1].y = 44;
+            fog[0].x = 18 + drift4; fog[0].y = 44;
+            fog[1].x = 42 + drift4; fog[1].y = 44;
             lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
             break;
         }

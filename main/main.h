@@ -47,6 +47,20 @@ void create_splash_screen(void);
 void draw_weather_icon(lv_obj_t *canvas, int weather_code);
 
 /**
+ * Draw animated weather icon on canvas
+ * @param canvas LVGL canvas object
+ * @param weather_code Weather condition code (0-7)
+ * @param frame Animation frame number (0-255)
+ */
+void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t frame);
+
+/**
+ * Weather icon animation timer callback
+ * @param timer LVGL timer object
+ */
+void weather_icon_animation_timer_cb(lv_timer_t *timer);
+
+/**
  * Draw sunrise icon on canvas
  * @param canvas LVGL canvas object
  */

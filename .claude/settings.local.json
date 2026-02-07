@@ -22,7 +22,9 @@
       "Bash(python generate_arrow_images.py:*)",
       "Bash(grep:*)",
       "Bash(git reset:*)",
-      "Bash(C:Espressifpython_envidf5.5_py3.11_envScriptspython.exe C:Espressifframeworksesp-idf-v5.5.2toolsidf.py build)"
+      "Bash(C:Espressifpython_envidf5.5_py3.11_envScriptspython.exe C:Espressifframeworksesp-idf-v5.5.2toolsidf.py build)",
+      "WebFetch(domain:www.haraldkreuzer.net)",
+      "Bash(idf.py build:*)"
     ]
   }
 }
