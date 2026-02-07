@@ -170,66 +170,77 @@ void play_alarm_tone(alarm_tone_t tone, uint8_t volume) {
             buzzer_stop();
             break;
 
-        case ALARM_TONE_HAPPY_BIRTHDAY:
-            // Happy Birthday: C C D C F E
-            buzzer_tone(523, volume);  // C
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(523, volume);  // C
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(587, volume);  // D
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_tone(523, volume);  // C
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_tone(698, volume);  // F
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(1000));
+        case ALARM_TONE_FUR_ELISE:
+            // Fur Elise (Beethoven) - Opening phrase: E D# E D# E B D C A
+            buzzer_tone(659, volume);  // E5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(622, volume);  // D#5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(659, volume);  // E5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(622, volume);  // D#5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(659, volume);  // E5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(494, volume);  // B4
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(587, volume);  // D5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(523, volume);  // C5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(440, volume);  // A4
+            vTaskDelay(pdMS_TO_TICKS(400));
             buzzer_stop();
             break;
 
-        case ALARM_TONE_MARY_LAMB:
-            // Mary Had a Little Lamb: E D C D E E E
-            buzzer_tone(659, volume);  // E
+        case ALARM_TONE_DIXIE_HORN:
+            // Dixie Horn (Dukes of Hazzard General Lee) - From bass tab
+            // Sequence: C# B A-A-A B C# D E-E-E C#
+            buzzer_tone(554, volume);  // C#5 (opening)
             vTaskDelay(pdMS_TO_TICKS(300));
-            buzzer_tone(587, volume);  // D
+            buzzer_tone(494, volume);  // B4
             vTaskDelay(pdMS_TO_TICKS(300));
-            buzzer_tone(523, volume);  // C
+            buzzer_tone(440, volume);  // A4 (triplet start)
+            vTaskDelay(pdMS_TO_TICKS(180));
+            buzzer_tone(440, volume);  // A4
+            vTaskDelay(pdMS_TO_TICKS(180));
+            buzzer_tone(440, volume);  // A4
             vTaskDelay(pdMS_TO_TICKS(300));
-            buzzer_tone(587, volume);  // D
+            buzzer_tone(494, volume);  // B4
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(554, volume);  // C#5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(587, volume);  // D5 (quick transition)
+            vTaskDelay(pdMS_TO_TICKS(180));
+            buzzer_tone(659, volume);  // E5 (triplet start)
+            vTaskDelay(pdMS_TO_TICKS(180));
+            buzzer_tone(659, volume);  // E5
+            vTaskDelay(pdMS_TO_TICKS(180));
+            buzzer_tone(659, volume);  // E5
+            vTaskDelay(pdMS_TO_TICKS(200));
+            buzzer_tone(554, volume);  // C#5 (final note, held)
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_SAINTS:
+            // When the Saints Go Marching In: C E F G - C E F G
+            buzzer_tone(523, volume);  // C5
             vTaskDelay(pdMS_TO_TICKS(300));
-            buzzer_tone(659, volume);  // E
+            buzzer_tone(659, volume);  // E5
             vTaskDelay(pdMS_TO_TICKS(300));
-            buzzer_tone(659, volume);  // E
+            buzzer_tone(698, volume);  // F5
             vTaskDelay(pdMS_TO_TICKS(300));
-            buzzer_tone(659, volume);  // E
+            buzzer_tone(784, volume);  // G5
             vTaskDelay(pdMS_TO_TICKS(600));
-            buzzer_stop();
-            break;
-
-        case ALARM_TONE_JINGLE_BELLS:
-            // Jingle Bells: E E E - E E E - E G C D E
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(784, volume);  // G
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(523, volume);  // C
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(587, volume);  // D
-            vTaskDelay(pdMS_TO_TICKS(250));
-            buzzer_tone(659, volume);  // E
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            buzzer_tone(523, volume);  // C5
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(659, volume);  // E5
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(698, volume);  // F5
+            vTaskDelay(pdMS_TO_TICKS(300));
+            buzzer_tone(784, volume);  // G5
+            vTaskDelay(pdMS_TO_TICKS(600));
             buzzer_stop();
             break;
 
