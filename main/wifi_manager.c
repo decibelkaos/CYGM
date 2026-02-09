@@ -28,6 +28,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         // Don't auto-connect here - wait for wifi_manager_connect() to be called
         current_status = WIFI_STATUS_DISCONNECTED;
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        // Update global WiFi status immediately on disconnection
+        extern bool wifi_connected;
+        wifi_connected = false;
+
         if (retry_count < MAX_RETRY) {
             esp_wifi_connect();
             retry_count++;
@@ -44,6 +48,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         retry_count = 0;
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         current_status = WIFI_STATUS_CONNECTED;
+
+        // Update global WiFi status on successful connection
+        extern bool wifi_connected;
+        wifi_connected = true;
     }
 }
 

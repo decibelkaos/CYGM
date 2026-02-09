@@ -1553,6 +1553,13 @@ void glucose_update_task(void *pvParameters) {
             continue;
         }
 
+        // Check if WiFi is connected
+        if (!wifi_connected) {
+            ESP_LOGI(TAG, "[Glucose Task] WiFi not connected - pausing (waiting 10s)");
+            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+            continue;
+        }
+
         // Only fetch if authenticated
         bool is_auth = dexcom_is_authenticated();
         ESP_LOGI(TAG, "[Glucose Task] Auth status: %s, Free heap: %lu bytes",

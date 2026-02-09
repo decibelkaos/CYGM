@@ -734,6 +734,14 @@ void weather_update_task(void *pvParameters) {
             continue;
         }
 
+        // Check if WiFi is connected
+        extern bool wifi_connected;
+        if (!wifi_connected) {
+            ESP_LOGI(TAG, "[Weather Task] WiFi not connected - pausing (waiting 10s)");
+            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+            continue;
+        }
+
         // Online geocoding - uses Open-Meteo Geocoding API (free, worldwide coverage)
 
         if (wifi_manager_is_connected() && strlen(user_zipcode) > 0) {

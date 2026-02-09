@@ -338,7 +338,36 @@ void wifi_scan_and_show_networks(void) {
         }
     }
 
-    ESP_LOGI(TAG, "Filtered to %d unique networks", wifi_network_count);
+    ESP_LOGI(TAG, "Filtered to %d unique scanned networks", wifi_network_count);
+
+    // Load saved networks and add any that aren't in scan results
+    wifi_credentials_t saved_networks[MAX_SAVED_WIFI_NETWORKS];
+    uint8_t saved_count = 0;
+    if (nvs_get_saved_wifi_networks(saved_networks, &saved_count) == ESP_OK) {
+        ESP_LOGI(TAG, "Found %d saved networks in NVS", saved_count);
+
+        for (int i = 0; i < saved_count && wifi_network_count < 10; i++) {
+            // Check if already in scanned list
+            bool already_in_list = false;
+            for (int j = 0; j < wifi_network_count; j++) {
+                if (strcmp((char *)wifi_networks[j].ssid, saved_networks[i].ssid) == 0) {
+                    already_in_list = true;
+                    break;
+                }
+            }
+
+            // If saved network not in scan results, add it with RSSI = -128 (marker for "not visible")
+            if (!already_in_list) {
+                memset(&wifi_networks[wifi_network_count], 0, sizeof(wifi_ap_record_t));
+                strncpy((char *)wifi_networks[wifi_network_count].ssid, saved_networks[i].ssid, sizeof(wifi_networks[wifi_network_count].ssid) - 1);
+                wifi_networks[wifi_network_count].rssi = -128;  // Special marker for not visible
+                wifi_network_count++;
+                ESP_LOGI(TAG, "Added saved-but-not-visible network: %s", saved_networks[i].ssid);
+            }
+        }
+    }
+
+    ESP_LOGI(TAG, "Total networks to display (scanned + saved): %d", wifi_network_count);
 
     // Hide scanning overlay
     hide_wifi_scanning_overlay();
@@ -397,10 +426,13 @@ void wifi_scan_and_show_networks(void) {
 
             // Signal strength bars (based on RSSI)
             int8_t rssi = wifi_networks[i].rssi;
+            bool network_visible = (rssi > -128);  // RSSI = -128 means saved but not visible
             int bars = 0;
-            if (rssi > -50) bars = 3;
-            else if (rssi > -60) bars = 2;
-            else if (rssi > -70) bars = 1;
+            if (network_visible) {
+                if (rssi > -50) bars = 3;
+                else if (rssi > -60) bars = 2;
+                else if (rssi > -70) bars = 1;
+            }
 
             // Draw signal bars (3 vertical bars of increasing heights, bottom-aligned with text baseline)
             for (int b = 0; b < 3; b++) {
@@ -413,10 +445,11 @@ void wifi_scan_and_show_networks(void) {
                 int bar_y = 16 - bar_height;  // All bars bottom-align at y=16
                 lv_obj_set_pos(bar, bar_x, bar_y);
 
-                if (b < bars) {
-                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-                } else {
+                // If network not visible, all bars are grayed out
+                if (!network_visible || b >= bars) {
                     lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_TEXT_DIM), 0);
+                } else {
+                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_ACCENT_BLUE), 0);
                 }
                 lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
                 lv_obj_set_style_border_width(bar, 0, 0);
@@ -435,15 +468,22 @@ void wifi_scan_and_show_networks(void) {
             bool is_saved = nvs_is_wifi_saved((const char *)wifi_networks[i].ssid);
 
             if (is_saved) {
-                // Green square with checkmark for switching networks
+                // Checkmark square (green if visible, gray if not)
                 lv_obj_t *switch_btn = lv_obj_create(row);
                 lv_obj_set_size(switch_btn, 18, 18);
                 lv_obj_align(switch_btn, LV_ALIGN_RIGHT_MID, -28, 0);  // Left of delete button
-                lv_obj_set_style_bg_color(switch_btn, lv_color_hex(COLOR_GREEN), 0);
+
+                // Gray out if network not visible (can't connect)
+                if (network_visible) {
+                    lv_obj_set_style_bg_color(switch_btn, lv_color_hex(COLOR_GREEN), 0);
+                    lv_obj_add_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
+                } else {
+                    lv_obj_set_style_bg_color(switch_btn, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lv_obj_clear_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
+                }
                 lv_obj_set_style_radius(switch_btn, 4, 0);
                 lv_obj_set_style_border_width(switch_btn, 0, 0);
                 lv_obj_set_style_pad_all(switch_btn, 0, 0);
-                lv_obj_add_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
 
                 // Checkmark icon inside square
                 lv_obj_t *check_icon = lv_label_create(switch_btn);
@@ -452,9 +492,11 @@ void wifi_scan_and_show_networks(void) {
                 lv_obj_set_style_text_font(check_icon, &lv_font_montserrat_12, 0);
                 lv_obj_center(check_icon);
 
-                // Add click handler for switch button
-                lv_obj_add_event_cb(switch_btn, wifi_switch_btn_event_cb, LV_EVENT_CLICKED, (void*)wifi_networks[i].ssid);
-                lv_obj_clear_flag(switch_btn, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+                // Only add click handler if network is visible
+                if (network_visible) {
+                    lv_obj_add_event_cb(switch_btn, wifi_switch_btn_event_cb, LV_EVENT_CLICKED, (void*)wifi_networks[i].ssid);
+                    lv_obj_clear_flag(switch_btn, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+                }
 
                 // Red square with X for saved networks (removal button)
                 lv_obj_t *delete_btn = lv_obj_create(row);
