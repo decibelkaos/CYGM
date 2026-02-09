@@ -197,7 +197,9 @@ bool battery_low_warning_shown = false;  // Track if low battery warning played
 lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
 lv_obj_t *battery_canvas = NULL;         // Battery canvas for custom drawn icon
 lv_obj_t *battery_percent_label = NULL;  // Battery percentage text label
+lv_obj_t *battery_charging_icon = NULL;  // Lightning bolt icon (shown when charging)
 lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
+lv_timer_t *battery_charging_fade_timer = NULL;  // Timer for fading charging icon
 
 // Brightness control
 uint8_t screen_brightness_percent = 80;  // Default 80%
@@ -517,19 +519,26 @@ void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t fram
             lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
             lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
 
-            // Draw animated rain drops (falling animation)
+            // Draw animated rain drops (randomized falling animation)
             line_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
             line_dsc.width = 2;
             lv_point_t rain[2];
 
-            // Animate rain drops falling (cycle through 12 pixels)
-            int drop_offset = (frame / 4) % 12;
+            // Pseudo-random rain drop positions and speeds
+            // Using simple LCG with different seeds per drop for variety
+            static const int rain_x_base[] = {15, 28, 42};        // Base X positions (12-50 range)
+            static const int rain_y_start[] = {28, 32, 30};       // Starting Y positions below cloud
+            static const int rain_speed[] = {3, 5, 4};            // Different fall speeds (3-5)
+            static const int rain_cycle[] = {16, 20, 18};         // Cycle lengths for variety
 
             for (int i = 0; i < 3; i++) {
-                rain[0].x = 18 + i * 12;
-                rain[0].y = 32 + drop_offset;
-                rain[1].x = 18 + i * 12;
-                rain[1].y = 38 + drop_offset;
+                // Calculate drop position with individual speed and cycle
+                int drop_offset = ((frame / 2) / rain_speed[i]) % rain_cycle[i];
+
+                rain[0].x = rain_x_base[i];
+                rain[0].y = rain_y_start[i] + drop_offset;
+                rain[1].x = rain_x_base[i];
+                rain[1].y = rain_y_start[i] + drop_offset + 6;  // 6px drop length
 
                 // Only draw if drop is visible below cloud
                 if (rain[0].y < 46) {
@@ -999,7 +1008,6 @@ static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
 void check_glucose_alarms(int glucose_mg_dl);
 void update_glucose_display(void);
 void glucose_timer_bar_event_cb(lv_event_t *e);
-static void glucose_fetch_animation_timer_cb(lv_timer_t *timer);
 static void visual_alarm_slider_event_cb(lv_event_t *e);
 
 // Get alarm color based on glucose value and alarm thresholds
@@ -1892,83 +1900,6 @@ void temp_toggle_event_cb(lv_event_t *e) {
 }
 
 // Animation timer for glucose fetch bouncing indicator (Knight Rider style for errors)
-static lv_obj_t *knight_rider_pill = NULL;  // Moving indicator for errors
-
-static void glucose_fetch_animation_timer_cb(lv_timer_t *timer) {
-    if (!glucose_fetch_in_progress || glucose_fetch_timer_bar == NULL) {
-        // Stop animation if fetch completed
-        if (glucose_fetch_animation_timer != NULL) {
-            lv_timer_del(glucose_fetch_animation_timer);
-            glucose_fetch_animation_timer = NULL;
-        }
-        // Clean up knight rider pill if it exists
-        if (knight_rider_pill != NULL && lvgl_port_lock(0)) {
-            lv_obj_del(knight_rider_pill);
-            knight_rider_pill = NULL;
-            lvgl_port_unlock();
-        }
-        return;
-    }
-
-    if (lvgl_port_lock(0)) {
-        if (glucose_fetch_failed) {
-            // Knight Rider style: Small red pill bouncing left-right
-            static int pill_pos = 0;
-            static int pill_direction = 1;
-            const int PILL_WIDTH = 20;  // 20% of bar width
-            const int BAR_WIDTH = 100;  // Logical bar width
-
-            // Create pill on first run
-            if (knight_rider_pill == NULL) {
-                knight_rider_pill = lv_obj_create(lv_obj_get_parent(glucose_fetch_timer_bar));
-                lv_obj_set_size(knight_rider_pill, (BAR_WIDTH * PILL_WIDTH) / 100, 12);  // Scale to actual pixels
-                lv_obj_set_style_bg_color(knight_rider_pill, lv_color_hex(COLOR_RED), 0);
-                lv_obj_set_style_bg_opa(knight_rider_pill, LV_OPA_80, 0);
-                lv_obj_set_style_border_width(knight_rider_pill, 0, 0);
-                lv_obj_set_style_radius(knight_rider_pill, 6, 0);  // Rounded pill shape
-                lv_obj_clear_flag(knight_rider_pill, LV_OBJ_FLAG_CLICKABLE);  // Not clickable
-            }
-
-            // Move pill position
-            pill_pos += pill_direction * 5;
-            if (pill_pos >= (BAR_WIDTH - PILL_WIDTH)) {
-                pill_pos = BAR_WIDTH - PILL_WIDTH;
-                pill_direction = -1;
-            } else if (pill_pos <= 0) {
-                pill_pos = 0;
-                pill_direction = 1;
-            }
-
-            // Update pill position relative to bar
-            lv_coord_t bar_x = lv_obj_get_x(glucose_fetch_timer_bar);
-            lv_coord_t bar_y = lv_obj_get_y(glucose_fetch_timer_bar);
-            lv_obj_set_pos(knight_rider_pill, bar_x + pill_pos, bar_y);
-        } else {
-            // Normal fetch in progress: Fill bar back and forth (loading animation)
-            static int anim_direction = 1;
-            static int anim_value = 0;
-
-            // Clean up knight rider pill if it exists
-            if (knight_rider_pill != NULL) {
-                lv_obj_del(knight_rider_pill);
-                knight_rider_pill = NULL;
-            }
-
-            anim_value += anim_direction * 10;
-            if (anim_value >= 100) {
-                anim_value = 100;
-                anim_direction = -1;
-            } else if (anim_value <= 0) {
-                anim_value = 0;
-                anim_direction = 1;
-            }
-
-            lv_bar_set_value(glucose_fetch_timer_bar, anim_value, LV_ANIM_OFF);
-        }
-        lvgl_port_unlock();
-    }
-}
-
 // Event handler for tapping glucose timer bar to force immediate fetch
 void glucose_timer_bar_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -1983,23 +1914,7 @@ void glucose_timer_bar_event_cb(lv_event_t *e) {
         ESP_LOGI(TAG, "Force glucose fetch requested by user (timer bar tapped)");
         glucose_force_fetch_requested = true;
         glucose_fetch_failed = false;
-
-        // Start fetching animation
         glucose_fetch_in_progress = true;
-
-        ESP_LOGI(TAG, "Starting fetch animation timer...");
-        if (lvgl_port_lock(0)) {
-            // Start bouncing animation timer (100ms interval for smooth animation)
-            if (glucose_fetch_animation_timer == NULL) {
-                glucose_fetch_animation_timer = lv_timer_create(glucose_fetch_animation_timer_cb, 100, NULL);
-                ESP_LOGI(TAG, "Fetch animation timer created successfully");
-            } else {
-                ESP_LOGI(TAG, "Fetch animation timer already exists");
-            }
-            lvgl_port_unlock();
-        } else {
-            ESP_LOGE(TAG, "Failed to acquire LVGL lock for animation timer");
-        }
     }
 }
 

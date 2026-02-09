@@ -433,6 +433,14 @@ void create_home_screen(void) {
     lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
     lv_obj_align_to(battery_percent_label, battery_canvas, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
 
+    // Battery charging icon (lightning bolt, hidden by default)
+    battery_charging_icon = lv_label_create(right_card);
+    lv_label_set_text(battery_charging_icon, LV_SYMBOL_CHARGE);
+    lv_obj_set_style_text_color(battery_charging_icon, lv_color_hex(COLOR_YELLOW), 0);
+    lv_obj_set_style_text_font(battery_charging_icon, &lv_font_montserrat_14, 0);
+    lv_obj_align_to(battery_charging_icon, battery_percent_label, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
+    lv_obj_add_flag(battery_charging_icon, LV_OBJ_FLAG_HIDDEN);  // Hidden until charging detected
+
     // Brightness icon (top center, shifted right) - custom lightbulb in clickable button
     lv_obj_t *brightness_btn = lv_btn_create(right_card);
     lv_obj_set_size(brightness_btn, 24, 24);
