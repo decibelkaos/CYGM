@@ -131,7 +131,7 @@ static void battery_flash_timer_cb(lv_timer_t *timer) {
 
     if (battery_canvas != NULL && lvgl_port_lock(0)) {
         uint32_t color = flash_state ? COLOR_RED : COLOR_TEXT_WHITE;
-        draw_battery_icon(battery_canvas, color, 1);  // 1 bar for low battery
+        draw_battery_icon(battery_canvas, color, battery_percent);
         flash_state = !flash_state;
         lvgl_port_unlock();
     }
@@ -168,39 +168,24 @@ void update_battery_display(void) {
         return;
     }
 
-    // Determine number of bars based on percentage (1-4 bars)
-    int bars;
-    if (battery_percent >= 75) {
-        bars = 4;
-    } else if (battery_percent >= 50) {
-        bars = 3;
-    } else if (battery_percent >= 25) {
-        bars = 2;
-    } else {
-        bars = 1;
-    }
-
     // Determine color based on percentage
     uint32_t color;
     if (battery_percent >= 80) {
-        color = COLOR_GREEN;  // Green for 80%+
+        color = COLOR_GREEN;
     } else if (battery_percent >= 20) {
-        color = COLOR_ORANGE;  // Amber/Orange for 20-80%
+        color = COLOR_ORANGE;
     } else {
-        color = COLOR_RED;  // Red for 0-20% (will flash if < 10%)
+        color = COLOR_RED;
     }
 
-    // Redraw battery icon with current bars and color
-    // Only redraw with color if not flashing (< 10%)
+    // Redraw battery icon with smooth fill (skip if flashing at <10%)
     if (battery_percent >= 10) {
-        draw_battery_icon(battery_canvas, color, bars);
+        draw_battery_icon(battery_canvas, color, battery_percent);
     }
 
-    // Update percentage label text and color
+    // Update percentage label text and color (label may be hidden - tap to show)
     if (battery_percent_label != NULL) {
         lv_label_set_text_fmt(battery_percent_label, "%d%%", battery_percent);
-
-        // Update label color to match battery status
         lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(color), 0);
     }
 
@@ -208,14 +193,14 @@ void update_battery_display(void) {
 }
 
 void battery_monitor_task(void *arg) {
-    ESP_LOGI(TAG, "Battery monitor task started (runs every 30 seconds)");
+    ESP_LOGI(TAG, "Battery monitor task started (runs every 60 seconds)");
 
     static bool was_charging = false;
 
     while (1) {
         // Only check if on home screen (device awake)
         if (!home_screen_active) {
-            vTaskDelay(pdMS_TO_TICKS(30000));  // Check every 30 seconds
+            vTaskDelay(pdMS_TO_TICKS(60000));  // Check every 60 seconds
             continue;
         }
 
@@ -308,6 +293,6 @@ void battery_monitor_task(void *arg) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(30000));  // Check every 30 seconds
+        vTaskDelay(pdMS_TO_TICKS(60000));  // Check every 60 seconds
     }
 }

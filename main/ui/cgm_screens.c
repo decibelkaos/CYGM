@@ -16,6 +16,43 @@
 #include <string.h>
 
 static const char *TAG = "CGM_SCREENS";
+static volatile bool dexcom_login_in_progress = false;
+
+static void dexcom_login_task(void *pvParameters) {
+    char username[64] = {0};
+    char password[64] = {0};
+    strncpy(username, dexcom_username_buf, sizeof(username) - 1);
+    strncpy(password, dexcom_password_buf, sizeof(password) - 1);
+
+    ESP_LOGI(TAG, "Dexcom login task started for user: %s", username);
+
+    if (dexcom_authenticate(username, password) == ESP_OK) {
+        ESP_LOGI(TAG, "Dexcom login successful");
+        nvs_set_dexcom_credentials(username, password);
+
+        if (glucose_task_handle == NULL) {
+            ESP_LOGI(TAG, "Starting glucose update task after first-time login...");
+            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+        }
+
+        ESP_LOGI(TAG, "Triggering immediate glucose fetch after successful login");
+        glucose_force_fetch_requested = true;
+
+        if (lvgl_port_lock(100)) {
+            lv_scr_load(screen_home);
+            home_screen_active = true;
+            pause_background_tasks = false;
+            lvgl_port_unlock();
+        } else {
+            ESP_LOGW(TAG, "Failed to lock LVGL to return to home screen after login");
+        }
+    } else {
+        ESP_LOGE(TAG, "Dexcom login failed");
+    }
+
+    dexcom_login_in_progress = false;
+    vTaskDelete(NULL);
+}
 
 // Forward declarations for internal event handlers
 static void dexcom_back_event_cb(lv_event_t *e);
@@ -181,34 +218,15 @@ static void dexcom_password_tap_event_cb(lv_event_t *e) {
 // Dexcom login button event handler
 static void dexcom_login_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        ESP_LOGI(TAG, "Logging in to Dexcom with username: %s", dexcom_username_buf);
+        if (dexcom_login_in_progress) {
+            ESP_LOGW(TAG, "Dexcom login already in progress");
+            return;
+        }
 
-        // Authenticate with Dexcom API
-        if (dexcom_authenticate(dexcom_username_buf, dexcom_password_buf) == ESP_OK) {
-            ESP_LOGI(TAG, "Dexcom login successful");
-            nvs_set_dexcom_credentials(dexcom_username_buf, dexcom_password_buf);
-
-            // Start glucose task if it doesn't exist (first-time login during this session)
-            if (glucose_task_handle == NULL) {
-                ESP_LOGI(TAG, "Starting glucose update task after first-time login...");
-                xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
-            }
-
-            // Trigger immediate high-priority glucose fetch
-            ESP_LOGI(TAG, "Triggering immediate glucose fetch after successful login");
-            glucose_force_fetch_requested = true;
-
-            // Return to home screen
-            if (lvgl_port_lock(0)) {
-                lv_scr_load(screen_home);
-                // Re-enable background tasks
-                home_screen_active = true;
-                pause_background_tasks = false;
-                lvgl_port_unlock();
-            }
-        } else {
-            ESP_LOGE(TAG, "Dexcom login failed");
-            // TODO: Show error message to user (currently just logs)
+        dexcom_login_in_progress = true;
+        if (xTaskCreate(dexcom_login_task, "dexcom_login", 6144, NULL, 2, NULL) != pdPASS) {
+            dexcom_login_in_progress = false;
+            ESP_LOGE(TAG, "Failed to create Dexcom login task");
         }
     }
 }

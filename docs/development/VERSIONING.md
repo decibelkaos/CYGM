@@ -1,7 +1,7 @@
 # CYGM Versioning Guide
 
 ## Current Version
-**v1.3.0 Beta** (as of January 31, 2026)
+**v1.5.6 Beta** (as of March 4, 2026)
 
 ## Version Format
 `MAJOR.MINOR.PATCH STAGE`
@@ -9,10 +9,14 @@
 Example: `v1.3.0 Beta`
 
 ## Version Location
-The version is defined in `main/main.c`:
+The version is defined in `main/shared_state.h`:
 ```c
-#define CYGM_VERSION "1.3.0"
-#define CYGM_STAGE "Beta"  // "Alpha", "Beta", or "Release"
+#define CYGM_VERSION_MAJOR 1
+#define CYGM_VERSION_MINOR 5
+#define CYGM_VERSION_PATCH 6
+#define CYGM_VERSION_DATE "2026-03-04"
+#define CYGM_VERSION_STAGE "Beta"
+#define CYGM_VERSION_STRING "1.5.6.2026-03-04.Beta"
 ```
 
 This appears on the boot screen below the email address.
@@ -33,7 +37,7 @@ This appears on the boot screen below the email address.
 - **Testing**: Field testing with real users
 - **Features**: All major features implemented and working
 - **Changes**: Bug fixes and minor improvements only
-- **Example**: v1.3.0 Beta ⬅️ **Current Stage**
+- **Example**: v1.5.6 Beta (current stage)
 
 ### Release
 - **Status**: Production-ready, stable release
@@ -76,7 +80,52 @@ Increment when making **bug fixes**:
 
 ## Version History
 
-### v1.3.0 Beta (2026-01-31) - Current
+### v1.5.6 Beta (2026-03-04) - Current
+**Added**:
+- Online geocoding for location search (Nominatim API)
+- 6-hour glucose history chart with tap-to-view
+- WiFi connection management with multi-network support
+- Battery charging indicator
+- Weather icon animations
+- Alarm tone picker redesign with new melodies
+- Redesigned CGM login screens with immediate glucose fetch
+
+**Changed**:
+- Dexcom login now runs in background task (non-blocking UI)
+- Network mutex timeout reduced to prevent deadlocks
+- Dexcom re-auth made non-recursive for stability
+
+### v1.5.5 Beta (2026-02-09)
+**Added**:
+- Battery charging detection and indicator
+- WiFi status tracking improvements
+
+### v1.5.4 Beta
+**Added**:
+- Redesigned alarm tone picker with new melodies
+
+### v1.5.2 Beta
+**Added**:
+- Weather icon animations
+- Redesigned CGM login screens
+- Immediate glucose fetch after login
+- 6-hour glucose history chart
+
+### v1.3.6 Beta
+**Added**:
+- Advanced WiFi management with multi-network support
+
+### v1.3.5 Beta
+**Fixed**:
+- WiFi scan crash
+- Added Cancel/OK buttons to password screen
+
+### v1.3.4 Beta
+**Fixed**:
+- Memory optimization, SSL handshake failures
+- Battery icon overlay design
+
+### v1.3.0 Beta (2026-01-31)
 **Added**:
 - Battery monitoring system (GPIO 39)
 - Battery voltage display with percentage
@@ -139,7 +188,7 @@ Increment when making **bug fixes**:
 - [ ] Basic testing completed
 - [ ] Ready for field testing
 
-**Status**: ✅ **Achieved at v1.3.0**
+**Status**: Achieved at v1.3.0
 
 ### Beta → Release 1.0
 - [ ] Extended field testing (2+ weeks)
@@ -149,7 +198,7 @@ Increment when making **bug fixes**:
 - [ ] Battery life verified
 - [ ] Multiple CGM sources tested (Dexcom + 1 other)
 
-**Status**: ❌ **Not Yet Achieved**
+**Status**: Not Yet Achieved
 - Still gathering field test data
 - Need Nightscout/LibreLink implementation
 - Requires extended battery life testing
@@ -179,17 +228,16 @@ git push origin main --tags
 
 ## Next Milestones
 
-### v1.4.0 Beta - Planned
+### v1.6.0 Beta - Planned
+- Code structure refactoring (extract alarm/glucose/weather from main.c)
 - Nightscout API integration
-- Historical glucose graph (3 hours)
-- Settings import/export
+- LibreLinkUp API integration
 
 ### v2.0.0 Release - Future
 - Multiple CGM account support
-- Cloud sync
 - OTA updates
 - Web configuration interface
 
 ---
 
-**Last Updated**: January 31, 2026
+**Last Updated**: March 4, 2026

@@ -27,6 +27,7 @@
 #include "freertos/task.h"
 
 static const char *TAG = "BACKGROUND_TASKS";
+#define UI_INACTIVITY_RETURN_MS 30000
 
 void ui_task_core1(void *pvParameters) {
     ESP_LOGI(TAG, "UI Task started on Core 1");
@@ -100,8 +101,23 @@ void ui_task_core1(void *pvParameters) {
     );
 
     // UI task complete - time updates handled by time_update_task()
-    // Just keep task alive
+    // Keep a global inactivity watchdog for ALL non-home screens
     while (1) {
+        if (!home_screen_active) {
+            uint32_t inactive_ms = lv_disp_get_inactive_time(NULL);
+            if (inactive_ms >= UI_INACTIVITY_RETURN_MS) {
+                ESP_LOGI(TAG, "UI inactivity timeout (%lu ms) - returning to home", (unsigned long)inactive_ms);
+
+                if (lvgl_port_lock(100)) {
+                    lv_scr_load(screen_home);
+                    lvgl_port_unlock();
+                }
+
+                home_screen_active = true;
+                pause_background_tasks = false;
+            }
+        }
+
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -235,8 +251,12 @@ void wifi_task_core0(void *pvParameters) {
             // Initialize SNTP for time sync
             initialize_sntp();
 
-            // Start time update task
-            xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, NULL);
+            // Start time update task (singleton guard)
+            if (time_task_handle == NULL) {
+                xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, &time_task_handle);
+            } else {
+                ESP_LOGI(TAG, "time_update task already running");
+            }
 
             // Delay weather task until after Dexcom connects (SSL memory priority)
             // Will be started after Dexcom auth completes
@@ -384,9 +404,40 @@ void wifi_task_core0(void *pvParameters) {
         }
     }
 
-    // Monitor WiFi connection
+    // Monitor WiFi connection and auto-reconnect
+    bool was_connected = wifi_connected;
     while (1) {
-        // TODO: Periodic WiFi health check
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        vTaskDelay(pdMS_TO_TICKS(15000));
+
+        // Skip reconnect if user is in settings screens (background tasks paused)
+        if (pause_background_tasks) {
+            continue;
+        }
+
+        if (!wifi_connected) {
+            // Update home screen icon if we just lost connection
+            if (was_connected) {
+                ESP_LOGW(TAG, "WiFi connection lost - will attempt auto-reconnect");
+                update_wifi_status_display(false);
+                was_connected = false;
+            }
+
+            ESP_LOGI(TAG, "Auto-reconnect: scanning for known networks...");
+            esp_err_t ret = wifi_manager_try_reconnect();
+
+            if (ret == ESP_OK) {
+                wifi_connected = true;
+                was_connected = true;
+                ESP_LOGI(TAG, "Auto-reconnect successful");
+                update_wifi_status_display(true);
+
+                // Re-initialize SNTP in case time drifted
+                initialize_sntp();
+            }
+        } else if (!was_connected) {
+            // Connection restored externally (e.g. event handler retry succeeded)
+            was_connected = true;
+            update_wifi_status_display(true);
+        }
     }
 }

@@ -740,8 +740,11 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         if (strlen(stored_username) > 0 && strlen(stored_password) > 0) {
             err = dexcom_authenticate(stored_username, stored_password);
             if (err == ESP_OK) {
-                // Retry the fetch with new session
-                return dexcom_fetch_glucose(glucose);
+                // Keep this call non-recursive to avoid deep retry cascades under unstable auth.
+                // Next scheduled fetch will run with the new session.
+                ESP_LOGI(TAG, "Re-authentication succeeded; deferring glucose retry to next cycle");
+                glucose->status = GLUCOSE_STATUS_NO_DATA;
+                return ESP_FAIL;
             }
         }
 

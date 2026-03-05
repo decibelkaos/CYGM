@@ -1,6 +1,6 @@
 # Project Rules - CYGM (CGM Display)
 
-**Last Updated**: 2026-01-27
+**Last Updated**: 2026-03-04
 
 These are the working rules for AI assistance on this project. Update this file as needed.
 
@@ -9,6 +9,13 @@ These are the working rules for AI assistance on this project. Update this file 
 ## AI Behavior Rules
 
 ### 1. Documentation Organization
+
+**🚨 Root Cleanliness is Mandatory (non-negotiable):**
+- Project root must stay clean at all times.
+- Only root files/folders allowed unless explicitly approved: `README.md`, `RULES.md`, source/build system essentials, and core project folders (e.g., `main/`, `components/`, `docs/`, `scripts/`, `website/`, `build/`).
+- Do **not** drop ad-hoc docs, notes, exports, temp files, or one-off scripts in root.
+- New documentation goes in `docs/` (or subfolders), new utilities go in `scripts/`, and throwaway/debug artifacts go in `archive/` or a dedicated subfolder.
+- If a task would create root clutter, stop and place files in the correct folder first.
 
 **📁 Project Structure:**
 ```
@@ -47,6 +54,10 @@ These are the working rules for AI assistance on this project. Update this file 
 - ❌ **DO NOT run ESP-IDF commands** (idf.py, build, flash, etc.)
   - User runs ALL IDF commands manually
   - ✅ **DO**: Tell user exactly what command to run
+
+- ✅ **AI coding engine preference**
+  - **Use Claude Code as PRIMARY for all code changes**
+  - OpenAI/Codex may be used only as backup if Claude Code is unavailable or explicitly requested
 
 - ❌ **DO NOT create scripts or helper files** (.bat, .sh, .ps1, etc.)
   - ✅ **DO**: Ask user directly to do things

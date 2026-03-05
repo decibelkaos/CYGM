@@ -41,11 +41,63 @@ static void alarm_detail_editor_back_event_cb(lv_event_t *e);
 static void alarm_tone_btn_event_cb(lv_event_t *e);
 static void alarm_snooze_event_cb(lv_event_t *e);
 static void alarm_preview_back_event_cb(lv_event_t *e);
+static void alarm_inactivity_timer_cb(lv_timer_t *timer);
+
+static lv_timer_t *alarm_inactivity_timer = NULL;
+#define ALARM_UI_INACTIVITY_RETURN_MS 30000
+#define ALARM_TOGGLE_DEBOUNCE_MS 300
+#define ALARM_VERBOSE_LOG 0
+
+#if ALARM_VERBOSE_LOG
+static const char *alarm_event_code_to_str(lv_event_code_t code) {
+    switch (code) {
+        case LV_EVENT_PRESSED: return "PRESSED";
+        case LV_EVENT_PRESSING: return "PRESSING";
+        case LV_EVENT_CLICKED: return "CLICKED";
+        case LV_EVENT_VALUE_CHANGED: return "VALUE_CHANGED";
+        case LV_EVENT_RELEASED: return "RELEASED";
+        default: return "OTHER";
+    }
+}
+
+static void alarm_trace_event(const char *cb_name, lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *target = lv_event_get_target(e);
+    void *ud = lv_event_get_user_data(e);
+    uint32_t inactive = lv_disp_get_inactive_time(NULL);
+    ESP_LOGI(TAG, "TRACE %s code=%s(%d) target=%p user=%p inactive=%lu heap=%lu",
+             cb_name,
+             alarm_event_code_to_str(code),
+             (int)code,
+             (void *)target,
+             ud,
+             (unsigned long)inactive,
+             (unsigned long)esp_get_free_heap_size());
+}
+#else
+#define alarm_trace_event(cb_name, e) ((void)0)
+#endif
+
+static int alarm_index_from_ptr(const alarm_config_t *alarm) {
+    if (alarm == &current_alarm_settings.high_alarm) return 0;
+    if (alarm == &current_alarm_settings.high_warning) return 1;
+    if (alarm == &current_alarm_settings.low_warning) return 2;
+    if (alarm == &current_alarm_settings.low_alarm) return 3;
+    return -1;
+}
 
 // Public function implementations
 
 void create_alarm_settings_screen(void) {
     ESP_LOGI(TAG, "Creating alarm settings screen - free heap: %lu bytes", esp_get_free_heap_size());
+
+    // Enforce off-home resource policy while in alarm UI
+    home_screen_active = false;
+    pause_background_tasks = true;
+
+    if (alarm_inactivity_timer == NULL) {
+        alarm_inactivity_timer = lv_timer_create(alarm_inactivity_timer_cb, 1000, NULL);
+    }
 
     screen_alarm_settings = lv_obj_create(NULL);
     if (screen_alarm_settings == NULL) {
@@ -76,29 +128,26 @@ void create_alarm_settings_screen(void) {
 
     // Alarm cards - 4 alarms stacked vertically
     int card_y = 50;
-    int card_height = 42;
-    int card_spacing = 4;
+    int card_height = 46;
+    int card_spacing = 2;
 
     // High Alarm
     ESP_LOGI(TAG, "Creating High Alarm card...");
     create_alarm_card(screen_alarm_settings, "High Alarm", &current_alarm_settings.high_alarm,
                       card_y, card_height);
     card_y += card_height + card_spacing;
-    vTaskDelay(pdMS_TO_TICKS(1));  // Brief yield to prevent watchdog timeout
 
     // High Warning
     ESP_LOGI(TAG, "Creating High Warning card...");
     create_alarm_card(screen_alarm_settings, "High Warning", &current_alarm_settings.high_warning,
                       card_y, card_height);
     card_y += card_height + card_spacing;
-    vTaskDelay(pdMS_TO_TICKS(1));  // Brief yield to prevent watchdog timeout
 
     // Low Warning
     ESP_LOGI(TAG, "Creating Low Warning card...");
     create_alarm_card(screen_alarm_settings, "Low Warning", &current_alarm_settings.low_warning,
                       card_y, card_height);
     card_y += card_height + card_spacing;
-    vTaskDelay(pdMS_TO_TICKS(1));  // Brief yield to prevent watchdog timeout
 
     // Low Alarm
     ESP_LOGI(TAG, "Creating Low Alarm card...");
@@ -138,32 +187,39 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
     // IMPORTANT: Disable scrolling on the card to prevent scrollbars
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Enable/Disable toggle (left)
-    lv_obj_t *toggle = lv_switch_create(card);
+    // Enable/Disable deterministic toggle button (left)
+    lv_obj_t *toggle = lv_btn_create(card);
     if (toggle == NULL) {
         ESP_LOGE(TAG, "Failed to create toggle for %s!", title);
         return;
     }
-    lv_obj_set_width(toggle, 40);
-    lv_obj_set_height(toggle, 20);
+    lv_obj_set_size(toggle, 54, 26);
     lv_obj_align(toggle, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_radius(toggle, 6, 0);
+    lv_obj_set_style_border_width(toggle, 0, 0);
 
-    // Clear style transitions to prevent animation hangs
-    lv_obj_set_style_transition(toggle, NULL, LV_PART_MAIN | LV_STATE_ANY);
-    lv_obj_set_style_transition(toggle, NULL, LV_PART_INDICATOR | LV_STATE_ANY);
-    lv_obj_set_style_transition(toggle, NULL, LV_PART_KNOB | LV_STATE_ANY);
+    lv_obj_t *toggle_lbl = lv_label_create(toggle);
+    lv_label_set_text(toggle_lbl, alarm->enabled ? "ON" : "OFF");
+    lv_obj_set_style_text_font(toggle_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(toggle_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(toggle_lbl);
 
     if (alarm->enabled) {
-        lv_obj_add_state(toggle, LV_STATE_CHECKED);
+        lv_obj_set_style_bg_color(toggle, lv_color_hex(COLOR_GREEN), 0);
+    } else {
+        lv_obj_set_style_bg_color(toggle, lv_color_hex(COLOR_TEXT_DIM), 0);
     }
-    lv_obj_add_event_cb(toggle, alarm_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+
+    // store label pointer for fast UI state updates in callback
+    lv_obj_set_user_data(toggle, toggle_lbl);
+    lv_obj_add_event_cb(toggle, alarm_toggle_event_cb, LV_EVENT_CLICKED, alarm);
 
     // Title (left-center)
     lv_obj_t *label = lv_label_create(card);
     lv_label_set_text(label, title);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 50, -8);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 62, -8);
 
     // Threshold value (below title) - displayed in the alarm's configured color
     char threshold_text[32];
@@ -172,7 +228,7 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
     lv_label_set_text(threshold_lbl, threshold_text);
     lv_obj_set_style_text_font(threshold_lbl, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(threshold_lbl, lv_color_hex(alarm->text_color), 0);  // Use alarm color!
-    lv_obj_align(threshold_lbl, LV_ALIGN_LEFT_MID, 50, 8);
+    lv_obj_align(threshold_lbl, LV_ALIGN_LEFT_MID, 62, 8);
 
     // Edit button (right)
     lv_obj_t *edit_btn = lv_btn_create(card);
@@ -800,18 +856,44 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
 // Event handler implementations
 
 static void alarm_toggle_event_cb(lv_event_t *e) {
+    alarm_trace_event("alarm_toggle_event_cb", e);
     alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
     if (alarm == NULL) {
         ESP_LOGE(TAG, "alarm_toggle_event_cb: alarm is NULL!");
         return;
     }
 
+    static uint32_t s_last_toggle_ms[4] = {0};
+    int idx = alarm_index_from_ptr(alarm);
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+
+    if (idx >= 0) {
+        uint32_t delta = now_ms - s_last_toggle_ms[idx];
+        if (s_last_toggle_ms[idx] != 0 && delta < ALARM_TOGGLE_DEBOUNCE_MS) {
+            ESP_LOGW(TAG, "Debounce: ignoring rapid toggle idx=%d delta=%lu ms", idx, (unsigned long)delta);
+            return;
+        }
+        s_last_toggle_ms[idx] = now_ms;
+    }
+
     lv_obj_t *toggle = lv_event_get_target(e);
-    alarm->enabled = lv_obj_has_state(toggle, LV_STATE_CHECKED);
-    ESP_LOGI(TAG, "Alarm enabled: %d", alarm->enabled);
+
+    // deterministic single-tap toggle
+    alarm->enabled = !alarm->enabled;
+
+    lv_obj_t *toggle_lbl = (lv_obj_t *)lv_obj_get_user_data(toggle);
+    if (toggle_lbl != NULL) {
+        lv_label_set_text(toggle_lbl, alarm->enabled ? "ON" : "OFF");
+    }
+    lv_obj_set_style_bg_color(toggle,
+                              lv_color_hex(alarm->enabled ? COLOR_GREEN : COLOR_TEXT_DIM),
+                              0);
+
+    ESP_LOGI(TAG, "Alarm enabled: %d (idx=%d)", alarm->enabled, idx);
 }
 
 static void alarm_edit_btn_event_cb(lv_event_t *e) {
+    alarm_trace_event("alarm_edit_btn_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
         if (alarm == NULL) {
@@ -931,18 +1013,16 @@ static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e) {
 }
 
 static void alarm_settings_back_event_cb(lv_event_t *e) {
+    alarm_trace_event("alarm_settings_back_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Back to menu - saving alarm settings");
         nvs_save_alarm_settings(&current_alarm_settings);
-
-        if (lvgl_port_lock(0)) {
-            lv_scr_load(screen_menu);
-            lvgl_port_unlock();
-        }
+        lv_scr_load(screen_menu);
     }
 }
 
 static void tone_picker_prev_page_event_cb(lv_event_t *e) {
+    alarm_trace_event("tone_picker_prev_page_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         tone_picker_current_page--;
         if (tone_picker_current_page < 0) {
@@ -965,6 +1045,7 @@ static void tone_picker_prev_page_event_cb(lv_event_t *e) {
 }
 
 static void tone_picker_next_page_event_cb(lv_event_t *e) {
+    alarm_trace_event("tone_picker_next_page_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         tone_picker_current_page++;
         if (tone_picker_current_page > 3) {
@@ -987,6 +1068,7 @@ static void tone_picker_next_page_event_cb(lv_event_t *e) {
 }
 
 static void tone_select_btn_event_cb(lv_event_t *e) {
+    alarm_trace_event("tone_select_btn_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         int tone_index = (int)(intptr_t)lv_event_get_user_data(e);
 
@@ -1028,6 +1110,7 @@ static void tone_select_btn_event_cb(lv_event_t *e) {
 }
 
 static void tone_preview_btn_event_cb(lv_event_t *e) {
+    alarm_trace_event("tone_preview_btn_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         int tone_index = (int)(intptr_t)lv_event_get_user_data(e);
         ESP_LOGI(TAG, "Preview tone: %d", tone_index);
@@ -1038,27 +1121,25 @@ static void tone_preview_btn_event_cb(lv_event_t *e) {
 }
 
 static void alarm_detail_editor_back_event_cb(lv_event_t *e) {
+    alarm_trace_event("alarm_detail_editor_back_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Detail editor back - saving and returning to alarm settings");
         nvs_save_alarm_settings(&current_alarm_settings);
 
-        if (lvgl_port_lock(0)) {
-            if (screen_alarm_settings != NULL) {
-                lv_obj_del(screen_alarm_settings);
-                screen_alarm_settings = NULL;
-            }
+        if (screen_alarm_settings != NULL) {
+            lv_obj_del(screen_alarm_settings);
+            screen_alarm_settings = NULL;
+        }
 
-            create_alarm_settings_screen();
+        create_alarm_settings_screen();
 
-            if (screen_alarm_settings != NULL) {
-                lv_scr_load(screen_alarm_settings);
-            }
+        if (screen_alarm_settings != NULL) {
+            lv_scr_load(screen_alarm_settings);
+        }
 
-            if (screen_alarm_detail_editor != NULL) {
-                lv_obj_del(screen_alarm_detail_editor);
-                screen_alarm_detail_editor = NULL;
-            }
-            lvgl_port_unlock();
+        if (screen_alarm_detail_editor != NULL) {
+            lv_obj_del(screen_alarm_detail_editor);
+            screen_alarm_detail_editor = NULL;
         }
 
         editing_alarm = NULL;
@@ -1143,4 +1224,43 @@ static void alarm_preview_back_event_cb(lv_event_t *e) {
             lvgl_port_unlock();
         }
     }
+}
+
+static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
+    (void)timer;
+
+    lv_obj_t *active = lv_scr_act();
+    bool alarm_ui_active =
+        (active == screen_alarm_settings) ||
+        (active == screen_alarm_detail_editor) ||
+        (active == screen_alarm_preview) ||
+        (screen_tone_picker != NULL);
+
+    if (!alarm_ui_active) {
+        return;
+    }
+
+#if ALARM_VERBOSE_LOG
+    static uint32_t s_last_trace_ms = 0;
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+    if ((now_ms - s_last_trace_ms) > 5000U) {
+        s_last_trace_ms = now_ms;
+        ESP_LOGI(TAG, "TRACE alarm_ui_alive active=%p inactive=%lu heap=%lu", (void *)active,
+                 (unsigned long)lv_disp_get_inactive_time(NULL),
+                 (unsigned long)esp_get_free_heap_size());
+    }
+#endif
+
+    uint32_t inactive_ms = lv_disp_get_inactive_time(NULL);
+    if (inactive_ms < ALARM_UI_INACTIVITY_RETURN_MS) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Alarm UI inactivity timeout (%lu ms) - returning to home", (unsigned long)inactive_ms);
+    nvs_save_alarm_settings(&current_alarm_settings);
+
+    home_screen_active = true;
+    pause_background_tasks = false;
+
+    lv_scr_load(screen_home);
 }

@@ -134,6 +134,7 @@ TaskHandle_t wifi_task_handle = NULL;
 TaskHandle_t ui_task_handle = NULL;
 TaskHandle_t weather_task_handle = NULL;
 TaskHandle_t glucose_task_handle = NULL;
+TaskHandle_t time_task_handle = NULL;
 
 // LED breathing (disabled to save power - variables kept for future use)
 volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
@@ -159,9 +160,7 @@ lv_obj_t *screen_dexcom_status = NULL;
 lv_obj_t *screen_alarm_settings = NULL;
 lv_obj_t *screen_time_weather_settings = NULL;
 lv_obj_t *screen_tone_picker = NULL;
-#if 0  // Alarm preview disabled - kept for potential future use
 lv_obj_t *screen_alarm_preview = NULL;
-#endif
 lv_obj_t *screen_alarm_detail_editor = NULL;
 
 // Global alarm configuration
@@ -331,373 +330,440 @@ void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
     draw_weather_icon_animated(canvas, weather_code, weather_icon_anim_frame);
 }
 
+// Helper: draw a solid fluffy cloud shape centered at (cx, cy)
+static void draw_solid_cloud(lv_obj_t *canvas, int cx, int cy, uint32_t color, uint8_t opa) {
+    lv_draw_rect_dsc_t r;
+    lv_draw_rect_dsc_init(&r);
+    r.bg_color = lv_color_hex(color);
+    r.bg_opa = opa;
+
+    // Flat bottom base
+    r.radius = 5;
+    lv_canvas_draw_rect(canvas, cx - 18, cy - 3, 36, 11, &r);
+
+    // Rounded bumps on top
+    r.radius = LV_RADIUS_CIRCLE;
+    lv_canvas_draw_rect(canvas, cx - 17, cy - 12, 15, 15, &r);   // Left bump
+    lv_canvas_draw_rect(canvas, cx - 6, cy - 17, 17, 17, &r);    // Center bump (tallest)
+    lv_canvas_draw_rect(canvas, cx + 5, cy - 10, 13, 13, &r);    // Right bump
+}
+
+// Helper: draw a smaller cloud (for partly cloudy overlay)
+static void draw_small_cloud(lv_obj_t *canvas, int cx, int cy, uint32_t color, uint8_t opa) {
+    lv_draw_rect_dsc_t r;
+    lv_draw_rect_dsc_init(&r);
+    r.bg_color = lv_color_hex(color);
+    r.bg_opa = opa;
+
+    // Flat bottom
+    r.radius = 4;
+    lv_canvas_draw_rect(canvas, cx - 14, cy - 2, 28, 9, &r);
+
+    // Bumps
+    r.radius = LV_RADIUS_CIRCLE;
+    lv_canvas_draw_rect(canvas, cx - 13, cy - 9, 12, 12, &r);    // Left
+    lv_canvas_draw_rect(canvas, cx - 4, cy - 13, 13, 13, &r);    // Center
+    lv_canvas_draw_rect(canvas, cx + 4, cy - 7, 10, 10, &r);     // Right
+}
+
 void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t frame) {
     if (canvas == NULL) return;
 
-    // Clear canvas before redrawing
+    // Clear canvas
     lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
-
-    // Initialize drawing descriptors
-    lv_draw_arc_dsc_t arc_dsc;
-    lv_draw_arc_dsc_init(&arc_dsc);
-
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
 
     lv_draw_rect_dsc_t rect_dsc;
     lv_draw_rect_dsc_init(&rect_dsc);
 
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+
     switch (weather_code) {
-        case 0: { // SUN (day) / MOON (night) - Clear sky
+        case 0: { // CLEAR SKY - Sun (day) / Moon + stars (night)
             if (is_night_time()) {
-                // Draw crescent moon
-                // Draw large circle (full moon)
-                arc_dsc.color = lv_color_hex(0xF0E68C); // Pale yellow
-                arc_dsc.width = 24;
-                lv_canvas_draw_arc(canvas, 30, 25, 12, 0, 360, &arc_dsc);
+                // Soft moon glow
+                rect_dsc.bg_color = lv_color_hex(0xF0E68C);
+                rect_dsc.bg_opa = 30;
+                rect_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_canvas_draw_rect(canvas, 15, 7, 32, 32, &rect_dsc);
 
-                // Draw smaller circle on right to create crescent
-                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);  // Same as background
-                arc_dsc.width = 20;
-                lv_canvas_draw_arc(canvas, 36, 22, 10, 0, 360, &arc_dsc);
+                // Solid moon body
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                lv_canvas_draw_rect(canvas, 19, 11, 24, 24, &rect_dsc);
 
-                // Draw twinkling stars with random positions that change over time
-                // Slow and subtle - multiple stars appear, shine, then disappear and relocate
-                const int num_stars = 12;  // More stars for better coverage
+                // Crescent cutout (overlap right side with bg color)
+                rect_dsc.bg_color = lv_color_hex(COLOR_CARD_BG);
+                lv_canvas_draw_rect(canvas, 29, 9, 18, 18, &rect_dsc);
 
-                for (uint32_t i = 0; i < num_stars; i++) {
-                    // Each star has a moderate lifecycle (200-350 frames = 20-35 seconds at 100ms)
+                // Twinkling stars (proven algorithm - keeps existing logic)
+                for (uint32_t i = 0; i < 12; i++) {
                     uint32_t star_lifecycle = 200 + (i * 47) % 150;
-
-                    // Current position in this star's lifecycle
                     uint32_t life_position = (frame + (i * 79)) % star_lifecycle;
-
-                    // Determine random position based on current lifecycle epoch
                     uint32_t epoch = (frame + (i * 79)) / star_lifecycle;
-                    uint32_t position_seed = (epoch * 1103515245U + i * 12345U);
+                    uint32_t seed = (epoch * 1103515245U + i * 12345U);
 
-                    // Random X and Y for this epoch
-                    int star_x = ((position_seed >> 16) % 58);
-                    position_seed = position_seed * 1103515245U + 12345U;
-                    int star_y = ((position_seed >> 16) % 48);
+                    int star_x = ((seed >> 16) % 58);
+                    seed = seed * 1103515245U + 12345U;
+                    int star_y = ((seed >> 16) % 48);
+                    seed = seed * 1103515245U + 12345U;
+                    int star_size = ((seed >> 8) % 10 < 2) ? 2 : 1;
 
-                    // Random star size for this epoch (mostly 1px, occasionally 2px)
-                    position_seed = position_seed * 1103515245U + 12345U;
-                    int star_size = ((position_seed >> 8) % 10 < 2) ? 2 : 1;  // 20% chance of 2px
-
-                    // Slow, subtle brightness curve
-                    // Star is visible for about 40-50% of its lifecycle
+                    uint32_t vis_start = star_lifecycle / 5;
+                    uint32_t vis_dur = 50 + ((seed >> 12) % 60);
                     uint16_t brightness = 0;
 
-                    // Visible for a larger portion of lifecycle
-                    uint32_t visible_start = star_lifecycle / 5;
-                    uint32_t visible_duration = 50 + ((position_seed >> 12) % 60);  // 50-110 frames visible
-
-                    if (life_position >= visible_start && life_position < visible_start + visible_duration) {
-                        uint32_t vis_pos = life_position - visible_start;
-                        uint32_t fade_in = visible_duration / 4;
-                        uint32_t fade_out = visible_duration / 4;
-
-                        if (vis_pos < fade_in) {
-                            // Slow fade in
-                            brightness = (vis_pos * 200) / fade_in;
-                        } else if (vis_pos > visible_duration - fade_out) {
-                            // Slow fade out
-                            brightness = ((visible_duration - vis_pos) * 200) / fade_out;
-                        } else {
-                            // Steady glow (with slight random variation)
-                            brightness = 180 + ((position_seed >> 4) % 40);
-                        }
+                    if (life_position >= vis_start && life_position < vis_start + vis_dur) {
+                        uint32_t vp = life_position - vis_start;
+                        uint32_t fi = vis_dur / 4;
+                        uint32_t fo = vis_dur / 4;
+                        if (vp < fi) brightness = (vp * 200) / fi;
+                        else if (vp > vis_dur - fo) brightness = ((vis_dur - vp) * 200) / fo;
+                        else brightness = 180 + ((seed >> 4) % 40);
                     }
 
-                    // Draw star only if visible
                     if (brightness > 50) {
-                        lv_draw_rect_dsc_t star_dsc;
-                        lv_draw_rect_dsc_init(&star_dsc);
-                        star_dsc.bg_color = lv_color_hex(0xFFFFFF);
-                        star_dsc.bg_opa = (brightness > 255) ? 255 : (uint8_t)brightness;
-                        star_dsc.radius = 0;  // Square pixel
-
-                        lv_canvas_draw_rect(canvas, star_x, star_y, star_size, star_size, &star_dsc);
+                        lv_draw_rect_dsc_t s;
+                        lv_draw_rect_dsc_init(&s);
+                        s.bg_color = lv_color_hex(0xFFFFFF);
+                        s.bg_opa = (brightness > 255) ? 255 : (uint8_t)brightness;
+                        s.radius = 0;
+                        lv_canvas_draw_rect(canvas, star_x, star_y, star_size, star_size, &s);
                     }
                 }
             } else {
-                // Draw filled sun circle
-                rect_dsc.bg_color = lv_color_hex(0xFFAA00); // Orange
-                rect_dsc.bg_opa = LV_OPA_COVER;
+                // Warm outer glow
+                rect_dsc.bg_color = lv_color_hex(0xFFCC00);
+                rect_dsc.bg_opa = 35;
                 rect_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_canvas_draw_rect(canvas, 13, 8, 34, 34, &rect_dsc);
 
-                // Draw filled circle by drawing a rounded rectangle
-                // lv_canvas_draw_rect signature: (canvas, x, y, w, h, &dsc)
-                lv_canvas_draw_rect(canvas, 30 - 12, 25 - 12, 24, 24, &rect_dsc);
+                // Solid sun body
+                rect_dsc.bg_color = lv_color_hex(0xFFAA00);
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                lv_canvas_draw_rect(canvas, 18, 13, 24, 24, &rect_dsc);
 
-                // Draw 8 rays around the sun with gentle rotation animation
+                // Bright inner highlight
+                rect_dsc.bg_color = lv_color_hex(0xFFDD44);
+                rect_dsc.bg_opa = 160;
+                lv_canvas_draw_rect(canvas, 23, 18, 14, 14, &rect_dsc);
+
+                // 8 primary rotating rays (thick, pulsing length)
                 line_dsc.color = lv_color_hex(0xFFAA00);
                 line_dsc.width = 2;
-                lv_point_t ray_points[2];
-
-                // Slow rotation offset (one full rotation every 256 frames * 100ms = 25.6 seconds)
-                float rotation_offset = (frame * 3.14159 / 128.0);  // Slow rotation
+                lv_point_t ray[2];
+                float rot = frame * 3.14159 / 128.0;
+                int pulse = 22 + (int)(2.0 * sin(frame * 0.15));
 
                 for (int i = 0; i < 8; i++) {
-                    float angle = (i * 45.0 * 3.14159 / 180.0) + rotation_offset;
-                    ray_points[0].x = 30 + (int)(18 * cos(angle));
-                    ray_points[0].y = 25 + (int)(18 * sin(angle));
-                    ray_points[1].x = 30 + (int)(26 * cos(angle));
-                    ray_points[1].y = 25 + (int)(26 * sin(angle));
-                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
+                    float a = (i * 45.0 * 3.14159 / 180.0) + rot;
+                    ray[0].x = 30 + (int)(16 * cos(a));
+                    ray[0].y = 25 + (int)(16 * sin(a));
+                    ray[1].x = 30 + (int)(pulse * cos(a));
+                    ray[1].y = 25 + (int)(pulse * sin(a));
+                    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+                }
+
+                // 8 secondary rays (thin, offset 22.5 degrees)
+                line_dsc.width = 1;
+                line_dsc.color = lv_color_hex(0xFFCC44);
+                int pulse2 = 18 + (int)(1.5 * sin(frame * 0.15 + 1.0));
+
+                for (int i = 0; i < 8; i++) {
+                    float a = ((i * 45.0 + 22.5) * 3.14159 / 180.0) + rot;
+                    ray[0].x = 30 + (int)(15 * cos(a));
+                    ray[0].y = 25 + (int)(15 * sin(a));
+                    ray[1].x = 30 + (int)(pulse2 * cos(a));
+                    ray[1].y = 25 + (int)(pulse2 * sin(a));
+                    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
                 }
             }
             break;
         }
 
-        case 1: { // PARTLY CLOUDY - Sun/Moon with cloud
+        case 1: { // PARTLY CLOUDY - Sun/Moon peeking + fluffy cloud
             if (is_night_time()) {
-                // Draw crescent moon in upper left
-                arc_dsc.color = lv_color_hex(0xF0E68C);
-                arc_dsc.width = 14;
-                lv_canvas_draw_arc(canvas, 18, 15, 7, 0, 360, &arc_dsc);
+                // Small moon glow (upper-left)
+                rect_dsc.bg_color = lv_color_hex(0xF0E68C);
+                rect_dsc.bg_opa = 25;
+                rect_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_canvas_draw_rect(canvas, 4, 1, 24, 24, &rect_dsc);
 
-                // Create crescent effect
-                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);
-                arc_dsc.width = 12;
-                lv_canvas_draw_arc(canvas, 22, 13, 6, 0, 360, &arc_dsc);
+                // Moon body
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                lv_canvas_draw_rect(canvas, 7, 4, 18, 18, &rect_dsc);
+
+                // Crescent cutout
+                rect_dsc.bg_color = lv_color_hex(COLOR_CARD_BG);
+                lv_canvas_draw_rect(canvas, 15, 2, 14, 14, &rect_dsc);
             } else {
-                // Draw sun in upper left
-                arc_dsc.color = lv_color_hex(0xFFAA00); // Orange
-                arc_dsc.width = 6;
-                lv_canvas_draw_arc(canvas, 18, 15, 8, 0, 360, &arc_dsc);
+                // Small sun glow (upper-left)
+                rect_dsc.bg_color = lv_color_hex(0xFFCC00);
+                rect_dsc.bg_opa = 30;
+                rect_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_canvas_draw_rect(canvas, 3, 0, 26, 26, &rect_dsc);
 
-                // Draw partial rays (only visible ones)
+                // Sun body
+                rect_dsc.bg_color = lv_color_hex(0xFFAA00);
+                rect_dsc.bg_opa = LV_OPA_COVER;
+                lv_canvas_draw_rect(canvas, 7, 4, 18, 18, &rect_dsc);
+
+                // Inner highlight
+                rect_dsc.bg_color = lv_color_hex(0xFFDD44);
+                rect_dsc.bg_opa = 140;
+                lv_canvas_draw_rect(canvas, 10, 7, 12, 12, &rect_dsc);
+
+                // A few visible rays (upper-left quadrant)
                 line_dsc.color = lv_color_hex(0xFFAA00);
                 line_dsc.width = 2;
-                lv_point_t ray_points[2];
-
-                // Top-left rays only (4 rays)
+                lv_point_t ray[2];
                 for (int i = 2; i < 6; i++) {
-                    float angle = i * 45.0 * 3.14159 / 180.0;
-                    ray_points[0].x = 18 + (int)(12 * cos(angle));
-                    ray_points[0].y = 15 + (int)(12 * sin(angle));
-                    ray_points[1].x = 18 + (int)(18 * cos(angle));
-                    ray_points[1].y = 15 + (int)(18 * sin(angle));
-                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
+                    float a = i * 45.0 * 3.14159 / 180.0;
+                    ray[0].x = 16 + (int)(12 * cos(a));
+                    ray[0].y = 13 + (int)(12 * sin(a));
+                    ray[1].x = 16 + (int)(17 * cos(a));
+                    ray[1].y = 13 + (int)(17 * sin(a));
+                    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
                 }
             }
 
-            // Draw cloud in lower right (partially covering sun/moon) with gentle drift
-            // Subtle horizontal drift animation
-            int drift = ((frame / 8) % 20) - 10;  // Drifts -10 to +10 pixels slowly
-
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 14;
-            lv_canvas_draw_arc(canvas, 28 + drift, 28, 7, 0, 360, &arc_dsc);   // Left bump
-            lv_canvas_draw_arc(canvas, 38 + drift, 24, 9, 0, 360, &arc_dsc);   // Middle bump
-            lv_canvas_draw_arc(canvas, 46 + drift, 28, 7, 0, 360, &arc_dsc);   // Right bump
+            // Fluffy cloud lower-right with gentle sine drift
+            int drift = (int)(3.0 * sin(frame * 0.04));
+            draw_small_cloud(canvas, 36 + drift, 34, 0x666666, LV_OPA_COVER);
+            draw_small_cloud(canvas, 34 + drift, 33, COLOR_TEXT_GRAY, LV_OPA_COVER);
             break;
         }
 
-        case 2: { // CLOUD - Drifting cloud shape
-            // Draw cloud using overlapping filled circles (arcs with thick width) with drift
-            // Gentle horizontal drift animation
-            int drift = ((frame / 8) % 20) - 10;  // Drifts -10 to +10 pixels slowly
+        case 2: { // OVERCAST - Layered clouds for depth
+            int drift = (int)(4.0 * sin(frame * 0.03));
 
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 16;  // Thick arc creates filled circle effect
+            // Back cloud (darker, offset for depth)
+            draw_solid_cloud(canvas, 34 + drift / 2, 30, 0x555555, LV_OPA_COVER);
 
-            lv_canvas_draw_arc(canvas, 20 + drift, 25, 8, 0, 360, &arc_dsc);   // Left bump
-            lv_canvas_draw_arc(canvas, 30 + drift, 20, 10, 0, 360, &arc_dsc);  // Middle bump (larger)
-            lv_canvas_draw_arc(canvas, 40 + drift, 25, 8, 0, 360, &arc_dsc);   // Right bump
+            // Front cloud (lighter, main)
+            draw_solid_cloud(canvas, 28 + drift, 25, COLOR_TEXT_GRAY, LV_OPA_COVER);
+
+            // Subtle highlight on front cloud top
+            rect_dsc.bg_color = lv_color_hex(0xBBBBBB);
+            rect_dsc.bg_opa = 50;
+            rect_dsc.radius = LV_RADIUS_CIRCLE;
+            lv_canvas_draw_rect(canvas, 21 + drift, 9, 14, 12, &rect_dsc);
             break;
         }
 
-        case 3: { // RAIN - Cloud + animated rain drops
-            // Draw cloud
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 16;
+        case 3: { // RAIN - Solid cloud + diagonal rain streaks
+            // Solid cloud
+            draw_solid_cloud(canvas, 30, 18, COLOR_TEXT_GRAY, LV_OPA_COVER);
 
-            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
-
-            // Draw animated rain drops (randomized falling animation)
+            // 5 rain drops falling at slight diagonal (wind effect)
             line_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
             line_dsc.width = 2;
-            lv_point_t rain[2];
+            lv_point_t drop[2];
 
-            // Pseudo-random rain drop positions and speeds
-            // Using simple LCG with different seeds per drop for variety
-            static const int rain_x_base[] = {15, 28, 42};        // Base X positions (12-50 range)
-            static const int rain_y_start[] = {28, 32, 30};       // Starting Y positions below cloud
-            static const int rain_speed[] = {3, 5, 4};            // Different fall speeds (3-5)
-            static const int rain_cycle[] = {16, 20, 18};         // Cycle lengths for variety
+            static const int drop_x[] = {12, 21, 30, 39, 48};
+            static const int drop_speed[] = {4, 3, 5, 3, 4};
+            static const int drop_phase[] = {0, 5, 2, 8, 4};
+
+            for (int i = 0; i < 5; i++) {
+                int y = 28 + ((frame / 2 + drop_phase[i] * 3) * drop_speed[i] / 3) % 22;
+
+                if (y >= 26 && y < 48) {
+                    // Slight diagonal slant
+                    drop[0].x = drop_x[i];
+                    drop[0].y = y;
+                    drop[1].x = drop_x[i] - 1;
+                    drop[1].y = y + 5;
+                    lv_canvas_draw_line(canvas, drop, 2, &line_dsc);
+                }
+            }
+
+            // Secondary thinner drops (staggered)
+            line_dsc.width = 1;
+            line_dsc.color = lv_color_hex(0x4488CC);
+            static const int drop2_x[] = {17, 35, 44};
+            static const int drop2_phase[] = {3, 6, 1};
 
             for (int i = 0; i < 3; i++) {
-                // Calculate drop position with individual speed and cycle
-                int drop_offset = ((frame / 2) / rain_speed[i]) % rain_cycle[i];
-
-                rain[0].x = rain_x_base[i];
-                rain[0].y = rain_y_start[i] + drop_offset;
-                rain[1].x = rain_x_base[i];
-                rain[1].y = rain_y_start[i] + drop_offset + 6;  // 6px drop length
-
-                // Only draw if drop is visible below cloud
-                if (rain[0].y < 46) {
-                    lv_canvas_draw_line(canvas, rain, 2, &line_dsc);
+                int y = 30 + ((frame / 2 + drop2_phase[i] * 4) * 4 / 3) % 18;
+                if (y >= 28 && y < 47) {
+                    drop[0].x = drop2_x[i];
+                    drop[0].y = y;
+                    drop[1].x = drop2_x[i] - 1;
+                    drop[1].y = y + 4;
+                    lv_canvas_draw_line(canvas, drop, 2, &line_dsc);
                 }
             }
             break;
         }
 
-        case 4: { // SNOW - Cloud + falling snowflakes
-            // Draw cloud
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 16;
+        case 4: { // SNOW - Solid cloud + floating snowflakes
+            // Solid cloud
+            draw_solid_cloud(canvas, 30, 16, COLOR_TEXT_GRAY, LV_OPA_COVER);
 
-            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+            // 5 snowflakes as asterisk patterns (* = 3 crossing lines)
+            line_dsc.color = lv_color_hex(0xFFFFFF);
+            line_dsc.width = 1;
+            lv_point_t sf[2];
 
-            // Draw animated snowflakes (falling and drifting)
-            line_dsc.color = lv_color_hex(COLOR_TEXT_WHITE);
-            line_dsc.width = 2;
-            lv_point_t snow[2];
+            static const int sf_x[] = {10, 22, 34, 46, 16};
+            static const int sf_phase[] = {0, 7, 3, 10, 5};
 
-            // Base positions for snowflakes
-            int base_positions[] = {20, 30, 40};
+            for (int i = 0; i < 5; i++) {
+                int fall = ((frame / 4 + sf_phase[i] * 5) % 24);
+                int drift = (int)(3.0 * sin((frame + i * 40) * 0.08));
+                int sx = sf_x[i] + drift;
+                int sy = 26 + fall;
 
-            // Animate snowflakes falling (slower than rain)
-            int fall_offset = (frame / 6) % 16;
-
-            for (int i = 0; i < 3; i++) {
-                // Add slight horizontal drift (sine wave approximation)
-                int drift = ((frame + i * 30) % 60 < 30) ? ((frame + i * 30) % 30) / 5 - 3 : 3 - ((frame + i * 30) % 30) / 5;
-
-                int x = base_positions[i] + drift;
-                int y = 30 + fall_offset + (i * 4);  // Stagger vertically
-
-                // Only draw if visible below cloud
-                if (y > 28 && y < 48) {
-                    // Vertical line
-                    snow[0].x = x;
-                    snow[0].y = y - 3;
-                    snow[1].x = x;
-                    snow[1].y = y + 3;
-                    lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
-
-                    // Horizontal line
-                    snow[0].x = x - 3;
-                    snow[0].y = y;
-                    snow[1].x = x + 3;
-                    snow[1].y = y;
-                    lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
+                if (sy >= 24 && sy < 48) {
+                    int arm = 3;
+                    // Vertical arm
+                    sf[0].x = sx; sf[0].y = sy - arm;
+                    sf[1].x = sx; sf[1].y = sy + arm;
+                    lv_canvas_draw_line(canvas, sf, 2, &line_dsc);
+                    // Diagonal arm 1
+                    sf[0].x = sx - arm; sf[0].y = sy - arm + 1;
+                    sf[1].x = sx + arm; sf[1].y = sy + arm - 1;
+                    lv_canvas_draw_line(canvas, sf, 2, &line_dsc);
+                    // Diagonal arm 2
+                    sf[0].x = sx + arm; sf[0].y = sy - arm + 1;
+                    sf[1].x = sx - arm; sf[1].y = sy + arm - 1;
+                    lv_canvas_draw_line(canvas, sf, 2, &line_dsc);
                 }
             }
             break;
         }
 
-        case 5: { // STORM - Dark cloud + flashing lightning
-            // Draw dark cloud
-            arc_dsc.color = lv_color_hex(0x555555); // Dark gray
-            arc_dsc.width = 16;
+        case 5: { // STORM - Dark cloud + lightning + rain
+            // Dark cloud with purple tint
+            draw_solid_cloud(canvas, 30, 16, 0x444455, LV_OPA_COVER);
 
-            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
+            // Storm rain (thinner, blue-gray)
+            line_dsc.color = lv_color_hex(0x5588CC);
+            line_dsc.width = 1;
+            lv_point_t drop[2];
+            for (int i = 0; i < 4; i++) {
+                int dx = 14 + i * 10;
+                int dy = 24 + ((frame * 3 + i * 7) % 22);
+                if (dy >= 24 && dy < 48) {
+                    drop[0].x = dx; drop[0].y = dy;
+                    drop[1].x = dx - 1; drop[1].y = dy + 4;
+                    lv_canvas_draw_line(canvas, drop, 2, &line_dsc);
+                }
+            }
 
-            // Draw flashing lightning bolt (appears periodically)
-            // Lightning flashes every ~2 seconds (frame cycles every 256 frames)
-            // Show lightning for frames 0-15, 80-95, 200-215
-            bool show_lightning = (frame < 15) || (frame >= 80 && frame < 95) || (frame >= 200 && frame < 215);
+            // Lightning flash (periodic)
+            bool flash = (frame < 8) || (frame >= 70 && frame < 78) || (frame >= 180 && frame < 186);
+            if (flash) {
+                // Glow behind bolt
+                rect_dsc.bg_color = lv_color_hex(0xFFFF88);
+                rect_dsc.bg_opa = 40;
+                rect_dsc.radius = LV_RADIUS_CIRCLE;
+                lv_canvas_draw_rect(canvas, 22, 26, 18, 18, &rect_dsc);
 
-            if (show_lightning) {
-                line_dsc.color = lv_color_hex(0xFFFF00); // Yellow
+                // Zigzag lightning bolt
+                line_dsc.color = lv_color_hex(0xFFFF00);
                 line_dsc.width = 3;
                 lv_point_t bolt[2];
 
-                // First segment
-                bolt[0].x = 30; bolt[0].y = 28;
-                bolt[1].x = 28; bolt[1].y = 36;
+                bolt[0].x = 32; bolt[0].y = 24;
+                bolt[1].x = 28; bolt[1].y = 32;
                 lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
 
-                // Second segment
-                bolt[0].x = 28; bolt[0].y = 36;
-                bolt[1].x = 32; bolt[1].y = 36;
+                bolt[0].x = 28; bolt[0].y = 32;
+                bolt[1].x = 34; bolt[1].y = 33;
                 lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
 
-                // Third segment
-                bolt[0].x = 32; bolt[0].y = 36;
-                bolt[1].x = 30; bolt[1].y = 46;
+                bolt[0].x = 34; bolt[0].y = 33;
+                bolt[1].x = 28; bolt[1].y = 44;
+                lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+                // Bright bolt core (thinner white line for intensity)
+                line_dsc.color = lv_color_hex(0xFFFFCC);
+                line_dsc.width = 1;
+
+                bolt[0].x = 32; bolt[0].y = 24;
+                bolt[1].x = 28; bolt[1].y = 32;
+                lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+                bolt[0].x = 28; bolt[0].y = 32;
+                bolt[1].x = 34; bolt[1].y = 33;
+                lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
+
+                bolt[0].x = 34; bolt[0].y = 33;
+                bolt[1].x = 28; bolt[1].y = 44;
                 lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
             }
             break;
         }
 
-        case 6: { // FOG - Drifting horizontal layers
-            // Draw multiple horizontal fog layers with drifting animation
-            line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            line_dsc.width = 3;
-            lv_point_t fog[2];
+        case 6: { // FOG - Soft drifting horizontal bars at varying opacity
+            static const int fog_y[] = {10, 19, 28, 36, 44};
+            static const int fog_w[] = {30, 40, 44, 36, 28};
+            static const uint8_t fog_opa[] = {90, 130, 170, 130, 80};
 
-            // Drift offset (each layer drifts at different speed)
-            int drift1 = (frame / 3) % 20 - 5;
-            int drift2 = (frame / 4) % 20 - 5;
-            int drift3 = (frame / 5) % 20 - 5;
-            int drift4 = (frame / 6) % 20 - 5;
+            rect_dsc.radius = 3;
+            rect_dsc.bg_color = lv_color_hex(COLOR_TEXT_GRAY);
 
-            // Top fog layer
-            fog[0].x = 15 + drift1; fog[0].y = 20;
-            fog[1].x = 45 + drift1; fog[1].y = 20;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+            for (int i = 0; i < 5; i++) {
+                int drift = (int)(6.0 * sin(frame * (0.025 + i * 0.008) + i * 1.5));
+                rect_dsc.bg_opa = fog_opa[i];
+                int x = (60 - fog_w[i]) / 2 + drift;
+                lv_canvas_draw_rect(canvas, x, fog_y[i], fog_w[i], 5, &rect_dsc);
+            }
 
-            // Middle fog layer (slightly offset)
-            fog[0].x = 10 + drift2; fog[0].y = 28;
-            fog[1].x = 50 + drift2; fog[1].y = 28;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
-
-            // Lower-middle fog layer
-            fog[0].x = 12 + drift3; fog[0].y = 36;
-            fog[1].x = 48 + drift3; fog[1].y = 36;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
-
-            // Bottom fog layer
-            fog[0].x = 18 + drift4; fog[0].y = 44;
-            fog[1].x = 42 + drift4; fog[1].y = 44;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
+            // Secondary translucent layer for depth
+            rect_dsc.bg_color = lv_color_hex(0xAAAAAA);
+            rect_dsc.bg_opa = 40;
+            rect_dsc.radius = 2;
+            for (int i = 0; i < 3; i++) {
+                int drift = (int)(4.0 * sin(frame * (0.04 + i * 0.01) + i * 2.0));
+                int y = 15 + i * 12;
+                lv_canvas_draw_rect(canvas, 8 + drift, y, 36, 4, &rect_dsc);
+            }
             break;
         }
 
-        case 7: { // ICE - Falling ice crystals (diagonal lines + crosses)
-            // Draw ice crystals as small diagonal crosses
-            line_dsc.color = lv_color_hex(0xAADDFF); // Light cyan/ice blue
+        case 7: { // ICE - Cloud + falling ice crystals
+            // Cloud at top
+            draw_solid_cloud(canvas, 30, 16, COLOR_TEXT_GRAY, LV_OPA_COVER);
+
+            // Falling 6-arm ice crystals
+            line_dsc.color = lv_color_hex(0xAADDFF);
             line_dsc.width = 2;
             lv_point_t ice[2];
 
-            // Three ice crystals falling at different positions
-            int positions[][2] = {{20, 20}, {35, 32}, {25, 42}};
+            static const int ice_x[] = {14, 30, 46};
+            static const int ice_phase[] = {0, 5, 2};
 
             for (int i = 0; i < 3; i++) {
-                int cx = positions[i][0];
-                int cy = positions[i][1];
+                int fall = ((frame / 3 + ice_phase[i] * 6) % 24);
+                int cx = ice_x[i];
+                int cy = 26 + fall;
 
-                // Diagonal line 1 (top-left to bottom-right)
-                ice[0].x = cx - 4; ice[0].y = cy - 4;
-                ice[1].x = cx + 4; ice[1].y = cy + 4;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+                if (cy >= 24 && cy < 48) {
+                    int s = 4;
+                    // Vertical arm
+                    ice[0].x = cx; ice[0].y = cy - s;
+                    ice[1].x = cx; ice[1].y = cy + s;
+                    lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+                    // Diagonal arm 1
+                    ice[0].x = cx - s; ice[0].y = cy - s / 2;
+                    ice[1].x = cx + s; ice[1].y = cy + s / 2;
+                    lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+                    // Diagonal arm 2
+                    ice[0].x = cx + s; ice[0].y = cy - s / 2;
+                    ice[1].x = cx - s; ice[1].y = cy + s / 2;
+                    lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
 
-                // Diagonal line 2 (top-right to bottom-left)
-                ice[0].x = cx + 4; ice[0].y = cy - 4;
-                ice[1].x = cx - 4; ice[1].y = cy + 4;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
-
-                // Vertical line (shorter)
-                ice[0].x = cx; ice[0].y = cy - 3;
-                ice[1].x = cx; ice[1].y = cy + 3;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
-
-                // Horizontal line (shorter)
-                ice[0].x = cx - 3; ice[0].y = cy;
-                ice[1].x = cx + 3; ice[1].y = cy;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+                    // Small branch tips (makes it look more crystalline)
+                    line_dsc.width = 1;
+                    ice[0].x = cx; ice[0].y = cy - s;
+                    ice[1].x = cx - 2; ice[1].y = cy - s + 2;
+                    lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+                    ice[0].x = cx; ice[0].y = cy - s;
+                    ice[1].x = cx + 2; ice[1].y = cy - s + 2;
+                    lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
+                    line_dsc.width = 2;
+                }
             }
             break;
         }
@@ -1546,10 +1612,9 @@ void glucose_update_task(void *pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(1000));  // Check every 1 second
         }
 
-        // Check if background tasks are paused (not on home screen)
-        if (pause_background_tasks) {
-            ESP_LOGI(TAG, "[Glucose Task] Paused - not on home screen (waiting 10s)");
-            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+        // STRICT runtime policy: never fetch off-home
+        if (pause_background_tasks || !home_screen_active) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
 
@@ -1569,8 +1634,15 @@ void glucose_update_task(void *pvParameters) {
         if (is_auth) {
             // CRITICAL: Take network mutex to ensure exclusive access
             ESP_LOGI(TAG, "Waiting for network mutex...");
-            if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
+            if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
                 ESP_LOGI(TAG, "Network mutex acquired for glucose fetch");
+
+                // Re-check policy immediately after lock: abort off-home work
+                if (pause_background_tasks || !home_screen_active) {
+                    xSemaphoreGive(network_mutex);
+                    ESP_LOGI(TAG, "Network mutex released (off-home policy)");
+                    continue;
+                }
 
                 // Check if we have enough INTERNAL memory for SSL connection
                 // SSL MUST use internal DRAM, not external PSRAM
@@ -2105,14 +2177,13 @@ void menu_item_event_cb(lv_event_t *e) {
                 break;
             case 3:  // Alarm Settings
                 ESP_LOGI(TAG, "Launching Alarm settings...");
-                if (lvgl_port_lock(0)) {
-                    if (screen_alarm_settings != NULL) {
-                        lv_obj_del(screen_alarm_settings);
-                        screen_alarm_settings = NULL;
-                    }
-                    create_alarm_settings_screen();
+                if (screen_alarm_settings != NULL) {
+                    lv_obj_del(screen_alarm_settings);
+                    screen_alarm_settings = NULL;
+                }
+                create_alarm_settings_screen();
+                if (screen_alarm_settings != NULL) {
                     lv_scr_load(screen_alarm_settings);
-                    lvgl_port_unlock();
                 }
                 break;
             case 4:  // Deep Sleep
@@ -2265,89 +2336,80 @@ void create_splash_screen(void) {
     screen_splash = lv_obj_create(NULL);
     lv_obj_add_style(screen_splash, &style_bg, 0);
 
-    // App name (top half) - Clean blue text (no glow, no effects)
+    // App name - large blue title
     lv_obj_t *title = lv_label_create(screen_splash);
     lv_label_set_text(title, "CYGM");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_letter_space(title, 6, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 24);
 
-    // Completely remove any background box
-    lv_obj_set_style_bg_opa(title, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(title, 0, 0);
-    lv_obj_set_style_outline_width(title, 0, 0);
-    lv_obj_set_style_pad_all(title, 0, 0);
-    lv_obj_set_style_radius(title, 0, 0);
+    // Subtle separator line under title
+    lv_obj_t *sep = lv_obj_create(screen_splash);
+    lv_obj_set_size(sep, 120, 2);
+    lv_obj_set_style_bg_color(sep, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_bg_opa(sep, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(sep, 0, 0);
+    lv_obj_set_style_radius(sep, 1, 0);
+    lv_obj_align(sep, LV_ALIGN_TOP_MID, 0, 80);
 
-    // No glow effect (saves memory and looks cleaner)
-    lv_obj_set_style_shadow_width(title, 0, 0);
-
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
-
-    // Website URL - slide in from left with fade
-    lv_obj_t *website = lv_label_create(screen_splash);
-    lv_label_set_text(website, "DigitalKaos.tech");
-    lv_obj_set_style_text_font(website, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(website, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_align(website, LV_ALIGN_TOP_MID, 0, 85);
-
-    // Tagline - fade in
+    // Tagline
     lv_obj_t *sub = lv_label_create(screen_splash);
-    lv_label_set_text(sub, "Glucose Monitor");
+    lv_label_set_text(sub, "Continuous Glucose Monitor");
     lv_obj_set_style_text_font(sub, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 110);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 90);
 
-    // Attribution - slide in from right
+    // Website URL
+    lv_obj_t *website = lv_label_create(screen_splash);
+    lv_label_set_text(website, "DigitalKaos.tech");
+    lv_obj_set_style_text_font(website, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(website, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_align(website, LV_ALIGN_TOP_MID, 0, 112);
+
+    // Attribution + version on same line area
     lv_obj_t *author = lv_label_create(screen_splash);
-    lv_label_set_text(author, "Carl Brothers\ndecibelkaos@gmail.com");
-    lv_obj_set_style_text_font(author, &lv_font_montserrat_12, 0);
+    lv_label_set_text(author, "Carl Brothers");
+    lv_obj_set_style_text_font(author, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(author, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_set_style_text_align(author, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(author, LV_ALIGN_TOP_MID, 0, 135);
+    lv_obj_align(author, LV_ALIGN_TOP_MID, 0, 134);
 
-    // Version info - fade in
     lv_obj_t *version = lv_label_create(screen_splash);
     char version_str[32];
     snprintf(version_str, sizeof(version_str), "v%s", CYGM_VERSION_STRING);
     lv_label_set_text(version, version_str);
-    lv_obj_set_style_text_font(version, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(version, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_set_style_text_align(version, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(version, LV_ALIGN_TOP_MID, 0, 175);
+    lv_obj_set_style_text_font(version, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(version, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(version, LV_ALIGN_TOP_MID, 0, 148);
 
-    // Boot log (bottom half) - fade in last
+    // Boot status label - single line above progress bar
     boot_log_label = lv_label_create(screen_splash);
     lv_label_set_text(boot_log_label, "Initializing...");
-    lv_label_set_long_mode(boot_log_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(boot_log_label, 300);
+    lv_label_set_long_mode(boot_log_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(boot_log_label, 240);
     lv_obj_set_style_text_font(boot_log_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(boot_log_label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
-    lv_obj_align(boot_log_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+    lv_obj_set_style_text_color(boot_log_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_set_style_text_align(boot_log_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(boot_log_label, LV_ALIGN_BOTTOM_MID, 0, -32);
 
-    // Progress bar (bottom right) - animated during boot
+    // Fat progress bar - matching WiFi overlay style
     boot_progress_bar = lv_bar_create(screen_splash);
-    lv_obj_set_size(boot_progress_bar, 280, 6);
-    lv_obj_align(boot_progress_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_set_size(boot_progress_bar, 240, 16);
+    lv_obj_align(boot_progress_bar, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_bar_set_value(boot_progress_bar, 0, LV_ANIM_OFF);
 
-    // Style progress bar
-    lv_obj_set_style_bg_color(boot_progress_bar, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+    // Dark track
+    lv_obj_set_style_bg_color(boot_progress_bar, lv_color_hex(0x1E293B), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(boot_progress_bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(boot_progress_bar, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_MAIN);
-    lv_obj_set_style_border_opa(boot_progress_bar, LV_OPA_50, LV_PART_MAIN);
-    lv_obj_set_style_radius(boot_progress_bar, 3, LV_PART_MAIN);
+    lv_obj_set_style_border_width(boot_progress_bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(boot_progress_bar, 8, LV_PART_MAIN);
 
-    // Indicator (filled part)
-    lv_obj_set_style_bg_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    // Blue gradient indicator
+    lv_obj_set_style_bg_color(boot_progress_bar, lv_color_hex(0x1D4ED8), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_LIGHT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(boot_progress_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(boot_progress_bar, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(boot_progress_bar, 2, LV_PART_INDICATOR);
-
-    // Add glow to progress bar
-    lv_obj_set_style_shadow_width(boot_progress_bar, 10, LV_PART_INDICATOR);
-    lv_obj_set_style_shadow_spread(boot_progress_bar, 2, LV_PART_INDICATOR);
-    lv_obj_set_style_shadow_color(boot_progress_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_shadow_opa(boot_progress_bar, LV_OPA_70, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(boot_progress_bar, 8, LV_PART_INDICATOR);
 
     // Clear buffer
     memset(boot_log_buffer, 0, sizeof(boot_log_buffer));

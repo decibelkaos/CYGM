@@ -20,12 +20,12 @@ extern "C" {
 void create_home_screen(void);
 
 /**
- * Draw custom battery icon with specified color and number of bars
+ * Draw custom battery icon with specified color and fill level
  * @param canvas LVGL canvas object
  * @param color Battery color (green, orange, red)
- * @param bars Number of bars to show (1-4)
+ * @param percent Fill level 0-100
  */
-void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int bars);
+void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent);
 
 #ifdef __cplusplus
 }

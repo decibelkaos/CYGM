@@ -1,9 +1,9 @@
 # CYGM - Continuous Glucose Monitor Display
 ## Hardware: JC2432W328 (ESP32-D0WD) + M5Stack CardKB
 
-**Project Status**: 🎉 **BETA STAGE** - Ready for Field Testing
-**Version**: 1.3.3
-**Last Updated**: February 1, 2026
+**Project Status**: **BETA STAGE** - Active Development
+**Version**: 1.5.6
+**Last Updated**: March 4, 2026
 
 An open-source, low-cost CGM display supporting multiple data sources (Dexcom Share, Nightscout, LibreLinkUp).
 
@@ -28,62 +28,54 @@ idf.py flash monitor -p COM40
 ---
 
 ## Features
-✅ Multi-CGM support (Dexcom, Nightscout, LibreLinkUp)
-✅ **Comprehensive alarm system** - Visual (pulsing white screen) and audio alerts
-✅ **Snooze functionality** - Slider dismissal with 5/10/15/30 minute snooze + 3-hour disarm
-✅ **Audio repeat** - Configurable repeating alarms for urgent states
-✅ **Battery monitoring** - Voltage display, percentage, low battery protection (shutdown at 3.2V)
-✅ **Enhanced Trend Arrows** - Larger arrows (60x60 canvas) with improved design:
-   - Green glow for stable trends (flat, 45° angles)
-   - Orange glow for single up/down arrows
-   - Red glow for double up/down arrows
-   - Rotated from SINGLE_UP pattern for consistency
-   - Extended shafts for better visibility
-✅ Weather display with location detection (memory time-sharing)
-✅ Audio feedback (boot sound, connection confirmation, alarm tones)
-✅ **LED visual feedback** - RGB LED status indicators:
-   - Green blink (200ms) during WiFi boot sequence
-   - Blue double-blink ramp (5 steps, 1.5s) before Dexcom poll
-   - Green fade (3s steady, 500ms fade) on successful glucose fetch
-   - Red blink (500ms) for errors
-   - Bright red flash (100ms) during alarms
-✅ Intelligent status messages (warmup, signal loss, no data)
-✅ Physical keyboard for easy setup
-✅ Large, readable display with trend arrows
-✅ Persistent settings (NVS storage)
-✅ **No API keys required** - perfect for open-source diabetic community!
+- Dexcom Share CGM integration (Nightscout, LibreLinkUp planned)
+- Comprehensive alarm system - visual (pulsing overlay) and audio alerts
+- Snooze/dismiss with slider, 5/10/15/30 min snooze + 3-hour disarm
+- Configurable repeating alarms for urgent glucose states
+- Battery monitoring with voltage display, percentage, low battery auto-shutdown
+- Enhanced trend arrows (60x60 canvas, color-coded by severity)
+- Weather display with online geocoding (Open-Meteo + Nominatim)
+- 6-hour glucose history chart
+- Audio feedback (boot sound, connection confirmation, alarm tones)
+- RGB LED status indicators (WiFi, polling, success, error, alarm)
+- WiFi connection management with multi-network support
+- Battery charging indicator
+- Intelligent status messages (warmup, signal loss, no data)
+- Touch + M5Stack CardKB input
+- Persistent settings (NVS storage)
+- No API keys required - built for the open-source diabetic community
 
 ---
 
 ## Architecture
 
-### Modular Structure (v1.3.1+)
-
-**Refactored 2026-01-31**: main.c reduced from 6,524 lines to 1,420 lines (78% reduction)
+### Modular Structure
 
 ```
 main/
-├── hardware/          # Hardware abstraction
-│   ├── led.c/h       # RGB LED PWM control
-│   ├── buzzer.c/h    # Tone generation, alarms
-│   ├── battery.c/h   # ADC monitoring, shutdown protection
-│   └── display.c/h   # LCD, touch, CardKB, LVGL
-├── features/          # High-level features
+├── hardware/              # Hardware abstraction
+│   ├── led.c/h            # RGB LED PWM control
+│   ├── buzzer.c/h         # Tone generation, alarms
+│   ├── battery.c/h        # ADC monitoring, shutdown protection
+│   └── display.c/h        # LCD, touch, LVGL init
+├── features/              # High-level features
 │   ├── time_system.c/h    # SNTP, timezone, time display
-│   └── weather_system.c/h # Geocoding, Open-Meteo API
-├── ui/                # UI screens
+│   ├── weather_system.c/h # Open-Meteo API, weather display
+│   ├── geocoding_api.c/h  # Online geocoding (Nominatim)
+│   └── glucose_history.c/h # 6-hour glucose chart data
+├── ui/                    # UI screens
 │   ├── home_screen.c/h    # Time, weather, glucose
 │   ├── menu_screen.c/h    # Settings menu
 │   ├── wifi_screens.c/h   # WiFi configuration
 │   ├── cgm_screens.c/h    # CGM provider setup
-│   └── alarm_screens.c/h  # Alarm configuration
-├── tasks/             # Background FreeRTOS tasks
+│   ├── alarm_screens.c/h  # Alarm configuration
+│   ├── time_weather_screens.c/h # Time/weather settings
+│   └── glucose_chart.c/h  # Glucose history chart
+├── tasks/                 # Background FreeRTOS tasks
 │   └── background_tasks.c/h # Core 0/1 task management
-├── shared_state.h     # Global state declarations
-└── main.c             # Coordinator (1,420 lines)
+├── shared_state.h         # Global state declarations
+└── main.c                 # Coordinator (~2,400 lines, needs extraction)
 ```
-
-**Benefits**: Clear separation of concerns, easy navigation, maintainable codebase
 
 ## Documentation
 

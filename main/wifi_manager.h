@@ -36,4 +36,9 @@ esp_err_t wifi_manager_prompt_credentials(char *ssid_out, char *password_out);
 // Returns number of networks found
 int wifi_manager_scan_networks(wifi_ap_record_t *ap_records, int max_records);
 
+// Try to reconnect to any known saved network
+// Scans for available networks, matches against NVS, connects to strongest match
+// Returns ESP_OK if reconnected, ESP_FAIL or ESP_ERR_NOT_FOUND otherwise
+esp_err_t wifi_manager_try_reconnect(void);
+
 #endif // WIFI_MANAGER_H

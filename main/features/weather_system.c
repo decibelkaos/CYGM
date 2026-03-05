@@ -7,6 +7,7 @@
 #include "weather_system.h"
 #include "time_system.h"
 #include "shared_state.h"
+#include "main.h"
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
@@ -20,7 +21,6 @@
 #include "esp_lvgl_port.h"
 #include <string.h>
 #include <time.h>
-#include <math.h>
 
 static const char *TAG = "WEATHER_SYSTEM";
 
@@ -217,271 +217,8 @@ esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
 #define COLOR_RED           0xEF4444  // Red alert
 #define COLOR_BORDER        0xFFFFFF  // White border/outline
 
-// Draw weather icon on a canvas
-static void draw_weather_icon(lv_obj_t *canvas, int weather_code) {
-    ESP_LOGI(TAG, "Drawing weather icon code: %d (%s)", weather_code, get_weather_condition_text(weather_code));
-
-    // Initialize drawing descriptors
-    lv_draw_arc_dsc_t arc_dsc;
-    lv_draw_arc_dsc_init(&arc_dsc);
-
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-
-    lv_draw_rect_dsc_t rect_dsc;
-    lv_draw_rect_dsc_init(&rect_dsc);
-
-    switch (weather_code) {
-        case 0: { // SUN (day) / MOON (night) - Clear sky
-            if (is_night_time()) {
-                // Draw crescent moon
-                // Draw large circle (full moon)
-                arc_dsc.color = lv_color_hex(0xF0E68C); // Pale yellow
-                arc_dsc.width = 24;
-                lv_canvas_draw_arc(canvas, 30, 25, 12, 0, 360, &arc_dsc);
-
-                // Draw smaller circle on right to create crescent
-                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);  // Same as background
-                arc_dsc.width = 20;
-                lv_canvas_draw_arc(canvas, 36, 22, 10, 0, 360, &arc_dsc);
-            } else {
-                // Draw filled sun circle
-                rect_dsc.bg_color = lv_color_hex(0xFFAA00); // Orange
-                rect_dsc.bg_opa = LV_OPA_COVER;
-                rect_dsc.radius = LV_RADIUS_CIRCLE;
-
-                // Draw filled circle by drawing a rounded rectangle
-                // lv_canvas_draw_rect signature: (canvas, x, y, w, h, &dsc)
-                lv_canvas_draw_rect(canvas, 30 - 12, 25 - 12, 24, 24, &rect_dsc);
-
-                // Draw 8 rays around the sun
-                line_dsc.color = lv_color_hex(0xFFAA00);
-                line_dsc.width = 2;
-                lv_point_t ray_points[2];
-
-                for (int i = 0; i < 8; i++) {
-                    float angle = i * 45.0 * 3.14159 / 180.0;
-                    ray_points[0].x = 30 + (int)(18 * cos(angle));
-                    ray_points[0].y = 25 + (int)(18 * sin(angle));
-                    ray_points[1].x = 30 + (int)(26 * cos(angle));
-                    ray_points[1].y = 25 + (int)(26 * sin(angle));
-                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
-                }
-            }
-            break;
-        }
-
-        case 1: { // PARTLY CLOUDY - Sun/Moon with cloud
-            if (is_night_time()) {
-                // Draw crescent moon in upper left
-                arc_dsc.color = lv_color_hex(0xF0E68C);
-                arc_dsc.width = 14;
-                lv_canvas_draw_arc(canvas, 18, 15, 7, 0, 360, &arc_dsc);
-
-                // Create crescent effect
-                arc_dsc.color = lv_color_hex(COLOR_CARD_BG);
-                arc_dsc.width = 12;
-                lv_canvas_draw_arc(canvas, 22, 13, 6, 0, 360, &arc_dsc);
-            } else {
-                // Draw sun in upper left
-                arc_dsc.color = lv_color_hex(0xFFAA00); // Orange
-                arc_dsc.width = 6;
-                lv_canvas_draw_arc(canvas, 18, 15, 8, 0, 360, &arc_dsc);
-
-                // Draw partial rays (only visible ones)
-                line_dsc.color = lv_color_hex(0xFFAA00);
-                line_dsc.width = 2;
-                lv_point_t ray_points[2];
-
-                // Top-left rays only (4 rays)
-                for (int i = 2; i < 6; i++) {
-                    float angle = i * 45.0 * 3.14159 / 180.0;
-                    ray_points[0].x = 18 + (int)(12 * cos(angle));
-                    ray_points[0].y = 15 + (int)(12 * sin(angle));
-                    ray_points[1].x = 18 + (int)(18 * cos(angle));
-                    ray_points[1].y = 15 + (int)(18 * sin(angle));
-                    lv_canvas_draw_line(canvas, ray_points, 2, &line_dsc);
-                }
-            }
-
-            // Draw cloud in lower right (partially covering sun/moon)
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 14;
-            lv_canvas_draw_arc(canvas, 28, 28, 7, 0, 360, &arc_dsc);   // Left bump
-            lv_canvas_draw_arc(canvas, 38, 24, 9, 0, 360, &arc_dsc);   // Middle bump
-            lv_canvas_draw_arc(canvas, 46, 28, 7, 0, 360, &arc_dsc);   // Right bump
-            break;
-        }
-
-        case 2: { // CLOUD - Simple cloud shape
-            // Draw cloud using overlapping filled circles (arcs with thick width)
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 16;  // Thick arc creates filled circle effect
-
-            lv_canvas_draw_arc(canvas, 20, 25, 8, 0, 360, &arc_dsc);   // Left bump
-            lv_canvas_draw_arc(canvas, 30, 20, 10, 0, 360, &arc_dsc);  // Middle bump (larger)
-            lv_canvas_draw_arc(canvas, 40, 25, 8, 0, 360, &arc_dsc);   // Right bump
-            break;
-        }
-
-        case 3: { // RAIN - Cloud + rain drops
-            // Draw cloud
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 16;
-
-            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
-
-            // Draw rain drops (3 vertical lines)
-            line_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
-            line_dsc.width = 2;
-            lv_point_t rain[2];
-
-            for (int i = 0; i < 3; i++) {
-                rain[0].x = 18 + i * 12;
-                rain[0].y = 32;
-                rain[1].x = 18 + i * 12;
-                rain[1].y = 44;
-                lv_canvas_draw_line(canvas, rain, 2, &line_dsc);
-            }
-            break;
-        }
-
-        case 4: { // SNOW - Cloud + snowflakes
-            // Draw cloud
-            arc_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            arc_dsc.width = 16;
-
-            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
-
-            // Draw snowflakes (small crosses)
-            line_dsc.color = lv_color_hex(COLOR_TEXT_WHITE);
-            line_dsc.width = 2;
-            lv_point_t snow[2];
-            int positions[] = {20, 30, 40};
-
-            for (int i = 0; i < 3; i++) {
-                int x = positions[i];
-                int y = 38;
-                // Vertical line
-                snow[0].x = x;
-                snow[0].y = y - 4;
-                snow[1].x = x;
-                snow[1].y = y + 4;
-                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
-
-                // Horizontal line
-                snow[0].x = x - 4;
-                snow[0].y = y;
-                snow[1].x = x + 4;
-                snow[1].y = y;
-                lv_canvas_draw_line(canvas, snow, 2, &line_dsc);
-            }
-            break;
-        }
-
-        case 5: { // STORM - Dark cloud + lightning
-            // Draw dark cloud
-            arc_dsc.color = lv_color_hex(0x555555); // Dark gray
-            arc_dsc.width = 16;
-
-            lv_canvas_draw_arc(canvas, 20, 18, 8, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 30, 13, 10, 0, 360, &arc_dsc);
-            lv_canvas_draw_arc(canvas, 40, 18, 8, 0, 360, &arc_dsc);
-
-            // Draw lightning bolt (zigzag using connected lines)
-            line_dsc.color = lv_color_hex(0xFFFF00); // Yellow
-            line_dsc.width = 3;
-            lv_point_t bolt[2];
-
-            // First segment
-            bolt[0].x = 30; bolt[0].y = 28;
-            bolt[1].x = 28; bolt[1].y = 36;
-            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
-
-            // Second segment
-            bolt[0].x = 28; bolt[0].y = 36;
-            bolt[1].x = 32; bolt[1].y = 36;
-            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
-
-            // Third segment
-            bolt[0].x = 32; bolt[0].y = 36;
-            bolt[1].x = 30; bolt[1].y = 46;
-            lv_canvas_draw_line(canvas, bolt, 2, &line_dsc);
-            break;
-        }
-
-        case 6: { // FOG - Horizontal wavy layers
-            // Draw multiple horizontal fog layers (wavy lines)
-            line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
-            line_dsc.width = 3;
-            lv_point_t fog[2];
-
-            // Top fog layer
-            fog[0].x = 15; fog[0].y = 20;
-            fog[1].x = 45; fog[1].y = 20;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
-
-            // Middle fog layer (slightly offset)
-            fog[0].x = 10; fog[0].y = 28;
-            fog[1].x = 50; fog[1].y = 28;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
-
-            // Lower-middle fog layer
-            fog[0].x = 12; fog[0].y = 36;
-            fog[1].x = 48; fog[1].y = 36;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
-
-            // Bottom fog layer
-            fog[0].x = 18; fog[0].y = 44;
-            fog[1].x = 42; fog[1].y = 44;
-            lv_canvas_draw_line(canvas, fog, 2, &line_dsc);
-            break;
-        }
-
-        case 7: { // ICE - Falling ice crystals (diagonal lines + crosses)
-            // Draw ice crystals as small diagonal crosses
-            line_dsc.color = lv_color_hex(0xAADDFF); // Light cyan/ice blue
-            line_dsc.width = 2;
-            lv_point_t ice[2];
-
-            // Three ice crystals falling at different positions
-            int positions[][2] = {{20, 20}, {35, 32}, {25, 42}};
-
-            for (int i = 0; i < 3; i++) {
-                int cx = positions[i][0];
-                int cy = positions[i][1];
-
-                // Diagonal line 1 (top-left to bottom-right)
-                ice[0].x = cx - 4; ice[0].y = cy - 4;
-                ice[1].x = cx + 4; ice[1].y = cy + 4;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
-
-                // Diagonal line 2 (top-right to bottom-left)
-                ice[0].x = cx + 4; ice[0].y = cy - 4;
-                ice[1].x = cx - 4; ice[1].y = cy + 4;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
-
-                // Vertical line (shorter)
-                ice[0].x = cx; ice[0].y = cy - 3;
-                ice[1].x = cx; ice[1].y = cy + 3;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
-
-                // Horizontal line (shorter)
-                ice[0].x = cx - 3; ice[0].y = cy;
-                ice[1].x = cx + 3; ice[1].y = cy;
-                lv_canvas_draw_line(canvas, ice, 2, &line_dsc);
-            }
-            break;
-        }
-
-        default:
-            break;
-    }
-}
+// draw_weather_icon() is now provided by main.c (animated version)
+// The animation timer continuously redraws; this file just calls it on data update
 bool is_night_time(void) {
     if (sunrise_time == 0 || sunset_time == 0) {
         return false;  // No sunrise/sunset data yet
@@ -727,10 +464,9 @@ void weather_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
 
     while (1) {
-        // Check if background tasks are paused (not on home screen)
-        if (pause_background_tasks) {
-            ESP_LOGI(TAG, "[Weather Task] Paused - not on home screen (waiting 10s)");
-            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+        // STRICT runtime policy: never fetch off-home
+        if (pause_background_tasks || !home_screen_active) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
 
@@ -799,37 +535,36 @@ void weather_update_task(void *pvParameters) {
 
             // Fetch weather if we have coordinates
             if (user_latitude != 0.0f && user_longitude != 0.0f) {
-                // CRITICAL: Take network mutex to ensure exclusive access
-                ESP_LOGI(TAG, "Waiting for network mutex...");
-                if (xSemaphoreTake(network_mutex, portMAX_DELAY) == pdTRUE) {
-                    ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
+                // Retry with short critical sections: never sleep while holding network mutex
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    ESP_LOGI(TAG, "Waiting for network mutex (attempt %d/3)...", attempt);
+                    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+                        ESP_LOGW(TAG, "Weather mutex timeout (attempt %d/3)", attempt);
+                        continue;
+                    }
 
-                    // Weather uses HTTP (not HTTPS), so we don't need to close Dexcom SSL client
-                    // This keeps the Dexcom persistent connection alive for next glucose fetch
+                    ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
                     ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
                     ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
 
-                    // Retry logic for weather fetch (may fail due to HTTP connection pool exhaustion)
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        if (fetch_weather(user_latitude, user_longitude) == ESP_OK) {
-                            ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
-                            update_weather_display();
-                            break;
-                        } else {
-                            ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
-                            ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
-                            if (attempt < 3) {
-                                ESP_LOGI(TAG, "Retrying in 5 seconds...");
-                                vTaskDelay(pdMS_TO_TICKS(5000));  // Longer delay
-                            }
-                        }
+                    esp_err_t fetch_ret = fetch_weather(user_latitude, user_longitude);
+
+                    // Release immediately after network op
+                    xSemaphoreGive(network_mutex);
+                    ESP_LOGI(TAG, "Network mutex released after weather fetch attempt");
+
+                    if (fetch_ret == ESP_OK) {
+                        ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
+                        update_weather_display();
+                        break;
                     }
 
-                    // Release network mutex
-                    xSemaphoreGive(network_mutex);
-                    ESP_LOGI(TAG, "Network mutex released after weather fetch");
-                } else {
-                    ESP_LOGE(TAG, "Failed to acquire network mutex - this should never happen!");
+                    ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
+                    ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
+                    if (attempt < 3) {
+                        ESP_LOGI(TAG, "Retrying in 5 seconds...");
+                        vTaskDelay(pdMS_TO_TICKS(5000));
+                    }
                 }
             }
 

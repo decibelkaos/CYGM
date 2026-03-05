@@ -153,6 +153,88 @@ esp_err_t wifi_manager_prompt_credentials(char *ssid_out, char *password_out) {
     return ESP_ERR_NOT_SUPPORTED;
 }
 
+esp_err_t wifi_manager_try_reconnect(void) {
+    // Already connected - nothing to do
+    if (wifi_manager_is_connected()) {
+        return ESP_OK;
+    }
+
+    // Load saved networks from NVS
+    wifi_credentials_t networks[MAX_SAVED_WIFI_NETWORKS];
+    uint8_t saved_count = 0;
+    nvs_get_saved_wifi_networks(networks, &saved_count);
+    if (saved_count == 0) {
+        ESP_LOGD(TAG, "No saved networks for auto-reconnect");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    // Scan for available networks
+    wifi_ap_record_t scan_results[10];
+    int found = wifi_manager_scan_networks(scan_results, 10);
+    if (found == 0) {
+        ESP_LOGD(TAG, "No networks visible for auto-reconnect");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    // Find best matching saved network (strongest signal)
+    int best_rssi = -127;
+    wifi_credentials_t *best_creds = NULL;
+
+    for (int i = 0; i < found; i++) {
+        for (int j = 0; j < saved_count; j++) {
+            if (strcmp((char *)scan_results[i].ssid, networks[j].ssid) == 0) {
+                if (scan_results[i].rssi > best_rssi) {
+                    best_rssi = scan_results[i].rssi;
+                    best_creds = &networks[j];
+                }
+            }
+        }
+    }
+
+    if (best_creds == NULL) {
+        ESP_LOGD(TAG, "No known networks in range");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    ESP_LOGI(TAG, "Auto-reconnect: trying %s (RSSI: %d)", best_creds->ssid, best_rssi);
+
+    // Reset retry counter and event bits for fresh connection attempt
+    retry_count = 0;
+    current_status = WIFI_STATUS_CONNECTING;
+    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
+    // Configure and connect
+    wifi_config_t wifi_config = {
+        .sta = {
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            .pmf_cfg = {
+                .capable = true,
+                .required = false
+            },
+        },
+    };
+    strncpy((char *)wifi_config.sta.ssid, best_creds->ssid, sizeof(wifi_config.sta.ssid));
+    strncpy((char *)wifi_config.sta.password, best_creds->password, sizeof(wifi_config.sta.password));
+
+    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    esp_wifi_connect();
+
+    // Wait up to 15 seconds for result
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
+            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+            pdFALSE, pdFALSE,
+            pdMS_TO_TICKS(15000));
+
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "Auto-reconnect successful: %s", best_creds->ssid);
+        nvs_save_last_wifi_ssid(best_creds->ssid);
+        return ESP_OK;
+    }
+
+    ESP_LOGW(TAG, "Auto-reconnect failed for: %s", best_creds->ssid);
+    return ESP_FAIL;
+}
+
 int wifi_manager_scan_networks(wifi_ap_record_t *ap_records, int max_records) {
     wifi_scan_config_t scan_config = {
         .ssid = NULL,

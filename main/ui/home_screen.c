@@ -26,6 +26,7 @@ static void brightness_ok_event_cb(lv_event_t *e);
 static void create_brightness_overlay(void);
 static void close_brightness_overlay(void);
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color);
+static void battery_tap_event_cb(lv_event_t *e);
 static void glucose_timer_update_cb(lv_timer_t *timer);
 static void trend_arrow_event_cb(lv_event_t *e);
 
@@ -56,100 +57,118 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
 
 // Draw custom lightbulb icon on canvas
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
-    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
-
-    // Draw yellow bulb (filled circle)
-    lv_draw_arc_dsc_t arc_dsc;
-    lv_draw_arc_dsc_init(&arc_dsc);
-    arc_dsc.color = lv_color_hex(0xFFD700);  // Gold/yellow color for bulb
-    arc_dsc.width = 2;
-
-    // Bulb center at 10, 6, radius 5
-    lv_point_t bulb_center = {10, 6};
-    for (int r = 1; r <= 5; r++) {
-        lv_canvas_draw_arc(canvas, bulb_center.x, bulb_center.y, r, 0, 360, &arc_dsc);
-    }
-
-    // Draw light rays (grey dashed lines at 45 degrees)
-    lv_draw_line_dsc_t ray_dsc;
-    lv_draw_line_dsc_init(&ray_dsc);
-    ray_dsc.color = lv_color_hex(0x808080);  // Grey color
-    ray_dsc.width = 1;
-
-    // Top-left ray (45 degrees)
-    lv_point_t ray1[] = {{6, 3}, {4, 1}};
-    lv_canvas_draw_line(canvas, ray1, 2, &ray_dsc);
-
-    // Top-right ray (45 degrees)
-    lv_point_t ray2[] = {{14, 3}, {16, 1}};
-    lv_canvas_draw_line(canvas, ray2, 2, &ray_dsc);
-
-    // Left ray (horizontal-ish)
-    lv_point_t ray3[] = {{5, 6}, {2, 6}};
-    lv_canvas_draw_line(canvas, ray3, 2, &ray_dsc);
-
-    // Right ray (horizontal-ish)
-    lv_point_t ray4[] = {{15, 6}, {18, 6}};
-    lv_canvas_draw_line(canvas, ray4, 2, &ray_dsc);
-
-    // Bottom-left ray (45 degrees)
-    lv_point_t ray5[] = {{6, 9}, {4, 11}};
-    lv_canvas_draw_line(canvas, ray5, 2, &ray_dsc);
-
-    // Bottom-right ray (45 degrees)
-    lv_point_t ray6[] = {{14, 9}, {16, 11}};
-    lv_canvas_draw_line(canvas, ray6, 2, &ray_dsc);
-
-    // Grey base/socket (simple rectangle)
-    lv_draw_rect_dsc_t rect_dsc;
-    lv_draw_rect_dsc_init(&rect_dsc);
-    rect_dsc.bg_color = lv_color_hex(0x808080);  // Grey
-    rect_dsc.bg_opa = LV_OPA_COVER;
-    rect_dsc.border_width = 0;
-    rect_dsc.radius = 1;
-
-    // Socket base
-    lv_canvas_draw_rect(canvas, 8, 12, 4, 3, &rect_dsc);
-}
-
-// Draw custom battery icon with percentage fill (modern rounded design)
-void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int bars) {
     lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
 
-    // Battery body (compact vertical design)
-    lv_draw_rect_dsc_t body_dsc;
-    lv_draw_rect_dsc_init(&body_dsc);
-    body_dsc.bg_opa = LV_OPA_TRANSP;
-    body_dsc.border_color = lv_color_hex(color);
-    body_dsc.border_width = 2;
-    body_dsc.radius = 2;
-    lv_canvas_draw_rect(canvas, 1, 2, 24, 10, &body_dsc);
+    lv_draw_rect_dsc_t r;
+    lv_draw_rect_dsc_init(&r);
 
-    // Battery terminal (rounded nub on right)
-    lv_draw_rect_dsc_t terminal_dsc;
-    lv_draw_rect_dsc_init(&terminal_dsc);
-    terminal_dsc.bg_color = lv_color_hex(color);
-    terminal_dsc.bg_opa = LV_OPA_COVER;
-    terminal_dsc.border_width = 0;
-    terminal_dsc.radius = 1;
-    lv_canvas_draw_rect(canvas, 25, 5, 4, 4, &terminal_dsc);
+    // Warm glow behind bulb
+    r.bg_color = lv_color_hex(0xFFDD44);
+    r.bg_opa = 30;
+    r.border_width = 0;
+    r.radius = LV_RADIUS_CIRCLE;
+    lv_canvas_draw_rect(canvas, 1, 0, 18, 16, &r);
 
-    // Draw continuous fill bar inside battery (based on bars level)
-    // bars: 1-4 maps to 25%, 50%, 75%, 100%
-    int fill_width = 0;
-    if (bars == 4) fill_width = 20;       // 100% - full
-    else if (bars == 3) fill_width = 15;  // 75%
-    else if (bars == 2) fill_width = 10;  // 50%
-    else if (bars == 1) fill_width = 5;   // 25%
+    // Solid bulb body (filled circle)
+    r.bg_color = lv_color_hex(0xFFD700);
+    r.bg_opa = LV_OPA_COVER;
+    r.radius = LV_RADIUS_CIRCLE;
+    lv_canvas_draw_rect(canvas, 4, 1, 12, 12, &r);
+
+    // Bright inner highlight
+    r.bg_color = lv_color_hex(0xFFEE88);
+    r.bg_opa = 160;
+    lv_canvas_draw_rect(canvas, 7, 3, 6, 6, &r);
+
+    // Base/socket (lighter top, darker bottom)
+    r.bg_color = lv_color_hex(0x999999);
+    r.bg_opa = LV_OPA_COVER;
+    r.radius = 2;
+    lv_canvas_draw_rect(canvas, 6, 13, 8, 3, &r);
+
+    r.bg_color = lv_color_hex(0x777777);
+    lv_canvas_draw_rect(canvas, 6, 15, 8, 2, &r);
+
+    // Socket detail band (darker)
+    r.bg_color = lv_color_hex(0x555555);
+    r.bg_opa = LV_OPA_COVER;
+    r.radius = 1;
+    lv_canvas_draw_rect(canvas, 7, 18, 6, 2, &r);
+
+    // Light rays emanating from bulb
+    lv_draw_line_dsc_t ray;
+    lv_draw_line_dsc_init(&ray);
+    ray.color = lv_color_hex(0xFFCC00);
+    ray.width = 1;
+    lv_point_t pts[2];
+
+    // Upper-left ray
+    pts[0].x = 4; pts[0].y = 2; pts[1].x = 1; pts[1].y = 0;
+    lv_canvas_draw_line(canvas, pts, 2, &ray);
+    // Upper-right ray
+    pts[0].x = 16; pts[0].y = 2; pts[1].x = 19; pts[1].y = 0;
+    lv_canvas_draw_line(canvas, pts, 2, &ray);
+    // Left ray
+    pts[0].x = 3; pts[0].y = 7; pts[1].x = 0; pts[1].y = 7;
+    lv_canvas_draw_line(canvas, pts, 2, &ray);
+    // Right ray
+    pts[0].x = 17; pts[0].y = 7; pts[1].x = 20; pts[1].y = 7;
+    lv_canvas_draw_line(canvas, pts, 2, &ray);
+}
+
+// Battery tap event: toggle percentage label visibility
+static void battery_tap_event_cb(lv_event_t *e) {
+    if (battery_percent_label == NULL) return;
+    if (lv_obj_has_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_clear_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// Draw battery icon with smooth fill based on actual percentage (0-100)
+void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent) {
+    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+
+    // Battery body outline
+    dsc.bg_opa = LV_OPA_TRANSP;
+    dsc.border_color = lv_color_hex(color);
+    dsc.border_width = 2;
+    dsc.radius = 3;
+    lv_canvas_draw_rect(canvas, 0, 1, 24, 12, &dsc);
+
+    // Terminal nub (right side)
+    dsc.bg_color = lv_color_hex(color);
+    dsc.bg_opa = LV_OPA_COVER;
+    dsc.border_width = 0;
+    dsc.radius = 1;
+    lv_canvas_draw_rect(canvas, 24, 4, 4, 6, &dsc);
+
+    // Smooth fill based on percentage (0-20px inner width)
+    int fill_width = (percent * 20) / 100;
+    if (fill_width < 1 && percent > 0) fill_width = 1;
 
     if (fill_width > 0) {
-        lv_draw_rect_dsc_t fill_dsc;
-        lv_draw_rect_dsc_init(&fill_dsc);
-        fill_dsc.bg_color = lv_color_hex(color);
-        fill_dsc.bg_opa = LV_OPA_COVER;
-        fill_dsc.border_width = 0;
-        fill_dsc.radius = 1;
-        lv_canvas_draw_rect(canvas, 3, 4, fill_width, 6, &fill_dsc);
+        // Gradient fill: darker shade on left, bright color on right
+        uint32_t dark_color;
+        if (color == COLOR_GREEN) dark_color = 0x15803D;
+        else if (color == COLOR_RED) dark_color = 0x991B1B;
+        else dark_color = 0xB45309;  // dark orange
+
+        dsc.bg_color = lv_color_hex(dark_color);
+        dsc.bg_opa = LV_OPA_COVER;
+        dsc.bg_grad.dir = LV_GRAD_DIR_HOR;
+        dsc.bg_grad.stops[0].color = lv_color_hex(dark_color);
+        dsc.bg_grad.stops[0].frac = 0;
+        dsc.bg_grad.stops[1].color = lv_color_hex(color);
+        dsc.bg_grad.stops[1].frac = 255;
+        dsc.bg_grad.stops_count = 2;
+        dsc.border_width = 0;
+        dsc.radius = 1;
+        lv_canvas_draw_rect(canvas, 2, 3, fill_width, 8, &dsc);
     }
 }
 
@@ -418,20 +437,23 @@ void create_home_screen(void) {
     lv_label_set_text(battery_icon, "");
     lv_obj_add_flag(battery_icon, LV_OBJ_FLAG_HIDDEN);
 
-    // Battery canvas - custom drawn battery with modern fill design
+    // Battery canvas - tappable to toggle percentage display
     static lv_color_t canvas_buf_battery[LV_CANVAS_BUF_SIZE_TRUE_COLOR(30, 14)];
     battery_canvas = lv_canvas_create(right_card);
     lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 30, 14, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(battery_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
-    draw_battery_icon(battery_canvas, COLOR_GREEN, 4);  // Start with 4 bars (full)
+    draw_battery_icon(battery_canvas, COLOR_GREEN, 100);  // Start full
     lv_obj_align(battery_canvas, LV_ALIGN_TOP_LEFT, 2, 0);
+    lv_obj_add_flag(battery_canvas, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(battery_canvas, battery_tap_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Battery percentage label (next to icon)
+    // Battery percentage label (next to icon, hidden by default - tap battery to show)
     battery_percent_label = lv_label_create(right_card);
-    lv_label_set_text(battery_percent_label, "100%");
-    lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_label_set_text(battery_percent_label, "");
+    lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_GREEN), 0);
     lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
     lv_obj_align_to(battery_percent_label, battery_canvas, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
+    lv_obj_add_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
 
     // Battery charging icon (lightning bolt, hidden by default)
     battery_charging_icon = lv_label_create(right_card);

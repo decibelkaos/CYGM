@@ -14,6 +14,7 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include "freertos/task.h"
 #include <string.h>
 #include <time.h>
 
@@ -31,6 +32,36 @@ static char temp_search_query[128] = {0};
 static geocode_result_t search_results[MAX_GEOCODE_RESULTS];
 static uint8_t search_result_count = 0;
 static int selected_result_idx = -1;
+static volatile bool location_search_in_progress = false;
+static char pending_search_query[128] = {0};
+
+static void update_location_search_result_display(void);
+
+static void location_search_task(void *pvParameters) {
+    esp_err_t err = geocoding_search(pending_search_query, search_results, &search_result_count);
+
+    if (lvgl_port_lock(100)) {
+        if (err == ESP_OK && search_result_count > 0) {
+            ESP_LOGI(TAG, "Found %d location(s)", search_result_count);
+            selected_result_idx = 0;
+            update_location_search_result_display();
+            if (location_search_keyboard != NULL) {
+                lv_obj_add_flag(location_search_keyboard, LV_OBJ_FLAG_HIDDEN);
+            }
+        } else {
+            ESP_LOGW(TAG, "No locations found for: %s", pending_search_query);
+            selected_result_idx = -1;
+            if (location_search_result_label != NULL) {
+                lv_label_set_text(location_search_result_label,
+                                  "No locations found\nTry different search terms");
+            }
+        }
+        lvgl_port_unlock();
+    }
+
+    location_search_in_progress = false;
+    vTaskDelete(NULL);
+}
 
 // Forward declarations
 static void time_weather_back_event_cb(lv_event_t *e);
@@ -332,38 +363,26 @@ static void location_keyboard_event_cb(lv_event_t *e) {
 
             // Search mode - perform online geocoding search
             if (strlen(temp_search_query) >= 2) {
+                if (location_search_in_progress) {
+                    ESP_LOGW(TAG, "Location search already in progress");
+                    return;
+                }
+
                 ESP_LOGI(TAG, "Searching for location: %s", temp_search_query);
 
                 if (location_search_result_label != NULL) {
                     lv_label_set_text(location_search_result_label, "Searching...");
                 }
 
-                // Perform geocoding search
-                esp_err_t err = geocoding_search(temp_search_query, search_results, &search_result_count);
+                location_search_in_progress = true;
+                strncpy(pending_search_query, temp_search_query, sizeof(pending_search_query) - 1);
+                pending_search_query[sizeof(pending_search_query) - 1] = '\0';
 
-                if (err == ESP_OK && search_result_count > 0) {
-                    ESP_LOGI(TAG, "Found %d location(s)", search_result_count);
-
-                    // Auto-select first result
-                    selected_result_idx = 0;
-
-                    // Display results with navigation
-                    update_location_search_result_display();
-
-                    // Hide keyboard to show results clearly
-                    if (location_search_keyboard != NULL) {
-                        lv_obj_add_flag(location_search_keyboard, LV_OBJ_FLAG_HIDDEN);
-                    }
-
-                    return;  // Stay on search screen for confirmation
-                } else {
-                    ESP_LOGW(TAG, "No locations found for: %s", temp_search_query);
-                    if (location_search_result_label != NULL) {
-                        lv_label_set_text(location_search_result_label,
-                                          "No locations found\nTry different search terms");
-                    }
-                    return;  // Stay on search screen
+                if (xTaskCreate(location_search_task, "loc_search", 6144, NULL, 2, NULL) != pdPASS) {
+                    location_search_in_progress = false;
+                    ESP_LOGE(TAG, "Failed to create location search task");
                 }
+                return;  // Stay on search screen
             } else {
                 ESP_LOGW(TAG, "Search query too short");
                 if (location_search_result_label != NULL) {

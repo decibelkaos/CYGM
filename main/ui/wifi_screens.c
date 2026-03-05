@@ -35,7 +35,8 @@ static char wifi_removal_ssid[MAX_SSID_LEN] = {0};
 static lv_obj_t *wifi_connecting_overlay = NULL;
 static lv_obj_t *wifi_connecting_status_label = NULL;
 static lv_obj_t *wifi_connecting_bar = NULL;
-static lv_obj_t *wifi_connecting_details_label = NULL;  // Shows SSID and IP
+static lv_obj_t *wifi_connecting_ssid_label = NULL;   // SSID shown during connection
+static lv_obj_t *wifi_connecting_details_label = NULL;  // Shows SSID and IP on success
 static lv_obj_t *wifi_connecting_ok_btn = NULL;  // OK button to close overlay
 
 // Forward declarations for internal event callbacks
@@ -56,8 +57,13 @@ static void anim_bar_set_value(void *bar, int32_t val) {
     lv_bar_set_value((lv_obj_t *)bar, val, LV_ANIM_OFF);
 }
 
-// Helper to update WiFi status display
-static void update_wifi_status_display(bool connected) {
+// Animation callback for connected dot pulsing opacity
+static void anim_dot_opa_cb(void *obj, int32_t val) {
+    lv_obj_set_style_opa((lv_obj_t *)obj, (lv_opa_t)val, 0);
+}
+
+// Update WiFi status icon on home screen (non-static for auto-reconnect)
+void update_wifi_status_display(bool connected) {
     if (lvgl_port_lock(0)) {
         if (connected) {
             // Green WiFi icon for connected (no text)
@@ -80,41 +86,50 @@ void show_wifi_scanning_overlay(void) {
         return;
     }
 
-    // Create semi-transparent overlay
+    // Overlay card (centered, matches connecting overlay style)
     wifi_scanning_overlay = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(wifi_scanning_overlay, 280, 200);
-    lv_obj_align(wifi_scanning_overlay, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_size(wifi_scanning_overlay, 260, 130);
+    lv_obj_center(wifi_scanning_overlay);
     lv_obj_set_style_bg_color(wifi_scanning_overlay, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_border_color(wifi_scanning_overlay, lv_color_hex(COLOR_BORDER), 0);
+    lv_obj_set_style_border_color(wifi_scanning_overlay, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_set_style_border_width(wifi_scanning_overlay, 2, 0);
     lv_obj_set_style_radius(wifi_scanning_overlay, 12, 0);
-    lv_obj_set_style_pad_all(wifi_scanning_overlay, 20, 0);
     lv_obj_clear_flag(wifi_scanning_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
-    // "Scanning..." label
+    // WiFi icon + "Scanning..." label
     lv_obj_t *label = lv_label_create(wifi_scanning_overlay);
-    lv_label_set_text(label, "Scanning WiFi Networks...");
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_label_set_text(label, LV_SYMBOL_WIFI "  Scanning...");
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 20);
 
-    // Loading bar
+    // Fat progress bar - centered (matches connecting overlay)
     wifi_scanning_bar = lv_bar_create(wifi_scanning_overlay);
-    lv_obj_set_size(wifi_scanning_bar, 240, 10);
-    lv_obj_align(wifi_scanning_bar, LV_ALIGN_CENTER, 0, 10);
-    lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_size(wifi_scanning_bar, 220, 20);
+    lv_obj_align(wifi_scanning_bar, LV_ALIGN_CENTER, 0, 12);
+
+    // Bar track (dark background)
+    lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_bg_opa(wifi_scanning_bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(wifi_scanning_bar, 10, 0);
+
+    // Bar indicator (blue gradient - darker left, brighter right edge)
+    lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(0x1D4ED8), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(wifi_scanning_bar, lv_color_hex(COLOR_ACCENT_LIGHT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(wifi_scanning_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(wifi_scanning_bar, 10, LV_PART_INDICATOR);
+
     lv_bar_set_range(wifi_scanning_bar, 0, 100);
     lv_bar_set_value(wifi_scanning_bar, 0, LV_ANIM_OFF);
 
-    // Animate loading bar
+    // Slow fill animation: 0 -> 90 over 6 seconds (scan takes ~3-5s)
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, wifi_scanning_bar);
-    lv_anim_set_values(&a, 0, 100);
-    lv_anim_set_time(&a, 2000);
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_values(&a, 0, 90);
+    lv_anim_set_time(&a, 6000);
     lv_anim_set_exec_cb(&a, anim_bar_set_value);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_start(&a);
 
     lvgl_port_unlock();
@@ -412,9 +427,24 @@ void wifi_scan_and_show_networks(void) {
         lv_obj_set_style_pad_all(list, 5, 0);
         lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
 
+        // Determine currently connected SSID for status indicators
+        char connected_ssid[33] = {0};
+        bool have_connected_ssid = false;
+        if (wifi_connected) {
+            wifi_config_t current_cfg;
+            if (esp_wifi_get_config(WIFI_IF_STA, &current_cfg) == ESP_OK) {
+                strncpy(connected_ssid, (char *)current_cfg.sta.ssid, sizeof(connected_ssid) - 1);
+                have_connected_ssid = (strlen(connected_ssid) > 0);
+            }
+        }
+
         // Add network items (up to 5)
         int max_networks = wifi_network_count < 5 ? wifi_network_count : 5;
         for (int i = 0; i < max_networks; i++) {
+            bool is_saved = nvs_is_wifi_saved((const char *)wifi_networks[i].ssid);
+            bool is_connected = have_connected_ssid &&
+                                strcmp((const char *)wifi_networks[i].ssid, connected_ssid) == 0;
+
             lv_obj_t *row = lv_btn_create(list);
             lv_obj_set_width(row, 290);
             lv_obj_set_height(row, 35);
@@ -423,6 +453,45 @@ void wifi_scan_and_show_networks(void) {
             lv_obj_set_style_radius(row, 0, 0);
             lv_obj_set_style_border_width(row, 0, 0);
             lv_obj_set_style_shadow_width(row, 0, 0);
+
+            // Left offset: saved networks get a status dot, so shift content right
+            int left_offset = is_saved ? 12 : 0;
+
+            // Status indicator dot (saved networks only)
+            if (is_saved) {
+                lv_obj_t *dot = lv_obj_create(row);
+                lv_obj_set_size(dot, 8, 8);
+                lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+                lv_obj_set_style_pad_all(dot, 0, 0);
+                lv_obj_set_style_shadow_width(dot, 0, 0);
+                lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+                lv_obj_align(dot, LV_ALIGN_LEFT_MID, 2, 0);
+
+                if (is_connected) {
+                    // Green filled dot with pulsing glow
+                    lv_obj_set_style_bg_color(dot, lv_color_hex(COLOR_GREEN), 0);
+                    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+                    lv_obj_set_style_border_width(dot, 0, 0);
+
+                    // Smooth pulse animation (opacity 80 <-> 255, 1.5s each way)
+                    lv_anim_t a;
+                    lv_anim_init(&a);
+                    lv_anim_set_var(&a, dot);
+                    lv_anim_set_values(&a, 80, 255);
+                    lv_anim_set_time(&a, 1500);
+                    lv_anim_set_playback_time(&a, 1500);
+                    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+                    lv_anim_set_exec_cb(&a, anim_dot_opa_cb);
+                    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+                    lv_anim_start(&a);
+                } else {
+                    // Empty circle (border only) for saved but not connected
+                    lv_obj_set_style_bg_opa(dot, LV_OPA_TRANSP, 0);
+                    lv_obj_set_style_border_color(dot, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lv_obj_set_style_border_width(dot, 1, 0);
+                    lv_obj_set_style_border_opa(dot, LV_OPA_COVER, 0);
+                }
+            }
 
             // Signal strength bars (based on RSSI)
             int8_t rssi = wifi_networks[i].rssi;
@@ -440,40 +509,42 @@ void wifi_scan_and_show_networks(void) {
                 int bar_height = 6 + (b * 4);  // 6px, 10px, 14px
                 lv_obj_set_size(bar, 4, bar_height);  // 4px wide vertical bars
 
-                // Position: x increases, y positioned so all bars bottom-align at y=16 (text baseline)
-                int bar_x = 8 + (b * 5);  // Space bars 5px apart
+                int bar_x = left_offset + 8 + (b * 5);
                 int bar_y = 16 - bar_height;  // All bars bottom-align at y=16
                 lv_obj_set_pos(bar, bar_x, bar_y);
 
-                // If network not visible, all bars are grayed out
                 if (!network_visible || b >= bars) {
                     lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_TEXT_DIM), 0);
                 } else {
-                    lv_obj_set_style_bg_color(bar, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+                    // Connected network gets green signal bars
+                    uint32_t bar_color = is_connected ? COLOR_GREEN : COLOR_ACCENT_BLUE;
+                    lv_obj_set_style_bg_color(bar, lv_color_hex(bar_color), 0);
                 }
                 lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
                 lv_obj_set_style_border_width(bar, 0, 0);
-                lv_obj_set_style_radius(bar, 1, 0);  // Slight rounding
+                lv_obj_set_style_radius(bar, 1, 0);
                 lv_obj_set_style_pad_all(bar, 0, 0);
             }
 
-            // SSID
+            // SSID label
             lv_obj_t *label = lv_label_create(row);
             lv_label_set_text(label, (const char *)wifi_networks[i].ssid);
-            lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
             lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
-            lv_obj_align(label, LV_ALIGN_LEFT_MID, 25, 0);
+            lv_obj_align(label, LV_ALIGN_LEFT_MID, left_offset + 25, 0);
 
-            // Check if this network is saved
-            bool is_saved = nvs_is_wifi_saved((const char *)wifi_networks[i].ssid);
+            // Connected SSID in green, others in white
+            if (is_connected) {
+                lv_obj_set_style_text_color(label, lv_color_hex(COLOR_GREEN), 0);
+            } else {
+                lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+            }
 
             if (is_saved) {
                 // Checkmark square (green if visible, gray if not)
                 lv_obj_t *switch_btn = lv_obj_create(row);
                 lv_obj_set_size(switch_btn, 18, 18);
-                lv_obj_align(switch_btn, LV_ALIGN_RIGHT_MID, -28, 0);  // Left of delete button
+                lv_obj_align(switch_btn, LV_ALIGN_RIGHT_MID, -28, 0);
 
-                // Gray out if network not visible (can't connect)
                 if (network_visible) {
                     lv_obj_set_style_bg_color(switch_btn, lv_color_hex(COLOR_GREEN), 0);
                     lv_obj_add_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
@@ -485,20 +556,18 @@ void wifi_scan_and_show_networks(void) {
                 lv_obj_set_style_border_width(switch_btn, 0, 0);
                 lv_obj_set_style_pad_all(switch_btn, 0, 0);
 
-                // Checkmark icon inside square
                 lv_obj_t *check_icon = lv_label_create(switch_btn);
                 lv_label_set_text(check_icon, LV_SYMBOL_OK);
                 lv_obj_set_style_text_color(check_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
                 lv_obj_set_style_text_font(check_icon, &lv_font_montserrat_12, 0);
                 lv_obj_center(check_icon);
 
-                // Only add click handler if network is visible
                 if (network_visible) {
                     lv_obj_add_event_cb(switch_btn, wifi_switch_btn_event_cb, LV_EVENT_CLICKED, (void*)wifi_networks[i].ssid);
                     lv_obj_clear_flag(switch_btn, LV_OBJ_FLAG_CLICK_FOCUSABLE);
                 }
 
-                // Red square with X for saved networks (removal button)
+                // Red square with X for removal
                 lv_obj_t *delete_btn = lv_obj_create(row);
                 lv_obj_set_size(delete_btn, 18, 18);
                 lv_obj_align(delete_btn, LV_ALIGN_RIGHT_MID, -5, 0);
@@ -508,14 +577,12 @@ void wifi_scan_and_show_networks(void) {
                 lv_obj_set_style_pad_all(delete_btn, 0, 0);
                 lv_obj_add_flag(delete_btn, LV_OBJ_FLAG_CLICKABLE);
 
-                // X icon inside square
                 lv_obj_t *x_icon = lv_label_create(delete_btn);
                 lv_label_set_text(x_icon, LV_SYMBOL_CLOSE);
                 lv_obj_set_style_text_color(x_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
                 lv_obj_set_style_text_font(x_icon, &lv_font_montserrat_12, 0);
                 lv_obj_center(x_icon);
 
-                // Add click handler for delete button (separate from row)
                 lv_obj_add_event_cb(delete_btn, wifi_delete_btn_event_cb, LV_EVENT_CLICKED, (void*)wifi_networks[i].ssid);
                 lv_obj_clear_flag(delete_btn, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 
@@ -786,56 +853,73 @@ static void show_wifi_connecting_overlay(void) {
         return;
     }
 
-    // Create smaller overlay (260x180, centered) to save memory
+    // Overlay card (centered)
     wifi_connecting_overlay = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(wifi_connecting_overlay, 260, 180);
+    lv_obj_set_size(wifi_connecting_overlay, 260, 170);
     lv_obj_center(wifi_connecting_overlay);
     lv_obj_set_style_bg_color(wifi_connecting_overlay, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_border_color(wifi_connecting_overlay, lv_color_hex(COLOR_BORDER), 0);
+    lv_obj_set_style_border_color(wifi_connecting_overlay, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_set_style_border_width(wifi_connecting_overlay, 2, 0);
     lv_obj_set_style_radius(wifi_connecting_overlay, 12, 0);
     lv_obj_clear_flag(wifi_connecting_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Loading bar (animated progress bar)
-    wifi_connecting_bar = lv_bar_create(wifi_connecting_overlay);
-    lv_obj_set_size(wifi_connecting_bar, 220, 8);  // Smaller bar
-    lv_obj_align(wifi_connecting_bar, LV_ALIGN_CENTER, 0, -35);  // Moved up
-    lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_bar_set_range(wifi_connecting_bar, 0, 100);
-    lv_bar_set_value(wifi_connecting_bar, 0, LV_ANIM_OFF);
-
-    // Animate loading bar
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, wifi_connecting_bar);
-    lv_anim_set_values(&a, 0, 100);
-    lv_anim_set_time(&a, 2000);
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_set_exec_cb(&a, anim_bar_set_value);
-    lv_anim_start(&a);
-
-    // Status label (near top of overlay)
+    // Status label at top
     wifi_connecting_status_label = lv_label_create(wifi_connecting_overlay);
     lv_label_set_text(wifi_connecting_status_label, "Connecting...");
     lv_obj_set_style_text_font(wifi_connecting_status_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(wifi_connecting_status_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(wifi_connecting_status_label, LV_ALIGN_TOP_MID, 0, 20);  // Near top
+    lv_obj_align(wifi_connecting_status_label, LV_ALIGN_TOP_MID, 0, 12);
 
-    // Details label (SSID and IP - initially hidden, positioned below status)
+    // SSID label (small, dim, below status)
+    wifi_connecting_ssid_label = lv_label_create(wifi_connecting_overlay);
+    lv_label_set_text(wifi_connecting_ssid_label, selected_ssid);
+    lv_obj_set_style_text_font(wifi_connecting_ssid_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(wifi_connecting_ssid_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(wifi_connecting_ssid_label, LV_ALIGN_TOP_MID, 0, 36);
+
+    // Fat progress bar - CENTERED in overlay
+    wifi_connecting_bar = lv_bar_create(wifi_connecting_overlay);
+    lv_obj_set_size(wifi_connecting_bar, 220, 20);
+    lv_obj_align(wifi_connecting_bar, LV_ALIGN_CENTER, 0, 8);
+
+    // Bar track (dark background)
+    lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(0x1E293B), 0);
+    lv_obj_set_style_bg_opa(wifi_connecting_bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(wifi_connecting_bar, 10, 0);
+
+    // Bar indicator (blue gradient - darker left, brighter right edge)
+    lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(0x1D4ED8), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(wifi_connecting_bar, lv_color_hex(COLOR_ACCENT_LIGHT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(wifi_connecting_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(wifi_connecting_bar, 10, LV_PART_INDICATOR);
+
+    lv_bar_set_range(wifi_connecting_bar, 0, 100);
+    lv_bar_set_value(wifi_connecting_bar, 0, LV_ANIM_OFF);
+
+    // Slow fill animation: 0 -> 90 over 18 seconds (ease-out: fast start, slows down)
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, wifi_connecting_bar);
+    lv_anim_set_values(&a, 0, 90);
+    lv_anim_set_time(&a, 18000);
+    lv_anim_set_exec_cb(&a, anim_bar_set_value);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+
+    // Details label (hidden until connected - shows SSID + IP)
     wifi_connecting_details_label = lv_label_create(wifi_connecting_overlay);
     lv_label_set_text(wifi_connecting_details_label, "");
     lv_obj_set_style_text_font(wifi_connecting_details_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(wifi_connecting_details_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(wifi_connecting_details_label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_set_style_text_align(wifi_connecting_details_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_width(wifi_connecting_details_label, 240);  // Smaller to match overlay
-    lv_obj_align(wifi_connecting_details_label, LV_ALIGN_TOP_MID, 0, 50);  // Below status label
+    lv_obj_set_width(wifi_connecting_details_label, 240);
+    lv_obj_align(wifi_connecting_details_label, LV_ALIGN_TOP_MID, 0, 36);
     lv_obj_add_flag(wifi_connecting_details_label, LV_OBJ_FLAG_HIDDEN);
 
-    // OK button (initially hidden, shown when connected)
+    // OK button (hidden until connected)
     wifi_connecting_ok_btn = lv_btn_create(wifi_connecting_overlay);
     lv_obj_set_size(wifi_connecting_ok_btn, 80, 35);
-    lv_obj_align(wifi_connecting_ok_btn, LV_ALIGN_BOTTOM_MID, 0, -15);
+    lv_obj_align(wifi_connecting_ok_btn, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_obj_set_style_bg_color(wifi_connecting_ok_btn, lv_color_hex(COLOR_GREEN), 0);
     lv_obj_set_style_radius(wifi_connecting_ok_btn, 8, 0);
     lv_obj_add_event_cb(wifi_connecting_ok_btn, wifi_connecting_ok_btn_cb, LV_EVENT_CLICKED, NULL);
@@ -867,31 +951,19 @@ static void wifi_connecting_ok_btn_cb(lv_event_t *e) {
         // Hide overlay
         hide_wifi_connecting_overlay();
 
-        // Small delay to let LVGL cleanup freed objects
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        // CRITICAL: Load home screen FIRST before deleting any screens
-        // Deleting a screen while it's active corrupts LVGL internal state!
-        if (lvgl_port_lock(0)) {
-            // Verify screen_home is valid
-            if (screen_home != NULL) {
-                lv_scr_load(screen_home);
-                home_screen_active = true;
-                pause_background_tasks = false;
-                ESP_LOGI(TAG, "Home screen loaded successfully");
-            } else {
-                ESP_LOGE(TAG, "CRITICAL: screen_home is NULL! Cannot return to home screen!");
-                lvgl_port_unlock();
-                return;
-            }
-            lvgl_port_unlock();
+        // Load home screen first before deleting any WiFi screens
+        if (screen_home != NULL) {
+            lv_scr_load(screen_home);
+            home_screen_active = true;
+            pause_background_tasks = false;
+            ESP_LOGI(TAG, "Home screen loaded successfully");
+        } else {
+            ESP_LOGE(TAG, "CRITICAL: screen_home is NULL! Cannot return to home screen!");
+            return;
         }
 
-        // Small delay to let screen transition complete
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        // NOW it's safe to delete WiFi screens (they're no longer active)
-        if (lvgl_port_lock(0)) {
+        // Now it's safe to delete WiFi screens (they're no longer active)
+        if (lvgl_port_lock(100)) {
             lv_mem_monitor_t mon;
             lv_mem_monitor(&mon);
             ESP_LOGI(TAG, "LVGL memory before cleanup: used=%d, free=%d, frag=%d%%",
@@ -917,11 +989,8 @@ static void wifi_connecting_ok_btn_cb(lv_event_t *e) {
             lvgl_port_unlock();
         }
 
-        // Small delay for memory to settle and cleanup to complete
-        vTaskDelay(pdMS_TO_TICKS(200));
-
         // Log LVGL memory state after cleanup
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(100)) {
             lv_mem_monitor_t mon;
             lv_mem_monitor(&mon);
             ESP_LOGI(TAG, "LVGL memory after cleanup: used=%d, free=%d, frag=%d%%",
@@ -954,6 +1023,7 @@ static void hide_wifi_connecting_overlay(void) {
         wifi_connecting_overlay = NULL;
         wifi_connecting_status_label = NULL;
         wifi_connecting_bar = NULL;
+        wifi_connecting_ssid_label = NULL;
         wifi_connecting_details_label = NULL;
         wifi_connecting_ok_btn = NULL;
     }
@@ -1057,13 +1127,21 @@ static void wifi_connect_task(void *pvParameters) {
 
         // Show connection details and OK button
         if (lvgl_port_lock(0)) {
-            // Stop loading bar animation and hide it
+            // Stop fill animation and snap bar to 100% green
             lv_anim_del(wifi_connecting_bar, NULL);
-            lv_obj_add_flag(wifi_connecting_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_bar_set_value(wifi_connecting_bar, 100, LV_ANIM_ON);
+            lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(0x15803D), LV_PART_INDICATOR);
+            lv_obj_set_style_bg_grad_color(wifi_connecting_bar, lv_color_hex(COLOR_GREEN), LV_PART_INDICATOR);
 
-            // Show details
+            // Change overlay border to green
+            lv_obj_set_style_border_color(wifi_connecting_overlay, lv_color_hex(COLOR_GREEN), 0);
+
+            // Hide SSID label, show details with SSID + IP
+            if (wifi_connecting_ssid_label != NULL) {
+                lv_obj_add_flag(wifi_connecting_ssid_label, LV_OBJ_FLAG_HIDDEN);
+            }
             char details[128];
-            snprintf(details, sizeof(details), "Network: %s\nIP Address: %s", selected_ssid, ip_str);
+            snprintf(details, sizeof(details), "Network: %s\nIP: %s", selected_ssid, ip_str);
             lv_label_set_text(wifi_connecting_details_label, details);
             lv_obj_clear_flag(wifi_connecting_details_label, LV_OBJ_FLAG_HIDDEN);
 
@@ -1081,7 +1159,11 @@ static void wifi_connect_task(void *pvParameters) {
         initialize_sntp();
 
         // Start time update task if not already running
-        xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, NULL);
+        if (time_task_handle == NULL) {
+            xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, &time_task_handle);
+        } else {
+            ESP_LOGI(TAG, "time_update task already running");
+        }
 
         // Start weather task if not already running (HTTP mode, no SSL)
         if (weather_task_handle == NULL) {
@@ -1099,6 +1181,15 @@ static void wifi_connect_task(void *pvParameters) {
     } else {
         ESP_LOGE(TAG, "WiFi connection failed");
         led_set_breathing_color(127, 0, 0);  // Red = failed
+
+        // Turn bar red at current position
+        if (lvgl_port_lock(0)) {
+            lv_anim_del(wifi_connecting_bar, NULL);
+            lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+            lv_obj_set_style_bg_grad_color(wifi_connecting_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+            lv_obj_set_style_border_color(wifi_connecting_overlay, lv_color_hex(COLOR_RED), 0);
+            lvgl_port_unlock();
+        }
 
         update_wifi_connecting_status("Connection failed!");
         vTaskDelay(pdMS_TO_TICKS(2000));

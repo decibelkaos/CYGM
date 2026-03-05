@@ -7,6 +7,8 @@
 #ifndef UI_WIFI_SCREENS_H
 #define UI_WIFI_SCREENS_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,6 +49,12 @@ void hide_wifi_scanning_overlay(void);
  * @param ssid SSID of network to remove
  */
 void show_wifi_removal_overlay(const char *ssid);
+
+/**
+ * Update WiFi status icon on home screen
+ * @param connected true = green WiFi icon, false = gray with warning
+ */
+void update_wifi_status_display(bool connected);
 
 #ifdef __cplusplus
 }
