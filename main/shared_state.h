@@ -248,6 +248,7 @@ extern lv_obj_t *label_ampm;
 extern lv_obj_t *label_glucose;
 extern lv_obj_t *trend_canvas;
 extern lv_obj_t *label_time_ago;
+extern lv_obj_t *label_unit;              // "mg/dL" unit label (repositioned in expanded mode)
 extern lv_obj_t *glucose_fetch_timer_bar;  // Progress bar showing time until next glucose fetch
 extern lv_timer_t *glucose_timer_update;    // Timer to update the progress bar
 extern int64_t last_glucose_fetch_time;     // Timestamp of last glucose fetch (milliseconds)
@@ -312,6 +313,14 @@ extern lv_obj_t *home_sunset_label;
 // Weather icon animation
 extern lv_timer_t *weather_icon_anim_timer;
 extern uint8_t weather_icon_anim_frame;
+
+// ==================== CGM Expanded View ====================
+
+extern bool cgm_expanded;               // True when CGM card is expanded
+extern lv_obj_t *left_card;             // Left card (time/weather)
+extern lv_obj_t *right_card;            // Right card (CGM data)
+extern lv_obj_t *expanded_time_label;   // Time label shown in expanded CGM top bar
+extern lv_obj_t *expanded_temp_label;   // Temp label shown in expanded CGM top bar
 
 // ==================== Global LVGL Styles ====================
 

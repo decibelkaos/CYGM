@@ -246,6 +246,7 @@ lv_obj_t *label_ampm = NULL;  // AM/PM indicator (12hr mode only)
 lv_obj_t *label_glucose = NULL;
 lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
 lv_obj_t *label_time_ago = NULL;
+lv_obj_t *label_unit = NULL;              // "mg/dL" unit label
 lv_obj_t *glucose_fetch_timer_bar = NULL;  // Progress bar showing time until next glucose fetch
 lv_timer_t *glucose_timer_update = NULL;    // Timer to update the progress bar
 int64_t last_glucose_fetch_time = 0;        // Timestamp of last glucose fetch (milliseconds)
@@ -306,6 +307,13 @@ lv_obj_t *home_sunset_label = NULL;
 // Weather icon animation
 lv_timer_t *weather_icon_anim_timer = NULL;
 uint8_t weather_icon_anim_frame = 0;
+
+// CGM Expanded View
+bool cgm_expanded = false;
+lv_obj_t *left_card = NULL;
+lv_obj_t *right_card = NULL;
+lv_obj_t *expanded_time_label = NULL;
+lv_obj_t *expanded_temp_label = NULL;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -1488,6 +1496,11 @@ void update_glucose_display(void) {
             snprintf(glucose_str, sizeof(glucose_str), "%d", current_glucose);
             lv_label_set_text(label_glucose, glucose_str);
 
+            // Realign unit label when in expanded CGM mode (bottom-right of glucose)
+            if (cgm_expanded && label_unit != NULL) {
+                lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
+            }
+
             // Color code based on alarm thresholds (configured by user)
             uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
             lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
@@ -2186,13 +2199,7 @@ void menu_item_event_cb(lv_event_t *e) {
                     lv_scr_load(screen_alarm_settings);
                 }
                 break;
-            case 4:  // Deep Sleep
-                ESP_LOGI(TAG, "Entering deep sleep mode...");
-                ESP_LOGI(TAG, "Device will wake on button press (GPIO 0)");
-                vTaskDelay(pdMS_TO_TICKS(500));  // Brief delay for UI feedback
-                esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);  // Wake on GPIO 0 (boot button), 0 = low level
-                esp_deep_sleep_start();
-                break;
+            // Case 4 (Power) handled by power overlay in menu_screen.c
             default:
                 ESP_LOGI(TAG, "Menu item not implemented yet");
                 break;

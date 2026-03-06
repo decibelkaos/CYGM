@@ -26,6 +26,9 @@ static const char *TAG = "DISPLAY";
 esp_err_t display_backlight_init(void) {
     ESP_LOGI(TAG, "Initializing LCD backlight PWM");
 
+    // Release GPIO hold from deep sleep (gpio_hold_en keeps pin low across wakeup)
+    gpio_hold_dis(LCD_BL);
+
     // Configure LEDC timer for backlight
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,

@@ -425,6 +425,11 @@ void update_weather_display(void) {
         }
         lv_label_set_text(home_temp_label, temp_buf);
 
+        // Update expanded CGM view temp label
+        if (expanded_temp_label != NULL) {
+            lv_label_set_text(expanded_temp_label, temp_buf);
+        }
+
         // Update Hi/Lo label (stacked vertically)
         char hilo_buf[32];
         if (user_temp_celsius) {

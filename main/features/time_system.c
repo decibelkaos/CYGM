@@ -208,6 +208,11 @@ void update_time_display(void) {
     if (lvgl_port_lock(0)) {
         lv_label_set_text(label_clock, strftime_buf);
 
+        // Update expanded CGM view time label
+        if (expanded_time_label != NULL) {
+            lv_label_set_text(expanded_time_label, strftime_buf);
+        }
+
         // Update AM/PM label (12hr mode only)
         if (!user_24hr_format && label_ampm != NULL) {
             strftime(strftime_buf, sizeof(strftime_buf), "%p", &timeinfo);

@@ -244,6 +244,56 @@ void play_alarm_tone(alarm_tone_t tone, uint8_t volume) {
             buzzer_stop();
             break;
 
+        case ALARM_TONE_SIREN:
+            // Emergency siren - alternating high/low tones
+            for (int i = 0; i < 4; i++) {
+                buzzer_tone(880, volume);   // A5 (high)
+                vTaskDelay(pdMS_TO_TICKS(150));
+                buzzer_tone(660, volume);   // E5 (low)
+                vTaskDelay(pdMS_TO_TICKS(150));
+            }
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_ASCENDING: {
+            // Ascending scale: C5 D5 E5 F5 G5 A5 B5 C6
+            const uint32_t scale[] = {523, 587, 659, 698, 784, 880, 988, 1047};
+            for (int i = 0; i < 8; i++) {
+                buzzer_tone(scale[i], volume);
+                vTaskDelay(pdMS_TO_TICKS(150));
+            }
+            buzzer_stop();
+            break;
+        }
+
+        case ALARM_TONE_DOORBELL:
+            // Classic ding-dong
+            buzzer_tone(988, volume);   // B5 (ding)
+            vTaskDelay(pdMS_TO_TICKS(400));
+            buzzer_tone(784, volume);   // G5 (dong)
+            vTaskDelay(pdMS_TO_TICKS(600));
+            buzzer_stop();
+            break;
+
+        case ALARM_TONE_BIG_BEN:
+            // Westminster Quarters (Big Ben) - first quarter chime
+            buzzer_tone(330, volume);   // E4
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_stop();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            buzzer_tone(415, volume);   // G#4
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_stop();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            buzzer_tone(370, volume);   // F#4
+            vTaskDelay(pdMS_TO_TICKS(500));
+            buzzer_stop();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            buzzer_tone(247, volume);   // B3
+            vTaskDelay(pdMS_TO_TICKS(750));
+            buzzer_stop();
+            break;
+
         default:
             ESP_LOGW(TAG, "Unknown alarm tone: %d", tone);
             buzzer_tone(800, volume);

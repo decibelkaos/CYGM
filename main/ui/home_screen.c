@@ -19,6 +19,10 @@
 
 static const char *TAG = "HOME_SCREEN";
 
+// File-scope references for expand/collapse repositioning
+static lv_obj_t *brightness_btn_ref = NULL;
+static lv_obj_t *timer_bar_overlay_ref = NULL;
+
 // Forward declarations
 static void brightness_icon_event_cb(lv_event_t *e);
 static void brightness_slider_event_cb(lv_event_t *e);
@@ -29,6 +33,31 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color);
 static void battery_tap_event_cb(lv_event_t *e);
 static void glucose_timer_update_cb(lv_timer_t *timer);
 static void trend_arrow_event_cb(lv_event_t *e);
+static void home_gesture_event_cb(lv_event_t *e);
+static void expand_cgm_card(void);
+static void collapse_cgm_card(void);
+static void expand_left_fade_done_cb(lv_anim_t *a);
+
+// Animation helper callbacks for expand/collapse
+static void anim_x_cb(void *var, int32_t v) {
+    lv_obj_set_x((lv_obj_t *)var, (lv_coord_t)v);
+}
+static void anim_width_cb(void *var, int32_t v) {
+    lv_obj_set_width((lv_obj_t *)var, (lv_coord_t)v);
+}
+static void anim_opa_cb(void *var, int32_t v) {
+    lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
+}
+
+// Expand/collapse layout constants
+#define NORMAL_LEFT_X       6
+#define NORMAL_LEFT_W       150
+#define NORMAL_RIGHT_X      164
+#define NORMAL_RIGHT_W      150
+#define EXPANDED_RIGHT_X    6
+#define EXPANDED_RIGHT_W    308
+#define CARD_H              220
+#define ANIM_DURATION       350
 
 // Glucose fetch timer update callback (updates progress bar)
 static void glucose_timer_update_cb(lv_timer_t *timer) {
@@ -295,14 +324,200 @@ static void close_brightness_overlay(void) {
     }
 }
 
+// --- CGM Expand/Collapse ---
+
+static void home_gesture_event_cb(lv_event_t *e) {
+    // Ignore gestures if brightness overlay is open
+    if (brightness_overlay != NULL) return;
+
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+    if (dir == LV_DIR_LEFT && !cgm_expanded) {
+        expand_cgm_card();
+    } else if (dir == LV_DIR_RIGHT && cgm_expanded) {
+        collapse_cgm_card();
+    }
+}
+
+// Called when left card fade-out animation completes
+static void expand_left_fade_done_cb(lv_anim_t *a) {
+    lv_obj_add_flag(left_card, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void expand_cgm_card(void) {
+    if (left_card == NULL || right_card == NULL) return;
+    cgm_expanded = true;
+
+    ESP_LOGI(TAG, "Expanding CGM card");
+
+    // Sync expanded labels with current values
+    if (expanded_time_label != NULL && label_clock != NULL) {
+        lv_label_set_text(expanded_time_label, lv_label_get_text(label_clock));
+    }
+    if (expanded_temp_label != NULL && home_temp_label != NULL) {
+        lv_label_set_text(expanded_temp_label, lv_label_get_text(home_temp_label));
+    }
+
+    // --- Card slide animation ---
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_time(&a, ANIM_DURATION);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+
+    // Fade out left card
+    lv_anim_set_var(&a, left_card);
+    lv_anim_set_exec_cb(&a, anim_opa_cb);
+    lv_anim_set_values(&a, 255, 0);
+    lv_anim_set_ready_cb(&a, expand_left_fade_done_cb);
+    lv_anim_start(&a);
+
+    // Animate right card: x 164→6, width 150→308
+    lv_anim_set_ready_cb(&a, NULL);
+    lv_anim_set_var(&a, right_card);
+    lv_anim_set_exec_cb(&a, anim_x_cb);
+    lv_anim_set_values(&a, NORMAL_RIGHT_X, EXPANDED_RIGHT_X);
+    lv_anim_start(&a);
+
+    lv_anim_set_exec_cb(&a, anim_width_cb);
+    lv_anim_set_values(&a, NORMAL_RIGHT_W, EXPANDED_RIGHT_W);
+    lv_anim_start(&a);
+
+    // --- Fade in time/temp labels ---
+    lv_anim_init(&a);
+    lv_anim_set_time(&a, ANIM_DURATION / 2);
+    lv_anim_set_delay(&a, ANIM_DURATION / 2);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_set_exec_cb(&a, anim_opa_cb);
+    lv_anim_set_values(&a, 0, 255);
+
+    if (expanded_time_label != NULL) {
+        lv_obj_clear_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_opa(expanded_time_label, 0, 0);
+        lv_anim_set_var(&a, expanded_time_label);
+        lv_anim_start(&a);
+    }
+    if (expanded_temp_label != NULL) {
+        lv_obj_clear_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_opa(expanded_temp_label, 0, 0);
+        lv_anim_set_var(&a, expanded_temp_label);
+        lv_anim_start(&a);
+    }
+
+    // --- Reposition elements for expanded layout ---
+    // Expanded card: 308px wide (288px usable), 220px tall (200px usable)
+    //
+    //  Top:    [battery]  [12:30  72°F]                  [💡]
+    //
+    //  Left:   [trend ↑]  120
+    //                     mg/dL
+    //                     5 min ago
+    //
+    //  Bottom: [=============== timer bar 75% ===============]
+
+    // Glucose: left side, vertically centered, shifted up for mg/dL + time_ago below
+    if (label_glucose != NULL) {
+        lv_obj_align(label_glucose, LV_ALIGN_LEFT_MID, 85, -20);
+    }
+
+    // Unit "mg/dL": bottom-right of glucose number
+    if (label_unit != NULL && label_glucose != NULL) {
+        lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
+    }
+
+    // Trend arrow: left of glucose, vertically centered
+    if (trend_canvas != NULL) {
+        lv_obj_align(trend_canvas, LV_ALIGN_LEFT_MID, 10, -10);
+    }
+
+    // Time ago: below unit label
+    if (label_time_ago != NULL && label_glucose != NULL) {
+        lv_obj_align_to(label_time_ago, label_glucose, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 20);
+    }
+
+    // Timer bar: expand to 75% of card width (~216px)
+    if (glucose_fetch_timer_bar != NULL) {
+        lv_obj_set_width(glucose_fetch_timer_bar, 216);
+    }
+    if (timer_bar_overlay_ref != NULL) {
+        lv_obj_set_width(timer_bar_overlay_ref, 236);
+    }
+
+    // Brightness: shift right but stay clear of settings gear (gear at screen TOP_RIGHT, -10)
+    if (brightness_btn_ref != NULL) {
+        lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_RIGHT, -40, 0);
+    }
+}
+
+static void collapse_cgm_card(void) {
+    if (left_card == NULL || right_card == NULL) return;
+    cgm_expanded = false;
+
+    ESP_LOGI(TAG, "Collapsing CGM card");
+
+    // Show left card with fade-in
+    lv_obj_clear_flag(left_card, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_opa(left_card, 0, 0);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_time(&a, ANIM_DURATION);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+
+    // Fade in left card
+    lv_anim_set_var(&a, left_card);
+    lv_anim_set_exec_cb(&a, anim_opa_cb);
+    lv_anim_set_values(&a, 0, 255);
+    lv_anim_start(&a);
+
+    // Animate right card back: x 6→164, width 308→150
+    lv_anim_set_var(&a, right_card);
+    lv_anim_set_exec_cb(&a, anim_x_cb);
+    lv_anim_set_values(&a, EXPANDED_RIGHT_X, NORMAL_RIGHT_X);
+    lv_anim_start(&a);
+
+    lv_anim_set_exec_cb(&a, anim_width_cb);
+    lv_anim_set_values(&a, EXPANDED_RIGHT_W, NORMAL_RIGHT_W);
+    lv_anim_start(&a);
+
+    // Hide expanded time/temp labels
+    if (expanded_time_label != NULL) {
+        lv_obj_add_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (expanded_temp_label != NULL) {
+        lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // --- Restore all elements to normal positions ---
+    if (label_glucose != NULL) {
+        lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
+    }
+    if (label_unit != NULL) {
+        lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 75);
+    }
+    if (trend_canvas != NULL) {
+        lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
+    }
+    if (label_time_ago != NULL) {
+        lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
+    }
+    if (glucose_fetch_timer_bar != NULL) {
+        lv_obj_set_width(glucose_fetch_timer_bar, 100);
+    }
+    if (timer_bar_overlay_ref != NULL) {
+        lv_obj_set_width(timer_bar_overlay_ref, 120);
+    }
+    if (brightness_btn_ref != NULL) {
+        lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
+    }
+}
+
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
     lv_obj_add_style(screen_home, &style_bg, 0);
     
     // --- LEFT CARD: Time, Weather & WiFi Status ---
-    lv_obj_t *left_card = lv_obj_create(screen_home);
-    lv_obj_set_size(left_card, 150, 220);
-    lv_obj_set_pos(left_card, 6, 10);
+    left_card = lv_obj_create(screen_home);
+    lv_obj_set_size(left_card, NORMAL_LEFT_W, CARD_H);
+    lv_obj_set_pos(left_card, NORMAL_LEFT_X, 10);
     lv_obj_add_style(left_card, &style_card, 0);
     lv_obj_clear_flag(left_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -426,9 +641,9 @@ void create_home_screen(void) {
     lv_obj_align(home_sunset_label, LV_ALIGN_BOTTOM_RIGHT, -8, 6);
     
     // --- RIGHT CARD: Glucose ---
-    lv_obj_t *right_card = lv_obj_create(screen_home);
-    lv_obj_set_size(right_card, 150, 220);
-    lv_obj_set_pos(right_card, 164, 10);
+    right_card = lv_obj_create(screen_home);
+    lv_obj_set_size(right_card, NORMAL_RIGHT_W, CARD_H);
+    lv_obj_set_pos(right_card, NORMAL_RIGHT_X, 10);
     lv_obj_add_style(right_card, &style_card, 0);
     lv_obj_clear_flag(right_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -464,9 +679,10 @@ void create_home_screen(void) {
     lv_obj_add_flag(battery_charging_icon, LV_OBJ_FLAG_HIDDEN);  // Hidden until charging detected
 
     // Brightness icon (top center, shifted right) - custom lightbulb in clickable button
-    lv_obj_t *brightness_btn = lv_btn_create(right_card);
+    brightness_btn_ref = lv_btn_create(right_card);
+    lv_obj_t *brightness_btn = brightness_btn_ref;
     lv_obj_set_size(brightness_btn, 24, 24);
-    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 22, 0);  // Shifted 22px to the right
+    lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 22, 0);  // Shifted right of center
     lv_obj_set_style_bg_opa(brightness_btn, LV_OPA_TRANSP, 0);  // Transparent background
     lv_obj_set_style_border_width(brightness_btn, 0, 0);
     lv_obj_set_style_shadow_width(brightness_btn, 0, 0);
@@ -492,12 +708,12 @@ void create_home_screen(void) {
 
     lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
     
-    // Unit
-    lv_obj_t *unit = lv_label_create(right_card);
-    lv_label_set_text(unit, "mg/dL");
-    lv_obj_set_style_text_font(unit, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(unit, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(unit, LV_ALIGN_TOP_MID, 0, 75);
+    // Unit (stored for repositioning in expanded mode)
+    label_unit = lv_label_create(right_card);
+    lv_label_set_text(label_unit, "mg/dL");
+    lv_obj_set_style_text_font(label_unit, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(label_unit, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 75);
     
     // Trend arrow
     // Trend arrow (canvas for custom drawing, 60x60 for memory optimization)
@@ -541,7 +757,8 @@ void create_home_screen(void) {
     lv_obj_add_event_cb(glucose_fetch_timer_bar, glucose_timer_bar_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Create invisible button overlay for more reliable touch detection (30px tall for easier tapping)
-    lv_obj_t *timer_bar_touch_overlay = lv_btn_create(right_card);
+    timer_bar_overlay_ref = lv_btn_create(right_card);
+    lv_obj_t *timer_bar_touch_overlay = timer_bar_overlay_ref;
     lv_obj_set_size(timer_bar_touch_overlay, 120, 30);  // Larger touch target
     lv_obj_align(timer_bar_touch_overlay, LV_ALIGN_BOTTOM_MID, 0, -2);  // Cover bar area
     lv_obj_set_style_bg_opa(timer_bar_touch_overlay, LV_OPA_TRANSP, 0);  // Completely invisible
@@ -586,4 +803,27 @@ void create_home_screen(void) {
     if (weather_icon_anim_timer == NULL) {
         weather_icon_anim_timer = lv_timer_create(weather_icon_animation_timer_cb, 100, NULL);
     }
+
+    // --- EXPANDED VIEW LABELS (hidden, shown in CGM card top bar when expanded) ---
+    // These are children of right_card, positioned between battery (left) and brightness (right)
+    // Expanded view: time + temp in top bar between battery and brightness
+    // In expanded mode (308px card), TOP_MID is at ~144px. Brightness at TOP_MID+22 = 166.
+    // Position labels left-of-center to avoid brightness overlap.
+    expanded_time_label = lv_label_create(right_card);
+    lv_label_set_text(expanded_time_label, "00:00");
+    lv_obj_set_style_text_font(expanded_time_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(expanded_time_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(expanded_time_label, LV_ALIGN_TOP_MID, -60, 2);
+    lv_obj_add_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
+
+    expanded_temp_label = lv_label_create(right_card);
+    lv_label_set_text(expanded_temp_label, "-- F");
+    lv_obj_set_style_text_font(expanded_temp_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(expanded_temp_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(expanded_temp_label, LV_ALIGN_TOP_MID, 10, 2);
+    lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
+
+    // Register gesture handler on home screen for swipe expand/collapse
+    lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_GESTURE_BUBBLE);
 }
