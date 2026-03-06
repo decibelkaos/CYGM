@@ -1051,7 +1051,24 @@ static void alarm_settings_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Back to menu - saving alarm settings");
         nvs_save_alarm_settings(&current_alarm_settings);
+
+        // Stop inactivity timer before leaving alarm UI
+        if (alarm_inactivity_timer != NULL) {
+            lv_timer_del(alarm_inactivity_timer);
+            alarm_inactivity_timer = NULL;
+        }
+
+        // Clean up alarm settings screen after loading menu
         lv_scr_load(screen_menu);
+
+        if (screen_alarm_settings != NULL) {
+            lv_obj_del(screen_alarm_settings);
+            screen_alarm_settings = NULL;
+        }
+
+        editing_alarm = NULL;
+        home_screen_active = false;
+        pause_background_tasks = false;
     }
 }
 
@@ -1231,8 +1248,6 @@ static void alarm_preview_back_event_cb(lv_event_t *e) {
 }
 
 static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
-    (void)timer;
-
     lv_obj_t *active = lv_scr_act();
     bool alarm_ui_active =
         (active == screen_alarm_settings) ||
@@ -1241,19 +1256,11 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
         (screen_tone_picker != NULL);
 
     if (!alarm_ui_active) {
+        // No alarm UI visible — stop and delete the timer
+        lv_timer_del(timer);
+        alarm_inactivity_timer = NULL;
         return;
     }
-
-#if ALARM_VERBOSE_LOG
-    static uint32_t s_last_trace_ms = 0;
-    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-    if ((now_ms - s_last_trace_ms) > 5000U) {
-        s_last_trace_ms = now_ms;
-        ESP_LOGI(TAG, "TRACE alarm_ui_alive active=%p inactive=%lu heap=%lu", (void *)active,
-                 (unsigned long)lv_disp_get_inactive_time(NULL),
-                 (unsigned long)esp_get_free_heap_size());
-    }
-#endif
 
     uint32_t inactive_ms = lv_disp_get_inactive_time(NULL);
     if (inactive_ms < ALARM_UI_INACTIVITY_RETURN_MS) {
@@ -1263,8 +1270,35 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
     ESP_LOGI(TAG, "Alarm UI inactivity timeout (%lu ms) - returning to home", (unsigned long)inactive_ms);
     nvs_save_alarm_settings(&current_alarm_settings);
 
+    // Clean up tone picker (child of detail editor screen)
+    if (screen_tone_picker != NULL) {
+        lv_obj_del(screen_tone_picker);
+        screen_tone_picker = NULL;
+        tone_picker_current_page = 0;
+        tone_picker_alarm_ref = NULL;
+    }
+
+    // Clean up alarm screens
+    if (screen_alarm_preview != NULL) {
+        lv_obj_del(screen_alarm_preview);
+        screen_alarm_preview = NULL;
+    }
+    if (screen_alarm_detail_editor != NULL) {
+        lv_obj_del(screen_alarm_detail_editor);
+        screen_alarm_detail_editor = NULL;
+    }
+    if (screen_alarm_settings != NULL) {
+        lv_obj_del(screen_alarm_settings);
+        screen_alarm_settings = NULL;
+    }
+
+    editing_alarm = NULL;
     home_screen_active = true;
     pause_background_tasks = false;
 
     lv_scr_load(screen_home);
+
+    // Delete this timer — it will be recreated when alarm UI is opened again
+    lv_timer_del(timer);
+    alarm_inactivity_timer = NULL;
 }

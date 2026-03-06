@@ -637,6 +637,10 @@ void create_wifi_list_screen(void) {
 // Create WiFi password entry screen
 void create_wifi_password_screen(void) {
     screen_wifi_password = lv_obj_create(NULL);
+    if (screen_wifi_password == NULL) {
+        ESP_LOGE(TAG, "Failed to create WiFi password screen - out of memory!");
+        return;
+    }
     lv_obj_add_style(screen_wifi_password, &style_bg, 0);
 
     // Cancel button (red, top-left)
@@ -728,6 +732,11 @@ static void network_item_event_cb(lv_event_t *e) {
             // Create password screen if it doesn't exist
             if (screen_wifi_password == NULL) {
                 create_wifi_password_screen();
+            }
+            if (screen_wifi_password == NULL) {
+                ESP_LOGE(TAG, "WiFi password screen creation failed");
+                lvgl_port_unlock();
+                return;
             }
 
             // Clear password field and display
