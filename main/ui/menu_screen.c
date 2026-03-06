@@ -254,11 +254,16 @@ void create_menu_screen(void) {
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button (top left)
+    // Ghost back button (top left)
     lv_obj_t *back_btn = lv_btn_create(screen_menu);
     lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
@@ -266,11 +271,16 @@ void create_menu_screen(void) {
     lv_obj_center(back_lbl);
     lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Power button (top right)
+    // Ghost power button (top right)
     lv_obj_t *power_btn = lv_btn_create(screen_menu);
     lv_obj_set_size(power_btn, 36, 36);
     lv_obj_align(power_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
-    lv_obj_add_style(power_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(power_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(power_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(power_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(power_btn, 0, 0);
+    lv_obj_set_style_shadow_width(power_btn, 0, 0);
+    lv_obj_set_style_radius(power_btn, 8, 0);
     lv_obj_t *pwr_icon = lv_label_create(power_btn);
     lv_label_set_text(pwr_icon, LV_SYMBOL_POWER);
     lv_obj_set_style_text_font(pwr_icon, &lv_font_montserrat_20, 0);

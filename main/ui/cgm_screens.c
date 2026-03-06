@@ -369,19 +369,23 @@ void create_cgm_menu_screen(void) {
     screen_cgm_menu = lv_obj_create(NULL);
     lv_obj_add_style(screen_cgm_menu, &style_bg, 0);
 
-    // Header with title and back button
-    lv_obj_t *header = lv_obj_create(screen_cgm_menu);
-    lv_obj_set_size(header, 320, 50);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(header, lv_color_hex(COLOR_BG), 0);
-    lv_obj_set_style_border_width(header, 0, 0);
-    lv_obj_set_style_pad_all(header, 0, 0);
+    // Header
+    lv_obj_t *title = lv_label_create(screen_cgm_menu);
+    lv_label_set_text(title, "CGM Settings");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button
-    lv_obj_t *back_btn = lv_btn_create(header);
-    lv_obj_set_size(back_btn, 40, 40);
-    lv_obj_align(back_btn, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    // Ghost back button
+    lv_obj_t *back_btn = lv_btn_create(screen_cgm_menu);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
 
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, LV_SYMBOL_LEFT);
@@ -390,69 +394,88 @@ void create_cgm_menu_screen(void) {
     lv_obj_center(back_label);
     lv_obj_add_event_cb(back_btn, cgm_back_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Title
-    lv_obj_t *title = lv_label_create(header);
-    lv_label_set_text(title, "CGM Data Source");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
-
-    // Container for centered buttons
-    lv_obj_t *button_container = lv_obj_create(screen_cgm_menu);
-    lv_obj_set_size(button_container, 290, 130);
-    lv_obj_align(button_container, LV_ALIGN_CENTER, 0, 5);
-    lv_obj_set_style_bg_opa(button_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(button_container, 0, 0);
-    lv_obj_set_style_pad_all(button_container, 0, 0);
-
-    // Dexcom button (active) - centered
-    lv_obj_t *dexcom_btn = lv_btn_create(button_container);
-    lv_obj_set_size(dexcom_btn, 280, 55);
-    lv_obj_align(dexcom_btn, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(dexcom_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(dexcom_btn, 12, 0);
+    // Dexcom button card
+    lv_obj_t *dexcom_btn = lv_btn_create(screen_cgm_menu);
+    lv_obj_set_size(dexcom_btn, 290, 50);
+    lv_obj_align(dexcom_btn, LV_ALIGN_TOP_MID, 0, 55);
+    lv_obj_set_style_bg_color(dexcom_btn, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(dexcom_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(dexcom_btn, 10, 0);
+    lv_obj_set_style_border_width(dexcom_btn, 0, 0);
     lv_obj_set_style_shadow_width(dexcom_btn, 0, 0);
+    lv_obj_set_style_pad_left(dexcom_btn, 14, 0);
+    lv_obj_set_style_bg_color(dexcom_btn, lv_color_hex(0x2a3a4a), LV_STATE_PRESSED);
+
+    lv_obj_t *dexcom_icon = lv_label_create(dexcom_btn);
+    lv_label_set_text(dexcom_icon, LV_SYMBOL_REFRESH);
+    lv_obj_set_style_text_color(dexcom_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(dexcom_icon, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t *dexcom_label = lv_label_create(dexcom_btn);
-    lv_label_set_text(dexcom_label, LV_SYMBOL_REFRESH " Dexcom");
-    lv_obj_set_style_text_font(dexcom_label, &lv_font_montserrat_18, 0);
+    lv_label_set_text(dexcom_label, "Dexcom Share");
+    lv_obj_set_style_text_font(dexcom_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(dexcom_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_center(dexcom_label);
+    lv_obj_align(dexcom_label, LV_ALIGN_LEFT_MID, 28, 0);
+
+    lv_obj_t *dexcom_arrow = lv_label_create(dexcom_btn);
+    lv_label_set_text(dexcom_arrow, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(dexcom_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(dexcom_arrow, LV_ALIGN_RIGHT_MID, -12, 0);
+
     lv_obj_add_event_cb(dexcom_btn, dexcom_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // LibreLinkUp button (disabled) - centered below
-    lv_obj_t *libre_btn = lv_btn_create(button_container);
-    lv_obj_set_size(libre_btn, 280, 55);
-    lv_obj_align(libre_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // LibreLinkUp button card (disabled)
+    lv_obj_t *libre_btn = lv_btn_create(screen_cgm_menu);
+    lv_obj_set_size(libre_btn, 290, 50);
+    lv_obj_align(libre_btn, LV_ALIGN_TOP_MID, 0, 112);
     lv_obj_set_style_bg_color(libre_btn, lv_color_hex(COLOR_CARD_BG), 0);
     lv_obj_set_style_bg_opa(libre_btn, LV_OPA_40, 0);
-    lv_obj_set_style_radius(libre_btn, 12, 0);
+    lv_obj_set_style_radius(libre_btn, 10, 0);
+    lv_obj_set_style_border_width(libre_btn, 0, 0);
     lv_obj_set_style_shadow_width(libre_btn, 0, 0);
+    lv_obj_set_style_pad_left(libre_btn, 14, 0);
+
+    lv_obj_t *libre_icon = lv_label_create(libre_btn);
+    lv_label_set_text(libre_icon, LV_SYMBOL_EYE_OPEN);
+    lv_obj_set_style_text_color(libre_icon, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(libre_icon, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t *libre_label = lv_label_create(libre_btn);
-    lv_label_set_text(libre_label, "LibreLinkUp (Coming Soon)");
+    lv_label_set_text(libre_label, "LibreLinkUp");
     lv_obj_set_style_text_font(libre_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(libre_label, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_center(libre_label);
+    lv_obj_align(libre_label, LV_ALIGN_LEFT_MID, 28, 0);
+
+    lv_obj_t *libre_soon = lv_label_create(libre_btn);
+    lv_label_set_text(libre_soon, "Soon");
+    lv_obj_set_style_text_font(libre_soon, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(libre_soon, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(libre_soon, LV_ALIGN_RIGHT_MID, -12, 0);
+
     lv_obj_add_event_cb(libre_btn, librelinkup_btn_event_cb, LV_EVENT_CLICKED, NULL);
 }
 
 void create_dexcom_auth_screen(void) {
     screen_dexcom_auth = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(screen_dexcom_auth, lv_color_hex(COLOR_BG), 0);
+    lv_obj_add_style(screen_dexcom_auth, &style_bg, 0);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_dexcom_auth);
-    lv_label_set_text(title, "Dexcom CGM");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_label_set_text(title, "Dexcom");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button (matching alarm settings style)
+    // Ghost back button
     lv_obj_t *back_btn = lv_btn_create(screen_dexcom_auth);
     lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
 
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, LV_SYMBOL_LEFT);
@@ -465,54 +488,89 @@ void create_dexcom_auth_screen(void) {
     bool authenticated = dexcom_is_authenticated();
 
     if (authenticated) {
-        // Show connected status (moved up 20px)
-        lv_obj_t *status = lv_label_create(screen_dexcom_auth);
-        lv_label_set_text(status, LV_SYMBOL_OK " Connected to Dexcom");
-        lv_obj_set_style_text_font(status, &lv_font_montserrat_18, 0);
+        // Status card
+        lv_obj_t *status_card = lv_obj_create(screen_dexcom_auth);
+        lv_obj_set_size(status_card, 290, 60);
+        lv_obj_align(status_card, LV_ALIGN_TOP_MID, 0, 50);
+        lv_obj_set_style_bg_color(status_card, lv_color_hex(COLOR_CARD_BG), 0);
+        lv_obj_set_style_bg_opa(status_card, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(status_card, 10, 0);
+        lv_obj_set_style_border_width(status_card, 0, 0);
+        lv_obj_clear_flag(status_card, LV_OBJ_FLAG_SCROLLABLE);
+
+        // Green accent bar
+        lv_obj_t *accent = lv_obj_create(status_card);
+        lv_obj_remove_style_all(accent);
+        lv_obj_set_size(accent, 3, 40);
+        lv_obj_align(accent, LV_ALIGN_LEFT_MID, 8, 0);
+        lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_GREEN), 0);
+        lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(accent, 2, 0);
+
+        lv_obj_t *status_icon = lv_label_create(status_card);
+        lv_label_set_text(status_icon, LV_SYMBOL_OK);
+        lv_obj_set_style_text_font(status_icon, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(status_icon, lv_color_hex(COLOR_GREEN), 0);
+        lv_obj_align(status_icon, LV_ALIGN_LEFT_MID, 20, 0);
+
+        lv_obj_t *status = lv_label_create(status_card);
+        lv_label_set_text(status, "Connected");
+        lv_obj_set_style_text_font(status, &lv_font_montserrat_16, 0);
         lv_obj_set_style_text_color(status, lv_color_hex(COLOR_GREEN), 0);
-        lv_obj_align(status, LV_ALIGN_CENTER, 0, -60);
+        lv_obj_align(status, LV_ALIGN_LEFT_MID, 48, -8);
 
-        // Show username
-        lv_obj_t *username_label = lv_label_create(screen_dexcom_auth);
-        char username_text[96];
-        snprintf(username_text, sizeof(username_text), "Account: %s", dexcom_username_buf);
-        lv_label_set_text(username_label, username_text);
-        lv_obj_set_style_text_font(username_label, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(username_label, lv_color_hex(COLOR_TEXT_GRAY), 0);
-        lv_obj_align(username_label, LV_ALIGN_CENTER, 0, -30);
+        lv_obj_t *username_label = lv_label_create(status_card);
+        lv_label_set_text(username_label, dexcom_username_buf);
+        lv_obj_set_style_text_font(username_label, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(username_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align(username_label, LV_ALIGN_LEFT_MID, 48, 10);
 
-        // View Status button (settings moved to main Settings > Alarm)
+        // View Status button (card style)
         lv_obj_t *status_btn = lv_btn_create(screen_dexcom_auth);
-        lv_obj_set_size(status_btn, 220, 45);
-        lv_obj_align(status_btn, LV_ALIGN_CENTER, 0, 15);
-        lv_obj_add_style(status_btn, &style_card, 0);
-        lv_obj_set_style_bg_color(status_btn, lv_color_hex(COLOR_ACCENT_BLUE), LV_STATE_PRESSED);
+        lv_obj_set_size(status_btn, 290, 40);
+        lv_obj_align(status_btn, LV_ALIGN_TOP_MID, 0, 120);
+        lv_obj_set_style_bg_color(status_btn, lv_color_hex(COLOR_CARD_BG), 0);
+        lv_obj_set_style_bg_opa(status_btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(status_btn, 10, 0);
+        lv_obj_set_style_border_width(status_btn, 0, 0);
+        lv_obj_set_style_shadow_width(status_btn, 0, 0);
+        lv_obj_set_style_pad_left(status_btn, 14, 0);
+        lv_obj_set_style_bg_color(status_btn, lv_color_hex(0x2a3a4a), LV_STATE_PRESSED);
+
+        lv_obj_t *status_icon2 = lv_label_create(status_btn);
+        lv_label_set_text(status_icon2, LV_SYMBOL_EYE_OPEN);
+        lv_obj_set_style_text_color(status_icon2, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_align(status_icon2, LV_ALIGN_LEFT_MID, 0, 0);
 
         lv_obj_t *status_lbl = lv_label_create(status_btn);
         lv_label_set_text(status_lbl, "View Account Status");
-        lv_obj_set_style_text_font(status_lbl, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(status_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-        lv_obj_center(status_lbl);
+        lv_obj_set_style_text_color(status_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(status_lbl, LV_ALIGN_LEFT_MID, 28, 0);
+
+        lv_obj_t *status_arrow = lv_label_create(status_btn);
+        lv_label_set_text(status_arrow, LV_SYMBOL_RIGHT);
+        lv_obj_set_style_text_color(status_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align(status_arrow, LV_ALIGN_RIGHT_MID, -12, 0);
+
         lv_obj_add_event_cb(status_btn, dexcom_view_status_btn_event_cb, LV_EVENT_CLICKED, NULL);
     } else {
         // Not connected - show login prompt
         lv_obj_t *info = lv_label_create(screen_dexcom_auth);
-        lv_label_set_text(info, "Connect your Dexcom Share account");
-        lv_obj_set_style_text_font(info, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(info, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_align(info, LV_ALIGN_CENTER, 0, -40);
+        lv_label_set_text(info, "Connect your Dexcom Share\naccount to view glucose data");
+        lv_obj_set_style_text_font(info, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(info, lv_color_hex(COLOR_TEXT_GRAY), 0);
+        lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(info, LV_ALIGN_CENTER, 0, -30);
 
-        lv_obj_t *info2 = lv_label_create(screen_dexcom_auth);
-        lv_label_set_text(info2, "Use your Dexcom app credentials");
-        lv_obj_set_style_text_font(info2, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(info2, lv_color_hex(COLOR_TEXT_DIM), 0);
-        lv_obj_align(info2, LV_ALIGN_CENTER, 0, -10);
-
-        // Login button
+        // Login button (action)
         lv_obj_t *login_btn = lv_btn_create(screen_dexcom_auth);
-        lv_obj_set_size(login_btn, 220, 50);
-        lv_obj_align(login_btn, LV_ALIGN_CENTER, 0, 40);
+        lv_obj_set_size(login_btn, 250, 48);
+        lv_obj_align(login_btn, LV_ALIGN_CENTER, 0, 30);
         lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_set_style_radius(login_btn, 10, 0);
+        lv_obj_set_style_shadow_width(login_btn, 0, 0);
+        lv_obj_set_style_border_width(login_btn, 0, 0);
+
         lv_obj_t *login_label = lv_label_create(login_btn);
         lv_label_set_text(login_label, "Login with Username");
         lv_obj_set_style_text_font(login_label, &lv_font_montserrat_16, 0);
@@ -535,15 +593,20 @@ void create_dexcom_login_screen(void) {
     // Header
     lv_obj_t *header = lv_label_create(screen_dexcom_login);
     lv_label_set_text(header, "Dexcom Login");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button
+    // Ghost back button
     lv_obj_t *back_btn = lv_btn_create(screen_dexcom_login);
     lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
 
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
@@ -552,50 +615,61 @@ void create_dexcom_login_screen(void) {
     lv_obj_center(back_lbl);
     lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Username label
+    // Username section label
     lv_obj_t *username_title = lv_label_create(screen_dexcom_login);
-    lv_label_set_text(username_title, "Username:");
-    lv_obj_set_style_text_font(username_title, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(username_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_align(username_title, LV_ALIGN_TOP_LEFT, 10, 50);
+    lv_label_set_text(username_title, "USERNAME");
+    lv_obj_set_style_text_font(username_title, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(username_title, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(username_title, 2, 0);
+    lv_obj_align(username_title, LV_ALIGN_TOP_LEFT, 18, 48);
 
-    // Username container (tappable)
+    // Username card (tappable)
     lv_obj_t *username_container = lv_obj_create(screen_dexcom_login);
-    lv_obj_set_size(username_container, 300, 35);
-    lv_obj_align(username_container, LV_ALIGN_TOP_MID, 0, 68);
-    lv_obj_add_style(username_container, &style_card, 0);
+    lv_obj_set_size(username_container, 290, 40);
+    lv_obj_align(username_container, LV_ALIGN_TOP_MID, 0, 62);
+    lv_obj_set_style_bg_color(username_container, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(username_container, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(username_container, 10, 0);
+    lv_obj_set_style_border_width(username_container, 0, 0);
     lv_obj_add_flag(username_container, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(username_container, dexcom_username_tap_event_cb, LV_EVENT_CLICKED, NULL);
 
     dexcom_username_label = lv_label_create(username_container);
-    lv_label_set_text(dexcom_username_label, dexcom_username_buf);  // Show existing value
-    lv_obj_set_style_text_font(dexcom_username_label, &lv_font_montserrat_16, 0);
+    lv_label_set_text(dexcom_username_label, dexcom_username_buf);
+    lv_obj_set_style_text_font(dexcom_username_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(dexcom_username_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(dexcom_username_label, LV_ALIGN_LEFT_MID, 10, 0);
+    lv_obj_align(dexcom_username_label, LV_ALIGN_LEFT_MID, 14, 0);
 
-    // Placeholder text if empty
     if (strlen(dexcom_username_buf) == 0) {
         lv_label_set_text(dexcom_username_label, "Tap to enter");
         lv_obj_set_style_text_color(dexcom_username_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     }
 
-    // Password label
-    lv_obj_t *password_title = lv_label_create(screen_dexcom_login);
-    lv_label_set_text(password_title, "Password:");
-    lv_obj_set_style_text_font(password_title, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(password_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_align(password_title, LV_ALIGN_TOP_LEFT, 10, 110);
+    lv_obj_t *user_arrow = lv_label_create(username_container);
+    lv_label_set_text(user_arrow, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(user_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(user_arrow, LV_ALIGN_RIGHT_MID, -4, 0);
 
-    // Password container (tappable)
+    // Password section label
+    lv_obj_t *password_title = lv_label_create(screen_dexcom_login);
+    lv_label_set_text(password_title, "PASSWORD");
+    lv_obj_set_style_text_font(password_title, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(password_title, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(password_title, 2, 0);
+    lv_obj_align(password_title, LV_ALIGN_TOP_LEFT, 18, 110);
+
+    // Password card (tappable)
     lv_obj_t *password_container = lv_obj_create(screen_dexcom_login);
-    lv_obj_set_size(password_container, 300, 35);
-    lv_obj_align(password_container, LV_ALIGN_TOP_MID, 0, 128);
-    lv_obj_add_style(password_container, &style_card, 0);
+    lv_obj_set_size(password_container, 290, 40);
+    lv_obj_align(password_container, LV_ALIGN_TOP_MID, 0, 124);
+    lv_obj_set_style_bg_color(password_container, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(password_container, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(password_container, 10, 0);
+    lv_obj_set_style_border_width(password_container, 0, 0);
     lv_obj_add_flag(password_container, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(password_container, dexcom_password_tap_event_cb, LV_EVENT_CLICKED, NULL);
 
     dexcom_password_label = lv_label_create(password_container);
-    // Show masked password if exists
     if (strlen(dexcom_password_buf) > 0) {
         int len = strlen(dexcom_password_buf);
         char display[65];
@@ -609,20 +683,27 @@ void create_dexcom_login_screen(void) {
         lv_label_set_text(dexcom_password_label, "Tap to enter");
         lv_obj_set_style_text_color(dexcom_password_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     }
-    lv_obj_set_style_text_font(dexcom_password_label, &lv_font_montserrat_16, 0);
-    lv_obj_align(dexcom_password_label, LV_ALIGN_LEFT_MID, 10, 0);
+    lv_obj_set_style_text_font(dexcom_password_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(dexcom_password_label, LV_ALIGN_LEFT_MID, 14, 0);
 
-    // Login button
+    lv_obj_t *pass_arrow = lv_label_create(password_container);
+    lv_label_set_text(pass_arrow, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(pass_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(pass_arrow, LV_ALIGN_RIGHT_MID, -4, 0);
+
+    // Login button (action)
     lv_obj_t *login_btn = lv_btn_create(screen_dexcom_login);
-    lv_obj_set_size(login_btn, 200, 45);
-    lv_obj_align(login_btn, LV_ALIGN_BOTTOM_MID, 0, -30);
-    lv_obj_add_style(login_btn, &style_card, 0);
-    lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), LV_STATE_PRESSED);
+    lv_obj_set_size(login_btn, 250, 48);
+    lv_obj_align(login_btn, LV_ALIGN_BOTTOM_MID, 0, -25);
+    lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_radius(login_btn, 10, 0);
+    lv_obj_set_style_shadow_width(login_btn, 0, 0);
+    lv_obj_set_style_border_width(login_btn, 0, 0);
 
     lv_obj_t *login_lbl = lv_label_create(login_btn);
     lv_label_set_text(login_lbl, "Login");
-    lv_obj_set_style_text_font(login_lbl, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(login_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_font(login_lbl, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(login_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(login_lbl);
     lv_obj_add_event_cb(login_btn, dexcom_login_btn_event_cb, LV_EVENT_CLICKED, NULL);
 }
@@ -631,11 +712,16 @@ void create_dexcom_username_entry_screen(void) {
     screen_dexcom_username_entry = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_username_entry, &style_bg, 0);
 
-    // Cancel button (top left, smaller)
+    // Ghost cancel button (top left)
     lv_obj_t *cancel_btn = lv_btn_create(screen_dexcom_username_entry);
     lv_obj_set_size(cancel_btn, 36, 36);
     lv_obj_align(cancel_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(cancel_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(cancel_btn, 0, 0);
+    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+    lv_obj_set_style_radius(cancel_btn, 8, 0);
 
     lv_obj_t *cancel_label = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_label, LV_SYMBOL_LEFT);
@@ -644,12 +730,14 @@ void create_dexcom_username_entry_screen(void) {
     lv_obj_center(cancel_label);
     lv_obj_add_event_cb(cancel_btn, dexcom_username_entry_keyboard_event_cb, LV_EVENT_CLICKED, (void*)LV_EVENT_CANCEL);
 
-    // OK button (top right, smaller)
+    // OK button (top right, accent blue)
     lv_obj_t *ok_btn = lv_btn_create(screen_dexcom_username_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
-    lv_obj_add_style(ok_btn, &style_card, 0);
     lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_radius(ok_btn, 8, 0);
+    lv_obj_set_style_border_width(ok_btn, 0, 0);
+    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -696,11 +784,16 @@ void create_dexcom_password_entry_screen(void) {
     screen_dexcom_password_entry = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_password_entry, &style_bg, 0);
 
-    // Cancel button (top left, smaller)
+    // Ghost cancel button (top left)
     lv_obj_t *cancel_btn = lv_btn_create(screen_dexcom_password_entry);
     lv_obj_set_size(cancel_btn, 36, 36);
     lv_obj_align(cancel_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(cancel_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(cancel_btn, 0, 0);
+    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+    lv_obj_set_style_radius(cancel_btn, 8, 0);
 
     lv_obj_t *cancel_label = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_label, LV_SYMBOL_LEFT);
@@ -709,12 +802,14 @@ void create_dexcom_password_entry_screen(void) {
     lv_obj_center(cancel_label);
     lv_obj_add_event_cb(cancel_btn, dexcom_password_entry_keyboard_event_cb, LV_EVENT_CLICKED, (void*)LV_EVENT_CANCEL);
 
-    // OK button (top right, smaller)
+    // OK button (top right, accent blue)
     lv_obj_t *ok_btn = lv_btn_create(screen_dexcom_password_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 5);
-    lv_obj_add_style(ok_btn, &style_card, 0);
     lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_radius(ok_btn, 8, 0);
+    lv_obj_set_style_border_width(ok_btn, 0, 0);
+    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -770,16 +865,21 @@ void create_dexcom_status_screen(void) {
 
     // Header
     lv_obj_t *header = lv_label_create(screen_dexcom_status);
-    lv_label_set_text(header, "Dexcom Account");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
+    lv_label_set_text(header, "Account");
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button
+    // Ghost back button
     lv_obj_t *back_btn = lv_btn_create(screen_dexcom_status);
     lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
 
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
@@ -788,61 +888,88 @@ void create_dexcom_status_screen(void) {
     lv_obj_center(back_lbl);
     lv_obj_add_event_cb(back_btn, dexcom_back_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Status Card Container (Y=45, height=70)
+    // Status card with green accent bar
     lv_obj_t *status_card = lv_obj_create(screen_dexcom_status);
-    lv_obj_set_size(status_card, 280, 70);
-    lv_obj_align(status_card, LV_ALIGN_TOP_MID, 0, 45);
-    lv_obj_add_style(status_card, &style_card, 0);
-    lv_obj_set_style_bg_color(status_card, lv_color_hex(0x1a3d1a), 0);  // Dark green
+    lv_obj_set_size(status_card, 290, 60);
+    lv_obj_align(status_card, LV_ALIGN_TOP_MID, 0, 50);
+    lv_obj_set_style_bg_color(status_card, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(status_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(status_card, 10, 0);
     lv_obj_set_style_border_width(status_card, 0, 0);
+    lv_obj_clear_flag(status_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Status icon inside card
+    lv_obj_t *accent = lv_obj_create(status_card);
+    lv_obj_remove_style_all(accent);
+    lv_obj_set_size(accent, 3, 40);
+    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 8, 0);
+    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(accent, 2, 0);
+
     lv_obj_t *status_icon = lv_label_create(status_card);
     lv_label_set_text(status_icon, LV_SYMBOL_OK);
-    lv_obj_set_style_text_font(status_icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(status_icon, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(status_icon, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_align(status_icon, LV_ALIGN_LEFT_MID, 18, 0);
+    lv_obj_align(status_icon, LV_ALIGN_LEFT_MID, 20, 0);
 
-    // Connected status text
     lv_obj_t *connected_label = lv_label_create(status_card);
     lv_label_set_text(connected_label, "Connected");
-    lv_obj_set_style_text_font(connected_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(connected_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(connected_label, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_align(connected_label, LV_ALIGN_CENTER, 12, 0);
+    lv_obj_align(connected_label, LV_ALIGN_LEFT_MID, 48, 0);
 
-    // Info Section starts at Y=125, each field is 30px tall
-    // CGM Type (Y=125-155)
-    lv_obj_t *cgm_title = lv_label_create(screen_dexcom_status);
-    lv_label_set_text(cgm_title, "CGM Type");
-    lv_obj_set_style_text_font(cgm_title, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(cgm_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_align(cgm_title, LV_ALIGN_TOP_LEFT, 25, 125);
+    // Info card (CGM Type + Account)
+    lv_obj_t *info_card = lv_obj_create(screen_dexcom_status);
+    lv_obj_set_size(info_card, 290, 90);
+    lv_obj_align(info_card, LV_ALIGN_TOP_MID, 0, 118);
+    lv_obj_set_style_bg_color(info_card, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(info_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(info_card, 10, 0);
+    lv_obj_set_style_border_width(info_card, 0, 0);
+    lv_obj_clear_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *cgm_value = lv_label_create(screen_dexcom_status);
+    lv_obj_t *cgm_title = lv_label_create(info_card);
+    lv_label_set_text(cgm_title, "CGM TYPE");
+    lv_obj_set_style_text_font(cgm_title, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(cgm_title, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(cgm_title, 2, 0);
+    lv_obj_align(cgm_title, LV_ALIGN_TOP_LEFT, 14, 8);
+
+    lv_obj_t *cgm_value = lv_label_create(info_card);
     lv_label_set_text(cgm_value, "Dexcom Share");
-    lv_obj_set_style_text_font(cgm_value, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(cgm_value, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(cgm_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(cgm_value, LV_ALIGN_TOP_LEFT, 25, 141);
+    lv_obj_align(cgm_value, LV_ALIGN_TOP_LEFT, 14, 22);
 
-    // Account (Y=160-190)
-    lv_obj_t *user_title = lv_label_create(screen_dexcom_status);
-    lv_label_set_text(user_title, "Account");
-    lv_obj_set_style_text_font(user_title, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(user_title, lv_color_hex(COLOR_TEXT_GRAY), 0);
-    lv_obj_align(user_title, LV_ALIGN_TOP_LEFT, 25, 160);
+    // Divider
+    lv_obj_t *div = lv_obj_create(info_card);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 262, 1);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
 
-    lv_obj_t *user_value = lv_label_create(screen_dexcom_status);
+    lv_obj_t *user_title = lv_label_create(info_card);
+    lv_label_set_text(user_title, "ACCOUNT");
+    lv_obj_set_style_text_font(user_title, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(user_title, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(user_title, 2, 0);
+    lv_obj_align(user_title, LV_ALIGN_TOP_LEFT, 14, 50);
+
+    lv_obj_t *user_value = lv_label_create(info_card);
     lv_label_set_text(user_value, dexcom_username_buf);
-    lv_obj_set_style_text_font(user_value, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(user_value, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(user_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(user_value, LV_ALIGN_TOP_LEFT, 25, 176);
+    lv_obj_align(user_value, LV_ALIGN_TOP_LEFT, 14, 64);
 
-    // Logout button (Y=195, height=40, smaller and positioned absolutely)
+    // Logout button (red action)
     lv_obj_t *logout_btn = lv_btn_create(screen_dexcom_status);
-    lv_obj_set_size(logout_btn, 160, 38);
-    lv_obj_align(logout_btn, LV_ALIGN_TOP_MID, 0, 197);
-    lv_obj_add_style(logout_btn, &style_card, 0);
+    lv_obj_set_size(logout_btn, 200, 40);
+    lv_obj_align(logout_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_set_style_bg_color(logout_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_radius(logout_btn, 10, 0);
+    lv_obj_set_style_border_width(logout_btn, 0, 0);
+    lv_obj_set_style_shadow_width(logout_btn, 0, 0);
 
     lv_obj_t *logout_lbl = lv_label_create(logout_btn);
     lv_label_set_text(logout_lbl, "Logout");

@@ -552,11 +552,16 @@ void create_time_weather_settings_screen(void) {
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Back button (matching Settings screen style)
+    // Ghost back button
     lv_obj_t *back_btn = lv_btn_create(screen_time_weather_settings);
     lv_obj_set_size(back_btn, 36, 36);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_add_style(back_btn, &style_card, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_radius(back_btn, 8, 0);
 
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
@@ -565,77 +570,120 @@ void create_time_weather_settings_screen(void) {
     lv_obj_center(back_lbl);
     lv_obj_add_event_cb(back_btn, time_weather_back_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Timezone (auto-detected from zipcode)
-    lv_obj_t *tz_label = lv_label_create(screen_time_weather_settings);
-    lv_label_set_text(tz_label, "Timezone (auto):");
-    lv_obj_set_style_text_font(tz_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(tz_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(tz_label, LV_ALIGN_TOP_LEFT, 20, 55);
+    // Location card (timezone + location + search button)
+    lv_obj_t *loc_card = lv_obj_create(screen_time_weather_settings);
+    lv_obj_set_size(loc_card, 290, 130);
+    lv_obj_align(loc_card, LV_ALIGN_TOP_MID, 0, 48);
+    lv_obj_set_style_bg_color(loc_card, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(loc_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(loc_card, 10, 0);
+    lv_obj_set_style_border_width(loc_card, 0, 0);
+    lv_obj_clear_flag(loc_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *tz_value = lv_label_create(screen_time_weather_settings);
-    if (strlen(user_timezone) > 0) {
-        lv_label_set_text(tz_value, user_timezone);
-    } else {
-        lv_label_set_text(tz_value, "Set zipcode below");
-    }
-    lv_obj_set_style_text_font(tz_value, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(tz_value, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_align(tz_value, LV_ALIGN_TOP_LEFT, 20, 73);
+    // Blue accent bar
+    lv_obj_t *accent = lv_obj_create(loc_card);
+    lv_obj_remove_style_all(accent);
+    lv_obj_set_size(accent, 3, 50);
+    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 6, -18);
+    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(accent, 2, 0);
 
-    // Location section header
-    lv_obj_t *loc_label = lv_label_create(screen_time_weather_settings);
-    lv_label_set_text(loc_label, "Location:");
-    lv_obj_set_style_text_font(loc_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(loc_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(loc_label, LV_ALIGN_TOP_LEFT, 20, 105);
+    lv_obj_t *tz_header = lv_label_create(loc_card);
+    lv_label_set_text(tz_header, "TIMEZONE");
+    lv_obj_set_style_text_font(tz_header, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(tz_header, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(tz_header, 2, 0);
+    lv_obj_align(tz_header, LV_ALIGN_TOP_LEFT, 16, 6);
 
-    // Current location display
-    lv_obj_t *loc_value = lv_label_create(screen_time_weather_settings);
-    if (strlen(user_location) > 0) {
-        lv_label_set_text(loc_value, user_location);
-    } else {
-        lv_label_set_text(loc_value, "Not set - use lookup below");
-    }
-    lv_obj_set_style_text_font(loc_value, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(loc_value, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_align(loc_value, LV_ALIGN_TOP_LEFT, 20, 123);
+    lv_obj_t *tz_value = lv_label_create(loc_card);
+    lv_label_set_text(tz_value, strlen(user_timezone) > 0 ? user_timezone : "Not set");
+    lv_obj_set_style_text_font(tz_value, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(tz_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(tz_value, LV_ALIGN_TOP_LEFT, 16, 20);
 
-    // Location Search button (centered)
-    lv_obj_t *search_btn = lv_btn_create(screen_time_weather_settings);
-    lv_obj_set_size(search_btn, 280, 40);
-    lv_obj_align(search_btn, LV_ALIGN_TOP_LEFT, 20, 145);
+    // Divider
+    lv_obj_t *div1 = lv_obj_create(loc_card);
+    lv_obj_remove_style_all(div1);
+    lv_obj_set_size(div1, 262, 1);
+    lv_obj_align(div1, LV_ALIGN_TOP_MID, 0, 42);
+    lv_obj_set_style_bg_color(div1, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div1, LV_OPA_COVER, 0);
+
+    lv_obj_t *loc_header = lv_label_create(loc_card);
+    lv_label_set_text(loc_header, "LOCATION");
+    lv_obj_set_style_text_font(loc_header, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(loc_header, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(loc_header, 2, 0);
+    lv_obj_align(loc_header, LV_ALIGN_TOP_LEFT, 16, 48);
+
+    lv_obj_t *loc_value = lv_label_create(loc_card);
+    lv_label_set_text(loc_value, strlen(user_location) > 0 ? user_location : "Not set");
+    lv_obj_set_style_text_font(loc_value, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(loc_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(loc_value, LV_ALIGN_TOP_LEFT, 16, 62);
+
+    // Divider
+    lv_obj_t *div2 = lv_obj_create(loc_card);
+    lv_obj_remove_style_all(div2);
+    lv_obj_set_size(div2, 262, 1);
+    lv_obj_align(div2, LV_ALIGN_TOP_MID, 0, 84);
+    lv_obj_set_style_bg_color(div2, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div2, LV_OPA_COVER, 0);
+
+    // Search button inside card
+    lv_obj_t *search_btn = lv_btn_create(loc_card);
+    lv_obj_set_size(search_btn, 262, 34);
+    lv_obj_align(search_btn, LV_ALIGN_TOP_MID, 0, 90);
     lv_obj_set_style_bg_color(search_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_set_style_radius(search_btn, 8, 0);
     lv_obj_set_style_border_width(search_btn, 0, 0);
     lv_obj_set_style_shadow_width(search_btn, 0, 0);
 
     lv_obj_t *search_lbl = lv_label_create(search_btn);
-    lv_label_set_text(search_lbl, "Search Location");
+    lv_label_set_text(search_lbl, LV_SYMBOL_REFRESH " Search Location");
     lv_obj_set_style_text_font(search_lbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(search_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(search_lbl);
     lv_obj_add_event_cb(search_btn, location_search_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Update interval
-    lv_obj_t *interval_label = lv_label_create(screen_time_weather_settings);
-    lv_label_set_text(interval_label, "Update Interval:");
-    lv_obj_set_style_text_font(interval_label, &lv_font_montserrat_14, 0);
+    // Weather interval card
+    lv_obj_t *interval_card = lv_obj_create(screen_time_weather_settings);
+    lv_obj_set_size(interval_card, 290, 55);
+    lv_obj_align(interval_card, LV_ALIGN_TOP_MID, 0, 185);
+    lv_obj_set_style_bg_color(interval_card, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_bg_opa(interval_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(interval_card, 10, 0);
+    lv_obj_set_style_border_width(interval_card, 0, 0);
+    lv_obj_clear_flag(interval_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Orange accent bar
+    lv_obj_t *accent2 = lv_obj_create(interval_card);
+    lv_obj_remove_style_all(accent2);
+    lv_obj_set_size(accent2, 3, 36);
+    lv_obj_align(accent2, LV_ALIGN_LEFT_MID, 6, 0);
+    lv_obj_set_style_bg_color(accent2, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_bg_opa(accent2, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(accent2, 2, 0);
+
+    lv_obj_t *interval_label = lv_label_create(interval_card);
+    lv_label_set_text(interval_label, "Weather Update");
+    lv_obj_set_style_text_font(interval_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(interval_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(interval_label, LV_ALIGN_TOP_LEFT, 20, 185);
+    lv_obj_align(interval_label, LV_ALIGN_TOP_LEFT, 16, 4);
 
-    weather_interval_value_label = lv_label_create(screen_time_weather_settings);
+    weather_interval_value_label = lv_label_create(interval_card);
     lv_label_set_text_fmt(weather_interval_value_label, "%d min", user_weather_interval_min);
-    lv_obj_set_style_text_font(weather_interval_value_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(weather_interval_value_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(weather_interval_value_label, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_align(weather_interval_value_label, LV_ALIGN_TOP_RIGHT, -20, 185);
+    lv_obj_align(weather_interval_value_label, LV_ALIGN_TOP_RIGHT, -14, 4);
 
-    // Interval slider (5-90 minutes)
-    lv_obj_t *interval_slider = lv_slider_create(screen_time_weather_settings);
-    lv_obj_set_size(interval_slider, 280, 10);
-    lv_obj_align(interval_slider, LV_ALIGN_TOP_LEFT, 20, 210);
+    lv_obj_t *interval_slider = lv_slider_create(interval_card);
+    lv_obj_set_size(interval_slider, 250, 10);
+    lv_obj_align(interval_slider, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_slider_set_range(interval_slider, 5, 90);
     lv_slider_set_value(interval_slider, user_weather_interval_min, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(interval_slider, lv_color_hex(COLOR_CARD_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(interval_slider, lv_color_hex(0x1E293B), LV_PART_MAIN);
     lv_obj_set_style_bg_color(interval_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(interval_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_KNOB);
     lv_obj_add_event_cb(interval_slider, weather_interval_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
