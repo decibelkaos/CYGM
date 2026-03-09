@@ -35,6 +35,9 @@ CONFIG_LV_FONT_MONTSERRAT_48=y
 CONFIG_LV_FONT_SUBPX=y
 CONFIG_LV_COLOR_DEPTH_16=y
 
+# LVGL QR Code library (for About screen)
+CONFIG_LV_USE_QRCODE=y
+
 # ESP-TLS - Allow insecure connections for geocoding (non-critical data)
 CONFIG_ESP_TLS_INSECURE=y
 CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y

@@ -105,9 +105,9 @@ static void led_task(void *arg) {
                 break;
 
             case LED_MODE_ALARM_FLASH:
-                // Fast bright red flash (100ms on, 100ms off)
+                // Alternating red/blue flash (100ms each color)
                 blink_state = !blink_state;
-                led_set_color(blink_state ? 127 : 0, 0, 0);
+                led_set_color(blink_state ? 127 : 0, 0, blink_state ? 0 : 127);
                 vTaskDelay(pdMS_TO_TICKS(100));
                 break;
         }
@@ -195,7 +195,7 @@ void led_stop_error_blink(void) {
 
 void led_start_alarm_flash(void) {
     current_led_mode = LED_MODE_ALARM_FLASH;
-    ESP_LOGI(TAG, "Started alarm flash (bright red, fast)");
+    ESP_LOGI(TAG, "Started alarm flash (red/blue alternating, 100ms)");
 }
 
 void led_stop_alarm_flash(void) {

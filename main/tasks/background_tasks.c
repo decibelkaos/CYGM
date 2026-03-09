@@ -348,7 +348,7 @@ void wifi_task_core0(void *pvParameters) {
                                 // Start weather task (uses HTTP - no SSL overhead!)
                                 if (weather_task_handle == NULL) {
                                     ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
-                                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 1, &weather_task_handle);
+                                    xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
                                 }
 
                                 // Wait for weather to complete first fetch before starting glucose task
@@ -387,7 +387,7 @@ void wifi_task_core0(void *pvParameters) {
                 // No Dexcom credentials - start weather task immediately
                 ESP_LOGI(TAG, "No Dexcom credentials found, starting weather task (HTTP mode)...");
                 if (weather_task_handle == NULL) {
-                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 1, &weather_task_handle);
+                    xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
                 }
             }
         } else {

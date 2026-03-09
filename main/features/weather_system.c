@@ -12,6 +12,7 @@
 #include "wifi_manager.h"
 #include "dexcom_api.h"
 #include "geocoding_api.h"
+#include "sd_logger.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -391,6 +392,8 @@ esp_err_t fetch_weather(float lat, float lon) {
 
                     ESP_LOGI(TAG, "Weather updated: %d F (Hi: %d F, Lo: %d F), Code: %d",
                              current_temp_f, high_temp_f, low_temp_f, current_weather_code);
+                    sd_log(TAG, "Weather: %dF (Hi:%d Lo:%d) code=%d",
+                           current_temp_f, high_temp_f, low_temp_f, current_weather_code);
 
                     cJSON_Delete(json);
                     esp_http_client_cleanup(client);
@@ -402,6 +405,7 @@ esp_err_t fetch_weather(float lat, float lon) {
     }
 
     ESP_LOGE(TAG, "Failed to fetch weather: %s", esp_err_to_name(err));
+    sd_log(TAG, "Weather: FAILED %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return ESP_FAIL;
 }

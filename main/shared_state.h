@@ -33,13 +33,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 1
 #define CYGM_VERSION_MINOR 5
-#define CYGM_VERSION_PATCH 6
+#define CYGM_VERSION_PATCH 7
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-03-04"
+#define CYGM_VERSION_DATE "2026-03-08"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "1.5.6.2026-03-04.Beta"
+#define CYGM_VERSION_STRING "1.5.7.2026-03-08.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -174,8 +174,9 @@ extern bool alarm_acknowledged;
 
 // Visual alarm components
 extern lv_obj_t *visual_alarm_overlay;
-extern lv_obj_t *visual_alarm_slider;
-extern lv_obj_t *visual_alarm_slider_label;
+extern lv_obj_t *visual_alarm_disarm_btn;
+extern lv_obj_t *visual_alarm_disarm_progress;
+extern lv_obj_t *visual_alarm_disarm_label;
 extern lv_obj_t *screen_alarm_snooze;
 extern lv_timer_t *visual_alarm_timer;
 extern bool visual_alarm_active;

@@ -59,7 +59,7 @@
 #include "ui/alarm_screens.h"
 #include "ui/time_weather_screens.h"
 #include "tasks/background_tasks.h"
-// SD card logging removed - not needed for monitoring device (use serial output for debugging)
+#include "sd_logger.h"
 
 static const char *TAG = "CYGM";
 
@@ -111,11 +111,9 @@ static const char *TAG = "CYGM";
 // Web server flag moved to shared_state.h
 // Enabled for screenshot functionality
 
-// SD Card Logging: REMOVED PERMANENTLY (2026-01-30)
-// Reason: This is a monitoring device, not a data logger. SD card consumed 15KB RAM constantly,
-// causing SSL allocation failures for Dexcom (life-critical). Serial output is sufficient for debugging.
-// Files removed: sd_logger.c, sd_logger.h
-// See git history to restore if needed (not recommended)
+// SD Card Logging v2: Mount-on-write pattern (~2.5KB permanent vs old 13KB)
+// Only mounts FAT during flush (~200ms), then unmounts immediately
+// v1 was removed 2026-01-30 because 13KB constant RAM broke SSL
 
 // ==================== Global Handles ====================
 
@@ -173,14 +171,18 @@ active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
 bool alarm_acknowledged = false;
 
 // Visual alarm components
-lv_obj_t *visual_alarm_overlay = NULL;      // White overlay for visual alarm
-lv_obj_t *visual_alarm_container = NULL;    // Container overlay for alarm slider (styled)
-lv_obj_t *visual_alarm_slider = NULL;       // Slider to dismiss visual alarm
-lv_obj_t *visual_alarm_slider_label = NULL; // Label for slider
+lv_obj_t *visual_alarm_overlay = NULL;      // Flash overlay for visual alarm
+lv_obj_t *visual_alarm_container = NULL;    // Glass panel for alarm dismiss UI
+lv_obj_t *visual_alarm_disarm_btn = NULL;      // Hold-to-disarm button
+lv_obj_t *visual_alarm_disarm_progress = NULL; // Progress bar inside disarm button
+lv_obj_t *visual_alarm_disarm_label = NULL;    // Label on disarm button
+static int64_t disarm_press_start_ms = 0;      // Timestamp when button was pressed
+#define DISARM_HOLD_MS 1500                     // Hold duration to disarm (1.5s)
 lv_obj_t *screen_alarm_snooze = NULL;       // Snooze/dismiss screen
 lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
 bool visual_alarm_active = false;
-uint8_t visual_alarm_pulse_state = 0;       // 0 = normal, 1 = white
+uint8_t visual_alarm_pulse_state = 0;       // 0 = dim, 1 = bright flash
+static uint32_t visual_alarm_flash_color = COLOR_RED;  // Current alarm flash color
 int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
 
 // Audio alarm repeat
@@ -1082,7 +1084,7 @@ static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
 void check_glucose_alarms(int glucose_mg_dl);
 void update_glucose_display(void);
 void glucose_timer_bar_event_cb(lv_event_t *e);
-static void visual_alarm_slider_event_cb(lv_event_t *e);
+static void visual_alarm_disarm_event_cb(lv_event_t *e);
 
 // Get alarm color based on glucose value and alarm thresholds
 static uint32_t get_glucose_alarm_color(int glucose_mg_dl) {
@@ -1142,6 +1144,9 @@ static void trigger_alarm(active_alarm_state_t state) {
 
     ESP_LOGW(TAG, "ALARM TRIGGERED: %s (threshold: %d mg/dL)",
              alarm_name, alarm->threshold);
+    sd_log(TAG, "ALARM: %s triggered, glucose=%d threshold=%d audio=%d visual=%d",
+           alarm_name, current_glucose, alarm->threshold,
+           alarm->audio_enabled, alarm->visual_enabled);
 
     // Check if snooze is active
     time_t now;
@@ -1200,6 +1205,7 @@ void check_glucose_alarms(int glucose_mg_dl) {
         } else if (new_state != ALARM_STATE_NONE) {
             // Snooze expired and alarm condition still exists - re-trigger
             ESP_LOGI(TAG, "Snooze expired! Re-triggering alarm (state: %d)", new_state);
+            sd_log(TAG, "ALARM: snooze expired, re-trigger state=%d glucose=%d", new_state, glucose_mg_dl);
             alarm_snooze_until = 0;  // Clear snooze
             alarm_acknowledged = false;  // Reset acknowledgment
             current_alarm_state = new_state;  // Update state
@@ -1208,6 +1214,7 @@ void check_glucose_alarms(int glucose_mg_dl) {
         } else {
             // Snooze expired but glucose returned to normal
             ESP_LOGI(TAG, "Snooze expired but glucose returned to normal");
+            sd_log(TAG, "ALARM: snooze expired, glucose normal (%d)", glucose_mg_dl);
             alarm_snooze_until = 0;  // Clear snooze
             current_alarm_state = ALARM_STATE_NONE;
             return;
@@ -1217,6 +1224,7 @@ void check_glucose_alarms(int glucose_mg_dl) {
     // State changed?
     if (new_state != current_alarm_state) {
         ESP_LOGI(TAG, "Alarm state changed: %d -> %d", current_alarm_state, new_state);
+        sd_log(TAG, "ALARM: state %d->%d, glucose=%d", current_alarm_state, new_state, glucose_mg_dl);
         current_alarm_state = new_state;
         alarm_acknowledged = false;  // Reset acknowledgment on state change
 
@@ -1224,13 +1232,14 @@ void check_glucose_alarms(int glucose_mg_dl) {
             trigger_alarm(new_state);
         } else {
             ESP_LOGI(TAG, "Glucose returned to normal range");
+            sd_log(TAG, "ALARM: glucose returned to normal (%d)", glucose_mg_dl);
             stop_visual_alarm();
             stop_audio_alarm();
         }
     }
 }
 
-// Timer callback for pulsing white overlay (2 times per second = 250ms per phase)
+// Timer callback for pulsing alarm — flashes a bright border at the screen edges
 static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
     if (!visual_alarm_active || visual_alarm_overlay == NULL) {
         return;
@@ -1238,17 +1247,17 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
 
     if (lvgl_port_lock(0)) {
         if (visual_alarm_pulse_state == 0) {
-            // Fade to white
-            lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_90, 0);
+            // Flash ON — thick alarm-color border at screen edges
+            lv_obj_set_style_border_width(visual_alarm_overlay, 8, 0);
+            lv_obj_set_style_border_color(visual_alarm_overlay, lv_color_hex(visual_alarm_flash_color), 0);
+            lv_obj_set_style_border_opa(visual_alarm_overlay, LV_OPA_COVER, 0);
             visual_alarm_pulse_state = 1;
-            ESP_LOGD(TAG, "Visual alarm: WHITE");
         } else {
-            // Fade to transparent
-            lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_TRANSP, 0);
+            // Flash OFF — no border
+            lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);
             visual_alarm_pulse_state = 0;
-            ESP_LOGD(TAG, "Visual alarm: transparent");
         }
-        lv_obj_invalidate(visual_alarm_overlay);  // Force redraw
+        lv_obj_invalidate(visual_alarm_overlay);
         lvgl_port_unlock();
     }
 }
@@ -1295,41 +1304,64 @@ static void stop_audio_alarm(void) {
     buzzer_stop();  // Ensure buzzer is stopped
 }
 
-// Event handler for visual alarm slider (dismiss)
-static void visual_alarm_slider_event_cb(lv_event_t *e) {
+// Event handler for hold-to-disarm button
+static void visual_alarm_disarm_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *slider = lv_event_get_target(e);
 
-    if (code == LV_EVENT_VALUE_CHANGED) {
-        int32_t value = lv_slider_get_value(slider);
+    if (code == LV_EVENT_PRESSED) {
+        disarm_press_start_ms = esp_timer_get_time() / 1000;
+    } else if (code == LV_EVENT_PRESSING) {
+        if (disarm_press_start_ms == 0) return;
+        int64_t elapsed = (esp_timer_get_time() / 1000) - disarm_press_start_ms;
 
-        // Slider must be moved to 100 to dismiss
-        if (value >= 100) {
-            ESP_LOGI(TAG, "Visual alarm slider activated - showing snooze/dismiss overlay");
+        // Update progress bar width (button is 260 wide, progress has 4px margin each side = max 252)
+        int progress_w = (int)((elapsed * 252) / DISARM_HOLD_MS);
+        if (progress_w > 252) progress_w = 252;
+        if (visual_alarm_disarm_progress != NULL) {
+            lv_obj_set_width(visual_alarm_disarm_progress, progress_w);
+        }
+
+        // Update label text to show countdown
+        if (visual_alarm_disarm_label != NULL) {
+            if (elapsed < DISARM_HOLD_MS) {
+                char buf[32];
+                int remaining_tenths = (int)((DISARM_HOLD_MS - elapsed) / 100);
+                snprintf(buf, sizeof(buf), "Hold... %d.%d s", remaining_tenths / 10, remaining_tenths % 10);
+                lv_label_set_text(visual_alarm_disarm_label, buf);
+            }
+        }
+
+        if (elapsed >= DISARM_HOLD_MS) {
+            ESP_LOGI(TAG, "Hold-to-disarm completed - showing snooze/dismiss overlay");
+            disarm_press_start_ms = 0;
             stop_visual_alarm();
-            stop_audio_alarm();  // Stop audio alarm when slider is dismissed
+            stop_audio_alarm();
 
-            // Show snooze/dismiss overlay on home screen
             if (lvgl_port_lock(0)) {
                 if (screen_alarm_snooze != NULL) {
                     lv_obj_del(screen_alarm_snooze);
                     screen_alarm_snooze = NULL;
                 }
-                create_alarm_snooze_screen();  // Creates overlay on home screen
+                create_alarm_snooze_screen();
                 lvgl_port_unlock();
             }
         }
-    } else if (code == LV_EVENT_RELEASED) {
-        // If slider released before reaching 100, snap back to 0
-        int32_t value = lv_slider_get_value(slider);
-        if (value < 100) {
-            lv_slider_set_value(slider, 0, LV_ANIM_ON);
-            ESP_LOGI(TAG, "Slider released before 100%% - snapping back");
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        // Released before hold completed — reset
+        if (disarm_press_start_ms != 0) {
+            disarm_press_start_ms = 0;
+            if (visual_alarm_disarm_progress != NULL) {
+                lv_obj_set_width(visual_alarm_disarm_progress, 0);
+            }
+            if (visual_alarm_disarm_label != NULL) {
+                lv_label_set_text(visual_alarm_disarm_label, "Hold to Disarm");
+            }
+            ESP_LOGI(TAG, "Disarm button released early - reset");
         }
     }
 }
 
-// Start visual alarm (pulsing white screen with slider)
+// Start visual alarm (glass-themed panel with color-coded flash)
 static void start_visual_alarm(void) {
     if (visual_alarm_active) {
         return;  // Already active
@@ -1348,97 +1380,137 @@ static void start_visual_alarm(void) {
     // Start fast red LED flash for alarm
     led_start_alarm_flash();
 
+    // Determine alarm info
+    const char *alarm_type = "ALARM";
+    uint32_t alarm_color = COLOR_RED;
+    if (current_alarm_state == ALARM_STATE_HIGH_ALARM) {
+        alarm_type = "HIGH ALARM";
+        alarm_color = current_alarm_settings.high_alarm.text_color;
+    } else if (current_alarm_state == ALARM_STATE_HIGH_WARNING) {
+        alarm_type = "HIGH WARNING";
+        alarm_color = current_alarm_settings.high_warning.text_color;
+    } else if (current_alarm_state == ALARM_STATE_LOW_WARNING) {
+        alarm_type = "LOW WARNING";
+        alarm_color = current_alarm_settings.low_warning.text_color;
+    } else if (current_alarm_state == ALARM_STATE_LOW_ALARM) {
+        alarm_type = "LOW ALARM";
+        alarm_color = current_alarm_settings.low_alarm.text_color;
+    }
+    visual_alarm_flash_color = alarm_color;
+
     if (lvgl_port_lock(0)) {
-        // Create white overlay that covers entire screen (for pulsing effect)
+        // ---- Dim backdrop with alarm-color border frame at screen edges ----
         visual_alarm_overlay = lv_obj_create(lv_scr_act());
         lv_obj_set_size(visual_alarm_overlay, LV_HOR_RES, LV_VER_RES);
         lv_obj_set_pos(visual_alarm_overlay, 0, 0);
-        lv_obj_set_style_bg_color(visual_alarm_overlay, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_TRANSP, 0);  // Start transparent
-        lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);
+        lv_obj_set_style_bg_color(visual_alarm_overlay, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(visual_alarm_overlay, LV_OPA_60, 0);
+        lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);  // Starts off, pulse timer toggles
+        lv_obj_set_style_border_side(visual_alarm_overlay, LV_BORDER_SIDE_FULL, 0);
+        lv_obj_set_style_radius(visual_alarm_overlay, 12, 0);  // Rounded inner corners on border
         lv_obj_set_style_pad_all(visual_alarm_overlay, 0, 0);
-        lv_obj_set_style_radius(visual_alarm_overlay, 0, 0);
         lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_clear_flag(visual_alarm_overlay, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_move_foreground(visual_alarm_overlay);  // Move to front
+        lv_obj_move_foreground(visual_alarm_overlay);
 
-        // Determine which alarm triggered
-        const char *alarm_type = "Unknown";
-        uint32_t alarm_color = COLOR_RED;
-        if (current_alarm_state == ALARM_STATE_HIGH_ALARM) {
-            alarm_type = "HIGH";
-            alarm_color = current_alarm_settings.high_alarm.text_color;
-        } else if (current_alarm_state == ALARM_STATE_HIGH_WARNING) {
-            alarm_type = "HIGH WARN";
-            alarm_color = current_alarm_settings.high_warning.text_color;
-        } else if (current_alarm_state == ALARM_STATE_LOW_WARNING) {
-            alarm_type = "LOW WARN";
-            alarm_color = current_alarm_settings.low_warning.text_color;
-        } else if (current_alarm_state == ALARM_STATE_LOW_ALARM) {
-            alarm_type = "LOW";
-            alarm_color = current_alarm_settings.low_alarm.text_color;
-        }
-
-        // Create styled container overlay (matches brightness/snooze overlay style)
+        // ---- Glass panel (chart-style overlay) ----
         visual_alarm_container = lv_obj_create(lv_scr_act());
-        lv_obj_set_size(visual_alarm_container, 280, 200);
+        lv_obj_set_size(visual_alarm_container, 290, 210);
         lv_obj_center(visual_alarm_container);
-        lv_obj_set_style_bg_color(visual_alarm_container, lv_color_hex(COLOR_CARD_BG), 0);
+        lv_obj_set_style_bg_color(visual_alarm_container, lv_color_hex(0x0F1419), 0);
         lv_obj_set_style_bg_opa(visual_alarm_container, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(visual_alarm_container, 2, 0);
-        lv_obj_set_style_border_color(visual_alarm_container, lv_color_hex(COLOR_RED), 0);  // Red border
-        lv_obj_set_style_radius(visual_alarm_container, 12, 0);
+        lv_obj_set_style_radius(visual_alarm_container, 16, 0);
+        lv_obj_set_style_border_width(visual_alarm_container, 1, 0);
+        lv_obj_set_style_border_color(visual_alarm_container, lv_color_hex(0x2A3A4A), 0);
+        lv_obj_set_style_border_opa(visual_alarm_container, LV_OPA_50, 0);
+        lv_obj_set_style_shadow_width(visual_alarm_container, 25, 0);
+        lv_obj_set_style_shadow_color(visual_alarm_container, lv_color_black(), 0);
+        lv_obj_set_style_shadow_opa(visual_alarm_container, LV_OPA_70, 0);
+        lv_obj_set_style_pad_all(visual_alarm_container, 0, 0);
         lv_obj_clear_flag(visual_alarm_container, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_move_foreground(visual_alarm_container);
 
-        // Title "ALARM" (top left)
-        lv_obj_t *title = lv_label_create(visual_alarm_container);
-        lv_label_set_text(title, "ALARM");
-        lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_align(title, LV_ALIGN_TOP_LEFT, 10, 10);
+        // ---- Title row: bell + alarm type ----
+        lv_obj_t *bell = lv_label_create(visual_alarm_container);
+        lv_label_set_text(bell, LV_SYMBOL_BELL);
+        lv_obj_set_style_text_font(bell, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(bell, lv_color_hex(alarm_color), 0);
+        lv_obj_align(bell, LV_ALIGN_TOP_LEFT, 12, 12);
 
-        // Alarm type (top right)
         lv_obj_t *type_label = lv_label_create(visual_alarm_container);
         lv_label_set_text(type_label, alarm_type);
-        lv_obj_set_style_text_font(type_label, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(type_label, &lv_font_montserrat_16, 0);
         lv_obj_set_style_text_color(type_label, lv_color_hex(alarm_color), 0);
-        lv_obj_align(type_label, LV_ALIGN_TOP_RIGHT, -10, 10);
+        lv_obj_align(type_label, LV_ALIGN_TOP_LEFT, 40, 14);
 
-        // Current glucose value (centered, prominent)
+        // ---- Divider ----
+        lv_obj_t *div = lv_obj_create(visual_alarm_container);
+        lv_obj_remove_style_all(div);
+        lv_obj_set_size(div, 270, 1);
+        lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 42);
+        lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+        lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+
+        // ---- Glucose value (centered, large) ----
         lv_obj_t *glucose_label = lv_label_create(visual_alarm_container);
-        char glucose_text[32];
-        snprintf(glucose_text, sizeof(glucose_text), "%d mg/dL", current_glucose);
+        char glucose_text[16];
+        snprintf(glucose_text, sizeof(glucose_text), "%d", current_glucose);
         lv_label_set_text(glucose_label, glucose_text);
-        lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_48, 0);
         lv_obj_set_style_text_color(glucose_label, lv_color_hex(alarm_color), 0);
-        lv_obj_align(glucose_label, LV_ALIGN_TOP_MID, 0, 45);
+        lv_obj_align(glucose_label, LV_ALIGN_CENTER, 0, -24);
 
-        // Create slider to dismiss (inside container)
-        visual_alarm_slider = lv_slider_create(visual_alarm_container);
-        lv_obj_set_size(visual_alarm_slider, 240, 30);
-        lv_obj_align(visual_alarm_slider, LV_ALIGN_BOTTOM_MID, 0, -15);
-        lv_slider_set_range(visual_alarm_slider, 0, 100);
-        lv_slider_set_value(visual_alarm_slider, 0, LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0xFF0000), LV_PART_MAIN);
-        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_INDICATOR);
-        lv_obj_set_style_bg_color(visual_alarm_slider, lv_color_hex(0x00FF00), LV_PART_KNOB);
-        lv_obj_set_style_pad_all(visual_alarm_slider, 2, LV_PART_KNOB);  // Smaller knob padding
-        lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-        lv_obj_add_event_cb(visual_alarm_slider, visual_alarm_slider_event_cb, LV_EVENT_RELEASED, NULL);
+        // ---- Unit label ----
+        lv_obj_t *unit_label = lv_label_create(visual_alarm_container);
+        lv_label_set_text(unit_label, "mg/dL");
+        lv_obj_set_style_text_font(unit_label, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(unit_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align_to(unit_label, glucose_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
 
-        // Slider label INSIDE slider (white text)
-        visual_alarm_slider_label = lv_label_create(visual_alarm_slider);
-        lv_label_set_text(visual_alarm_slider_label, "Slide to disarm");
-        lv_obj_set_style_text_color(visual_alarm_slider_label, lv_color_white(), 0);
-        lv_obj_set_style_text_font(visual_alarm_slider_label, &lv_font_montserrat_14, 0);
-        lv_obj_align(visual_alarm_slider_label, LV_ALIGN_CENTER, 0, 0);
+        // ---- Hold-to-disarm button (hold 1.5s to dismiss) ----
+        visual_alarm_disarm_btn = lv_obj_create(visual_alarm_container);
+        lv_obj_remove_style_all(visual_alarm_disarm_btn);
+        lv_obj_set_size(visual_alarm_disarm_btn, 260, 40);
+        lv_obj_align(visual_alarm_disarm_btn, LV_ALIGN_BOTTOM_MID, 0, -8);
+        lv_obj_set_style_bg_color(visual_alarm_disarm_btn, lv_color_hex(0x1a2332), 0);
+        lv_obj_set_style_bg_opa(visual_alarm_disarm_btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(visual_alarm_disarm_btn, 10, 0);
+        lv_obj_set_style_border_width(visual_alarm_disarm_btn, 1, 0);
+        lv_obj_set_style_border_color(visual_alarm_disarm_btn, lv_color_hex(COLOR_GREEN), 0);
+        lv_obj_set_style_border_opa(visual_alarm_disarm_btn, LV_OPA_50, 0);
+        lv_obj_set_style_pad_all(visual_alarm_disarm_btn, 0, 0);
+        lv_obj_clear_flag(visual_alarm_disarm_btn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(visual_alarm_disarm_btn, LV_OBJ_FLAG_CLICKABLE);
+
+        // Progress fill bar (grows from left as user holds)
+        visual_alarm_disarm_progress = lv_obj_create(visual_alarm_disarm_btn);
+        lv_obj_remove_style_all(visual_alarm_disarm_progress);
+        lv_obj_set_size(visual_alarm_disarm_progress, 0, 32);  // Starts at 0 width
+        lv_obj_align(visual_alarm_disarm_progress, LV_ALIGN_LEFT_MID, 4, 0);
+        lv_obj_set_style_bg_color(visual_alarm_disarm_progress, lv_color_hex(COLOR_GREEN), 0);
+        lv_obj_set_style_bg_opa(visual_alarm_disarm_progress, LV_OPA_30, 0);
+        lv_obj_set_style_radius(visual_alarm_disarm_progress, 8, 0);
+        lv_obj_clear_flag(visual_alarm_disarm_progress, LV_OBJ_FLAG_CLICKABLE);
+
+        // Button label
+        visual_alarm_disarm_label = lv_label_create(visual_alarm_disarm_btn);
+        lv_label_set_text(visual_alarm_disarm_label, "Hold to Disarm");
+        lv_obj_set_style_text_font(visual_alarm_disarm_label, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(visual_alarm_disarm_label, lv_color_hex(COLOR_GREEN), 0);
+        lv_obj_center(visual_alarm_disarm_label);
+
+        lv_obj_add_event_cb(visual_alarm_disarm_btn, visual_alarm_disarm_event_cb, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(visual_alarm_disarm_btn, visual_alarm_disarm_event_cb, LV_EVENT_PRESSING, NULL);
+        lv_obj_add_event_cb(visual_alarm_disarm_btn, visual_alarm_disarm_event_cb, LV_EVENT_RELEASED, NULL);
+        lv_obj_add_event_cb(visual_alarm_disarm_btn, visual_alarm_disarm_event_cb, LV_EVENT_PRESS_LOST, NULL);
 
         lvgl_port_unlock();
     }
 
-    // Start pulse timer (250ms = 4 times per second, alternating white/normal = 2 pulses per second)
-    visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, 250, NULL);
+    // Pulse timer — fast for urgent alarms (200ms), moderate for warnings (350ms)
+    uint32_t pulse_ms = (current_alarm_state == ALARM_STATE_HIGH_ALARM ||
+                         current_alarm_state == ALARM_STATE_LOW_ALARM) ? 200 : 350;
+    visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, pulse_ms, NULL);
 }
 
 // Stop visual alarm
@@ -1472,8 +1544,9 @@ static void stop_visual_alarm(void) {
             // Deleting container also deletes slider and label (they are children)
             lv_obj_del(visual_alarm_container);
             visual_alarm_container = NULL;
-            visual_alarm_slider = NULL;
-            visual_alarm_slider_label = NULL;
+            visual_alarm_disarm_btn = NULL;
+            visual_alarm_disarm_progress = NULL;
+            visual_alarm_disarm_label = NULL;
         }
         lvgl_port_unlock();
     }
@@ -1488,58 +1561,73 @@ void update_glucose_display(void) {
 
     if (lvgl_port_lock(0)) {
         if (glucose_data_valid) {
-            // "Last Known Good" approach - always show last valid glucose reading
-            // This prevents user anxiety from seeing "---" during temporary failures
-
-            // Update glucose value
-            char glucose_str[16];
-            snprintf(glucose_str, sizeof(glucose_str), "%d", current_glucose);
-            lv_label_set_text(label_glucose, glucose_str);
-
-            // Realign unit label when in expanded CGM mode (bottom-right of glucose)
-            if (cgm_expanded && label_unit != NULL) {
-                lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
-            }
-
-            // Color code based on alarm thresholds (configured by user)
-            uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
-            lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
-
-            // Update trend arrow canvas
-            lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear canvas
-            draw_trend_arrow(trend_canvas, current_trend);
-
-            // Calculate minutes ago
+            // Calculate data age first - this determines display behavior
             time_t now;
             time(&now);
             int minutes_ago = (int)difftime(now, glucose_timestamp) / 60;
 
-            char time_ago_str[32];
-            if (minutes_ago < 1) {
-                snprintf(time_ago_str, sizeof(time_ago_str), "Just now");
-                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
-            } else if (minutes_ago == 1) {
-                snprintf(time_ago_str, sizeof(time_ago_str), "1 min ago");
-                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
-            } else if (minutes_ago >= 15) {
-                // Very stale data - show warning but keep displaying value
-                snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
-                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);  // Stale data warning
-            } else if (!glucose_data_fresh) {
-                // Data is not fresh (last fetch failed) - indicate staleness
-                snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
-                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);  // Stale but not critical
-            } else {
-                // Fresh data - normal display
-                snprintf(time_ago_str, sizeof(time_ago_str), "%d mins ago", minutes_ago);
-                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
-            }
-            lv_label_set_text(label_time_ago, time_ago_str);
+            // SAFETY CRITICAL: If data is >15 minutes old, DO NOT show the number
+            // Showing stale glucose can be life-threatening (e.g., showing 181 when actual is 52)
+            if (minutes_ago > 15) {
+                // Data is dangerously stale - hide the number to prevent false confidence
+                lv_label_set_text(label_glucose, "---");
+                lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear arrow
+                lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
 
-            // Glucose display updated (reduced logging to save serial bandwidth)
-            ESP_LOGD(TAG, "Glucose display updated: %d mg/dL, %s, %d mins ago, fresh: %s",
-                     current_glucose, dexcom_trend_description(current_trend), minutes_ago,
-                     glucose_data_fresh ? "yes" : "no");
+                char stale_str[32];
+                if (minutes_ago >= 60) {
+                    snprintf(stale_str, sizeof(stale_str), "STALE %dh %dm ago", minutes_ago / 60, minutes_ago % 60);
+                } else {
+                    snprintf(stale_str, sizeof(stale_str), "STALE %d mins ago", minutes_ago);
+                }
+                lv_label_set_text(label_time_ago, stale_str);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
+
+                ESP_LOGW(TAG, "Glucose data is %d minutes old - hiding value for safety", minutes_ago);
+            } else {
+                // Data is recent enough to display
+                char glucose_str[16];
+                snprintf(glucose_str, sizeof(glucose_str), "%d", current_glucose);
+                lv_label_set_text(label_glucose, glucose_str);
+
+                // Realign unit label when in expanded CGM mode (bottom-right of glucose)
+                if (cgm_expanded && label_unit != NULL) {
+                    lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
+                }
+
+                // Color code based on alarm thresholds (configured by user)
+                uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
+                lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
+
+                // Update trend arrow canvas
+                lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+                draw_trend_arrow(trend_canvas, current_trend);
+
+                char time_ago_str[32];
+                if (minutes_ago < 1) {
+                    snprintf(time_ago_str, sizeof(time_ago_str), "Just now");
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+                } else if (minutes_ago == 1) {
+                    snprintf(time_ago_str, sizeof(time_ago_str), "1 min ago");
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+                } else if (minutes_ago >= 10) {
+                    // Getting stale - show warning
+                    snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
+                } else if (!glucose_data_fresh) {
+                    // Data is not fresh (last fetch failed) - indicate staleness
+                    snprintf(time_ago_str, sizeof(time_ago_str), "Last: %d mins ago", minutes_ago);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
+                } else {
+                    // Fresh data - normal display
+                    snprintf(time_ago_str, sizeof(time_ago_str), "%d mins ago", minutes_ago);
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
+                }
+                lv_label_set_text(label_time_ago, time_ago_str);
+            }
+
+            ESP_LOGD(TAG, "Glucose display: %d mg/dL, %d mins ago, fresh: %s",
+                     current_glucose, minutes_ago, glucose_data_fresh ? "yes" : "no");
         } else {
             // No data available (never received or not authenticated) - show status-specific message
             lv_label_set_text(label_glucose, "---");
@@ -1660,84 +1748,48 @@ void glucose_update_task(void *pvParameters) {
                 // Check if we have enough INTERNAL memory for SSL connection
                 // SSL MUST use internal DRAM, not external PSRAM
                 size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-                size_t free_total = esp_get_free_heap_size();
                 size_t min_ever = esp_get_minimum_free_heap_size();
 
-                ESP_LOGI(TAG, "===== GLUCOSE FETCH MEMORY CHECK =====");
-                ESP_LOGI(TAG, "Free internal (DRAM): %lu bytes", free_internal);
-                ESP_LOGI(TAG, "Free total: %lu bytes", free_total);
-                ESP_LOGI(TAG, "Minimum ever: %lu bytes", min_ever);
-
-                // Detailed memory breakdown by heap capabilities
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "=== DETAILED MEMORY BREAKDOWN ===");
-                ESP_LOGI(TAG, "DMA-capable memory (MALLOC_CAP_DMA):   %6lu bytes free",
-                         heap_caps_get_free_size(MALLOC_CAP_DMA));
-                ESP_LOGI(TAG, "32-bit aligned memory (MALLOC_CAP_32BIT): %6lu bytes free",
-                         heap_caps_get_free_size(MALLOC_CAP_32BIT));
-                ESP_LOGI(TAG, "Internal memory (MALLOC_CAP_INTERNAL): %6lu bytes free",
-                         heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-                ESP_LOGI(TAG, "Default memory (MALLOC_CAP_DEFAULT):  %6lu bytes free",
-                         heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
-                ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, "Largest free blocks by type:");
-                ESP_LOGI(TAG, "  INTERNAL:  %6lu bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-                ESP_LOGI(TAG, "  DMA:       %6lu bytes", heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
-                ESP_LOGI(TAG, "  DEFAULT:   %6lu bytes", heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-                ESP_LOGI(TAG, "");
+                // Compact memory report
                 multi_heap_info_t heap_info;
                 heap_caps_get_info(&heap_info, MALLOC_CAP_INTERNAL);
-                ESP_LOGI(TAG, "Internal heap fragmentation info:");
-                ESP_LOGI(TAG, "  Total free: %lu bytes", heap_info.total_free_bytes);
-                ESP_LOGI(TAG, "  Allocated: %lu bytes", heap_info.total_allocated_bytes);
-                ESP_LOGI(TAG, "  Largest block: %lu bytes", heap_info.largest_free_block);
-                ESP_LOGI(TAG, "  Min free ever: %lu bytes", heap_info.minimum_free_bytes);
-                ESP_LOGI(TAG, "  Allocated blocks: %lu", heap_info.allocated_blocks);
-                ESP_LOGI(TAG, "  Free blocks: %lu", heap_info.free_blocks);
-                ESP_LOGI(TAG, "  Total blocks: %lu", heap_info.total_blocks);
-
-                // Calculate fragmentation percentage
                 float fragmentation = 0;
                 if (heap_info.total_free_bytes > 0) {
                     fragmentation = 100.0f * (1.0f - ((float)heap_info.largest_free_block / (float)heap_info.total_free_bytes));
                 }
-                ESP_LOGI(TAG, "  Fragmentation: %.1f%% (largest block is %.1f%% of total free)",
-                         fragmentation,
-                         100.0f * ((float)heap_info.largest_free_block / (float)heap_info.total_free_bytes));
-
-                // Warn if severely fragmented
+                ESP_LOGI(TAG, "MEM: free=%lu largest=%lu frag=%.0f%% min_ever=%lu",
+                         free_internal, heap_info.largest_free_block, fragmentation, min_ever);
                 if (fragmentation > 50.0f) {
-                    ESP_LOGW(TAG, "  WARNING: Severe memory fragmentation! %lu allocated blocks, only %lu free blocks",
+                    ESP_LOGW(TAG, "Fragmented: %lu alloc_blocks, %lu free_blocks",
                              heap_info.allocated_blocks, heap_info.free_blocks);
-                    ESP_LOGW(TAG, "  Average allocated block size: %lu bytes",
-                             heap_info.total_allocated_bytes / heap_info.allocated_blocks);
-                    if (heap_info.free_blocks > 0) {
-                        ESP_LOGW(TAG, "  Average free block size: %lu bytes",
-                                 heap_info.total_free_bytes / heap_info.free_blocks);
-                    }
                 }
-                ESP_LOGI(TAG, "=================================");
-                ESP_LOGI(TAG, "");
-
-                // WARNING: If minimum ever is critically low, log it
                 if (min_ever < 10000) {
-                    ESP_LOGW(TAG, "CRITICAL: System went down to %lu bytes at some point! Risk of crashes!", min_ever);
+                    ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
-                // Dynamic memory threshold based on whether persistent client is open
-                // - Client CLOSED (needs new SSL handshake): 35KB minimum
-                // - Client OPEN (reusing connection): 20KB minimum
+                // SSL buffer sizes (sdkconfig): IN=4096, OUT=2048, variable length
+                // Total SSL overhead: ~15-20KB (TLS context + buffers + cert chain)
+                // Previous 35KB/30KB thresholds caused infinite skip loops at 29KB
                 bool client_open = dexcom_persistent_client_is_open();
-                size_t required_memory = client_open ? 20000 : 35000;
+                size_t required_memory = client_open ? 15000 : 25000;
                 const char *connection_type = client_open ? "REUSING existing SSL connection" : "CREATING new SSL connection";
 
                 // Check largest free block to detect fragmentation
                 size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
                 ESP_LOGI(TAG, "Largest contiguous block: %lu bytes", largest_block);
 
-                if (largest_block < 30000 && !client_open) {
-                    ESP_LOGW(TAG, "Memory fragmented! Largest block: %lu (need ~30KB for SSL)", largest_block);
+                // SD log memory state every cycle
+                sd_log(TAG, "MEM free=%lu largest=%lu frag=%.1f%% blocks=%lu/%lu",
+                       heap_info.total_free_bytes, heap_info.largest_free_block,
+                       fragmentation, heap_info.allocated_blocks, heap_info.free_blocks);
+
+                // SSL buffer sizes (from sdkconfig): IN=4096, OUT=2048
+                // Largest single SSL allocation is ~4-5KB, not 30KB
+                // 10KB threshold gives safety margin for TLS context + cert chain
+                if (largest_block < 10000 && !client_open) {
+                    ESP_LOGW(TAG, "Memory fragmented! Largest block: %lu (need ~10KB for SSL alloc)", largest_block);
                     ESP_LOGW(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+                    sd_log(TAG, "SKIP: fragmented largest=%lu < 10000", largest_block);
 
                     // Mark fetch as failed due to memory
                     glucose_fetch_failed = true;
@@ -1757,6 +1809,7 @@ void glucose_update_task(void *pvParameters) {
                     }
 
                     xSemaphoreGive(network_mutex);
+                    sd_logger_flush();  // Flush skip event to SD
                     continue;
                 }
 
@@ -1767,6 +1820,7 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGE(TAG, "Insufficient INTERNAL memory: %lu bytes (need %lu for %s)",
                              free_internal, required_memory, connection_type);
                     ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+                    sd_log(TAG, "SKIP: insufficient free=%lu need=%lu", free_internal, required_memory);
 
                     // Mark fetch as failed due to memory
                     glucose_fetch_failed = true;
@@ -1851,7 +1905,10 @@ void glucose_update_task(void *pvParameters) {
                 // Show success LED (green fade)
                 led_show_success();
 
-                // SD logging removed: sd_log(TAG, "Glucose update SUCCESS: %d mg/dL, trend: %s, heap: %lu bytes", ...);
+                sd_log(TAG, "OK: %d mg/dL, %s, heap=%lu",
+                       glucose.value, dexcom_trend_description(glucose.trend),
+                       esp_get_free_heap_size());
+                sd_log_glucose(glucose.value, dexcom_trend_description(glucose.trend));
 
                 // Play success sound on first glucose reading
                 if (!first_glucose_received) {
@@ -1860,19 +1917,40 @@ void glucose_update_task(void *pvParameters) {
                     play_success_sound();
                 }
 
-                // Check alarms
-                check_glucose_alarms(current_glucose);
+                // Check alarms - but ONLY on fresh data (never alarm on stale readings)
+                if (glucose_data_fresh) {
+                    time_t alarm_now;
+                    time(&alarm_now);
+                    int data_age_mins = (int)difftime(alarm_now, glucose_timestamp) / 60;
+                    if (data_age_mins <= 10) {
+                        check_glucose_alarms(current_glucose);
+                    } else {
+                        ESP_LOGW(TAG, "Skipping alarm check - data is %d mins old", data_age_mins);
+                    }
+                }
 
                 // Update display
                 update_glucose_display();
             } else {
-                // Fetch failed - mark data as stale but keep displaying last known good value
+                // Fetch failed - mark data as stale
                 glucose_data_fresh = false;   // This fetch failed
                 glucose_status = glucose.status;
 
-                // Only clear glucose_data_valid if we're not authenticated (need re-login)
+                // Clear glucose_data_valid if auth failed OR data is extremely stale
                 if (glucose.status == GLUCOSE_STATUS_NOT_AUTHENTICATED) {
                     glucose_data_valid = false;
+                }
+                // Safety net: if data is >30 minutes old, force invalid
+                // This ensures "---" is shown instead of dangerously old numbers
+                if (glucose_data_valid && glucose_timestamp > 0) {
+                    time_t stale_now;
+                    time(&stale_now);
+                    int stale_mins = (int)difftime(stale_now, glucose_timestamp) / 60;
+                    if (stale_mins > 30) {
+                        ESP_LOGW(TAG, "SAFETY: Data is %d mins old - forcing display to ---", stale_mins);
+                        glucose_data_valid = false;
+                        glucose_status = GLUCOSE_STATUS_SIGNAL_LOSS;
+                    }
                 }
 
                 // Mark fetch as failed
@@ -1902,7 +1980,15 @@ void glucose_update_task(void *pvParameters) {
                 vTaskDelay(pdMS_TO_TICKS(5000));  // Blink for 5 seconds
                 led_stop_error_blink();
 
-                // SD logging removed: sd_log(TAG, "Glucose update FAILED: %s, status: %s, heap: %lu bytes", ...);
+                {
+                    const char *sts = (glucose.status == GLUCOSE_STATUS_OK) ? "OK" :
+                                      (glucose.status == GLUCOSE_STATUS_NO_DATA) ? "NO_DATA" :
+                                      (glucose.status == GLUCOSE_STATUS_WARMUP) ? "WARMUP" :
+                                      (glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS) ? "SIGNAL_LOSS" :
+                                      "NOT_AUTH";
+                    sd_log(TAG, "FAIL: %s, status=%s, heap=%lu",
+                           esp_err_to_name(ret), sts, esp_get_free_heap_size());
+                }
             }
 
                 // AGGRESSIVE MEMORY FIX: Close SSL connection after EVERY fetch to prevent memory leaks
@@ -1910,6 +1996,10 @@ void glucose_update_task(void *pvParameters) {
                 ESP_LOGI(TAG, "Closing Dexcom SSL connection to free memory (aggressive mode)");
                 dexcom_close_persistent_client();
                 ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
+
+                // Flush SD log after SSL close (max free memory for mount)
+                sd_log(TAG, "SSL closed, heap=%lu", esp_get_free_heap_size());
+                sd_logger_flush();
 
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
@@ -2179,9 +2269,10 @@ void menu_item_event_cb(lv_event_t *e) {
             case 2:  // Time/Date/Weather Settings (combined)
                 ESP_LOGI(TAG, "Launching Time/Weather settings...");
                 if (lvgl_port_lock(0)) {
-                    if (screen_time_weather_settings != NULL) {
-                        lv_obj_del(screen_time_weather_settings);
-                        screen_time_weather_settings = NULL;
+                    // Clean up any leftover search screen (keyboard = 40+ objects)
+                    if (screen_zipcode_entry != NULL) {
+                        lv_obj_del(screen_zipcode_entry);
+                        screen_zipcode_entry = NULL;
                     }
                     create_time_weather_settings_screen();
                     lv_scr_load(screen_time_weather_settings);
@@ -2468,6 +2559,12 @@ void app_main(void) {
     } else {
         ESP_LOGI(TAG, "Alarm settings loaded from NVS");
     }
+
+    // Initialize SD card logger (mount-on-write, ~2.5KB permanent)
+    add_boot_log("Init SD logger");
+    sd_logger_init();  // Non-fatal if no card inserted
+    sd_log(TAG, "Boot: %s, heap=%lu", CYGM_VERSION_STRING, esp_get_free_heap_size());
+    sd_logger_flush();
 
     // Initialize glucose history system (loads from NVS if exists)
     add_boot_log("Load glucose history");

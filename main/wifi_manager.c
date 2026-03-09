@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "nvs_config.h"
+#include "sd_logger.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -40,11 +41,13 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         } else {
             xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
             ESP_LOGE(TAG, "WiFi connection failed after %d attempts", MAX_RETRY);
+            sd_log(TAG, "WiFi: FAILED after %d retries", MAX_RETRY);
             current_status = WIFI_STATUS_FAILED;
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Connected! IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        sd_log(TAG, "WiFi: connected, IP=" IPSTR, IP2STR(&event->ip_info.ip));
         retry_count = 0;
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         current_status = WIFI_STATUS_CONNECTED;
@@ -227,11 +230,13 @@ esp_err_t wifi_manager_try_reconnect(void) {
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "Auto-reconnect successful: %s", best_creds->ssid);
+        sd_log(TAG, "WiFi: reconnected to %s (RSSI=%d)", best_creds->ssid, best_rssi);
         nvs_save_last_wifi_ssid(best_creds->ssid);
         return ESP_OK;
     }
 
     ESP_LOGW(TAG, "Auto-reconnect failed for: %s", best_creds->ssid);
+    sd_log(TAG, "WiFi: reconnect FAILED for %s", best_creds->ssid);
     return ESP_FAIL;
 }
 

@@ -9,6 +9,7 @@
 #include "main.h"
 #include "hardware/buzzer.h"
 #include "nvs_config.h"
+#include "sd_logger.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -846,68 +847,99 @@ void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_
 // ==================== Alarm Snooze Screen ====================
 
 void create_alarm_snooze_screen(void) {
-    // Create overlay on home screen
-    screen_alarm_snooze = lv_obj_create(screen_home);
-    lv_obj_set_size(screen_alarm_snooze, 280, 200);
-    lv_obj_center(screen_alarm_snooze);
-    lv_obj_set_style_bg_color(screen_alarm_snooze, lv_color_hex(0x141c2b), 0);
-    lv_obj_set_style_bg_opa(screen_alarm_snooze, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(screen_alarm_snooze, 1, 0);
-    lv_obj_set_style_border_color(screen_alarm_snooze, lv_color_hex(0x263040), 0);
-    lv_obj_set_style_radius(screen_alarm_snooze, 16, 0);
-    lv_obj_clear_flag(screen_alarm_snooze, LV_OBJ_FLAG_SCROLLABLE);
-
     // Determine which alarm triggered
     const char *alarm_type = "ALARM";
     uint32_t alarm_color = COLOR_RED;
     if (current_alarm_state == ALARM_STATE_HIGH_ALARM) {
-        alarm_type = "HIGH";
+        alarm_type = "HIGH ALARM";
         alarm_color = current_alarm_settings.high_alarm.text_color;
     } else if (current_alarm_state == ALARM_STATE_HIGH_WARNING) {
-        alarm_type = "HIGH WARN";
+        alarm_type = "HIGH WARNING";
         alarm_color = current_alarm_settings.high_warning.text_color;
     } else if (current_alarm_state == ALARM_STATE_LOW_WARNING) {
-        alarm_type = "LOW WARN";
+        alarm_type = "LOW WARNING";
         alarm_color = current_alarm_settings.low_warning.text_color;
     } else if (current_alarm_state == ALARM_STATE_LOW_ALARM) {
-        alarm_type = "LOW";
+        alarm_type = "LOW ALARM";
         alarm_color = current_alarm_settings.low_alarm.text_color;
     }
 
-    // Alarm icon + type (top area)
+    // ---- Glass panel overlay on home screen (chart-style) ----
+    screen_alarm_snooze = lv_obj_create(screen_home);
+    lv_obj_set_size(screen_alarm_snooze, 290, 210);
+    lv_obj_center(screen_alarm_snooze);
+    lv_obj_set_style_bg_color(screen_alarm_snooze, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(screen_alarm_snooze, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(screen_alarm_snooze, 16, 0);
+    lv_obj_set_style_border_width(screen_alarm_snooze, 1, 0);
+    lv_obj_set_style_border_color(screen_alarm_snooze, lv_color_hex(0x2A3A4A), 0);
+    lv_obj_set_style_border_opa(screen_alarm_snooze, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(screen_alarm_snooze, 25, 0);
+    lv_obj_set_style_shadow_color(screen_alarm_snooze, lv_color_black(), 0);
+    lv_obj_set_style_shadow_opa(screen_alarm_snooze, LV_OPA_70, 0);
+    lv_obj_set_style_pad_all(screen_alarm_snooze, 0, 0);
+    lv_obj_clear_flag(screen_alarm_snooze, LV_OBJ_FLAG_SCROLLABLE);
+
+    // ---- Title row: bell + alarm type ----
     lv_obj_t *alarm_icon = lv_label_create(screen_alarm_snooze);
     lv_label_set_text(alarm_icon, LV_SYMBOL_BELL);
     lv_obj_set_style_text_font(alarm_icon, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(alarm_icon, lv_color_hex(alarm_color), 0);
-    lv_obj_align(alarm_icon, LV_ALIGN_TOP_LEFT, 12, 10);
+    lv_obj_align(alarm_icon, LV_ALIGN_TOP_LEFT, 12, 12);
 
     lv_obj_t *type_label = lv_label_create(screen_alarm_snooze);
     lv_label_set_text(type_label, alarm_type);
     lv_obj_set_style_text_font(type_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(type_label, lv_color_hex(alarm_color), 0);
-    lv_obj_align(type_label, LV_ALIGN_TOP_LEFT, 38, 12);
+    lv_obj_align(type_label, LV_ALIGN_TOP_LEFT, 40, 14);
 
-    // Current glucose value (centered, prominent)
+    // ---- Divider ----
+    lv_obj_t *div = lv_obj_create(screen_alarm_snooze);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 270, 1);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 42);
+    lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+
+    // ---- Glucose value (centered, prominent) ----
     lv_obj_t *glucose_label = lv_label_create(screen_alarm_snooze);
     char glucose_text[16];
-    snprintf(glucose_text, sizeof(glucose_text), "%d mg/dL", current_glucose);
+    snprintf(glucose_text, sizeof(glucose_text), "%d", current_glucose);
     lv_label_set_text(glucose_label, glucose_text);
-    lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(glucose_label, lv_color_hex(alarm_color), 0);
-    lv_obj_align(glucose_label, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_align(glucose_label, LV_ALIGN_TOP_MID, 0, 48);
 
-    // Snooze buttons (4 in a row)
+    lv_obj_t *unit_lbl = lv_label_create(screen_alarm_snooze);
+    lv_label_set_text(unit_lbl, "mg/dL");
+    lv_obj_set_style_text_font(unit_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(unit_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align_to(unit_lbl, glucose_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+
+    // ---- Snooze section header ----
+    lv_obj_t *snooze_hdr = lv_label_create(screen_alarm_snooze);
+    lv_label_set_text(snooze_hdr, "SNOOZE");
+    lv_obj_set_style_text_font(snooze_hdr, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(snooze_hdr, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(snooze_hdr, 2, 0);
+    lv_obj_align(snooze_hdr, LV_ALIGN_TOP_LEFT, 16, 116);
+
+    // ---- Snooze buttons (ghost-style, 4 in a row) ----
     int snooze_times[] = {5, 10, 15, 30};
-    int x_offsets[] = {-90, -30, 30, 90};
+    int x_offsets[] = {-100, -34, 32, 98};
 
     for (int i = 0; i < 4; i++) {
         lv_obj_t *btn = lv_btn_create(screen_alarm_snooze);
-        lv_obj_set_size(btn, 55, 30);
-        lv_obj_align(btn, LV_ALIGN_TOP_MID, x_offsets[i], 90);
+        lv_obj_set_size(btn, 60, 30);
+        lv_obj_align(btn, LV_ALIGN_TOP_MID, x_offsets[i], 132);
         lv_obj_set_style_bg_color(btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2563EB), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_20, 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(COLOR_ACCENT_BLUE), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_60, LV_STATE_PRESSED);
         lv_obj_set_style_radius(btn, 8, 0);
-        lv_obj_set_style_border_width(btn, 0, 0);
+        lv_obj_set_style_border_width(btn, 1, 0);
+        lv_obj_set_style_border_color(btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+        lv_obj_set_style_border_opa(btn, LV_OPA_30, 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
 
         lv_obj_t *label = lv_label_create(btn);
@@ -915,26 +947,30 @@ void create_alarm_snooze_screen(void) {
         snprintf(text, sizeof(text), "%d min", snooze_times[i]);
         lv_label_set_text(label, text);
         lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
-        lv_obj_set_style_text_color(label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
         lv_obj_center(label);
 
         lv_obj_add_event_cb(btn, alarm_snooze_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)snooze_times[i]);
     }
 
-    // Dismiss button
+    // ---- Dismiss button (ghost-red style) ----
     lv_obj_t *dismiss_btn = lv_btn_create(screen_alarm_snooze);
-    lv_obj_set_size(dismiss_btn, 255, 35);
+    lv_obj_set_size(dismiss_btn, 260, 34);
     lv_obj_align(dismiss_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_set_style_bg_color(dismiss_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_bg_color(dismiss_btn, lv_color_hex(0xDC2626), LV_STATE_PRESSED);
-    lv_obj_set_style_radius(dismiss_btn, 10, 0);
-    lv_obj_set_style_border_width(dismiss_btn, 0, 0);
+    lv_obj_set_style_bg_opa(dismiss_btn, LV_OPA_20, 0);
+    lv_obj_set_style_bg_color(dismiss_btn, lv_color_hex(COLOR_RED), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(dismiss_btn, LV_OPA_60, LV_STATE_PRESSED);
+    lv_obj_set_style_radius(dismiss_btn, 8, 0);
+    lv_obj_set_style_border_width(dismiss_btn, 1, 0);
+    lv_obj_set_style_border_color(dismiss_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_border_opa(dismiss_btn, LV_OPA_30, 0);
     lv_obj_set_style_shadow_width(dismiss_btn, 0, 0);
 
     lv_obj_t *dismiss_label = lv_label_create(dismiss_btn);
     lv_label_set_text(dismiss_label, "Dismiss (3 Hours)");
     lv_obj_set_style_text_font(dismiss_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(dismiss_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_color(dismiss_label, lv_color_hex(COLOR_RED), 0);
     lv_obj_center(dismiss_label);
 
     lv_obj_add_event_cb(dismiss_btn, alarm_snooze_event_cb, LV_EVENT_CLICKED, (void*)(intptr_t)180);
@@ -1220,6 +1256,8 @@ static void alarm_snooze_event_cb(lv_event_t *e) {
 
         ESP_LOGI(TAG, "Alarm snoozed for %d minutes (until timestamp %lld, current %ld)",
                  snooze_minutes, alarm_snooze_until, (long)now);
+        sd_log(TAG, "ALARM: snoozed %dmin, glucose=%d, state=%d",
+               snooze_minutes, current_glucose, current_alarm_state);
 
         alarm_acknowledged = true;
 

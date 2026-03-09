@@ -4,6 +4,7 @@
                             "dexcom_api.c"
                             "web_server.c"
                             "ui_config.c"
+                            "sd_logger.c"
                             "arrow_images.c"
                             "hardware/led.c"
                             "hardware/buzzer.c"

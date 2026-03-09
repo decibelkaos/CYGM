@@ -13,6 +13,8 @@
 #include "esp_sleep.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
+#include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "MENU_SCREEN";
 
@@ -51,6 +53,141 @@ static void prepare_for_sleep(void) {
     gpio_set_direction(LCD_BL, GPIO_MODE_OUTPUT);
     gpio_set_level(LCD_BL, 0);
     gpio_hold_en(LCD_BL);
+}
+
+// ==================== About Overlay ====================
+
+static lv_obj_t *about_overlay = NULL;
+
+static void about_close_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (about_overlay != NULL) {
+            lv_obj_t *ov = about_overlay;
+            about_overlay = NULL;
+            lv_obj_del_async(ov);
+        }
+    }
+}
+
+static void dismiss_about_overlay(void) {
+    if (about_overlay != NULL) {
+        lv_obj_t *ov = about_overlay;
+        about_overlay = NULL;
+        lv_obj_del_async(ov);
+    }
+}
+
+static void show_about_overlay(void) {
+    if (about_overlay != NULL) return;
+
+    // --- Full-screen dimmed backdrop ---
+    about_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(about_overlay);
+    lv_obj_set_size(about_overlay, 320, 240);
+    lv_obj_set_style_bg_color(about_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(about_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(about_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(about_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(about_overlay, about_close_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // --- Centered card ---
+    lv_obj_t *card = lv_obj_create(about_overlay);
+    lv_obj_set_size(card, 275, 178);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Close button (×) — top-right
+    lv_obj_t *close_btn = lv_btn_create(card);
+    lv_obj_set_size(close_btn, 32, 32);
+    lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
+    lv_obj_set_style_bg_opa(close_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(close_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(close_btn, 0, 0);
+    lv_obj_set_style_shadow_width(close_btn, 0, 0);
+    lv_obj_set_style_radius(close_btn, 16, 0);
+    lv_obj_t *close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_color(close_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(close_lbl);
+    lv_obj_add_event_cb(close_btn, about_close_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // --- Top section: Title + Version ---
+    lv_obj_t *app_name = lv_label_create(card);
+    lv_label_set_text(app_name, "CYGM");
+    lv_obj_set_style_text_font(app_name, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(app_name, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(app_name, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Version + stage
+    lv_obj_t *ver = lv_label_create(card);
+    char ver_buf[48];
+    snprintf(ver_buf, sizeof(ver_buf), "v%d.%d.%d %s",
+             CYGM_VERSION_MAJOR, CYGM_VERSION_MINOR, CYGM_VERSION_PATCH,
+             CYGM_VERSION_STAGE);
+    lv_label_set_text(ver, ver_buf);
+    lv_obj_set_style_text_color(ver, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(ver, LV_ALIGN_TOP_MID, 0, 42);
+
+    // Build date
+    lv_obj_t *date_lbl = lv_label_create(card);
+    lv_label_set_text(date_lbl, "Built " CYGM_VERSION_DATE);
+    lv_obj_set_style_text_color(date_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(date_lbl, LV_ALIGN_TOP_MID, 0, 58);
+
+    // Divider
+    lv_obj_t *divider = lv_obj_create(card);
+    lv_obj_remove_style_all(divider);
+    lv_obj_set_size(divider, 235, 1);
+    lv_obj_set_style_bg_color(divider, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
+    lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 76);
+
+    // --- Bottom section: Developer info (left) + QR placeholder (right) ---
+
+    // Developer info — left-aligned
+    lv_obj_t *dev_by = lv_label_create(card);
+    lv_label_set_text(dev_by, "Developed by");
+    lv_obj_set_style_text_color(dev_by, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(dev_by, LV_ALIGN_TOP_LEFT, 20, 84);
+
+    lv_obj_t *dev_name = lv_label_create(card);
+    lv_label_set_text(dev_name, "Carl Brothers");
+    lv_obj_set_style_text_color(dev_name, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_font(dev_name, &lv_font_montserrat_14, 0);
+    lv_obj_align(dev_name, LV_ALIGN_TOP_LEFT, 20, 100);
+
+    lv_obj_t *dev_url = lv_label_create(card);
+    lv_label_set_text(dev_url, "DigitalKaos.tech");
+    lv_obj_set_style_text_color(dev_url, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_align(dev_url, LV_ALIGN_TOP_LEFT, 20, 118);
+
+    lv_obj_t *dev_disc = lv_label_create(card);
+    lv_label_set_text(dev_disc, "Not a medical device");
+    lv_obj_set_style_text_color(dev_disc, lv_color_hex(0x556677), 0);
+    lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 20, 152);
+
+    // QR code — links to DigitalKaos.tech
+    static const char *qr_url = "http://DigitalKaos.tech";
+    lv_obj_t *qr = lv_qrcode_create(card, 56,
+                                     lv_color_hex(COLOR_TEXT_WHITE),
+                                     lv_color_hex(0x0d1520));
+    lv_qrcode_update(qr, qr_url, strlen(qr_url));
+    lv_obj_align(qr, LV_ALIGN_TOP_RIGHT, -22, 88);
+    lv_obj_set_style_border_color(qr, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_border_width(qr, 2, 0);
+}
+
+static void about_btn_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        show_about_overlay();
+    }
 }
 
 // ==================== Power Off Overlay ====================
@@ -238,6 +375,7 @@ static void power_btn_event_cb(lv_event_t *e) {
 
 static void menu_unload_event_cb(lv_event_t *e) {
     dismiss_power_overlay();
+    dismiss_about_overlay();
 }
 
 // ==================== Menu Screen ====================
@@ -270,6 +408,23 @@ void create_menu_screen(void) {
     lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(back_lbl);
     lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Ghost about button (top right, left of power)
+    lv_obj_t *about_btn = lv_btn_create(screen_menu);
+    lv_obj_set_size(about_btn, 36, 36);
+    lv_obj_align(about_btn, LV_ALIGN_TOP_RIGHT, -44, 5);
+    lv_obj_set_style_bg_opa(about_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(about_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(about_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(about_btn, 0, 0);
+    lv_obj_set_style_shadow_width(about_btn, 0, 0);
+    lv_obj_set_style_radius(about_btn, 8, 0);
+    lv_obj_t *about_icon = lv_label_create(about_btn);
+    lv_label_set_text(about_icon, LV_SYMBOL_LIST);
+    lv_obj_set_style_text_font(about_icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(about_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(about_icon);
+    lv_obj_add_event_cb(about_btn, about_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Ghost power button (top right)
     lv_obj_t *power_btn = lv_btn_create(screen_menu);

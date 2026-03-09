@@ -7,7 +7,7 @@
 
 #include "dexcom_api.h"
 #include "nvs_config.h"
-// SD card logging removed - use serial output for debugging
+#include "sd_logger.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include "esp_timer.h"
 
 static const char *TAG = "DEXCOM";
 
@@ -46,6 +47,7 @@ static const char *BASE_URL_JP  = "https://share.dexcom.jp/ShareWebServices/Serv
 // Rate limiting and session timeout
 #define RATE_LIMIT_MS       90000ULL    // 90 seconds between glucose requests
 #define SESSION_TIMEOUT_MS  43200000ULL // 12 hours
+#define SESSION_REFRESH_MS  7200000ULL  // Proactive re-auth every 2 hours
 
 // ============================================================================
 // State Variables
@@ -68,6 +70,11 @@ static int http_response_len = 0;
 static esp_http_client_handle_t persistent_client = NULL;
 static int consecutive_failures = 0;  // Track consecutive fetch failures
 #define MAX_CONSECUTIVE_FAILURES 3  // Force fresh connection after 3 failures (memory-conscious)
+
+// Duplicate reading detection — catch "same data returned over and over"
+static time_t last_successful_timestamp = 0;
+static int duplicate_reading_count = 0;
+#define MAX_DUPLICATE_READINGS 6  // After 6 identical timestamps (~9 min), force session refresh
 
 // ============================================================================
 // Helper Functions
@@ -177,10 +184,15 @@ static time_t parse_dexcom_timestamp(const char *dt_str) {
     time_t timestamp = (time_t)(ms / 1000);
     time_t now = time(NULL);
 
-    // If timestamp is in the future or more than 24 hours old, use current time
-    if (timestamp > now || (now - timestamp) > 86400) {
-        ESP_LOGW(TAG, "Invalid timestamp %ld, using current time %ld", (long)timestamp, (long)now);
-        return now;
+    // SAFETY FIX: Reject invalid timestamps instead of masking them as "now"
+    // Returning 0 forces the staleness check to reject this data
+    if (timestamp <= 0 || timestamp > now + 300) {  // Allow 5 min clock skew
+        ESP_LOGW(TAG, "Invalid timestamp %ld (future or epoch), rejecting", (long)timestamp);
+        return 0;
+    }
+    if ((now - timestamp) > 86400) {
+        ESP_LOGW(TAG, "Timestamp %ld is >24h old (now=%ld), rejecting", (long)timestamp, (long)now);
+        return 0;
     }
 
     return timestamp;
@@ -599,7 +611,7 @@ success:
     nvs_set_dexcom_credentials(username, password);
 
     is_authenticated = true;
-    last_login_time = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    last_login_time = (uint64_t)(esp_timer_get_time() / 1000);  // ms, no wrap
     ESP_LOGI(TAG, "Dexcom authentication successful on %s region!",
              current_region == DEXCOM_REGION_US ? "US" :
              current_region == DEXCOM_REGION_OUS ? "Outside US" : "Japan");
@@ -623,12 +635,26 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    // Check session timeout (12 hours)
-    uint64_t now_ms = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
-    if (last_login_time > 0 && (now_ms - last_login_time) > SESSION_TIMEOUT_MS) {
-        ESP_LOGW(TAG, "Session expired (12 hours), re-authenticating...");
-        is_authenticated = false;
+    // Session timeout + proactive refresh (use esp_timer for 64-bit no-wrap)
+    uint64_t now_us = (uint64_t)esp_timer_get_time();
+    uint64_t now_ms = now_us / 1000;
 
+    bool needs_reauth = false;
+    if (last_login_time > 0) {
+        uint64_t session_age = now_ms - last_login_time;
+        if (session_age > SESSION_TIMEOUT_MS) {
+            ESP_LOGW(TAG, "Session expired (12 hours), re-authenticating...");
+            needs_reauth = true;
+        } else if (session_age > SESSION_REFRESH_MS) {
+            ESP_LOGI(TAG, "Proactive session refresh (age: %llu min)", session_age / 60000);
+            sd_log(TAG, "Session refresh (age=%llu min)", session_age / 60000);
+            needs_reauth = true;
+        }
+    }
+
+    if (needs_reauth) {
+        is_authenticated = false;
+        cleanup_persistent_client();
         if (strlen(stored_username) > 0 && strlen(stored_password) > 0) {
             esp_err_t err = dexcom_authenticate(stored_username, stored_password);
             if (err != ESP_OK) {
@@ -639,12 +665,14 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         }
     }
 
-    // Rate limiting (90 seconds)
-    if (last_glucose_fetch_time > 0 && (now_ms - last_glucose_fetch_time) < RATE_LIMIT_MS) {
-        uint64_t wait_time = RATE_LIMIT_MS - (now_ms - last_glucose_fetch_time);
-        ESP_LOGW(TAG, "Rate limited - wait %llu seconds", wait_time / 1000);
-        glucose->status = GLUCOSE_STATUS_OK;  // Authenticated and working, just rate limited
-        return ESP_ERR_INVALID_STATE;
+    // Rate limiting (90 seconds) — also use esp_timer
+    if (last_glucose_fetch_time > 0) {
+        uint64_t fetch_elapsed = now_ms - last_glucose_fetch_time;
+        if (fetch_elapsed < RATE_LIMIT_MS) {
+            ESP_LOGW(TAG, "Rate limited - wait %llu seconds", (RATE_LIMIT_MS - fetch_elapsed) / 1000);
+            glucose->status = GLUCOSE_STATUS_OK;
+            return ESP_ERR_INVALID_STATE;
+        }
     }
 
     // Build URL (no query params - use POST body instead)
@@ -658,8 +686,8 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         return ESP_ERR_NO_MEM;
     }
     cJSON_AddStringToObject(body, "sessionId", session_id);
-    cJSON_AddNumberToObject(body, "minutes", 1440);  // Last 24 hours
-    cJSON_AddNumberToObject(body, "maxCount", 1);    // Only latest reading
+    cJSON_AddNumberToObject(body, "minutes", 1440);   // Request 24h window (never miss a reading)
+    cJSON_AddNumberToObject(body, "maxCount", 1);     // Only latest reading
     char *body_str = cJSON_PrintUnformatted(body);
     cJSON_Delete(body);
 
@@ -732,36 +760,68 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         return err;
     }
 
-    // If session expired (401), try to re-authenticate
-    if (status == 401) {
-        ESP_LOGW(TAG, "Session expired (401), re-authenticating...");
-        is_authenticated = false;
+    // SAFETY FIX: Handle ALL non-200 responses, including session expiration
+    // Dexcom Share API returns HTTP 500 (not just 401!) for expired sessions
+    // with body containing "SessionNotValid", "SessionIdNotFound", etc.
+    if (status != 200) {
+        ESP_LOGE(TAG, "Glucose fetch failed with status %d: %s", status, http_response);
 
-        if (strlen(stored_username) > 0 && strlen(stored_password) > 0) {
-            err = dexcom_authenticate(stored_username, stored_password);
-            if (err == ESP_OK) {
-                // Keep this call non-recursive to avoid deep retry cascades under unstable auth.
-                // Next scheduled fetch will run with the new session.
-                ESP_LOGI(TAG, "Re-authentication succeeded; deferring glucose retry to next cycle");
-                glucose->status = GLUCOSE_STATUS_NO_DATA;
-                return ESP_FAIL;
+        // Determine if this is a session expiration error
+        bool session_error = (status == 401);  // 401 always means session expired
+
+        // Check 500 response body for session-related error strings
+        if (status == 500 && http_response_len > 0) {
+            if (strstr(http_response, "SessionNotValid") != NULL ||
+                strstr(http_response, "SessionIdNotFound") != NULL ||
+                strstr(http_response, "SessionNotFound") != NULL ||
+                strstr(http_response, "InvalidSession") != NULL) {
+                session_error = true;
+                ESP_LOGW(TAG, "Dexcom 500 response indicates session expiration");
             }
         }
 
-        ESP_LOGE(TAG, "Re-authentication failed");
-        glucose->status = GLUCOSE_STATUS_NOT_AUTHENTICATED;  // Auth actually failed
-        cleanup_persistent_client();
-        return ESP_FAIL;
-    }
+        // After 2+ consecutive non-200 errors, assume session issue
+        // (some Dexcom errors return generic messages without session keywords)
+        if (!session_error && status >= 400) {
+            consecutive_failures++;
+            ESP_LOGW(TAG, "Consecutive server failures: %d/%d", consecutive_failures, MAX_CONSECUTIVE_FAILURES);
+            if (consecutive_failures >= 2) {
+                session_error = true;
+                ESP_LOGW(TAG, "Multiple consecutive errors - treating as session expiration");
+            }
+        }
 
-    if (status != 200) {
-        ESP_LOGE(TAG, "Glucose fetch failed with status %d: %s", status, http_response);
-        // SD logging removed: sd_log_http_response(status, http_response);
-        // SD logging removed: sd_log_error(TAG, "Non-200 status code", ...);
-        glucose->status = GLUCOSE_STATUS_NO_DATA;  // Server error, but still authenticated
+        if (session_error) {
+            ESP_LOGW(TAG, "Session expired (status %d), re-authenticating...", status);
+            sd_log(TAG, "Session error (HTTP %d), re-auth...", status);
+            is_authenticated = false;
+            cleanup_persistent_client();
+            last_glucose_fetch_time = 0;  // Clear rate limit so retry works immediately
 
-        // Don't cleanup on server errors - keep client alive for retry
-        ESP_LOGW(TAG, "Keeping persistent client alive despite server error");
+            if (strlen(stored_username) > 0 && strlen(stored_password) > 0) {
+                esp_err_t reauth_err = dexcom_authenticate(stored_username, stored_password);
+                if (reauth_err == ESP_OK) {
+                    consecutive_failures = 0;
+                    ESP_LOGI(TAG, "Re-auth succeeded — retrying glucose fetch immediately");
+                    sd_log(TAG, "Re-auth OK, immediate retry");
+                    // IMMEDIATE RETRY: don't defer to next cycle (90s gap = dangerous)
+                    // Recursive call is safe because re-auth resets session state
+                    return dexcom_fetch_glucose(glucose);
+                }
+            }
+
+            ESP_LOGE(TAG, "Re-authentication failed");
+            glucose->status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
+            return ESP_FAIL;
+        }
+
+        // Non-session server error - keep client alive for retry
+        glucose->status = GLUCOSE_STATUS_NO_DATA;
+        if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
+            ESP_LOGW(TAG, "Too many consecutive errors - forcing fresh connection");
+            cleanup_persistent_client();
+            consecutive_failures = 0;
+        }
         return ESP_FAIL;
     }
 
@@ -797,9 +857,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         ESP_LOGW(TAG, "No glucose data available (empty array from Dexcom)");
 
         // Determine likely reason for no data
-        uint32_t time_since_login = xTaskGetTickCount() * portTICK_PERIOD_MS - last_login_time;
+        uint64_t time_since_login = (uint64_t)(esp_timer_get_time() / 1000) - last_login_time;
         if (time_since_login < 7200000) {  // Less than 2 hours since login
-            ESP_LOGI(TAG, "Likely sensor warmup period (logged in %lu min ago)", time_since_login / 60000);
+            ESP_LOGI(TAG, "Likely sensor warmup period (logged in %llu min ago)", time_since_login / 60000);
             glucose->status = GLUCOSE_STATUS_WARMUP;
         } else {
             ESP_LOGI(TAG, "No data available (signal loss or no sensor)");
@@ -841,13 +901,27 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         glucose->timestamp = parse_dexcom_timestamp(wt->valuestring);
     }
 
-    // Check if data is stale (more than 15 minutes old = likely signal loss)
+    // SAFETY: Reject data with invalid timestamp (parse_dexcom_timestamp returns 0 on failure)
+    if (glucose->timestamp == 0) {
+        ESP_LOGW(TAG, "Glucose timestamp invalid (parse failed) - rejecting data");
+        glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+        glucose->valid = false;
+        cJSON_Delete(root);
+        last_glucose_fetch_time = (uint64_t)(esp_timer_get_time() / 1000);
+        consecutive_failures = 0;
+        return ESP_OK;  // API worked but data is unusable
+    }
+
+    // Check if data is stale (more than 10 minutes old = likely signal loss)
     time_t current_time;
     time(&current_time);
     int minutes_old = (int)difftime(current_time, glucose->timestamp) / 60;
 
-    if (minutes_old > 15) {
-        ESP_LOGW(TAG, "Glucose data is %d minutes old - likely signal loss", minutes_old);
+    sd_log(TAG, "Fetch: %d mg/dL, %s, age=%dmin",
+           glucose->value, dexcom_trend_description(glucose->trend), minutes_old);
+
+    if (minutes_old > 10) {
+        ESP_LOGW(TAG, "Glucose data is %d minutes old - signal loss or stale", minutes_old);
         glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
         glucose->valid = false;  // Mark as invalid due to age
     } else {
@@ -855,7 +929,28 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         glucose->valid = true;
     }
 
-    last_glucose_fetch_time = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    // Duplicate reading detection: same timestamp returned multiple times
+    // means Dexcom has no new data — possible transmitter/sensor issue
+    if (glucose->timestamp == last_successful_timestamp) {
+        duplicate_reading_count++;
+        ESP_LOGW(TAG, "Duplicate reading #%d (same timestamp %ld)", duplicate_reading_count, (long)glucose->timestamp);
+        sd_log(TAG, "Duplicate #%d (ts=%ld)", duplicate_reading_count, (long)glucose->timestamp);
+        if (duplicate_reading_count >= MAX_DUPLICATE_READINGS) {
+            ESP_LOGW(TAG, "SAFETY: %d duplicate readings — forcing session refresh", duplicate_reading_count);
+            sd_log(TAG, "SAFETY: %d duplicates, forcing re-auth", duplicate_reading_count);
+            duplicate_reading_count = 0;
+            is_authenticated = false;
+            cleanup_persistent_client();
+            // Force re-auth on next fetch cycle
+        }
+    } else {
+        if (glucose->valid) {
+            last_successful_timestamp = glucose->timestamp;
+            duplicate_reading_count = 0;
+        }
+    }
+
+    last_glucose_fetch_time = (uint64_t)(esp_timer_get_time() / 1000);
 
     ESP_LOGI(TAG, "Glucose: %d mg/dL, Trend: %s (Status: %d)",
              glucose->value, dexcom_trend_description(glucose->trend), glucose->status);
@@ -882,7 +977,7 @@ bool dexcom_is_authenticated(void) {
     }
 
     // Check if session has timed out (12 hours)
-    uint64_t now_ms = (uint64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000);
     if (last_login_time > 0 && (now_ms - last_login_time) > SESSION_TIMEOUT_MS) {
         ESP_LOGW(TAG, "Session has timed out (12 hours)");
         is_authenticated = false;

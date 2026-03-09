@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include <string.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 static const char *TAG = "GLUCOSE_HISTORY";
 
@@ -118,6 +119,29 @@ const glucose_history_point_t* glucose_history_find_closest(int64_t timestamp) {
     }
 
     return closest;
+}
+
+int glucose_history_get_range(int minutes_back, glucose_history_point_t *points_out, int max_points) {
+    if (g_history.count == 0 || points_out == NULL || max_points <= 0) {
+        return 0;
+    }
+
+    // Get current time in milliseconds
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int64_t now_ms = (int64_t)tv.tv_sec * 1000 + (int64_t)tv.tv_usec / 1000;
+    int64_t cutoff_ms = now_ms - ((int64_t)minutes_back * 60 * 1000);
+
+    int filled = 0;
+    for (int i = 0; i < g_history.count && filled < max_points; i++) {
+        const glucose_history_point_t *point = glucose_history_get_at(i);
+        if (point != NULL && point->valid && point->timestamp >= cutoff_ms) {
+            points_out[filled] = *point;
+            filled++;
+        }
+    }
+
+    return filled;
 }
 
 void glucose_history_clear(void) {

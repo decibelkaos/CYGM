@@ -2,7 +2,7 @@
  * glucose_history.h
  *
  * Glucose reading history management (circular buffer + NVS persistence)
- * Stores last 6 hours of readings (24 points at 15-min intervals)
+ * Stores last 24 hours of readings (288 points at 5-min intervals)
  */
 
 #ifndef GLUCOSE_HISTORY_H
@@ -16,8 +16,8 @@
 extern "C" {
 #endif
 
-// Maximum history: 6 hours at 15-minute intervals = 24 readings
-#define GLUCOSE_HISTORY_MAX_POINTS 24
+// Maximum history: 24 hours at 5-minute intervals = 288 readings
+#define GLUCOSE_HISTORY_MAX_POINTS 288
 
 // Single glucose reading with timestamp
 typedef struct {
@@ -50,6 +50,11 @@ int glucose_history_get_count(void);
 
 // Find the closest reading to a given timestamp
 const glucose_history_point_t* glucose_history_find_closest(int64_t timestamp);
+
+// Get readings within a time window (returns count of points filled)
+// points_out must have at least max_points capacity
+// minutes_back: how many minutes of history to retrieve
+int glucose_history_get_range(int minutes_back, glucose_history_point_t *points_out, int max_points);
 
 // Clear all history (rarely needed)
 void glucose_history_clear(void);

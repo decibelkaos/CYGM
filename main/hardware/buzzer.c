@@ -7,6 +7,7 @@
 #include "buzzer.h"
 #include "shared_state.h"
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 
@@ -34,19 +35,43 @@ void buzzer_init(void) {
     };
     ESP_ERROR_CHECK(ledc_channel_config(&channel));
 
-    ESP_LOGI(TAG, "Buzzer PWM initialized (GPIO %d)", BUZZER_GPIO);
+    // Fully silence: pause timer and detach GPIO to prevent EMI noise
+    ledc_timer_pause(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
+    gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_level(BUZZER_GPIO, 0);
+
+    ESP_LOGI(TAG, "Buzzer PWM initialized (GPIO %d, silenced)", BUZZER_GPIO);
 }
 
 void buzzer_tone(uint32_t frequency, uint8_t volume) {
     if (frequency == 0 || volume == 0) {
-        // Silence - set duty to 0
+        // Full silence: stop PWM, pause timer, then detach GPIO and hold low.
+        // This prevents WiFi EMI from coupling noise through the LEDC peripheral.
         ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, 0);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
+        ledc_timer_pause(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
+        // Detach GPIO from LEDC and drive low as regular output
+        gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
+        gpio_set_level(BUZZER_GPIO, 0);
         return;
     }
 
     // Clamp volume to 0-100
     if (volume > 100) volume = 100;
+
+    // Resume timer FIRST (ledc_channel_config hangs if timer is paused)
+    ledc_timer_resume(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
+
+    // Re-attach GPIO to LEDC channel (may have been detached by silence)
+    ledc_channel_config_t channel = {
+        .gpio_num = BUZZER_GPIO,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = BUZZER_CHANNEL,
+        .timer_sel = BUZZER_TIMER,
+        .duty = 0,
+        .hpoint = 0
+    };
+    ledc_channel_config(&channel);
 
     // Set frequency
     ledc_set_freq(LEDC_LOW_SPEED_MODE, BUZZER_TIMER, frequency);
@@ -62,35 +87,19 @@ void buzzer_stop(void) {
     buzzer_tone(0, 0);
 }
 
-// Play boot-up sequence: 5 ascending beeps, 5 descending beeps
+// Play boot-up sound: quick two-tone beep (low → high)
 void play_boot_sound(void) {
-    const uint8_t volume = 50;  // Medium volume
-    const int beep_duration = 80;  // Short beeps
-    const int pause_duration = 40;
+    const uint8_t volume = 50;
 
-    // Ascending beeps (C5, D5, E5, F5, G5)
-    const uint32_t ascending[] = {523, 587, 659, 698, 784};
-    for (int i = 0; i < 5; i++) {
-        buzzer_tone(ascending[i], volume);
-        vTaskDelay(pdMS_TO_TICKS(beep_duration));
-        buzzer_tone(0, 0);  // Silence between beeps
-        vTaskDelay(pdMS_TO_TICKS(pause_duration));
-    }
-
-    // Short pause between sequences
+    // Low tone (C5 = 523 Hz), 100ms
+    buzzer_tone(523, volume);
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    // Descending beeps (G5, F5, E5, D5, C5)
-    for (int i = 4; i >= 0; i--) {
-        buzzer_tone(ascending[i], volume);
-        vTaskDelay(pdMS_TO_TICKS(beep_duration));
-        buzzer_tone(0, 0);  // Silence between beeps
-        if (i > 0) {
-            vTaskDelay(pdMS_TO_TICKS(pause_duration));
-        }
-    }
+    // High tone (G5 = 784 Hz), 100ms
+    buzzer_tone(784, volume);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
-    buzzer_tone(0, 0);  // Ensure buzzer is off
+    buzzer_tone(0, 0);
 }
 
 // Play success sound when Dexcom connects and first glucose reading arrives

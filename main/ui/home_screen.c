@@ -16,6 +16,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/task.h"
 
 static const char *TAG = "HOME_SCREEN";
 
@@ -78,9 +79,39 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     if (percentage < 0) percentage = 0;
 
     // Update bar
-    if (lvgl_port_lock(0)) {
-        lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
-        lvgl_port_unlock();
+    lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
+
+    // =====================================================================
+    // SAFETY WATCHDOG: Independent staleness check on the UI task
+    // This runs every second regardless of whether the glucose task is alive.
+    // If glucose data is old, force the display to show "---" immediately.
+    // This is the LAST LINE OF DEFENSE against showing stale readings.
+    // =====================================================================
+    if (glucose_data_valid && glucose_timestamp > 0) {
+        time_t stale_now;
+        time(&stale_now);
+        int stale_minutes = (int)difftime(stale_now, glucose_timestamp) / 60;
+
+        if (stale_minutes > 15) {
+            // Data is dangerously stale — force display update NOW
+            // This catches cases where the glucose task died or got stuck
+            update_glucose_display();
+
+            // After 30 minutes, force invalid to show "---" + status
+            if (stale_minutes > 30 && glucose_data_valid) {
+                ESP_LOGW("WATCHDOG", "SAFETY: Glucose data %d mins old — forcing invalid", stale_minutes);
+                glucose_data_valid = false;
+                glucose_status = GLUCOSE_STATUS_SIGNAL_LOSS;
+                update_glucose_display();
+            }
+        }
+    }
+
+    // Task health check: if glucose task handle exists but task is dead, restart it
+    if (glucose_task_handle != NULL && eTaskGetState(glucose_task_handle) == eDeleted) {
+        ESP_LOGE("WATCHDOG", "CRITICAL: Glucose task died! Restarting...");
+        glucose_task_handle = NULL;
+        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
     }
 }
 
@@ -238,6 +269,49 @@ static void brightness_ok_event_cb(lv_event_t *e) {
     }
 }
 
+static void toast_timer_cb(lv_timer_t *timer) {
+    lv_obj_t *toast = (lv_obj_t *)timer->user_data;
+    if (toast != NULL) {
+        lv_obj_del(toast);
+    }
+    lv_timer_del(timer);
+}
+
+static void show_no_data_toast(void) {
+    // Glass-themed toast overlay
+    lv_obj_t *toast = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(toast, 220, 70);
+    lv_obj_align(toast, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(toast, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(toast, LV_OPA_90, 0);
+    lv_obj_set_style_radius(toast, 14, 0);
+    lv_obj_set_style_border_width(toast, 1, 0);
+    lv_obj_set_style_border_color(toast, lv_color_hex(0x2A3A4A), 0);
+    lv_obj_set_style_border_opa(toast, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(toast, 20, 0);
+    lv_obj_set_style_shadow_color(toast, lv_color_black(), 0);
+    lv_obj_set_style_shadow_opa(toast, LV_OPA_60, 0);
+    lv_obj_set_style_pad_all(toast, 10, 0);
+    lv_obj_clear_flag(toast, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    // Icon
+    lv_obj_t *icon = lv_label_create(toast);
+    lv_label_set_text(icon, LV_SYMBOL_WARNING);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_align(icon, LV_ALIGN_LEFT_MID, 4, 0);
+
+    // Message
+    lv_obj_t *msg = lv_label_create(toast);
+    lv_label_set_text(msg, "No trend data yet\nWaiting for readings...");
+    lv_obj_set_style_text_font(msg, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(msg, LV_ALIGN_LEFT_MID, 34, 0);
+
+    // Auto-dismiss after 2 seconds
+    lv_timer_create(toast_timer_cb, 2000, toast);
+}
+
 static void trend_arrow_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
@@ -246,6 +320,7 @@ static void trend_arrow_event_cb(lv_event_t *e) {
         int count = glucose_history_get_count();
         if (count == 0) {
             ESP_LOGW(TAG, "No glucose history available yet");
+            show_no_data_toast();
             return;
         }
 
