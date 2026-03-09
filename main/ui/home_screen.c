@@ -50,6 +50,125 @@ static void anim_opa_cb(void *var, int32_t v) {
     lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
 }
 
+// ==================== No-Data / Sensor Change Overlay ====================
+
+static lv_obj_t *nodata_overlay = NULL;
+static bool nodata_overlay_shown_this_cycle = false;  // Don't re-show after user dismisses
+
+static void nodata_yes_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    sensor_change_mode = true;
+    ESP_LOGI(TAG, "User confirmed sensor change");
+    if (nodata_overlay) { lv_obj_del(nodata_overlay); nodata_overlay = NULL; }
+    update_glucose_display();
+}
+
+static void nodata_no_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    sensor_change_mode = false;
+    ESP_LOGI(TAG, "User denied sensor change — showing error state");
+    if (nodata_overlay) { lv_obj_del(nodata_overlay); nodata_overlay = NULL; }
+    update_glucose_display();
+}
+
+void show_nodata_overlay(void) {
+    if (nodata_overlay != NULL || nodata_overlay_shown_this_cycle) return;
+    nodata_overlay_shown_this_cycle = true;
+
+    // Dimmed backdrop
+    nodata_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(nodata_overlay);
+    lv_obj_set_size(nodata_overlay, 320, 240);
+    lv_obj_set_style_bg_color(nodata_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(nodata_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(nodata_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(nodata_overlay);
+
+    // Glass card
+    lv_obj_t *card = lv_obj_create(nodata_overlay);
+    lv_obj_set_size(card, 280, 170);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0x2A3A4A), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 25, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_black(), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_70, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Warning icon + title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, LV_SYMBOL_WARNING "  No Data Received");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+
+    // Divider
+    lv_obj_t *div = lv_obj_create(card);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 250, 1);
+    lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 42);
+
+    // Question
+    lv_obj_t *msg = lv_label_create(card);
+    lv_label_set_text(msg, "Are you changing your\nCGM sensor?");
+    lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 54);
+
+    // Yes button (green outline)
+    lv_obj_t *btn_yes = lv_btn_create(card);
+    lv_obj_set_size(btn_yes, 110, 36);
+    lv_obj_align(btn_yes, LV_ALIGN_BOTTOM_LEFT, 20, -14);
+    lv_obj_set_style_bg_opa(btn_yes, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn_yes, lv_color_hex(0x1a3a2a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn_yes, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn_yes, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_border_width(btn_yes, 1, 0);
+    lv_obj_set_style_radius(btn_yes, 8, 0);
+    lv_obj_set_style_shadow_width(btn_yes, 0, 0);
+    lv_obj_t *lbl_yes = lv_label_create(btn_yes);
+    lv_label_set_text(lbl_yes, "Yes");
+    lv_obj_set_style_text_color(lbl_yes, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_center(lbl_yes);
+    lv_obj_add_event_cb(btn_yes, nodata_yes_cb, LV_EVENT_CLICKED, NULL);
+
+    // No button (red outline)
+    lv_obj_t *btn_no = lv_btn_create(card);
+    lv_obj_set_size(btn_no, 110, 36);
+    lv_obj_align(btn_no, LV_ALIGN_BOTTOM_RIGHT, -20, -14);
+    lv_obj_set_style_bg_opa(btn_no, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn_no, lv_color_hex(0x3a1a1a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn_no, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn_no, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_border_width(btn_no, 1, 0);
+    lv_obj_set_style_radius(btn_no, 8, 0);
+    lv_obj_set_style_shadow_width(btn_no, 0, 0);
+    lv_obj_t *lbl_no = lv_label_create(btn_no);
+    lv_label_set_text(lbl_no, "No");
+    lv_obj_set_style_text_color(lbl_no, lv_color_hex(COLOR_RED), 0);
+    lv_obj_center(lbl_no);
+    lv_obj_add_event_cb(btn_no, nodata_no_cb, LV_EVENT_CLICKED, NULL);
+}
+
+void dismiss_nodata_overlay(void) {
+    if (nodata_overlay != NULL) {
+        lv_obj_del(nodata_overlay);
+        nodata_overlay = NULL;
+    }
+}
+
+// Reset the "already shown" flag when data comes back
+void reset_nodata_overlay_cycle(void) {
+    nodata_overlay_shown_this_cycle = false;
+}
+
 // Expand/collapse layout constants
 #define NORMAL_LEFT_X       6
 #define NORMAL_LEFT_W       150

@@ -7,12 +7,14 @@
 #include "menu_screen.h"
 #include "shared_state.h"
 #include "main.h"
+#include "features/update_checker.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
+#include "freertos/task.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -77,6 +79,8 @@ static void dismiss_about_overlay(void) {
     }
 }
 
+static void check_update_btn_cb(lv_event_t *e);  // forward decl
+
 static void show_about_overlay(void) {
     if (about_overlay != NULL) return;
 
@@ -92,7 +96,7 @@ static void show_about_overlay(void) {
 
     // --- Centered card ---
     lv_obj_t *card = lv_obj_create(about_overlay);
-    lv_obj_set_size(card, 275, 178);
+    lv_obj_set_size(card, 275, 200);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
@@ -168,20 +172,57 @@ static void show_about_overlay(void) {
     lv_obj_set_style_text_color(dev_url, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_align(dev_url, LV_ALIGN_TOP_LEFT, 20, 118);
 
+    // Check for Updates button — ghost outline style
+    lv_obj_t *upd_btn = lv_btn_create(card);
+    lv_obj_set_size(upd_btn, 148, 24);
+    lv_obj_align(upd_btn, LV_ALIGN_TOP_LEFT, 16, 138);
+    lv_obj_set_style_bg_opa(upd_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(upd_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(upd_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(upd_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(upd_btn, 1, 0);
+    lv_obj_set_style_border_opa(upd_btn, LV_OPA_60, 0);
+    lv_obj_set_style_radius(upd_btn, 6, 0);
+    lv_obj_set_style_shadow_width(upd_btn, 0, 0);
+    lv_obj_t *upd_lbl = lv_label_create(upd_btn);
+    lv_label_set_text(upd_lbl, LV_SYMBOL_REFRESH " Check for Updates");
+    lv_obj_set_style_text_color(upd_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(upd_lbl);
+    lv_obj_add_event_cb(upd_btn, check_update_btn_cb, LV_EVENT_CLICKED, NULL);
+
     lv_obj_t *dev_disc = lv_label_create(card);
     lv_label_set_text(dev_disc, "Not a medical device");
     lv_obj_set_style_text_color(dev_disc, lv_color_hex(0x556677), 0);
-    lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 20, 152);
+    lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 20, 174);
 
     // QR code — links to DigitalKaos.tech
     static const char *qr_url = "http://DigitalKaos.tech";
-    lv_obj_t *qr = lv_qrcode_create(card, 56,
+    lv_obj_t *qr = lv_qrcode_create(card, 75,
                                      lv_color_hex(COLOR_TEXT_WHITE),
                                      lv_color_hex(0x0d1520));
     lv_qrcode_update(qr, qr_url, strlen(qr_url));
-    lv_obj_align(qr, LV_ALIGN_TOP_RIGHT, -22, 88);
+    lv_obj_align(qr, LV_ALIGN_TOP_RIGHT, -16, 84);
     lv_obj_set_style_border_color(qr, lv_color_hex(0x263040), 0);
     lv_obj_set_style_border_width(qr, 2, 0);
+}
+
+// Background task: check for updates then show result overlay
+static void check_update_task_fn(void *param) {
+    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) == pdTRUE) {
+        update_check_now();
+        xSemaphoreGive(network_mutex);
+    }
+    if (lvgl_port_lock(200)) {
+        show_update_overlay();
+        lvgl_port_unlock();
+    }
+    vTaskDelete(NULL);
+}
+
+static void check_update_btn_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    dismiss_about_overlay();
+    xTaskCreatePinnedToCore(check_update_task_fn, "upd_chk", 8192, NULL, 5, NULL, 0);
 }
 
 static void about_btn_event_cb(lv_event_t *e) {
@@ -420,7 +461,7 @@ void create_menu_screen(void) {
     lv_obj_set_style_shadow_width(about_btn, 0, 0);
     lv_obj_set_style_radius(about_btn, 8, 0);
     lv_obj_t *about_icon = lv_label_create(about_btn);
-    lv_label_set_text(about_icon, LV_SYMBOL_LIST);
+    lv_label_set_text(about_icon, "?");
     lv_obj_set_style_text_font(about_icon, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(about_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(about_icon);

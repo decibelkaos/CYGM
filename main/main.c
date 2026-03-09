@@ -60,6 +60,7 @@
 #include "ui/time_weather_screens.h"
 #include "tasks/background_tasks.h"
 #include "sd_logger.h"
+#include "features/update_checker.h"
 
 static const char *TAG = "CYGM";
 
@@ -232,6 +233,7 @@ bool glucose_data_valid = false;      // True if we've EVER received valid data
 bool glucose_data_fresh = false;       // True only if last fetch succeeded
 dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
 bool first_glucose_received = false;  // Track if we've received first reading
+bool sensor_change_mode = false;      // User confirmed CGM sensor change in progress
 
 // Entry screen UI elements
 lv_obj_t *dexcom_username_entry_label = NULL;
@@ -1633,31 +1635,38 @@ void update_glucose_display(void) {
             lv_label_set_text(label_glucose, "---");
             lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Clear arrow
 
-            switch (glucose_status) {
-                case GLUCOSE_STATUS_WARMUP:
-                    lv_label_set_text(label_time_ago, "Sensor warmup");
-                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ORANGE), 0);  // Orange
-                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
-                    break;
+            if (sensor_change_mode) {
+                // User confirmed sensor change — show friendly message
+                lv_label_set_text(label_time_ago, "Sensor Change");
+                lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ORANGE), 0);
+                lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
+            } else {
+                switch (glucose_status) {
+                    case GLUCOSE_STATUS_WARMUP:
+                        lv_label_set_text(label_time_ago, "Sensor warmup");
+                        lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_ORANGE), 0);
+                        lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
+                        break;
 
-                case GLUCOSE_STATUS_SIGNAL_LOSS:
-                    lv_label_set_text(label_time_ago, "Signal loss");
-                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
-                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
-                    break;
+                    case GLUCOSE_STATUS_SIGNAL_LOSS:
+                        lv_label_set_text(label_time_ago, "Signal loss");
+                        lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
+                        lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
+                        break;
 
-                case GLUCOSE_STATUS_NOT_AUTHENTICATED:
-                    lv_label_set_text(label_time_ago, "Not logged in");
-                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
-                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
-                    break;
+                    case GLUCOSE_STATUS_NOT_AUTHENTICATED:
+                        lv_label_set_text(label_time_ago, "Not logged in");
+                        lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
+                        lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
+                        break;
 
-                case GLUCOSE_STATUS_NO_DATA:
-                default:
-                    lv_label_set_text(label_time_ago, "No sensor data");
-                    lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_TEXT_DIM), 0);
-                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
-                    break;
+                    case GLUCOSE_STATUS_NO_DATA:
+                    default:
+                        lv_label_set_text(label_time_ago, "No Data");
+                        lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
+                        lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
+                        break;
+                }
             }
         }
         lvgl_port_unlock();
@@ -1875,6 +1884,11 @@ void glucose_update_task(void *pvParameters) {
                 glucose_data_valid = true;    // We've received valid data at least once
                 glucose_data_fresh = true;    // This fetch succeeded
                 glucose_status = glucose.status;
+                if (sensor_change_mode) {
+                    sensor_change_mode = false;
+                    ESP_LOGI(TAG, "Sensor change complete - receiving data again");
+                }
+                reset_nodata_overlay_cycle();  // Allow overlay again if data drops later
 
                 // Update timer for progress bar
                 last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
@@ -1973,6 +1987,18 @@ void glucose_update_task(void *pvParameters) {
                 }
 
                 update_glucose_display();
+
+                // Show no-data overlay if signal lost (authenticated but no fresh data)
+                if (!sensor_change_mode &&
+                    (glucose.status == GLUCOSE_STATUS_NO_DATA ||
+                     glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS) &&
+                    home_screen_active) {
+                    if (lvgl_port_lock(200)) {
+                        show_nodata_overlay();
+                        lvgl_port_unlock();
+                    }
+                }
+
                 ESP_LOGW(TAG, "Periodic glucose fetch failed: %s", esp_err_to_name(ret));
 
                 // Show error LED (red blink)
@@ -2000,6 +2026,22 @@ void glucose_update_task(void *pvParameters) {
                 // Flush SD log after SSL close (max free memory for mount)
                 sd_log(TAG, "SSL closed, heap=%lu", esp_get_free_heap_size());
                 sd_logger_flush();
+
+                // Check for firmware updates (24h interval, after first glucose)
+                {
+                    static bool update_notified = false;
+                    if (first_glucose_received && update_should_check()) {
+                        ESP_LOGI(TAG, "Periodic firmware update check...");
+                        update_check_now();
+                        if (update_get_info()->available && !update_notified) {
+                            update_notified = true;
+                            if (lvgl_port_lock(200)) {
+                                show_update_overlay();
+                                lvgl_port_unlock();
+                            }
+                        }
+                    }
+                }
 
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
@@ -2108,6 +2150,7 @@ void menu_btn_event_cb(lv_event_t *e) {
         // Pause background tasks when leaving home screen
         home_screen_active = false;
         pause_background_tasks = true;
+        dismiss_nodata_overlay();
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
         if (lvgl_port_lock(0)) {
@@ -2131,6 +2174,7 @@ void wifi_icon_event_cb(lv_event_t *e) {
         // Pause background tasks when leaving home screen
         home_screen_active = false;
         pause_background_tasks = true;
+        dismiss_nodata_overlay();
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
         // Close Dexcom persistent client to free ~30KB memory for WiFi scan/UI

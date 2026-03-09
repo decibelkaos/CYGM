@@ -41,3 +41,6 @@ CONFIG_LV_USE_QRCODE=y
 # ESP-TLS - Allow insecure connections for geocoding (non-critical data)
 CONFIG_ESP_TLS_INSECURE=y
 CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+
+# mbedTLS - Larger input buffer for certificate chains (digitalkaos.tech needs ~7KB)
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192

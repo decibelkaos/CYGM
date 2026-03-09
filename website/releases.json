@@ -1,28 +1,41 @@
-{
-  "versions": [
-    {
-      "version": "1.5.1",
-      "date": "2026-02-05",
-      "stage": "Beta",
-      "notes": "Tick overflow fix, battery monitoring improvements, visual alarm refinements, SD card logging",
-      "files": {
-        "merged": "firmware/v1.5.1/cygm-merged.bin",
-        "app": "firmware/v1.5.1/cygm.bin",
-        "bootloader": "firmware/v1.5.1/bootloader.bin",
-        "partitions": "firmware/v1.5.1/partition-table.bin",
-        "spiffs": "firmware/v1.5.1/spiffs.bin"
-      },
-      "latest": true
-    }
-  ],
-  "chip": "ESP32",
-  "flash_mode": "dio",
-  "flash_freq": "40m",
-  "flash_size": "4MB",
-  "offsets": {
-    "bootloader": "0x1000",
-    "partitions": "0x8000",
-    "app": "0x10000",
-    "spiffs": "0x310000"
-  }
+﻿{
+    "versions":  [
+                     {
+                         "version":  "1.5.7",
+                         "date":  "2026-03-08",
+                         "stage":  "Beta",
+                         "notes":  "About overlay, QR code, update checker, SD glucose CSV, theme unification, sensor change overlay when no data is recieved",
+                         "files":  {
+                                       "merged":  "firmware/v1.5.7/cygm-merged.bin",
+                                       "app":  "firmware/v1.5.7/cygm.bin",
+                                       "bootloader":  "firmware/v1.5.7/bootloader.bin",
+                                       "partitions":  "firmware/v1.5.7/partition-table.bin",
+                                       "spiffs":  "firmware/v1.5.7/spiffs.bin"
+                                   },
+                         "latest":  true
+                     },
+                     {
+                         "version":  "1.5.1",
+                         "date":  "2026-02-05",
+                         "stage":  "Beta",
+                         "notes":  "Tick overflow fix, battery monitoring improvements, visual alarm refinements, SD card logging",
+                         "files":  {
+                                       "merged":  "firmware/v1.5.1/cygm-merged.bin",
+                                       "app":  "firmware/v1.5.1/cygm.bin",
+                                       "bootloader":  "firmware/v1.5.1/bootloader.bin",
+                                       "partitions":  "firmware/v1.5.1/partition-table.bin",
+                                       "spiffs":  "firmware/v1.5.1/spiffs.bin"
+                                   }
+                     }
+                 ],
+    "chip":  "ESP32",
+    "flash_mode":  "dio",
+    "flash_freq":  "40m",
+    "flash_size":  "4MB",
+    "offsets":  {
+                    "bootloader":  "0x1000",
+                    "partitions":  "0x8000",
+                    "app":  "0x10000",
+                    "spiffs":  "0x310000"
+                }
 }

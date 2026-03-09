@@ -27,6 +27,11 @@ void create_home_screen(void);
  */
 void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent);
 
+// No-data / sensor change overlay
+void show_nodata_overlay(void);
+void dismiss_nodata_overlay(void);
+void reset_nodata_overlay_cycle(void);
+
 #ifdef __cplusplus
 }
 #endif

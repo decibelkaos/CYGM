@@ -32,14 +32,14 @@ extern "C" {
 // ==================== Version Information ====================
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 1
-#define CYGM_VERSION_MINOR 5
-#define CYGM_VERSION_PATCH 7
+#define CYGM_VERSION_MINOR 6
+#define CYGM_VERSION_PATCH 0
 #define CYGM_VERSION_BUILD 0
 #define CYGM_VERSION_DATE "2026-03-08"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "1.5.7.2026-03-08.Beta"
+#define CYGM_VERSION_STRING "1.6.0.2026-03-08.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -240,6 +240,7 @@ extern bool glucose_data_valid;
 extern bool glucose_data_fresh;
 extern dexcom_status_t glucose_status;
 extern bool first_glucose_received;
+extern bool sensor_change_mode;        // User confirmed CGM sensor change in progress
 
 // ==================== Home Screen Widgets ====================
 
