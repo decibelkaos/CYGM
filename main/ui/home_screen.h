@@ -32,6 +32,10 @@ void show_nodata_overlay(void);
 void dismiss_nodata_overlay(void);
 void reset_nodata_overlay_cycle(void);
 
+// WiFi disconnected overlay
+void show_wifi_disconnected_overlay(void);
+void dismiss_wifi_disconnected_overlay(void);
+
 #ifdef __cplusplus
 }
 #endif

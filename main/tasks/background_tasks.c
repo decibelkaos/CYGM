@@ -19,6 +19,7 @@
 #include "wifi_manager.h"
 #include "dexcom_api.h"
 #include "web_server.h"
+#include "sd_logger.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -194,10 +195,7 @@ void wifi_task_core0(void *pvParameters) {
             add_boot_log("Connecting WiFi...");
             led_set_breathing_color(127, 127, 0);  // Yellow = connecting
 
-            // Temporarily save this network as first entry for wifi_manager_connect()
-            nvs_save_wifi_credentials(networks[idx].ssid, networks[idx].password);
-
-            if (wifi_manager_connect() == ESP_OK) {
+            if (wifi_manager_connect_to(networks[idx].ssid, networks[idx].password) == ESP_OK) {
                 // Get the ACTUAL connected SSID from WiFi stack (might differ from attempted SSID due to fallback)
                 wifi_config_t wifi_config;
                 if (esp_wifi_get_config(WIFI_IF_STA, &wifi_config) == ESP_OK) {
@@ -223,6 +221,7 @@ void wifi_task_core0(void *pvParameters) {
 
         if (connected) {
             ESP_LOGI(TAG, "WiFi connected successfully");
+            sd_log(TAG, "WiFi connected");
             add_boot_log("WiFi connected!");
             wifi_connected = true;
             led_start_wifi_boot_blink();  // Start green blink during boot
@@ -283,9 +282,20 @@ void wifi_task_core0(void *pvParameters) {
                              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 
                     if (!wait_for_time_sync(60000)) {  // Increased to 60 seconds
+                        sd_log(TAG, "Time sync failed after 60s - cannot auth Dexcom");
                         ESP_LOGE(TAG, "Time sync failed after 60s - CANNOT attempt Dexcom auth (SSL will fail)");
                         ESP_LOGE(TAG, "System time is still: %04d-%02d-%02d (needs to be >= 2020)",
                                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+
+                        // Still start tasks - glucose task will retry auth once time syncs
+                        if (weather_task_handle == NULL) {
+                            ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
+                            xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+                        }
+                        if (glucose_task_handle == NULL) {
+                            ESP_LOGI(TAG, "Starting glucose task (will auto-retry after time syncs)...");
+                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+                        }
                     } else {
                         // Time is synced, now safe to authenticate
                         ESP_LOGI(TAG, "Time synced successfully, proceeding with Dexcom auto-login");
@@ -299,7 +309,8 @@ void wifi_task_core0(void *pvParameters) {
 
                             esp_err_t ret = dexcom_authenticate(username, password);
                             if (ret == ESP_OK) {
-                                ESP_LOGI(TAG, "Dexcom auto-login successful on attempt %d!", attempt);
+                                sd_log(TAG, "Dexcom auto-login OK (attempt %d)", attempt);
+                            ESP_LOGI(TAG, "Dexcom auto-login successful on attempt %d!", attempt);
 
                                 // Fetch initial glucose reading
                                 dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
@@ -313,6 +324,8 @@ void wifi_task_core0(void *pvParameters) {
                                     // Update timer for progress bar
                                     last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
 
+                                    sd_log(TAG, "Initial glucose: %d mg/dL, trend: %s",
+                                           glucose.value, dexcom_trend_description(glucose.trend));
                                     ESP_LOGI(TAG, "Initial glucose: %d mg/dL, trend: %s",
                                              glucose.value, dexcom_trend_description(glucose.trend));
 
@@ -334,16 +347,14 @@ void wifi_task_core0(void *pvParameters) {
                                     update_glucose_display();
                                 }
 
-                                // AGGRESSIVE MEMORY FIX: Close SSL after initial fetch to free ~30KB
-                                // Periodic fetches will reopen SSL each time (prevents memory leaks)
+                                // Keep SSL connection alive — glucose task will reuse it
+                                // Closing here forces a new ~50KB handshake on a ~24KB heap = guaranteed failure
                                 ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial Dexcom fetch =====");
-                                ESP_LOGI(TAG, "Free heap before SSL close: %lu bytes", esp_get_free_heap_size());
-                                ESP_LOGI(TAG, "Free heap (internal): %lu bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+                                ESP_LOGI(TAG, "Free heap: %lu bytes (SSL kept alive for glucose task)", esp_get_free_heap_size());
                                 ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
 
-                                ESP_LOGI(TAG, "Closing Dexcom SSL connection to free memory (aggressive mode)");
-                                dexcom_close_persistent_client();
-                                ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
+                                // Flush SD logs after initial fetch
+                                sd_logger_flush();
 
                                 // Start weather task (uses HTTP - no SSL overhead!)
                                 if (weather_task_handle == NULL) {
@@ -360,7 +371,6 @@ void wifi_task_core0(void *pvParameters) {
                                 if (glucose_task_handle == NULL) {
                                     ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: Before starting glucose task =====");
                                     ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
-                                    ESP_LOGI(TAG, "Free heap (internal): %lu bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
                                     ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
                                     ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
                                     xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
@@ -368,6 +378,7 @@ void wifi_task_core0(void *pvParameters) {
 
                                 break;  // Success - exit retry loop
                             } else {
+                                sd_log(TAG, "Dexcom auth attempt %d failed: %s", attempt, esp_err_to_name(ret));
                                 ESP_LOGW(TAG, "Dexcom auth attempt %d failed: %s", attempt, esp_err_to_name(ret));
 
                                 if (attempt < max_retries) {
@@ -375,11 +386,22 @@ void wifi_task_core0(void *pvParameters) {
                                     vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
                                     retry_delay_ms *= 2;  // Exponential backoff: 2s, 4s, 8s, 16s
                                 } else {
+                                    sd_log(TAG, "CRITICAL: Dexcom login failed after %d attempts", max_retries);
                                     ESP_LOGE(TAG, "Dexcom auto-login failed after %d attempts", max_retries);
-                                    ESP_LOGE(TAG, "CRITICAL: Will continue trying in background task");
-                                    // TODO: Create background retry task for life-critical reconnection
+                                    ESP_LOGE(TAG, "CRITICAL: Starting tasks anyway - glucose task will auto-retry");
                                 }
                             }
+                        }
+
+                        // Ensure weather and glucose tasks start even if auth failed
+                        // The glucose task has auto-re-auth logic and will keep trying
+                        if (weather_task_handle == NULL) {
+                            ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
+                            xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+                        }
+                        if (glucose_task_handle == NULL) {
+                            ESP_LOGI(TAG, "Starting glucose task (will auto-reconnect to Dexcom)...");
+                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
                         }
                     }
                 }
@@ -391,6 +413,7 @@ void wifi_task_core0(void *pvParameters) {
                 }
             }
         } else {
+            sd_log(TAG, "WiFi connection failed");
             ESP_LOGE(TAG, "WiFi connection failed");
             led_start_error_blink();  // Red blink for error
 
@@ -404,19 +427,18 @@ void wifi_task_core0(void *pvParameters) {
         }
     }
 
-    // Monitor WiFi connection and auto-reconnect
+    // Monitor WiFi connection and auto-reconnect.
+    // SAFETY: WiFi reconnection is NEVER paused regardless of active screen.
+    // Without WiFi there is no glucose data, which is life-critical.
     bool was_connected = wifi_connected;
+    bool wifi_overlay_shown = false;
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(15000));
-
-        // Skip reconnect if user is in settings screens (background tasks paused)
-        if (pause_background_tasks) {
-            continue;
-        }
 
         if (!wifi_connected) {
             // Update home screen icon if we just lost connection
             if (was_connected) {
+                sd_log(TAG, "WiFi connection lost - auto-reconnecting");
                 ESP_LOGW(TAG, "WiFi connection lost - will attempt auto-reconnect");
                 update_wifi_status_display(false);
                 was_connected = false;
@@ -428,16 +450,47 @@ void wifi_task_core0(void *pvParameters) {
             if (ret == ESP_OK) {
                 wifi_connected = true;
                 was_connected = true;
+                sd_log(TAG, "WiFi auto-reconnect successful");
                 ESP_LOGI(TAG, "Auto-reconnect successful");
                 update_wifi_status_display(true);
 
+                // Dismiss WiFi overlay if it was shown
+                if (wifi_overlay_shown) {
+                    if (lvgl_port_lock(200)) {
+                        dismiss_wifi_disconnected_overlay();
+                        lvgl_port_unlock();
+                    }
+                    wifi_overlay_shown = false;
+                }
+
                 // Re-initialize SNTP in case time drifted
                 initialize_sntp();
+            } else if (!wifi_overlay_shown && home_screen_active) {
+                // First reconnect attempt failed — show WiFi overlay
+                if (lvgl_port_lock(200)) {
+                    show_wifi_disconnected_overlay();
+                    lvgl_port_unlock();
+                }
+                wifi_overlay_shown = true;
             }
-        } else if (!was_connected) {
-            // Connection restored externally (e.g. event handler retry succeeded)
-            was_connected = true;
-            update_wifi_status_display(true);
+        } else {
+            if (!was_connected) {
+                // Connection restored externally (e.g. event handler retry succeeded)
+                was_connected = true;
+                update_wifi_status_display(true);
+
+                // Dismiss WiFi overlay if it was shown
+                if (wifi_overlay_shown) {
+                    if (lvgl_port_lock(200)) {
+                        dismiss_wifi_disconnected_overlay();
+                        lvgl_port_unlock();
+                    }
+                    wifi_overlay_shown = false;
+                }
+            }
+
+            // Reset overlay flag when connected (so it can show again on next disconnect)
+            wifi_overlay_shown = false;
         }
     }
 }

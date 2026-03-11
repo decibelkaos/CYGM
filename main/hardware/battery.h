@@ -8,6 +8,8 @@
 #ifndef HARDWARE_BATTERY_H
 #define HARDWARE_BATTERY_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +31,17 @@ void battery_monitor_task(void *arg);
  * Safe to call before UI is initialized (will return early)
  */
 void update_battery_display(void);
+
+/**
+ * Get battery color for a given percentage (smooth green→red gradient)
+ * 100% = green, fades through yellow/orange to red at 15%, solid red below 15%
+ */
+uint32_t battery_percent_to_color(int percent);
+
+/**
+ * Get darker battery color variant for gradient fills
+ */
+uint32_t battery_percent_to_dark_color(int percent);
 
 #ifdef __cplusplus
 }

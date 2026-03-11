@@ -16,15 +16,19 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
+#include "sd_logger.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
 
 static const char *TAG = "BATTERY";
 
 // Helper function prototypes
 static float battery_read_voltage(void);
+static float battery_quick_read_voltage(void);
 static int battery_voltage_to_percent(float voltage);
 static void battery_low_alert(void);
 static void battery_flash_timer_cb(lv_timer_t *timer);
-static void charging_fade_timer_cb(lv_timer_t *timer);
+static void charging_anim_timer_cb(lv_timer_t *timer);
 
 void battery_init(void) {
     ESP_LOGI(TAG, "Initializing battery monitoring");
@@ -71,7 +75,7 @@ static float battery_read_voltage(void) {
             return 0.0f;
         }
         adc_sum += adc_raw;
-        vTaskDelay(pdMS_TO_TICKS(2));  // Small delay between samples
+        vTaskDelay(1);  // Yield between samples (1 tick regardless of tick rate)
     }
 
     int adc_avg = adc_sum / num_samples;
@@ -95,6 +99,27 @@ static float battery_read_voltage(void) {
     return battery_volts;
 }
 
+// Lightweight ADC read — fewer samples, no logging.  Used for fast
+// change detection between full processing cycles (~8ms, no serial spam).
+static float battery_quick_read_voltage(void) {
+    const int num_samples = 4;
+    int adc_sum = 0;
+    for (int i = 0; i < num_samples; i++) {
+        int adc_raw = 0;
+        if (adc_oneshot_read(adc_handle, BATTERY_ADC_CHANNEL, &adc_raw) != ESP_OK) return 0.0f;
+        adc_sum += adc_raw;
+        vTaskDelay(1);  // Yield between samples (1 tick regardless of tick rate)
+    }
+    int adc_avg = adc_sum / num_samples;
+    int voltage_mv = 0;
+    if (adc_cali_handle != NULL) {
+        adc_cali_raw_to_voltage(adc_cali_handle, adc_avg, &voltage_mv);
+    } else {
+        voltage_mv = (adc_avg * 3300) / 4096;
+    }
+    return (voltage_mv / 1000.0f) * BATTERY_VOLTAGE_DIVIDER;
+}
+
 static int battery_voltage_to_percent(float voltage) {
     // LiPo discharge curve adjusted for under-load voltage:
     // 4.0V = 100%, 3.9V = 90%, 3.8V = 80%, 3.7V = 65%, 3.6V = 40%
@@ -111,6 +136,49 @@ static int battery_voltage_to_percent(float voltage) {
     return 0;
 }
 
+// Charging-compensated curve: maps terminal voltage DURING TP4056 charging
+// back to approximate real SOC.  The charger drives ~850mA through the
+// battery; internal resistance (Rint, ~100-350mΩ varying with SOC) inflates
+// the ADC reading.  This curve = normal OCV curve shifted right by I×Rint.
+//
+// Calibration data: 3.87V terminal ≈ 43% real SOC (user-verified)
+// Model: Rint=300mΩ@40%, 200mΩ@80%, 100mΩ@100%, I_charge=850mA
+//
+// Terminal breakpoints:
+//   3.50=0%, 3.68=10%, 3.77=20%, 3.84=30%, 3.86=40%, 3.88=50%,
+//   3.91=65%, 3.97=80%, 4.03=90%, 4.09=100%
+static int charging_voltage_to_percent(float voltage) {
+    if (voltage >= 4.09f) return 100;
+    if (voltage >= 4.03f) return 90 + (int)((voltage - 4.03f) * 167.0f);
+    if (voltage >= 3.97f) return 80 + (int)((voltage - 3.97f) * 167.0f);
+    if (voltage >= 3.91f) return 65 + (int)((voltage - 3.91f) * 250.0f);
+    if (voltage >= 3.88f) return 50 + (int)((voltage - 3.88f) * 500.0f);
+    if (voltage >= 3.86f) return 40 + (int)((voltage - 3.86f) * 500.0f);
+    if (voltage >= 3.84f) return 30 + (int)((voltage - 3.84f) * 500.0f);
+    if (voltage >= 3.77f) return 20 + (int)((voltage - 3.77f) * 143.0f);
+    if (voltage >= 3.68f) return 10 + (int)((voltage - 3.68f) * 111.0f);
+    if (voltage >= 3.50f) return (int)((voltage - 3.50f) * 56.0f);
+    return 0;
+}
+
+// Smooth green→red gradient: 100%=green, 15%=red, 0-15%=solid red
+uint32_t battery_percent_to_color(int percent) {
+    if (percent <= 15) return COLOR_RED;
+    // Map 15-100% to hue 0-120 (red to green)
+    // Use HSV: hue = 0 (red) to 120 (green), full saturation + value
+    int hue = (percent - 15) * 120 / 85;  // 0 at 15%, 120 at 100%
+    lv_color_t c = lv_color_hsv_to_rgb(hue, 100, 100);
+    return (lv_color_to32(c) & 0x00FFFFFF);  // Strip alpha
+}
+
+// Darker variant for battery fill gradient
+uint32_t battery_percent_to_dark_color(int percent) {
+    if (percent <= 15) return 0x991B1B;  // dark red
+    int hue = (percent - 15) * 120 / 85;
+    lv_color_t c = lv_color_hsv_to_rgb(hue, 100, 50);  // Half brightness
+    return (lv_color_to32(c) & 0x00FFFFFF);
+}
+
 static void battery_low_alert(void) {
     // Play 3 beeps (250ms apart) to warn of low battery
     const uint8_t volume = 70;
@@ -125,6 +193,9 @@ static void battery_low_alert(void) {
     ESP_LOGW(TAG, "Low battery alert played (10%% warning)");
 }
 
+// Forward-declare charging state (used by update_battery_display, defined with other statics below)
+static bool bat_confirmed_charging = false;
+
 static void battery_flash_timer_cb(lv_timer_t *timer) {
     // Flash battery icon red when battery is at 10%
     static bool flash_state = false;
@@ -137,26 +208,37 @@ static void battery_flash_timer_cb(lv_timer_t *timer) {
     }
 }
 
-static void charging_fade_timer_cb(lv_timer_t *timer) {
-    // Fade charging icon in/out when battery is charging
-    static uint8_t fade_value = 0;
-    static int8_t fade_direction = 5;  // Fade speed (positive = brighter, negative = dimmer)
+// Charging animation base level — sweep starts here, goes to 100%
+static int charging_anim_base = 0;
 
-    if (battery_charging_icon != NULL && lvgl_port_lock(0)) {
-        fade_value += fade_direction;
+static void charging_anim_timer_cb(lv_timer_t *timer) {
+    // Animate battery fill: sweeps from current level to 100%, then repeats
+    static int anim_fill = 0;
+    static int anim_pause = 0;
 
-        // Reverse direction at boundaries
-        if (fade_value >= 255) {
-            fade_value = 255;
-            fade_direction = -5;
-        } else if (fade_value <= 100) {
-            fade_value = 100;
-            fade_direction = 5;
-        }
+    if (battery_canvas == NULL || !lvgl_port_lock(0)) return;
 
-        lv_obj_set_style_opa(battery_charging_icon, fade_value, 0);
+    if (anim_pause > 0) {
+        anim_pause--;
         lvgl_port_unlock();
+        return;
     }
+
+    // Sweep from base level to 100%
+    int range = 100 - charging_anim_base;
+    if (range < 10) range = 10;  // Always animate at least 10%
+
+    anim_fill += 3;  // 3% per tick at 100ms = ~3 seconds for full sweep
+    if (anim_fill > range) {
+        anim_fill = 0;
+        anim_pause = 8;  // 800ms pause at full before repeating
+    }
+
+    int display_fill = charging_anim_base + anim_fill;
+    if (display_fill > 100) display_fill = 100;
+
+    draw_battery_icon(battery_canvas, COLOR_GREEN, display_fill);
+    lvgl_port_unlock();
 }
 
 void update_battery_display(void) {
@@ -164,19 +246,23 @@ void update_battery_display(void) {
         return;  // UI not initialized yet
     }
 
+    // During charging, the animation timer handles icon drawing
+    if (bat_confirmed_charging) {
+        // Show pre-charge percentage in green (ADC is inflated during charging)
+        if (battery_percent_label != NULL && lvgl_port_lock(0)) {
+            lv_label_set_text_fmt(battery_percent_label, "%d%%", battery_percent);
+            lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_GREEN), 0);
+            lvgl_port_unlock();
+        }
+        return;
+    }
+
     if (!lvgl_port_lock(0)) {
         return;
     }
 
-    // Determine color based on percentage
-    uint32_t color;
-    if (battery_percent >= 80) {
-        color = COLOR_GREEN;
-    } else if (battery_percent >= 20) {
-        color = COLOR_ORANGE;
-    } else {
-        color = COLOR_RED;
-    }
+    // Smooth color gradient: green at 100% → red at 15%
+    uint32_t color = battery_percent_to_color(battery_percent);
 
     // Redraw battery icon with smooth fill (skip if flashing at <10%)
     if (battery_percent >= 10) {
@@ -192,107 +278,341 @@ void update_battery_display(void) {
     lvgl_port_unlock();
 }
 
-void battery_monitor_task(void *arg) {
-    ESP_LOGI(TAG, "Battery monitor task started (runs every 60 seconds)");
+// --- Battery averaging and charging detection ---
+#define BATTERY_AVG_SAMPLES     8   // Rolling average window
+#define BATTERY_MAX_STEP        2   // Max % change per cycle (prevents visual jumps)
 
-    static bool was_charging = false;
+// Charging detection — trend-based (no absolute voltage thresholds)
+// The TP4056 shares the ADC pin; terminal voltage is elevated during charging,
+// making single-reading detection unreliable.  We use voltage trend over
+// consecutive readings plus sudden-jump detection for mid-session plug-in.
+#define CHARGE_BOOT_FAST_COUNT  3      // Number of fast readings at boot (10s intervals)
+#define CHARGE_BOOT_INTERVAL_MS 2000   // 2s between fast boot readings
+#define CHARGE_TREND_TOLERANCE  0.03f  // Voltage within 0.03V = "not dropping"
+#define CHARGE_MIN_VOLTAGE      3.50f  // Below this, definitely not charging
+#define CHARGE_STABLE_VOLTAGE   3.85f  // Stable above this = likely charging (raised from 3.75 to avoid false positives at 65-80% SOC)
+#define CHARGE_JUMP_PERCENT     15     // Raw% jump > 15 in one cycle = plug-in detected
+#define UNPLUG_DROP_VOLTAGE     0.12f  // Voltage drop > 0.12V in one cycle = charger removed
+#define CHARGE_CUMULATIVE_DROP  0.05f  // Dropped 0.05V below charge-start = false positive
+
+static int  bat_history[BATTERY_AVG_SAMPLES];
+static int  bat_history_count = 0;
+static int  bat_history_idx = 0;
+static int  bat_displayed_percent = -1;  // -1 = not yet initialized
+static float bat_prev_voltage = 0.0f;    // Previous cycle voltage (for jump detection)
+static int  bat_prev_raw_percent = -1;   // Previous cycle raw percent
+// bat_confirmed_charging declared above update_battery_display (forward reference)
+static int  bat_pre_charge_percent = -1; // Last trustworthy % before charger was plugged in
+static int   bat_boot_readings = 0;         // Counter for fast boot phase
+static float bat_charge_start_voltage = 0;  // Voltage when charging detected
+static float bat_voltage_history[3] = {0};  // Last 3 voltages for trend detection
+static int   bat_voltage_hist_count = 0;    // How many trend entries collected
+
+static int battery_compute_average(void) {
+    if (bat_history_count == 0) return 0;
+    int sum = 0;
+    int n = (bat_history_count < BATTERY_AVG_SAMPLES) ? bat_history_count : BATTERY_AVG_SAMPLES;
+    for (int i = 0; i < n; i++) sum += bat_history[i];
+    return sum / n;
+}
+
+static void battery_start_charging(bool from_jump) {
+    if (bat_confirmed_charging) return;
+    bat_confirmed_charging = true;
+    bat_charge_start_voltage = battery_voltage;  // Track for false-positive correction
+
+    if (from_jump) {
+        // Mid-session: bat_displayed_percent is the real pre-charge level
+        bat_pre_charge_percent = bat_displayed_percent;
+    } else {
+        // Boot/trend: bat_displayed_percent is inflated — use charging curve
+        // on the first reading (before TP4056 stabilization inflates further)
+        bat_pre_charge_percent = charging_voltage_to_percent(bat_voltage_history[0]);
+    }
+
+    // Set corrected percentage and animation base immediately
+    battery_percent = bat_pre_charge_percent;
+    charging_anim_base = (bat_pre_charge_percent > 0) ? bat_pre_charge_percent : 0;
+
+    ESP_LOGI(TAG, "Charging detected (%.3fV, corrected=%d%%, anim_base=%d%%, method=%s)",
+             battery_voltage, bat_pre_charge_percent, charging_anim_base,
+             from_jump ? "jump" : "trend");
+    sd_log(TAG, "Charging: STARTED (%.3fV, corrected=%d%%)", battery_voltage, bat_pre_charge_percent);
+
+    // Start fill animation
+    if (battery_charging_fade_timer == NULL) {
+        battery_charging_fade_timer = lv_timer_create(charging_anim_timer_cb, 100, NULL);
+    }
+
+    // Set percentage label to green immediately
+    update_battery_display();
+}
+
+static void battery_stop_charging(void) {
+    if (!bat_confirmed_charging) return;
+    bat_confirmed_charging = false;
+
+    ESP_LOGI(TAG, "Charging stopped (%.3fV)", battery_voltage);
+    sd_log(TAG, "Charging: STOPPED (%.3fV)", battery_voltage);
+
+    // Stop animation timer
+    if (battery_charging_fade_timer != NULL) {
+        lv_timer_del(battery_charging_fade_timer);
+        battery_charging_fade_timer = NULL;
+    }
+
+    // Redraw battery icon at current level with correct color
+    if (battery_canvas != NULL && lvgl_port_lock(0)) {
+        uint32_t color = battery_percent_to_color(battery_percent);
+        draw_battery_icon(battery_canvas, color, battery_percent);
+        lvgl_port_unlock();
+    }
+
+    // Reset averaging history — readings during charging were inflated
+    bat_history_count = 0;
+    bat_history_idx = 0;
+    bat_displayed_percent = -1;  // Next reading will initialize fresh
+    bat_charge_start_voltage = 0;
+    bat_voltage_hist_count = 0;
+}
+
+void battery_monitor_task(void *arg) {
+    ESP_LOGI(TAG, "Battery monitor task started");
 
     while (1) {
         // Only check if on home screen (device awake)
         if (!home_screen_active) {
-            vTaskDelay(pdMS_TO_TICKS(60000));  // Check every 60 seconds
+            vTaskDelay(pdMS_TO_TICKS(60000));
             continue;
         }
 
-        // Read battery voltage
+        // Read battery voltage and raw percentage
         battery_voltage = battery_read_voltage();
+        int raw_percent = battery_voltage_to_percent(battery_voltage);
 
-        // Calculate battery percentage
-        battery_percent = battery_voltage_to_percent(battery_voltage);
+        // --- Track voltage history for trend detection ---
+        // [0]=oldest, [2]=newest
+        if (bat_voltage_hist_count < 3) {
+            bat_voltage_history[bat_voltage_hist_count] = battery_voltage;
+            bat_voltage_hist_count++;
+        } else {
+            bat_voltage_history[0] = bat_voltage_history[1];
+            bat_voltage_history[1] = bat_voltage_history[2];
+            bat_voltage_history[2] = battery_voltage;
+        }
 
-        ESP_LOGI(TAG, "Battery: %.3fV, %d%%", battery_voltage, battery_percent);
+        // --- Charging detection ---
+        if (!bat_confirmed_charging) {
+            bool detected = false;
 
-        // Update display
-        update_battery_display();
-
-        // Check for charging (voltage >= 4.1V indicates USB power)
-        bool is_charging = (battery_voltage >= 4.1f);
-
-        if (is_charging && !was_charging) {
-            // Just started charging - show icon
-            ESP_LOGI(TAG, "Battery charging detected (%.3fV >= 4.1V)", battery_voltage);
-            if (battery_charging_icon != NULL && lvgl_port_lock(0)) {
-                lv_obj_clear_flag(battery_charging_icon, LV_OBJ_FLAG_HIDDEN);
-                lvgl_port_unlock();
+            // Method 1: Sudden raw% jump (charger plugged in mid-session)
+            bool from_jump = false;
+            if (bat_prev_raw_percent >= 0 &&
+                (raw_percent - bat_prev_raw_percent > CHARGE_JUMP_PERCENT)) {
+                ESP_LOGI(TAG, "Charger detected (jump): raw=%d%% prev=%d%%",
+                         raw_percent, bat_prev_raw_percent);
+                detected = true;
+                from_jump = true;
             }
-            // Start fade timer
-            if (battery_charging_fade_timer == NULL) {
-                battery_charging_fade_timer = lv_timer_create(charging_fade_timer_cb, 50, NULL);  // Fade every 50ms
+
+            // Method 2: Voltage trend — stable or rising over 3 readings at ≥3.85V
+            // Catches charging at boot when there's no previous reading to compare
+            if (!detected && bat_voltage_hist_count >= 3 &&
+                battery_voltage >= CHARGE_STABLE_VOLTAGE) {
+                if (bat_voltage_history[1] >= bat_voltage_history[0] - CHARGE_TREND_TOLERANCE &&
+                    bat_voltage_history[2] >= bat_voltage_history[1] - CHARGE_TREND_TOLERANCE) {
+                    // Sanity check: the charging curve should give a reasonable SOC.
+                    // If it returns < 25%, this voltage is too low for real TP4056 charging
+                    // (ADC noise on a 65-85% battery mimics a rising trend).
+                    int trend_corrected = charging_voltage_to_percent(battery_voltage);
+                    if (trend_corrected >= 25) {
+                        ESP_LOGI(TAG, "Charger detected (trend): V=%.3f->%.3f->%.3f (corrected=%d%%)",
+                                 bat_voltage_history[0], bat_voltage_history[1], battery_voltage, trend_corrected);
+                        detected = true;
+                    } else {
+                        ESP_LOGW(TAG, "Trend rejected (false positive): V=%.3f->%.3f->%.3f, charging_curve=%d%% < 25%%",
+                                 bat_voltage_history[0], bat_voltage_history[1], battery_voltage, trend_corrected);
+                    }
+                }
             }
-        } else if (!is_charging && was_charging) {
-            // Just stopped charging - hide icon
-            ESP_LOGI(TAG, "Battery charging stopped (%.3fV < 4.1V)", battery_voltage);
-            if (battery_charging_icon != NULL && lvgl_port_lock(0)) {
-                lv_obj_add_flag(battery_charging_icon, LV_OBJ_FLAG_HIDDEN);
-                lvgl_port_unlock();
+
+            if (detected) {
+                battery_start_charging(from_jump);
             }
-            // Stop fade timer
-            if (battery_charging_fade_timer != NULL) {
-                lv_timer_del(battery_charging_fade_timer);
-                battery_charging_fade_timer = NULL;
+        } else {
+            // Currently charging — check for unplug
+            bool should_stop = false;
+
+            // Check 1: Large voltage drop in one cycle (charger physically removed)
+            if (bat_prev_voltage > 0 &&
+                (bat_prev_voltage - battery_voltage > UNPLUG_DROP_VOLTAGE)) {
+                ESP_LOGI(TAG, "Charger unplugged (drop): V=%.3f->%.3f",
+                         bat_prev_voltage, battery_voltage);
+                should_stop = true;
+            }
+
+            // Check 2: Voltage below minimum (clearly not being charged)
+            if (battery_voltage < CHARGE_MIN_VOLTAGE) {
+                ESP_LOGI(TAG, "Charging stopped (low voltage): V=%.3f", battery_voltage);
+                should_stop = true;
+            }
+
+            // Check 3: Cumulative drop from charge-start (false positive correction)
+            if (bat_charge_start_voltage > 0 &&
+                (bat_charge_start_voltage - battery_voltage > CHARGE_CUMULATIVE_DROP)) {
+                ESP_LOGI(TAG, "Charging stopped (cumulative drop): start=%.3f now=%.3f",
+                         bat_charge_start_voltage, battery_voltage);
+                should_stop = true;
+            }
+
+            if (should_stop) {
+                battery_stop_charging();
+                bat_prev_voltage = battery_voltage;
+                bat_prev_raw_percent = raw_percent;
+                vTaskDelay(pdMS_TO_TICKS(60000));
+                continue;
             }
         }
 
-        was_charging = is_charging;
+        bat_prev_voltage = battery_voltage;
+        bat_prev_raw_percent = raw_percent;
 
-        // Check for critical low battery (3.2V or below) - shut down to prevent damage
-        if (battery_voltage <= BATTERY_LOW_VOLTAGE) {
-            ESP_LOGE(TAG, "CRITICAL: Battery voltage %.3fV <= %.3fV - SHUTTING DOWN",
-                     battery_voltage, BATTERY_LOW_VOLTAGE);
+        // --- Normal battery processing (only when NOT charging) ---
+        if (!bat_confirmed_charging) {
+            // Add to rolling history
+            bat_history[bat_history_idx] = raw_percent;
+            bat_history_idx = (bat_history_idx + 1) % BATTERY_AVG_SAMPLES;
+            if (bat_history_count < BATTERY_AVG_SAMPLES) bat_history_count++;
 
-            // Show critical battery message on display
-            if (lvgl_port_lock(0)) {
-                // Create full-screen message
-                lv_obj_t *shutdown_screen = lv_obj_create(NULL);
-                lv_obj_set_style_bg_color(shutdown_screen, lv_color_black(), 0);
+            // Compute averaged percentage
+            int avg_percent = battery_compute_average();
 
-                lv_obj_t *label = lv_label_create(shutdown_screen);
-                lv_label_set_text(label, "CRITICAL LOW BATTERY\n\nShutting down...\n\nPlease charge device");
-                lv_obj_set_style_text_color(label, lv_color_hex(COLOR_RED), 0);
-                lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
-                lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-                lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-
-                lv_scr_load(shutdown_screen);
-                lvgl_port_unlock();
+            // Clamp step change to prevent visible jumps (max ±BATTERY_MAX_STEP per cycle)
+            if (bat_displayed_percent < 0) {
+                bat_displayed_percent = avg_percent;  // First reading — initialize directly
+            } else {
+                int delta = avg_percent - bat_displayed_percent;
+                if (delta > BATTERY_MAX_STEP) delta = BATTERY_MAX_STEP;
+                if (delta < -BATTERY_MAX_STEP) delta = -BATTERY_MAX_STEP;
+                bat_displayed_percent += delta;
             }
 
-            // Play shutdown tone
-            buzzer_tone(400, 80);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            buzzer_stop();
+            // Clamp to 0-100
+            if (bat_displayed_percent > 100) bat_displayed_percent = 100;
+            if (bat_displayed_percent < 0) bat_displayed_percent = 0;
 
-            // Wait a moment for user to see message
-            vTaskDelay(pdMS_TO_TICKS(3000));
+            // Set the global that the display uses
+            battery_percent = bat_displayed_percent;
 
-            // Deep sleep until external wake (USB plug-in)
-            ESP_LOGI(TAG, "Entering deep sleep...");
-            esp_deep_sleep_start();
+            ESP_LOGI(TAG, "Battery: %.3fV, raw=%d%%, avg=%d%%, display=%d%%",
+                     battery_voltage, raw_percent, avg_percent, bat_displayed_percent);
+
+            // Update display
+            update_battery_display();
+
+            // Check for critical low battery (3.2V or below) — shut down to prevent damage
+            if (battery_voltage <= BATTERY_LOW_VOLTAGE) {
+                ESP_LOGE(TAG, "CRITICAL: Battery voltage %.3fV <= %.3fV - SHUTTING DOWN",
+                         battery_voltage, BATTERY_LOW_VOLTAGE);
+                sd_log(TAG, "CRITICAL: %.3fV - SHUTDOWN", battery_voltage);
+                sd_logger_flush();
+
+                if (lvgl_port_lock(0)) {
+                    lv_obj_t *shutdown_screen = lv_obj_create(NULL);
+                    lv_obj_set_style_bg_color(shutdown_screen, lv_color_black(), 0);
+
+                    lv_obj_t *label = lv_label_create(shutdown_screen);
+                    lv_label_set_text(label, "CRITICAL LOW BATTERY\n\nShutting down...\n\nPlease charge device");
+                    lv_obj_set_style_text_color(label, lv_color_hex(COLOR_RED), 0);
+                    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+                    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+                    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+
+                    lv_scr_load(shutdown_screen);
+                    lvgl_port_unlock();
+                }
+
+                buzzer_tone(400, 80);
+                vTaskDelay(pdMS_TO_TICKS(500));
+                buzzer_stop();
+                vTaskDelay(pdMS_TO_TICKS(3000));
+
+                ESP_LOGI(TAG, "Entering deep sleep...");
+                esp_deep_sleep_start();
+            }
+
+            // Check for 10% battery warning
+            if (battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
+                battery_low_warning_shown = true;
+                sd_log(TAG, "LOW: %d%% (%.3fV) - alert played", battery_percent, battery_voltage);
+                battery_low_alert();
+                if (battery_flash_timer == NULL) {
+                    battery_flash_timer = lv_timer_create(battery_flash_timer_cb, 500, NULL);
+                }
+            }
+        } else {
+            // Charging — use the charging-compensated voltage curve to estimate
+            // real SOC.  The curve accounts for TP4056 IR rise at each SOC level.
+            int corrected_percent = charging_voltage_to_percent(battery_voltage);
+            if (corrected_percent > 100) corrected_percent = 100;
+            if (corrected_percent < 0) corrected_percent = 0;
+
+            // Step-clamp to ±2% per reading (smooths ADC noise in the flat region)
+            int delta = corrected_percent - battery_percent;
+            if (delta > BATTERY_MAX_STEP) delta = BATTERY_MAX_STEP;
+            if (delta < -BATTERY_MAX_STEP) delta = -BATTERY_MAX_STEP;
+            battery_percent += delta;
+            if (battery_percent > 100) battery_percent = 100;
+            if (battery_percent < 0) battery_percent = 0;
+
+            update_battery_display();
+
+            // Raise animation base as charge progresses (sweep area shrinks)
+            if (battery_percent > charging_anim_base) {
+                charging_anim_base = battery_percent;
+                if (charging_anim_base > 95) charging_anim_base = 95;
+            }
+
+            ESP_LOGI(TAG, "Charging: %.3fV, curve=%d%%, display=%d%%, anim=%d%%",
+                     battery_voltage, corrected_percent, battery_percent, charging_anim_base);
         }
 
-        // Check for 10% battery warning
-        if (battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
-            battery_low_warning_shown = true;
+        // Periodic SD flush — check largest contiguous block (FAT mount needs ~12KB)
+        size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        if (largest_block > 15000) {
+            sd_logger_flush();
+        } else {
+            ESP_LOGW(TAG, "SD flush skipped (largest_block=%u, total=%lu)",
+                     (unsigned)largest_block, esp_get_free_heap_size());
+        }
 
-            // Play warning beeps
-            battery_low_alert();
+        // Fast boot readings, then normal interval with change detection
+        bat_boot_readings++;
+        if (bat_boot_readings <= CHARGE_BOOT_FAST_COUNT) {
+            // Boot phase: fast readings at 2s intervals
+            vTaskDelay(pdMS_TO_TICKS(CHARGE_BOOT_INTERVAL_MS));
+        } else {
+            // Normal phase: sleep in 5s chunks, quick-check ADC for plug/unplug
+            // Full processing runs every 60s OR immediately on voltage change
+            float last_check_v = battery_voltage;
+            int elapsed_ms = 0;
+            while (elapsed_ms < 60000) {
+                vTaskDelay(pdMS_TO_TICKS(5000));
+                elapsed_ms += 5000;
 
-            // Start flashing timer
-            if (battery_flash_timer == NULL) {
-                battery_flash_timer = lv_timer_create(battery_flash_timer_cb, 500, NULL);  // Flash every 500ms
+                if (!home_screen_active) break;
+
+                float quick_v = battery_quick_read_voltage();
+                float delta_v = quick_v - last_check_v;
+
+                // +0.08V = likely charger plugged in (TP4056 IR rise)
+                // -0.10V = likely charger removed (voltage drop back to OCV)
+                if (delta_v > 0.08f || delta_v < -0.10f) {
+                    ESP_LOGI(TAG, "Voltage change: %.3fV -> %.3fV (delta=%.3fV) — fast cycle",
+                             last_check_v, quick_v, delta_v);
+                    break;
+                }
             }
         }
-
-        vTaskDelay(pdMS_TO_TICKS(60000));  // Check every 60 seconds
     }
 }

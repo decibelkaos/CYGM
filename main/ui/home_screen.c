@@ -10,8 +10,12 @@
 #include "features/weather_system.h"
 #include "features/glucose_history.h"
 #include "hardware/display.h"
+#include "hardware/battery.h"
 #include "nvs_config.h"
 #include "ui/glucose_chart.h"
+#include "ui/wifi_screens.h"
+#include "dexcom_api.h"
+#include "sd_logger.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -22,7 +26,6 @@ static const char *TAG = "HOME_SCREEN";
 
 // File-scope references for expand/collapse repositioning
 static lv_obj_t *brightness_btn_ref = NULL;
-static lv_obj_t *timer_bar_overlay_ref = NULL;
 
 // Forward declarations
 static void brightness_icon_event_cb(lv_event_t *e);
@@ -54,9 +57,22 @@ static void anim_opa_cb(void *var, int32_t v) {
 
 static lv_obj_t *nodata_overlay = NULL;
 static bool nodata_overlay_shown_this_cycle = false;  // Don't re-show after user dismisses
+static lv_timer_t *nodata_auto_dismiss_timer = NULL;
+static lv_obj_t *nodata_countdown_label = NULL;
+static int nodata_countdown_sec = 30;
+
+// Clean up the auto-dismiss timer
+static void nodata_cleanup_timer(void) {
+    if (nodata_auto_dismiss_timer) {
+        lv_timer_del(nodata_auto_dismiss_timer);
+        nodata_auto_dismiss_timer = NULL;
+    }
+    nodata_countdown_label = NULL;
+}
 
 static void nodata_yes_cb(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    nodata_cleanup_timer();
     sensor_change_mode = true;
     ESP_LOGI(TAG, "User confirmed sensor change");
     if (nodata_overlay) { lv_obj_del(nodata_overlay); nodata_overlay = NULL; }
@@ -65,10 +81,33 @@ static void nodata_yes_cb(lv_event_t *e) {
 
 static void nodata_no_cb(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    nodata_cleanup_timer();
     sensor_change_mode = false;
     ESP_LOGI(TAG, "User denied sensor change — showing error state");
     if (nodata_overlay) { lv_obj_del(nodata_overlay); nodata_overlay = NULL; }
     update_glucose_display();
+}
+
+// Auto-dismiss timer: ticks every 1 second, auto-selects "No" after 30 seconds.
+// SAFETY: The device must NEVER stop trying to fetch glucose data because
+// the user was asleep and didn't respond to this overlay.
+static void nodata_auto_dismiss_cb(lv_timer_t *timer) {
+    nodata_countdown_sec--;
+
+    // Update countdown label (only valid while overlay exists)
+    if (nodata_overlay && nodata_countdown_label) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Auto-dismiss in %ds", nodata_countdown_sec);
+        lv_label_set_text(nodata_countdown_label, buf);
+    }
+
+    if (nodata_countdown_sec <= 0) {
+        ESP_LOGW(TAG, "No-data overlay auto-dismissed (30s timeout) — defaulting to NO");
+        nodata_cleanup_timer();
+        sensor_change_mode = false;
+        if (nodata_overlay) { lv_obj_del(nodata_overlay); nodata_overlay = NULL; }
+        update_glucose_display();
+    }
 }
 
 void show_nodata_overlay(void) {
@@ -155,9 +194,22 @@ void show_nodata_overlay(void) {
     lv_obj_set_style_text_color(lbl_no, lv_color_hex(COLOR_RED), 0);
     lv_obj_center(lbl_no);
     lv_obj_add_event_cb(btn_no, nodata_no_cb, LV_EVENT_CLICKED, NULL);
+
+    // Countdown label (bottom of card)
+    nodata_countdown_sec = 30;
+    nodata_countdown_label = lv_label_create(card);
+    lv_label_set_text(nodata_countdown_label, "Auto-dismiss in 30s");
+    lv_obj_set_style_text_font(nodata_countdown_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(nodata_countdown_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(nodata_countdown_label, LV_ALIGN_TOP_MID, 0, 100);
+
+    // Auto-dismiss timer: defaults to "No" after 30 seconds.
+    // SAFETY: If user is asleep, device must keep trying to fetch data.
+    nodata_auto_dismiss_timer = lv_timer_create(nodata_auto_dismiss_cb, 1000, NULL);
 }
 
 void dismiss_nodata_overlay(void) {
+    nodata_cleanup_timer();
     if (nodata_overlay != NULL) {
         lv_obj_del(nodata_overlay);
         nodata_overlay = NULL;
@@ -167,6 +219,147 @@ void dismiss_nodata_overlay(void) {
 // Reset the "already shown" flag when data comes back
 void reset_nodata_overlay_cycle(void) {
     nodata_overlay_shown_this_cycle = false;
+}
+
+// ==================== WiFi Disconnected Overlay ====================
+
+static lv_obj_t *wifi_disc_overlay = NULL;
+
+static void wifi_disc_dismiss_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    ESP_LOGI(TAG, "WiFi disconnect overlay dismissed by user");
+    if (wifi_disc_overlay) { lv_obj_del(wifi_disc_overlay); wifi_disc_overlay = NULL; }
+}
+
+static void wifi_disc_settings_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    ESP_LOGI(TAG, "User tapped WiFi Settings from disconnect overlay");
+
+    // Clean up overlay first
+    if (wifi_disc_overlay) { lv_obj_del(wifi_disc_overlay); wifi_disc_overlay = NULL; }
+
+    // Leave home screen
+    home_screen_active = false;
+    pause_background_tasks = true;
+
+    // Free memory for WiFi scan (same flow as menu WiFi Setup)
+    dexcom_close_persistent_client();
+
+    // Navigate to WiFi list screen (already in LVGL context — no lock needed)
+    if (screen_wifi_list != NULL) {
+        lv_obj_del(screen_wifi_list);
+        screen_wifi_list = NULL;
+    }
+    create_wifi_list_screen();
+    lv_scr_load(screen_wifi_list);
+
+    // Start scan
+    show_wifi_scanning_overlay();
+    xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
+}
+
+void show_wifi_disconnected_overlay(void) {
+    // Don't duplicate, and only show on home screen
+    if (wifi_disc_overlay != NULL || !home_screen_active) return;
+
+    // Dimmed backdrop
+    wifi_disc_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(wifi_disc_overlay);
+    lv_obj_set_size(wifi_disc_overlay, 320, 240);
+    lv_obj_set_style_bg_color(wifi_disc_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(wifi_disc_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(wifi_disc_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(wifi_disc_overlay);
+
+    // Glass card — orange border for warning (not red = alarm)
+    lv_obj_t *card = lv_obj_create(wifi_disc_overlay);
+    lv_obj_set_size(card, 260, 155);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 25, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // WiFi icon (large, orange)
+    lv_obj_t *icon = lv_label_create(card);
+    lv_label_set_text(icon, LV_SYMBOL_WIFI);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 12);
+
+    // Title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "WiFi Disconnected");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 46);
+
+    // Subtitle
+    lv_obj_t *sub = lv_label_create(card);
+    lv_label_set_text(sub, "Auto-reconnect in progress...");
+    lv_obj_set_style_text_font(sub, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 68);
+
+    // Divider
+    lv_obj_t *div = lv_obj_create(card);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 230, 1);
+    lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 88);
+
+    // "WiFi Settings" button (ghost-blue, primary action)
+    lv_obj_t *btn_settings = lv_btn_create(card);
+    lv_obj_set_size(btn_settings, 115, 34);
+    lv_obj_align(btn_settings, LV_ALIGN_BOTTOM_LEFT, 15, -12);
+    lv_obj_set_style_bg_opa(btn_settings, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn_settings, lv_color_hex(0x1a2a45), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn_settings, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn_settings, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(btn_settings, 1, 0);
+    lv_obj_set_style_radius(btn_settings, 8, 0);
+    lv_obj_set_style_shadow_width(btn_settings, 0, 0);
+    lv_obj_t *lbl_settings = lv_label_create(btn_settings);
+    lv_label_set_text(lbl_settings, LV_SYMBOL_SETTINGS " Settings");
+    lv_obj_set_style_text_color(lbl_settings, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(lbl_settings);
+    lv_obj_add_event_cb(btn_settings, wifi_disc_settings_cb, LV_EVENT_CLICKED, NULL);
+
+    // "Dismiss" button (ghost-gray, secondary)
+    lv_obj_t *btn_dismiss = lv_btn_create(card);
+    lv_obj_set_size(btn_dismiss, 100, 34);
+    lv_obj_align(btn_dismiss, LV_ALIGN_BOTTOM_RIGHT, -15, -12);
+    lv_obj_set_style_bg_opa(btn_dismiss, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn_dismiss, lv_color_hex(0x2a2a2a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn_dismiss, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn_dismiss, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_border_width(btn_dismiss, 1, 0);
+    lv_obj_set_style_radius(btn_dismiss, 8, 0);
+    lv_obj_set_style_shadow_width(btn_dismiss, 0, 0);
+    lv_obj_t *lbl_dismiss = lv_label_create(btn_dismiss);
+    lv_label_set_text(lbl_dismiss, "Dismiss");
+    lv_obj_set_style_text_color(lbl_dismiss, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(lbl_dismiss);
+    lv_obj_add_event_cb(btn_dismiss, wifi_disc_dismiss_cb, LV_EVENT_CLICKED, NULL);
+
+    ESP_LOGW(TAG, "WiFi disconnected overlay shown");
+    sd_log(TAG, "WiFi disconnected overlay shown");
+}
+
+void dismiss_wifi_disconnected_overlay(void) {
+    if (wifi_disc_overlay != NULL) {
+        lv_obj_del(wifi_disc_overlay);
+        wifi_disc_overlay = NULL;
+        ESP_LOGI(TAG, "WiFi disconnected overlay dismissed (reconnected)");
+    }
 }
 
 // Expand/collapse layout constants
@@ -332,10 +525,7 @@ void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent) {
 
     if (fill_width > 0) {
         // Gradient fill: darker shade on left, bright color on right
-        uint32_t dark_color;
-        if (color == COLOR_GREEN) dark_color = 0x15803D;
-        else if (color == COLOR_RED) dark_color = 0x991B1B;
-        else dark_color = 0xB45309;  // dark orange
+        uint32_t dark_color = battery_percent_to_dark_color(percent);
 
         dsc.bg_color = lv_color_hex(dark_color);
         dsc.bg_opa = LV_OPA_COVER;
@@ -631,9 +821,6 @@ static void expand_cgm_card(void) {
     if (glucose_fetch_timer_bar != NULL) {
         lv_obj_set_width(glucose_fetch_timer_bar, 216);
     }
-    if (timer_bar_overlay_ref != NULL) {
-        lv_obj_set_width(timer_bar_overlay_ref, 236);
-    }
 
     // Brightness: shift right but stay clear of settings gear (gear at screen TOP_RIGHT, -10)
     if (brightness_btn_ref != NULL) {
@@ -696,9 +883,6 @@ static void collapse_cgm_card(void) {
     if (glucose_fetch_timer_bar != NULL) {
         lv_obj_set_width(glucose_fetch_timer_bar, 100);
     }
-    if (timer_bar_overlay_ref != NULL) {
-        lv_obj_set_width(timer_bar_overlay_ref, 120);
-    }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
     }
@@ -722,6 +906,7 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_wifi_status, LV_ALIGN_TOP_LEFT, 2, 2);
     lv_obj_add_flag(label_wifi_status, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(label_wifi_status, 12);  // Extend tap target for small touchscreen
     lv_obj_add_event_cb(label_wifi_status, wifi_icon_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Time (large, white, centered at top, clickable to toggle format)
@@ -856,21 +1041,12 @@ void create_home_screen(void) {
     lv_obj_add_flag(battery_canvas, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(battery_canvas, battery_tap_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Battery percentage label (next to icon, hidden by default - tap battery to show)
+    // Battery percentage label (next to icon, visible by default - tap battery to toggle)
     battery_percent_label = lv_label_create(right_card);
     lv_label_set_text(battery_percent_label, "");
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_GREEN), 0);
     lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
     lv_obj_align_to(battery_percent_label, battery_canvas, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
-    lv_obj_add_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
-
-    // Battery charging icon (lightning bolt, hidden by default)
-    battery_charging_icon = lv_label_create(right_card);
-    lv_label_set_text(battery_charging_icon, LV_SYMBOL_CHARGE);
-    lv_obj_set_style_text_color(battery_charging_icon, lv_color_hex(COLOR_YELLOW), 0);
-    lv_obj_set_style_text_font(battery_charging_icon, &lv_font_montserrat_14, 0);
-    lv_obj_align_to(battery_charging_icon, battery_percent_label, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
-    lv_obj_add_flag(battery_charging_icon, LV_OBJ_FLAG_HIDDEN);  // Hidden until charging detected
 
     // Brightness icon (top center, shifted right) - custom lightbulb in clickable button
     brightness_btn_ref = lv_btn_create(right_card);
@@ -928,37 +1104,16 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
 
-    // Glucose fetch countdown bar (shows progress to next fetch, tap to force fetch)
-    // Card width is 150px with 10px padding = 130px usable, 75% = ~98px
+    // Glucose fetch countdown bar (subtle indicator at bottom of card)
     glucose_fetch_timer_bar = lv_bar_create(right_card);
-    lv_obj_set_size(glucose_fetch_timer_bar, 100, 12);  // Increased from 8 to 12 pixels for easier tapping
-    lv_obj_align(glucose_fetch_timer_bar, LV_ALIGN_BOTTOM_MID, 0, -5);  // Closer to bottom
+    lv_obj_set_size(glucose_fetch_timer_bar, 100, 3);
+    lv_obj_align(glucose_fetch_timer_bar, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_bar_set_range(glucose_fetch_timer_bar, 0, 100);
     lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(0x2C2C2E), LV_PART_MAIN);  // Darker background
-    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, LV_OPA_80, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(0x2C2C2E), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, LV_OPA_60, LV_PART_MAIN);
     lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(glucose_fetch_timer_bar, 4, 0);  // More rounded
-    lv_obj_set_style_shadow_width(glucose_fetch_timer_bar, 8, LV_PART_INDICATOR);  // Add glow
-    lv_obj_set_style_shadow_spread(glucose_fetch_timer_bar, 2, LV_PART_INDICATOR);
-    lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_shadow_opa(glucose_fetch_timer_bar, LV_OPA_60, LV_PART_INDICATOR);
-
-    // Make timer bar clickable to force immediate glucose fetch
-    // Note: Bars might not respond to clicks reliably, so create an invisible button overlay
-    lv_obj_add_flag(glucose_fetch_timer_bar, LV_OBJ_FLAG_CLICKABLE);
-    extern void glucose_timer_bar_event_cb(lv_event_t *e);
-    lv_obj_add_event_cb(glucose_fetch_timer_bar, glucose_timer_bar_event_cb, LV_EVENT_CLICKED, NULL);
-
-    // Create invisible button overlay for more reliable touch detection (30px tall for easier tapping)
-    timer_bar_overlay_ref = lv_btn_create(right_card);
-    lv_obj_t *timer_bar_touch_overlay = timer_bar_overlay_ref;
-    lv_obj_set_size(timer_bar_touch_overlay, 120, 30);  // Larger touch target
-    lv_obj_align(timer_bar_touch_overlay, LV_ALIGN_BOTTOM_MID, 0, -2);  // Cover bar area
-    lv_obj_set_style_bg_opa(timer_bar_touch_overlay, LV_OPA_TRANSP, 0);  // Completely invisible
-    lv_obj_set_style_border_width(timer_bar_touch_overlay, 0, 0);
-    lv_obj_set_style_shadow_width(timer_bar_touch_overlay, 0, 0);
-    lv_obj_add_event_cb(timer_bar_touch_overlay, glucose_timer_bar_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_radius(glucose_fetch_timer_bar, 1, 0);
     
     // --- MENU BUTTON (top right) - transparent, just icon ---
     lv_obj_t *menu_btn = lv_btn_create(screen_home);

@@ -19,6 +19,10 @@ esp_err_t wifi_manager_init(void);
 // Connect to WiFi using saved credentials or prompt for new ones
 esp_err_t wifi_manager_connect(void);
 
+// Connect to a specific WiFi network with given credentials
+// Handles state reset, auth mode negotiation, and timeout
+esp_err_t wifi_manager_connect_to(const char *ssid, const char *password);
+
 // Get current WiFi status
 wifi_status_t wifi_manager_get_status(void);
 

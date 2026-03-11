@@ -18,6 +18,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
+#include "ui/menu_screen.h"
 
 static const char *TAG = "ALARM_SCREENS";
 
@@ -1099,7 +1100,8 @@ static void alarm_settings_back_event_cb(lv_event_t *e) {
             alarm_inactivity_timer = NULL;
         }
 
-        // Clean up alarm settings screen after loading menu
+        // Recreate menu (was deleted when entering alarms)
+        create_menu_screen();
         lv_scr_load(screen_menu);
 
         if (screen_alarm_settings != NULL) {
@@ -1321,7 +1323,10 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
         tone_picker_alarm_ref = NULL;
     }
 
-    // Clean up alarm screens
+    // Load home FIRST (never delete active screen before lv_scr_load)
+    lv_scr_load(screen_home);
+
+    // Now safe to clean up alarm screens
     if (screen_alarm_preview != NULL) {
         lv_obj_del(screen_alarm_preview);
         screen_alarm_preview = NULL;
@@ -1338,8 +1343,6 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
     editing_alarm = NULL;
     home_screen_active = true;
     pause_background_tasks = false;
-
-    lv_scr_load(screen_home);
 
     // Delete this timer — it will be recreated when alarm UI is opened again
     lv_timer_del(timer);

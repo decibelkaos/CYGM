@@ -91,7 +91,7 @@ static void led_task(void *arg) {
                 // Fade out over 500ms
                 for (fade_brightness = 80; fade_brightness > 0; fade_brightness--) {
                     led_set_color(0, fade_brightness, 0);
-                    vTaskDelay(pdMS_TO_TICKS(6));
+                    vTaskDelay(1);  // 1 tick per step (fade speed adapts to tick rate)
                 }
                 led_set_color(0, 0, 0);
                 current_led_mode = LED_MODE_OFF;

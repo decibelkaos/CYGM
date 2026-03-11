@@ -71,6 +71,12 @@ static esp_http_client_handle_t persistent_client = NULL;
 static int consecutive_failures = 0;  // Track consecutive fetch failures
 #define MAX_CONSECUTIVE_FAILURES 3  // Force fresh connection after 3 failures (memory-conscious)
 
+// Re-auth cooldown — prevent re-auth loop during Dexcom API outages.
+// When the data endpoint returns 500/504 but auth endpoints work fine,
+// re-authenticating every 90s wastes 2 SSL handshakes per cycle for nothing.
+static uint64_t last_reauth_time = 0;
+#define REAUTH_COOLDOWN_MS  300000ULL  // 5 minutes between re-auth attempts
+
 // Duplicate reading detection — catch "same data returned over and over"
 static time_t last_successful_timestamp = 0;
 static int duplicate_reading_count = 0;
@@ -612,6 +618,7 @@ success:
 
     is_authenticated = true;
     last_login_time = (uint64_t)(esp_timer_get_time() / 1000);  // ms, no wrap
+    last_reauth_time = last_login_time;  // Track for cooldown
     ESP_LOGI(TAG, "Dexcom authentication successful on %s region!",
              current_region == DEXCOM_REGION_US ? "US" :
              current_region == DEXCOM_REGION_OUS ? "Outside US" : "Japan");
@@ -760,13 +767,23 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         return err;
     }
 
-    // SAFETY FIX: Handle ALL non-200 responses, including session expiration
-    // Dexcom Share API returns HTTP 500 (not just 401!) for expired sessions
-    // with body containing "SessionNotValid", "SessionIdNotFound", etc.
+    // Handle non-200 responses.
+    // CRITICAL DISTINCTION: "session expired" vs "Dexcom server down/overloaded".
+    //
+    // Session errors: HTTP 401, or HTTP 500 with body containing session keywords.
+    //   → Re-auth will fix this.  Do it (with cooldown).
+    //
+    // Server errors: HTTP 500 without session keywords, HTTP 502/503/504.
+    //   → Dexcom backend is down.  Re-auth succeeds but doesn't help.
+    //   → Just fail and let the task-level backoff handle retrying later.
+    //
+    // The old heuristic "2+ consecutive failures = session error" caused an
+    // infinite re-auth loop during Dexcom API outages (observed 2026-03-09
+    // 04:55-05:26: 30 min of pointless re-auth cycles, 2 SSL handshakes each).
     if (status != 200) {
         ESP_LOGE(TAG, "Glucose fetch failed with status %d: %s", status, http_response);
 
-        // Determine if this is a session expiration error
+        // Determine if this is a confirmed session expiration error
         bool session_error = (status == 401);  // 401 always means session expired
 
         // Check 500 response body for session-related error strings
@@ -780,18 +797,30 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
             }
         }
 
-        // After 2+ consecutive non-200 errors, assume session issue
-        // (some Dexcom errors return generic messages without session keywords)
-        if (!session_error && status >= 400) {
+        // Track consecutive failures for connection management (NOT for session detection)
+        if (!session_error) {
             consecutive_failures++;
-            ESP_LOGW(TAG, "Consecutive server failures: %d/%d", consecutive_failures, MAX_CONSECUTIVE_FAILURES);
-            if (consecutive_failures >= 2) {
-                session_error = true;
-                ESP_LOGW(TAG, "Multiple consecutive errors - treating as session expiration");
+            if (status >= 500) {
+                ESP_LOGW(TAG, "Server error %d (not session-related), consecutive=%d",
+                         status, consecutive_failures);
+                sd_log(TAG, "Server error (HTTP %d), consecutive=%d", status, consecutive_failures);
             }
         }
 
         if (session_error) {
+            // Check re-auth cooldown: prevent re-auth storm during outages
+            uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000);
+            uint64_t since_last_reauth = now_ms - last_reauth_time;
+
+            if (last_reauth_time > 0 && since_last_reauth < REAUTH_COOLDOWN_MS) {
+                ESP_LOGW(TAG, "Re-auth cooldown active (%llu s remaining) — skipping re-auth",
+                         (REAUTH_COOLDOWN_MS - since_last_reauth) / 1000);
+                sd_log(TAG, "Re-auth cooldown (%llus left), skip", (REAUTH_COOLDOWN_MS - since_last_reauth) / 1000);
+                glucose->status = GLUCOSE_STATUS_NO_DATA;
+                cleanup_persistent_client();
+                return ESP_FAIL;
+            }
+
             ESP_LOGW(TAG, "Session expired (status %d), re-authenticating...", status);
             sd_log(TAG, "Session error (HTTP %d), re-auth...", status);
             is_authenticated = false;
@@ -815,10 +844,11 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
             return ESP_FAIL;
         }
 
-        // Non-session server error - keep client alive for retry
+        // Non-session server error — keep client alive but force fresh after too many
         glucose->status = GLUCOSE_STATUS_NO_DATA;
         if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
-            ESP_LOGW(TAG, "Too many consecutive errors - forcing fresh connection");
+            ESP_LOGW(TAG, "Too many consecutive errors (%d) - forcing fresh connection",
+                     consecutive_failures);
             cleanup_persistent_client();
             consecutive_failures = 0;
         }
@@ -996,6 +1026,7 @@ void dexcom_logout(void) {
     is_authenticated = false;
     last_login_time = 0;
     last_glucose_fetch_time = 0;
+    last_reauth_time = 0;
 
     // Clear from NVS
     nvs_clear_dexcom_credentials();

@@ -1,11 +1,16 @@
 /*
- * SD Card Logger — v2 (Mount-on-Write)
+ * SD Card Logger — v2.1 (Mount-on-Write + Serial Capture)
  *
- * Logs CGM fetch events, memory status, and session data to SD card.
- * Uses mount-on-write pattern: ~2.5KB permanent RAM, ~11KB temporary during flush.
+ * Three log streams to SD card:
+ *   C*.LOG — Curated system log (explicit sd_log() calls)
+ *   G*.CSV — Glucose readings CSV
+ *   S*.LOG — Full serial capture (ALL ESP_LOG output, raw)
  *
  * Hardware: JC2432W328 microSD slot on SPI3_HOST (VSPI)
  * Pins: CS=GPIO5, MOSI=GPIO23, MISO=GPIO19, SCK=GPIO18
+ *
+ * Permanent RAM: ~10.5KB (2KB curated + 512B glucose + 8KB serial + mutexes)
+ * Temporary RAM: ~11KB during flush (~200ms every 90s)
  */
 
 #pragma once
@@ -15,6 +20,7 @@
 
 /**
  * Initialize SD card SPI bus and probe for card presence.
+ * If card detected, installs serial capture handler (esp_log_set_vprintf).
  * Safe to call even without SD card inserted — returns ESP_OK regardless.
  * Call once during boot after WiFi connects (so RTC is synced for timestamps).
  */
@@ -29,9 +35,14 @@ esp_err_t sd_logger_init(void);
 void sd_log(const char *tag, const char *fmt, ...);
 
 /**
- * Flush buffered log lines to SD card.
- * Mounts FAT → opens daily log file (append) → writes → closes → unmounts.
+ * Flush all buffered data to SD card.
+ * Mounts FAT → writes curated log + glucose CSV + serial log → unmounts.
  * Takes ~200ms, uses ~11KB temporary RAM.
+ *
+ * Files written per day:
+ *   CYYMMDD.LOG — Curated system log
+ *   GYYMMDD.CSV — Glucose readings
+ *   SYYMMDD.LOG — Full serial output capture
  *
  * Call AFTER dexcom_close_persistent_client() to ensure headroom.
  * Thread-safe — holds mutex during entire mount-write-unmount cycle.

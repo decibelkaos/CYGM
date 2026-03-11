@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include <string.h>
 #include <time.h>
+#include "ui/menu_screen.h"
 
 static const char *TAG = "TIME_WEATHER";
 
@@ -52,6 +53,7 @@ static char pending_search_query[128] = {0};
 
 // ==================== Forward Declarations ====================
 static void create_location_search_screen(void);
+static void add_search_keyboard(void);
 static void update_result_display(void);
 static void show_results_phase(void);
 static void show_input_phase(void);
@@ -230,14 +232,15 @@ static void apply_selected_location(void) {
     ESP_LOGI(TAG, "Location saved: %s (%.4f, %.4f) [%s]",
              user_location, user_latitude, user_longitude, user_timezone);
 
-    // Return to settings — delete search screen to free LVGL memory
+    // Return to settings — load new screen FIRST, then delete old.
+    // Deleting active screen before lv_scr_load causes PANIC crash.
     clear_search_state();
-    if (screen_zipcode_entry != NULL) {
-        lv_obj_del(screen_zipcode_entry);
-        screen_zipcode_entry = NULL;
-    }
     create_time_weather_settings_screen();
     lv_scr_load(screen_time_weather_settings);
+    if (screen_zipcode_entry != NULL) {
+        lv_obj_del_async(screen_zipcode_entry);
+        screen_zipcode_entry = NULL;
+    }
 }
 
 // ==================== Location Search Event Handlers ====================
@@ -246,13 +249,15 @@ static void location_back_cb(lv_event_t *e) {
     (void)e;
     ESP_LOGI(TAG, "Location search — back");
     clear_search_state();
-    // Delete search screen to free LVGL memory (keyboard alone = 40+ objects)
-    if (screen_zipcode_entry != NULL) {
-        lv_obj_del(screen_zipcode_entry);
-        screen_zipcode_entry = NULL;
-    }
+    // Create and load new screen FIRST — LVGL needs the active screen alive during transition.
+    // Deleting screen_zipcode_entry (the active screen) before lv_scr_load causes PANIC crash.
     create_time_weather_settings_screen();
     lv_scr_load(screen_time_weather_settings);
+    // Now safe to delete old search screen (async because we may be inside its event callback)
+    if (screen_zipcode_entry != NULL) {
+        lv_obj_del_async(screen_zipcode_entry);
+        screen_zipcode_entry = NULL;
+    }
 }
 
 static void location_kb_ready_cb(lv_event_t *e) {
@@ -383,7 +388,7 @@ static void create_location_search_screen(void) {
 
     // Search icon
     lv_obj_t *search_icon = lv_label_create(search_card);
-    lv_label_set_text(search_icon, LV_SYMBOL_EYE_OPEN);
+    lv_label_set_text(search_icon, LV_SYMBOL_GPS);
     lv_obj_set_style_text_font(search_icon, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(search_icon, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_align(search_icon, LV_ALIGN_LEFT_MID, 10, 0);
@@ -501,10 +506,11 @@ static void create_location_search_screen(void) {
     lv_obj_center(next_lbl);
     lv_obj_add_event_cb(next_btn, location_next_cb, LV_EVENT_CLICKED, NULL);
 
-    // ---- Confirm button (hidden initially) ----
+    // ---- Action buttons row (hidden initially, side by side) ----
+    // "Use Location" button (left)
     confirm_btn = lv_btn_create(screen_zipcode_entry);
-    lv_obj_set_size(confirm_btn, 200, 36);
-    lv_obj_align(confirm_btn, LV_ALIGN_TOP_MID, 0, 188);
+    lv_obj_set_size(confirm_btn, 148, 36);
+    lv_obj_align(confirm_btn, LV_ALIGN_TOP_MID, -77, 188);
     lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(COLOR_GREEN), 0);
     lv_obj_set_style_bg_opa(confirm_btn, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(confirm_btn, 10, 0);
@@ -513,45 +519,74 @@ static void create_location_search_screen(void) {
     lv_obj_add_flag(confirm_btn, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *confirm_lbl = lv_label_create(confirm_btn);
-    lv_label_set_text(confirm_lbl, LV_SYMBOL_OK " Use This Location");
+    lv_label_set_text(confirm_lbl, LV_SYMBOL_OK " Use Location");
     lv_obj_set_style_text_font(confirm_lbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(confirm_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(confirm_lbl);
     lv_obj_add_event_cb(confirm_btn, location_confirm_cb, LV_EVENT_CLICKED, NULL);
 
-    // ---- New Search button (hidden initially) ----
+    // "New Search" button (right)
     new_search_btn = lv_btn_create(screen_zipcode_entry);
-    lv_obj_set_size(new_search_btn, 120, 28);
-    lv_obj_align(new_search_btn, LV_ALIGN_BOTTOM_MID, 0, -4);
+    lv_obj_set_size(new_search_btn, 148, 36);
+    lv_obj_align(new_search_btn, LV_ALIGN_TOP_MID, 77, 188);
     lv_obj_set_style_bg_opa(new_search_btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_color(new_search_btn, lv_color_hex(CARD_PRESSED), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(new_search_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(new_search_btn, 0, 0);
+    lv_obj_set_style_border_width(new_search_btn, 1, 0);
+    lv_obj_set_style_border_color(new_search_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_opa(new_search_btn, LV_OPA_60, 0);
     lv_obj_set_style_shadow_width(new_search_btn, 0, 0);
-    lv_obj_set_style_radius(new_search_btn, 6, 0);
+    lv_obj_set_style_radius(new_search_btn, 10, 0);
     lv_obj_add_flag(new_search_btn, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *ns_lbl = lv_label_create(new_search_btn);
-    lv_label_set_text(ns_lbl, "New Search");
-    lv_obj_set_style_text_font(ns_lbl, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(ns_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_label_set_text(ns_lbl, LV_SYMBOL_REFRESH " New Search");
+    lv_obj_set_style_text_font(ns_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(ns_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(ns_lbl);
     lv_obj_add_event_cb(new_search_btn, location_new_search_cb, LV_EVENT_CLICKED, NULL);
 
-    // ---- Keyboard ----
+    // NOTE: Keyboard is NOT created here — it's deferred to add_search_keyboard()
+    // which runs AFTER the settings screen is freed, preventing LVGL pool exhaustion.
+    // The 36KB LVGL pool can't hold Home + Menu + Settings + Search + Keyboard simultaneously.
+
+    ESP_LOGI(TAG, "Location search screen created (keyboard deferred)");
+}
+
+// Create the on-screen keyboard.  Called separately because the keyboard's ~3KB
+// LVGL allocation can only succeed after the settings screen is freed.  Without
+// this split, 4 screens + keyboard exceed the 36KB pool → LV_ASSERT_MALLOC
+// fires while(1) → device freeze.
+static void add_search_keyboard(void) {
+    if (search_keyboard != NULL || screen_zipcode_entry == NULL) return;
+
     search_keyboard = lv_keyboard_create(screen_zipcode_entry);
+    if (search_keyboard == NULL) {
+        ESP_LOGE(TAG, "Keyboard creation failed (LVGL pool exhausted)");
+        lv_mem_monitor_t mon;
+        lv_mem_monitor(&mon);
+        ESP_LOGE(TAG, "LVGL pool: used=%lu free=%lu frag=%d%%",
+                 (unsigned long)(mon.total_size - mon.free_size),
+                 (unsigned long)mon.free_size, mon.frag_pct);
+        if (hint_label) {
+            lv_label_set_text(hint_label, "Memory error — press back\nand try again");
+            lv_obj_set_style_text_color(hint_label, lv_color_hex(COLOR_RED), 0);
+        }
+        return;
+    }
+
     lv_obj_set_size(search_keyboard, 320, 130);
     lv_obj_align(search_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_keyboard_set_textarea(search_keyboard, search_textarea);
     lv_keyboard_set_mode(search_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
 
-    // Keyboard glass styling
+    // Glass keyboard background
     lv_obj_set_style_bg_color(search_keyboard, lv_color_hex(GLASS_BG), 0);
     lv_obj_set_style_bg_opa(search_keyboard, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(search_keyboard, 0, 0);
     lv_obj_set_style_pad_all(search_keyboard, 2, 0);
 
-    // Key styling
+    // Glass key styling
     lv_obj_set_style_bg_color(search_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
     lv_obj_set_style_bg_opa(search_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
     lv_obj_set_style_text_color(search_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
@@ -564,17 +599,17 @@ static void create_location_search_screen(void) {
     lv_obj_set_style_bg_color(search_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
                                LV_PART_ITEMS | LV_STATE_PRESSED);
 
-    // Keyboard events — ONLY listen for READY (Enter pressed)
+    // Keyboard events
     lv_obj_add_event_cb(search_keyboard, location_kb_ready_cb, LV_EVENT_READY, NULL);
-    // Keyboard cancel (if keyboard has cancel key) → back
     lv_obj_add_event_cb(search_keyboard, location_back_cb, LV_EVENT_CANCEL, NULL);
 
-    ESP_LOGI(TAG, "Location search screen created");
+    ESP_LOGI(TAG, "Search keyboard created");
 }
 
 // Stub for header compatibility
 void create_zipcode_entry_screen(void) {
     create_location_search_screen();
+    add_search_keyboard();
 }
 
 // ==================== Settings Screen Handlers ====================
@@ -603,14 +638,41 @@ static void time_weather_back_event_cb(lv_event_t *e) {
         ESP_LOGI(TAG, "Weather settings saved");
     }
 
+    // Recreate menu (was deleted when entering time/weather settings)
+    create_menu_screen();
     lv_scr_load(screen_menu);
+
+    if (screen_time_weather_settings != NULL) {
+        lv_obj_del(screen_time_weather_settings);
+        screen_time_weather_settings = NULL;
+    }
 }
 
 static void location_search_event_cb(lv_event_t *e) {
     (void)e;
     ESP_LOGI(TAG, "Opening location search");
+
+    // Step 1: Create search screen (lightweight — no keyboard yet)
     create_location_search_screen();
+
+    // Step 2: Load search screen (settings becomes non-active)
     lv_scr_load(screen_zipcode_entry);
+
+    // Step 3: Free settings screen to reclaim ~4KB LVGL pool for keyboard.
+    // Without this, Home+Menu+Settings+Search+Keyboard exceeds 36KB pool.
+    if (screen_time_weather_settings != NULL) {
+        lv_obj_del(screen_time_weather_settings);
+        screen_time_weather_settings = NULL;
+    }
+
+    // Step 4: Create keyboard (now has enough LVGL memory)
+    add_search_keyboard();
+
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    ESP_LOGI(TAG, "LVGL pool after search: used=%lu free=%lu frag=%d%%",
+             (unsigned long)(mon.total_size - mon.free_size),
+             (unsigned long)mon.free_size, mon.frag_pct);
 }
 
 // ==================== Weather Interval Confirmation Overlay ====================

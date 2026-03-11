@@ -1,13 +1,21 @@
 /*
- * SD Card Logger — v2 (Mount-on-Write)
+ * SD Card Logger — v2.1 (Mount-on-Write + Serial Capture)
  *
  * Key design: SPI bus stays initialized (~0.5KB), log lines buffer in static
- * 2KB RAM, flush mounts FAT temporarily (~10KB for ~200ms) then unmounts.
- * Total permanent cost: ~2.5KB vs old v1's 13KB that broke SSL.
+ * RAM, flush mounts FAT temporarily (~10KB for ~200ms) then unmounts.
+ *
+ * Three log streams:
+ *   C*.LOG — Curated system log (explicit sd_log() calls only)
+ *   G*.CSV — Glucose readings (datetime, value, trend)
+ *   S*.LOG — Full serial capture (ALL ESP_LOG output, raw)
+ *
+ * Permanent cost: ~10.5KB (2KB curated + 512B glucose + 8KB serial + mutexes)
  */
 
 #include "sd_logger.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
@@ -30,7 +38,7 @@ static const char *TAG = "SD_LOG";
 #define SD_SPI_HOST  SPI3_HOST
 #define MOUNT_POINT  "/sdcard"
 
-// Log buffer — static allocation, no malloc needed
+// Curated log buffer — explicit sd_log() calls
 #define SD_LOG_BUFFER_SIZE  2048
 #define SD_LOG_LINE_MAX     200
 
@@ -43,11 +51,49 @@ static SemaphoreHandle_t log_mutex = NULL;
 static char glucose_buffer[SD_GLUCOSE_BUFFER_SIZE];
 static int glucose_buffer_pos = 0;
 
+// Serial capture buffer — ALL ESP_LOG output
+#define SD_SERIAL_BUFFER_SIZE  8192
+static char serial_buffer[SD_SERIAL_BUFFER_SIZE];
+static int serial_buffer_pos = 0;
+static SemaphoreHandle_t serial_mutex = NULL;
+static bool serial_capture_enabled = false;
+static volatile bool serial_capture_paused = false;
+
 // SPI/SD state
 static bool spi_initialized = false;
 static bool card_detected = false;
 static sdmmc_host_t host;
 static sdspi_device_config_t slot_config;
+
+// Custom vprintf handler — captures ALL ESP_LOG output to serial buffer
+static int serial_capture_vprintf(const char *fmt, va_list args)
+{
+    // Copy args before consuming — va_list can only be used once
+    va_list args_copy;
+    va_copy(args_copy, args);
+
+    // Always output to UART serial (original behavior)
+    int ret = vprintf(fmt, args);
+
+    // Buffer to SD if enabled, not paused, and not in ISR context
+    if (serial_capture_enabled && !serial_capture_paused && serial_mutex) {
+        // Non-blocking mutex take — never delay the logging caller
+        if (xSemaphoreTake(serial_mutex, 0) == pdTRUE) {
+            int remaining = SD_SERIAL_BUFFER_SIZE - serial_buffer_pos;
+            if (remaining > 2) {
+                int written = vsnprintf(serial_buffer + serial_buffer_pos, remaining, fmt, args_copy);
+                if (written > 0) {
+                    if (written >= remaining) written = remaining - 1;
+                    serial_buffer_pos += written;
+                }
+            }
+            xSemaphoreGive(serial_mutex);
+        }
+    }
+
+    va_end(args_copy);
+    return ret;
+}
 
 esp_err_t sd_logger_init(void)
 {
@@ -117,6 +163,14 @@ esp_err_t sd_logger_init(void)
                  card->cid.name,
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
         esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+
+        // Enable serial capture — intercept ALL ESP_LOG output
+        serial_mutex = xSemaphoreCreateMutex();
+        if (serial_mutex) {
+            serial_capture_enabled = true;
+            esp_log_set_vprintf(serial_capture_vprintf);
+            ESP_LOGI(TAG, "Serial capture to SD enabled (8KB buffer → S*.LOG)");
+        }
     } else {
         // No card — free the SPI bus to reclaim memory (~0.5KB + DMA)
         card_detected = false;
@@ -184,14 +238,33 @@ esp_err_t sd_logger_flush(void)
 {
     if (!spi_initialized || !card_detected) return ESP_ERR_NOT_FOUND;
     if (!log_mutex) return ESP_ERR_INVALID_STATE;
-    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) return ESP_ERR_TIMEOUT;
 
-    if (log_buffer_pos == 0 && glucose_buffer_pos == 0) {
+    // Pause serial capture to prevent re-entrancy from mount/write ESP_LOG calls
+    serial_capture_paused = true;
+
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        serial_capture_paused = false;
+        return ESP_ERR_TIMEOUT;
+    }
+
+    // Snapshot serial buffer (separate mutex, brief hold)
+    int serial_flush_len = 0;
+    if (serial_capture_enabled && serial_mutex) {
+        if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            serial_buffer[serial_buffer_pos] = '\0';
+            serial_flush_len = serial_buffer_pos;
+            serial_buffer_pos = 0;  // Reset — capture is paused, safe to reset
+            xSemaphoreGive(serial_mutex);
+        }
+    }
+
+    if (log_buffer_pos == 0 && glucose_buffer_pos == 0 && serial_flush_len == 0) {
         xSemaphoreGive(log_mutex);
+        serial_capture_paused = false;
         return ESP_OK;
     }
 
-    // Null-terminate buffer
+    // Null-terminate curated buffer
     log_buffer[log_buffer_pos] = '\0';
     int flush_len = log_buffer_pos;
 
@@ -203,7 +276,15 @@ esp_err_t sd_logger_flush(void)
 
     // Skip flush if RTC hasn't synced yet — buffer retains data for next flush
     if (ti.tm_year <= 100) {
+        // Restore serial buffer since we can't flush yet
+        if (serial_flush_len > 0 && serial_mutex) {
+            if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                serial_buffer_pos = serial_flush_len;
+                xSemaphoreGive(serial_mutex);
+            }
+        }
         xSemaphoreGive(log_mutex);
+        serial_capture_paused = false;
         return ESP_OK;
     }
 
@@ -212,33 +293,59 @@ esp_err_t sd_logger_flush(void)
              ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
 
     // Mount SD card (temporary ~10KB allocation)
+    // Pre-check: need ~12KB contiguous for FAT structures — skip if fragmented
+    size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (largest_block < 15000) {
+        ESP_LOGW(TAG, "SD flush deferred (largest_block=%u, need ~12KB)", (unsigned)largest_block);
+        // Restore serial buffer since we couldn't write it
+        if (serial_flush_len > 0 && serial_mutex) {
+            if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                serial_buffer_pos = serial_flush_len;
+                xSemaphoreGive(serial_mutex);
+            }
+        }
+        xSemaphoreGive(log_mutex);
+        serial_capture_paused = false;
+        return ESP_ERR_NO_MEM;
+    }
+
     sdmmc_card_t *card = NULL;
     esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
         .format_if_mount_failed = false,
-        .max_files = 2,  // System log + glucose CSV
+        .max_files = 1,  // Files opened/closed sequentially — 1 at a time
         .allocation_unit_size = 0,
     };
 
     esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_cfg, &card);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Mount failed: %s", esp_err_to_name(ret));
-        if (ret == ESP_ERR_NOT_FOUND || ret == ESP_ERR_NO_MEM) {
-            card_detected = false;  // Card removed or no memory
+        ESP_LOGE(TAG, "Mount failed: %s (heap=%lu, largest=%u)", esp_err_to_name(ret),
+                 (unsigned long)esp_get_free_heap_size(),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+        if (ret == ESP_ERR_NOT_FOUND) {
+            card_detected = false;  // Card physically removed — disable permanently
+            log_buffer_pos = 0;
         }
-        log_buffer_pos = 0;  // Clear buffer to prevent infinite retries
+        // ESP_ERR_NO_MEM: keep card_detected=true — heap will free up later.
+        // Don't clear buffers — data will flush on next successful attempt.
+        // Restore serial buffer since we couldn't write it
+        if (serial_flush_len > 0 && serial_mutex) {
+            if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                serial_buffer_pos = serial_flush_len;
+                xSemaphoreGive(serial_mutex);
+            }
+        }
         xSemaphoreGive(log_mutex);
+        serial_capture_paused = false;
         return ret;
     }
 
-    // Write system log if buffered
+    // Write curated system log if buffered
     if (flush_len > 0) {
         FILE *f = fopen(filepath, "a");
         if (f) {
             size_t written = fwrite(log_buffer, 1, flush_len, f);
             fclose(f);
-            if ((int)written == flush_len) {
-                ESP_LOGI(TAG, "Flushed %d bytes → %s", flush_len, filepath);
-            } else {
+            if ((int)written != flush_len) {
                 ESP_LOGW(TAG, "Partial write: %d/%d bytes", (int)written, flush_len);
             }
             ret = ESP_OK;
@@ -248,7 +355,7 @@ esp_err_t sd_logger_flush(void)
         }
     }
 
-    // Write glucose CSV if buffered (same mount, no extra I/O overhead)
+    // Write glucose CSV if buffered
     if (glucose_buffer_pos > 0) {
         glucose_buffer[glucose_buffer_pos] = '\0';
         char gpath[32];
@@ -262,13 +369,26 @@ esp_err_t sd_logger_flush(void)
         glucose_buffer_pos = 0;
     }
 
+    // Write serial capture log if buffered
+    if (serial_flush_len > 0) {
+        char spath[32];
+        snprintf(spath, sizeof(spath), MOUNT_POINT "/S%02d%02d%02d.LOG",
+                 ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
+        FILE *sf = fopen(spath, "a");
+        if (sf) {
+            fwrite(serial_buffer, 1, serial_flush_len, sf);
+            fclose(sf);
+        }
+    }
+
     // Unmount immediately to free ~10KB
     esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
 
-    // Clear buffer regardless of write result
+    // Clear curated buffer regardless of write result
     log_buffer_pos = 0;
 
     xSemaphoreGive(log_mutex);
+    serial_capture_paused = false;
     return ret;
 }
 

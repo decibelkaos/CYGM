@@ -3,13 +3,13 @@
  *
  * Checks website/version.json for newer firmware.
  * Lightweight: 256-byte static buffer, no dynamic allocation.
- * HTTPS with cert bundle (same as geocoding/weather).
+ * HTTPS without cert bundle (server CA not in ESP-IDF bundle).
  */
 
 #include "update_checker.h"
 #include "shared_state.h"
+#include "sd_logger.h"
 #include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "cJSON.h"
@@ -69,7 +69,9 @@ esp_err_t update_check_now(void) {
         .event_handler = http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 512,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        // Skip cert bundle — digitalkaos.tech uses a CA not in ESP-IDF's bundle.
+        // CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y handles TLS without verification.
+        // This is fine for a non-sensitive version check.
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -87,6 +89,7 @@ esp_err_t update_check_now(void) {
     last_check_ms = esp_timer_get_time() / 1000;
 
     if (err != ESP_OK || status != 200) {
+        sd_log(TAG, "Check failed: %s (HTTP %d)", esp_err_to_name(err), status);
         ESP_LOGW(TAG, "Check failed: %s (HTTP %d)", esp_err_to_name(err), status);
         update_info.check_failed = true;
         update_info.checked = true;
@@ -142,6 +145,11 @@ esp_err_t update_check_now(void) {
              update_info.version,
              CYGM_VERSION_MAJOR, CYGM_VERSION_MINOR, CYGM_VERSION_PATCH);
 
+    sd_log(TAG, "%s (remote v%s, local v%d.%d.%d)",
+           update_info.available ? "UPDATE AVAILABLE" : "Up to date",
+           update_info.version,
+           CYGM_VERSION_MAJOR, CYGM_VERSION_MINOR, CYGM_VERSION_PATCH);
+
     return ESP_OK;
 }
 
@@ -181,7 +189,7 @@ void show_update_overlay(void) {
     lv_obj_add_event_cb(update_overlay, update_close_cb, LV_EVENT_CLICKED, NULL);
 
     // --- Card (sized to content) ---
-    int card_h = info->available ? 172 : 125;
+    int card_h = info->available ? 195 : 125;
     lv_obj_t *card = lv_obj_create(update_overlay);
     lv_obj_set_size(card, 270, card_h);
     lv_obj_center(card);

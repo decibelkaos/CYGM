@@ -93,20 +93,30 @@ esp_err_t wifi_manager_init(void) {
     return ESP_OK;
 }
 
-esp_err_t wifi_manager_connect(void) {
-    wifi_credentials_t creds;
-
-    // Try to load saved credentials
-    if (nvs_load_wifi_credentials(&creds) == ESP_OK) {
-        ESP_LOGI(TAG, "Using saved WiFi credentials for: %s", creds.ssid);
-    } else {
-        ESP_LOGW(TAG, "No saved WiFi credentials found");
-        return ESP_ERR_NOT_FOUND;
+esp_err_t wifi_manager_connect_to(const char *ssid, const char *password) {
+    if (ssid == NULL) {
+        return ESP_ERR_INVALID_ARG;
     }
+
+    ESP_LOGI(TAG, "Connecting to: %s", ssid);
+
+    // Suppress event handler auto-retry during switchover — without this,
+    // the DISCONNECTED event fires and reconnects to the OLD config before
+    // we can set the new SSID/password, causing "sta is connected" errors.
+    retry_count = MAX_RETRY;
+
+    // Disconnect any existing connection first
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // Reset state for fresh attempt (event handler is now safe — new config below)
+    retry_count = 0;
+    current_status = WIFI_STATUS_CONNECTING;
+    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
 
     wifi_config_t wifi_config = {
         .sta = {
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            .threshold.authmode = WIFI_AUTH_OPEN,  // Accept any auth mode (WPA/WPA2/WPA3/Open)
             .pmf_cfg = {
                 .capable = true,
                 .required = false
@@ -114,24 +124,57 @@ esp_err_t wifi_manager_connect(void) {
         },
     };
 
-    strncpy((char *)wifi_config.sta.ssid, creds.ssid, sizeof(wifi_config.sta.ssid));
-    strncpy((char *)wifi_config.sta.password, creds.password, sizeof(wifi_config.sta.password));
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+    if (password != NULL) {
+        strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
+    }
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_connect());
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi set_config failed: %s", esp_err_to_name(err));
+        current_status = WIFI_STATUS_FAILED;
+        return err;
+    }
+
+    err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi connect failed: %s", esp_err_to_name(err));
+        current_status = WIFI_STATUS_FAILED;
+        return err;
+    }
 
     // Wait for connection or failure
+    // With MAX_RETRY=5 retries at ~5-10s each, allow up to 60s total
     EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-            pdFALSE,
-            pdFALSE,
-            portMAX_DELAY);
+            pdFALSE, pdFALSE,
+            pdMS_TO_TICKS(60000));
 
     if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "Connected to: %s", ssid);
         return ESP_OK;
-    } else {
-        return ESP_FAIL;
     }
+
+    // Timeout or failure - clean up
+    if (!(bits & WIFI_FAIL_BIT)) {
+        ESP_LOGW(TAG, "Connection timeout for: %s", ssid);
+        esp_wifi_disconnect();
+    }
+
+    current_status = WIFI_STATUS_FAILED;
+    return ESP_FAIL;
+}
+
+esp_err_t wifi_manager_connect(void) {
+    wifi_credentials_t creds;
+
+    if (nvs_load_wifi_credentials(&creds) == ESP_OK) {
+        ESP_LOGI(TAG, "Using saved WiFi credentials for: %s", creds.ssid);
+        return wifi_manager_connect_to(creds.ssid, creds.password);
+    }
+
+    ESP_LOGW(TAG, "No saved WiFi credentials found");
+    return ESP_ERR_NOT_FOUND;
 }
 
 wifi_status_t wifi_manager_get_status(void) {
@@ -179,64 +222,66 @@ esp_err_t wifi_manager_try_reconnect(void) {
         return ESP_ERR_NOT_FOUND;
     }
 
-    // Find best matching saved network (strongest signal)
-    int best_rssi = -127;
-    wifi_credentials_t *best_creds = NULL;
+    // Build list of matching saved networks with best RSSI for each
+    typedef struct { int creds_idx; int8_t rssi; } wifi_match_t;
+    wifi_match_t matches[MAX_SAVED_WIFI_NETWORKS];
+    int match_count = 0;
 
-    for (int i = 0; i < found; i++) {
-        for (int j = 0; j < saved_count; j++) {
+    for (int j = 0; j < saved_count; j++) {
+        int8_t best_rssi = -127;
+        bool found_ap = false;
+        for (int i = 0; i < found; i++) {
             if (strcmp((char *)scan_results[i].ssid, networks[j].ssid) == 0) {
                 if (scan_results[i].rssi > best_rssi) {
                     best_rssi = scan_results[i].rssi;
-                    best_creds = &networks[j];
+                    found_ap = true;
                 }
             }
         }
+        if (found_ap) {
+            matches[match_count].creds_idx = j;
+            matches[match_count].rssi = best_rssi;
+            match_count++;
+        }
     }
 
-    if (best_creds == NULL) {
+    if (match_count == 0) {
         ESP_LOGD(TAG, "No known networks in range");
         return ESP_ERR_NOT_FOUND;
     }
 
-    ESP_LOGI(TAG, "Auto-reconnect: trying %s (RSSI: %d)", best_creds->ssid, best_rssi);
-
-    // Reset retry counter and event bits for fresh connection attempt
-    retry_count = 0;
-    current_status = WIFI_STATUS_CONNECTING;
-    xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
-
-    // Configure and connect
-    wifi_config_t wifi_config = {
-        .sta = {
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
-            .pmf_cfg = {
-                .capable = true,
-                .required = false
-            },
-        },
-    };
-    strncpy((char *)wifi_config.sta.ssid, best_creds->ssid, sizeof(wifi_config.sta.ssid));
-    strncpy((char *)wifi_config.sta.password, best_creds->password, sizeof(wifi_config.sta.password));
-
-    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
-    esp_wifi_connect();
-
-    // Wait up to 15 seconds for result
-    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
-            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-            pdFALSE, pdFALSE,
-            pdMS_TO_TICKS(15000));
-
-    if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Auto-reconnect successful: %s", best_creds->ssid);
-        sd_log(TAG, "WiFi: reconnected to %s (RSSI=%d)", best_creds->ssid, best_rssi);
-        nvs_save_last_wifi_ssid(best_creds->ssid);
-        return ESP_OK;
+    // Sort by RSSI descending (strongest first)
+    for (int i = 0; i < match_count - 1; i++) {
+        for (int j = 0; j < match_count - i - 1; j++) {
+            if (matches[j].rssi < matches[j + 1].rssi) {
+                wifi_match_t tmp = matches[j];
+                matches[j] = matches[j + 1];
+                matches[j + 1] = tmp;
+            }
+        }
     }
 
-    ESP_LOGW(TAG, "Auto-reconnect failed for: %s", best_creds->ssid);
-    sd_log(TAG, "WiFi: reconnect FAILED for %s", best_creds->ssid);
+    // Try each matching network in RSSI order
+    for (int m = 0; m < match_count; m++) {
+        int idx = matches[m].creds_idx;
+        ESP_LOGI(TAG, "Auto-reconnect: trying %s (RSSI: %d) [%d/%d]",
+                 networks[idx].ssid, matches[m].rssi, m + 1, match_count);
+
+        esp_err_t ret = wifi_manager_connect_to(networks[idx].ssid, networks[idx].password);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Auto-reconnect successful: %s", networks[idx].ssid);
+            sd_log(TAG, "WiFi: reconnected to %s (RSSI=%d)", networks[idx].ssid, matches[m].rssi);
+            nvs_save_last_wifi_ssid(networks[idx].ssid);
+            return ESP_OK;
+        }
+
+        ESP_LOGW(TAG, "Auto-reconnect failed for: %s", networks[idx].ssid);
+        if (m < match_count - 1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));  // Brief pause before next attempt
+        }
+    }
+
+    sd_log(TAG, "WiFi: reconnect FAILED for all %d networks", match_count);
     return ESP_FAIL;
 }
 

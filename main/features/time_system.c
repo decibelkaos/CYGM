@@ -7,6 +7,7 @@
 #include "time_system.h"
 #include "shared_state.h"
 #include "nvs_config.h"
+#include "sd_logger.h"
 #include "esp_sntp.h"
 #include "esp_log.h"
 #include "freertos/task.h"
@@ -97,6 +98,9 @@ static void time_sync_notification_cb(struct timeval *tv) {
     ESP_LOGI(TAG, "New system time: %04d-%02d-%02d %02d:%02d:%02d",
              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    sd_log(TAG, "Time synced: %04d-%02d-%02d %02d:%02d:%02d",
+           timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 }
 
 bool is_time_synced(void) {

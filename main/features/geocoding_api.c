@@ -15,7 +15,7 @@
 static const char *TAG = "GEOCODING";
 
 #define GEOCODING_API_URL "http://geocoding-api.open-meteo.com/v1/search"
-#define HTTP_RESPONSE_BUFFER_SIZE 4096
+#define HTTP_RESPONSE_BUFFER_SIZE 8192
 
 // HTTP response buffer
 static char http_response_buffer[HTTP_RESPONSE_BUFFER_SIZE];
@@ -196,15 +196,32 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
 
         result->valid = true;
         result_idx++;
-
-        ESP_LOGI(TAG, "Result %d: %s, %s, %s (%.4f, %.4f) [%s]",
-                 result_idx, result->name, result->admin1, result->country,
-                 result->latitude, result->longitude, result->timezone);
     }
 
     *result_count = result_idx;
     cJSON_Delete(root);
 
-    ESP_LOGI(TAG, "Found %d location(s) for: %s", *result_count, search_query);
+    // Sort results by population descending — larger cities first.
+    // The API ranks by feature_code (county seats first) which hides
+    // large cities like Covington, WA (pop 19K) behind tiny county seats.
+    for (int i = 0; i < *result_count - 1; i++) {
+        for (int j = i + 1; j < *result_count; j++) {
+            if (results[j].population > results[i].population) {
+                geocode_result_t tmp = results[i];
+                results[i] = results[j];
+                results[j] = tmp;
+            }
+        }
+    }
+
+    // Re-log sorted order
+    for (int i = 0; i < *result_count; i++) {
+        ESP_LOGI(TAG, "Result %d: %s, %s, %s (%.4f, %.4f) pop=%lu [%s]",
+                 i + 1, results[i].name, results[i].admin1, results[i].country,
+                 results[i].latitude, results[i].longitude,
+                 (unsigned long)results[i].population, results[i].timezone);
+    }
+
+    ESP_LOGI(TAG, "Found %d location(s) for: %s (sorted by population)", *result_count, search_query);
     return ESP_OK;
 }

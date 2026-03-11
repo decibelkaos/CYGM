@@ -33,13 +33,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 1
 #define CYGM_VERSION_MINOR 6
-#define CYGM_VERSION_PATCH 0
+#define CYGM_VERSION_PATCH 1
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-03-08"
+#define CYGM_VERSION_DATE "2026-03-10"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "1.6.0.2026-03-08.Beta"
+#define CYGM_VERSION_STRING "1.6.1.2026-03-10.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -76,7 +76,7 @@ extern "C" {
 // Battery
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_3
 #define BATTERY_ADC_GPIO    39
-#define BATTERY_VOLTAGE_DIVIDER 1.46
+#define BATTERY_VOLTAGE_DIVIDER 1.50
 #define BATTERY_FULL_VOLTAGE 4.0
 #define BATTERY_NOMINAL_VOLTAGE 3.7
 #define BATTERY_LOW_VOLTAGE 3.2
@@ -197,7 +197,6 @@ extern bool battery_low_warning_shown;
 extern lv_obj_t *battery_icon;
 extern lv_obj_t *battery_canvas;
 extern lv_obj_t *battery_percent_label;
-extern lv_obj_t *battery_charging_icon;
 extern lv_timer_t *battery_flash_timer;
 extern lv_timer_t *battery_charging_fade_timer;
 

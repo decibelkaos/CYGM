@@ -14,9 +14,15 @@
 #include "esp_log.h"
 #include "freertos/task.h"
 #include <string.h>
+#include "sd_logger.h"
+#include "ui/menu_screen.h"
 
 static const char *TAG = "CGM_SCREENS";
 static volatile bool dexcom_login_in_progress = false;
+
+// Password visibility toggle
+static bool dexcom_pwd_visible = false;
+static lv_obj_t *dexcom_pwd_eye_label = NULL;
 
 static void dexcom_login_task(void *pvParameters) {
     char username[64] = {0};
@@ -28,6 +34,7 @@ static void dexcom_login_task(void *pvParameters) {
 
     if (dexcom_authenticate(username, password) == ESP_OK) {
         ESP_LOGI(TAG, "Dexcom login successful");
+        sd_log(TAG, "Dexcom: login OK for %s", username);
         nvs_set_dexcom_credentials(username, password);
 
         if (glucose_task_handle == NULL) {
@@ -40,6 +47,10 @@ static void dexcom_login_task(void *pvParameters) {
 
         if (lvgl_port_lock(100)) {
             lv_scr_load(screen_home);
+            // Clean up all CGM screens
+            if (screen_dexcom_login != NULL) { lv_obj_del(screen_dexcom_login); screen_dexcom_login = NULL; }
+            if (screen_dexcom_auth != NULL) { lv_obj_del(screen_dexcom_auth); screen_dexcom_auth = NULL; }
+            if (screen_cgm_menu != NULL) { lv_obj_del(screen_cgm_menu); screen_cgm_menu = NULL; }
             home_screen_active = true;
             pause_background_tasks = false;
             lvgl_port_unlock();
@@ -48,6 +59,7 @@ static void dexcom_login_task(void *pvParameters) {
         }
     } else {
         ESP_LOGE(TAG, "Dexcom login failed");
+        sd_log(TAG, "Dexcom: login FAILED for %s", username);
     }
 
     dexcom_login_in_progress = false;
@@ -71,12 +83,15 @@ static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e);
 static void dexcom_password_entry_field_event_cb(lv_event_t *e);
 static void dexcom_to_auth_event_cb(lv_event_t *e);
 
-// Dexcom back button event handler
+// Dexcom back button event handler — return to CGM menu
 static void dexcom_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
-            if (screen_cgm_menu != NULL) {
-                lv_scr_load(screen_cgm_menu);
+            create_cgm_menu_screen();
+            lv_scr_load(screen_cgm_menu);
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
             }
             lvgl_port_unlock();
         }
@@ -107,6 +122,7 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
         update_glucose_display();
 
         ESP_LOGI(TAG, "Dexcom logout complete");
+        sd_log(TAG, "Dexcom: user logout");
 
         // Recreate auth screen to show login option
         if (lvgl_port_lock(0)) {
@@ -116,6 +132,11 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
             }
             create_dexcom_auth_screen();
             lv_scr_load(screen_dexcom_auth);
+            // Delete status screen we came from
+            if (screen_dexcom_status != NULL) {
+                lv_obj_del(screen_dexcom_status);
+                screen_dexcom_status = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -125,7 +146,12 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
 static void cgm_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
+            create_menu_screen();
             lv_scr_load(screen_menu);
+            if (screen_cgm_menu != NULL) {
+                lv_obj_del(screen_cgm_menu);
+                screen_cgm_menu = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -135,13 +161,17 @@ static void cgm_back_event_cb(lv_event_t *e) {
 static void dexcom_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
-            // Create screen on demand
             if (screen_dexcom_auth != NULL) {
                 lv_obj_del(screen_dexcom_auth);
                 screen_dexcom_auth = NULL;
             }
             create_dexcom_auth_screen();
             lv_scr_load(screen_dexcom_auth);
+            // Single-screen rule: delete cgm_menu after loading auth
+            if (screen_cgm_menu != NULL) {
+                lv_obj_del(screen_cgm_menu);
+                screen_cgm_menu = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -158,13 +188,17 @@ static void librelinkup_btn_event_cb(lv_event_t *e) {
 static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
-            // Create screen on demand
             if (screen_dexcom_status != NULL) {
                 lv_obj_del(screen_dexcom_status);
                 screen_dexcom_status = NULL;
             }
             create_dexcom_status_screen();
             lv_scr_load(screen_dexcom_status);
+            // Single-screen rule: delete auth after loading status
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -174,13 +208,17 @@ static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
 static void dexcom_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
-            // Create screen on demand
             if (screen_dexcom_login != NULL) {
                 lv_obj_del(screen_dexcom_login);
                 screen_dexcom_login = NULL;
             }
             create_dexcom_login_screen();
             lv_scr_load(screen_dexcom_login);
+            // Single-screen rule: delete auth after loading login
+            if (screen_dexcom_auth != NULL) {
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -196,6 +234,13 @@ static void dexcom_username_tap_event_cb(lv_event_t *e) {
             }
             create_dexcom_username_entry_screen();
             lv_scr_load(screen_dexcom_username_entry);
+            // Single-screen rule: delete login after loading entry
+            if (screen_dexcom_login != NULL) {
+                lv_obj_del(screen_dexcom_login);
+                screen_dexcom_login = NULL;
+                dexcom_username_label = NULL;
+                dexcom_password_label = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -211,6 +256,13 @@ static void dexcom_password_tap_event_cb(lv_event_t *e) {
             }
             create_dexcom_password_entry_screen();
             lv_scr_load(screen_dexcom_password_entry);
+            // Single-screen rule: delete login after loading entry
+            if (screen_dexcom_login != NULL) {
+                lv_obj_del(screen_dexcom_login);
+                screen_dexcom_login = NULL;
+                dexcom_username_label = NULL;
+                dexcom_password_label = NULL;
+            }
             lvgl_port_unlock();
         }
     }
@@ -236,28 +288,23 @@ static void dexcom_login_btn_event_cb(lv_event_t *e) {
 static void dexcom_username_entry_keyboard_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
 
-    // Handle button clicks with simulated event codes
     if (code == LV_EVENT_CLICKED) {
         lv_event_code_t simulated_code = (lv_event_code_t)(intptr_t)lv_event_get_user_data(e);
         if (simulated_code == LV_EVENT_CANCEL) {
             ESP_LOGI(TAG, "Username entry cancelled");
-            if (lvgl_port_lock(0)) {
-                lv_scr_load(screen_dexcom_login);
-                lvgl_port_unlock();
-            }
         } else if (simulated_code == LV_EVENT_READY) {
             ESP_LOGI(TAG, "Username entry completed: %s", dexcom_username_buf);
-            if (dexcom_username_label != NULL) {
-                if (strlen(dexcom_username_buf) > 0) {
-                    lv_label_set_text(dexcom_username_label, dexcom_username_buf);
-                    lv_obj_set_style_text_color(dexcom_username_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-                } else {
-                    lv_label_set_text(dexcom_username_label, "Username");
-                    lv_obj_set_style_text_color(dexcom_username_label, lv_color_hex(COLOR_TEXT_DIM), 0);
-                }
-            }
+        }
+        // Both CANCEL and READY return to login screen
+        if (simulated_code == LV_EVENT_CANCEL || simulated_code == LV_EVENT_READY) {
             if (lvgl_port_lock(0)) {
+                // Recreate login (was deleted; labels auto-populate from buffers)
+                create_dexcom_login_screen();
                 lv_scr_load(screen_dexcom_login);
+                if (screen_dexcom_username_entry != NULL) {
+                    lv_obj_del(screen_dexcom_username_entry);
+                    screen_dexcom_username_entry = NULL;
+                }
                 lvgl_port_unlock();
             }
         }
@@ -296,34 +343,23 @@ static void dexcom_username_entry_field_event_cb(lv_event_t *e) {
 static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
 
-    // Handle button clicks with simulated event codes
     if (code == LV_EVENT_CLICKED) {
         lv_event_code_t simulated_code = (lv_event_code_t)(intptr_t)lv_event_get_user_data(e);
         if (simulated_code == LV_EVENT_CANCEL) {
             ESP_LOGI(TAG, "Password entry cancelled");
-            if (lvgl_port_lock(0)) {
-                lv_scr_load(screen_dexcom_login);
-                lvgl_port_unlock();
-            }
         } else if (simulated_code == LV_EVENT_READY) {
             ESP_LOGI(TAG, "Password entry completed (masked)");
-            if (dexcom_password_label != NULL) {
-                int len = strlen(dexcom_password_buf);
-                if (len == 0) {
-                    lv_label_set_text(dexcom_password_label, "Password");
-                    lv_obj_set_style_text_color(dexcom_password_label, lv_color_hex(COLOR_TEXT_DIM), 0);
-                } else {
-                    char display[65];
-                    for (int i = 0; i < len; i++) {
-                        display[i] = '*';
-                    }
-                    display[len] = '\0';
-                    lv_label_set_text(dexcom_password_label, display);
-                    lv_obj_set_style_text_color(dexcom_password_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-                }
-            }
+        }
+        // Both CANCEL and READY return to login screen
+        if (simulated_code == LV_EVENT_CANCEL || simulated_code == LV_EVENT_READY) {
             if (lvgl_port_lock(0)) {
+                // Recreate login (was deleted; labels auto-populate from buffers)
+                create_dexcom_login_screen();
                 lv_scr_load(screen_dexcom_login);
+                if (screen_dexcom_password_entry != NULL) {
+                    lv_obj_del(screen_dexcom_password_entry);
+                    screen_dexcom_password_entry = NULL;
+                }
                 lvgl_port_unlock();
             }
         }
@@ -331,6 +367,30 @@ static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e) {
 }
 
 // Dexcom password entry field event handler (shows last character, masks rest)
+// Eye toggle callback for Dexcom password screen
+static void dexcom_eye_btn_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    dexcom_pwd_visible = !dexcom_pwd_visible;
+    if (dexcom_pwd_eye_label) {
+        lv_label_set_text(dexcom_pwd_eye_label,
+                          dexcom_pwd_visible ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE);
+    }
+    if (dexcom_password_entry_label) {
+        int len = strlen(dexcom_password_buf);
+        if (len > 0) {
+            if (dexcom_pwd_visible) {
+                lv_label_set_text(dexcom_password_entry_label, dexcom_password_buf);
+            } else {
+                char display[65];
+                for (int i = 0; i < len; i++) display[i] = '*';
+                display[len] = '\0';
+                lv_label_set_text(dexcom_password_entry_label, display);
+            }
+            lv_obj_set_style_text_color(dexcom_password_entry_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        }
+    }
+}
+
 static void dexcom_password_entry_field_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
         lv_obj_t *ta = lv_event_get_target(e);
@@ -343,19 +403,24 @@ static void dexcom_password_entry_field_event_cb(lv_event_t *e) {
                 strncpy(dexcom_password_buf, text, sizeof(dexcom_password_buf) - 1);
                 dexcom_password_buf[sizeof(dexcom_password_buf) - 1] = '\0';
 
-                // Update display label - show last character, mask the rest
+                // Update display label based on visibility state
                 if (display_label != NULL) {
                     int len = strlen(text);
                     if (len > 0) {
-                        char display[65];
-                        // Mask all characters except the last one
-                        for (int i = 0; i < len - 1; i++) {
-                            display[i] = '*';
+                        if (dexcom_pwd_visible) {
+                            // Show all characters when visible
+                            lv_label_set_text(display_label, text);
+                        } else {
+                            char display[65];
+                            // Mask all characters except the last one
+                            for (int i = 0; i < len - 1; i++) {
+                                display[i] = '*';
+                            }
+                            // Show the last character
+                            display[len - 1] = text[len - 1];
+                            display[len] = '\0';
+                            lv_label_set_text(display_label, display);
                         }
-                        // Show the last character
-                        display[len - 1] = text[len - 1];
-                        display[len] = '\0';
-                        lv_label_set_text(display_label, display);
                         lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
                     } else {
                         lv_label_set_text(display_label, "Password");
@@ -371,8 +436,21 @@ static void dexcom_password_entry_field_event_cb(lv_event_t *e) {
 static void dexcom_to_auth_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(0)) {
+            // Recreate auth screen (was deleted when navigating deeper)
             if (screen_dexcom_auth != NULL) {
-                lv_scr_load(screen_dexcom_auth);
+                lv_obj_del(screen_dexcom_auth);
+                screen_dexcom_auth = NULL;
+            }
+            create_dexcom_auth_screen();
+            lv_scr_load(screen_dexcom_auth);
+            // Delete whichever screen we came from
+            if (screen_dexcom_login != NULL) {
+                lv_obj_del(screen_dexcom_login);
+                screen_dexcom_login = NULL;
+            }
+            if (screen_dexcom_status != NULL) {
+                lv_obj_del(screen_dexcom_status);
+                screen_dexcom_status = NULL;
             }
             lvgl_port_unlock();
         }
@@ -848,14 +926,31 @@ void create_dexcom_username_entry_screen(void) {
     lv_textarea_set_max_length(dexcom_username_entry_ta, 63);
     lv_textarea_set_text(dexcom_username_entry_ta, dexcom_username_buf);
 
-    // Keyboard
+    // Keyboard — glass theme
     dexcom_username_entry_keyboard = lv_keyboard_create(screen_dexcom_username_entry);
     lv_obj_set_size(dexcom_username_entry_keyboard, 320, 175);
     lv_obj_align(dexcom_username_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_keyboard_set_textarea(dexcom_username_entry_keyboard, dexcom_username_entry_ta);
     lv_keyboard_set_mode(dexcom_username_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_CARD_BG), 0);
+
+    // Glass keyboard background
+    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(0x0F1419), 0);
     lv_obj_set_style_bg_opa(dexcom_username_entry_keyboard, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(dexcom_username_entry_keyboard, 0, 0);
+    lv_obj_set_style_pad_all(dexcom_username_entry_keyboard, 2, 0);
+
+    // Glass key styling
+    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(dexcom_username_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(dexcom_username_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
+    lv_obj_set_style_border_width(dexcom_username_entry_keyboard, 0, LV_PART_ITEMS);
+    lv_obj_set_style_radius(dexcom_username_entry_keyboard, 6, LV_PART_ITEMS);
+    lv_obj_set_style_shadow_width(dexcom_username_entry_keyboard, 0, LV_PART_ITEMS);
+
+    // Pressed key highlight
+    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
+                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(dexcom_username_entry_ta, dexcom_username_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, dexcom_username_entry_label);
 }
@@ -863,6 +958,9 @@ void create_dexcom_username_entry_screen(void) {
 void create_dexcom_password_entry_screen(void) {
     screen_dexcom_password_entry = lv_obj_create(NULL);
     lv_obj_add_style(screen_dexcom_password_entry, &style_bg, 0);
+
+    // Reset password visibility state
+    dexcom_pwd_visible = false;
 
     // Section header
     lv_obj_t *field_title = lv_label_create(screen_dexcom_password_entry);
@@ -889,6 +987,23 @@ void create_dexcom_password_entry_screen(void) {
     lv_obj_set_style_text_color(cancel_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_center(cancel_label);
     lv_obj_add_event_cb(cancel_btn, dexcom_password_entry_keyboard_event_cb, LV_EVENT_CLICKED, (void*)LV_EVENT_CANCEL);
+
+    // Eye toggle button (next to OK)
+    lv_obj_t *eye_btn = lv_btn_create(screen_dexcom_password_entry);
+    lv_obj_set_size(eye_btn, 36, 36);
+    lv_obj_align(eye_btn, LV_ALIGN_TOP_RIGHT, -45, 19);
+    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(eye_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(eye_btn, 0, 0);
+    lv_obj_set_style_shadow_width(eye_btn, 0, 0);
+    lv_obj_set_style_radius(eye_btn, 8, 0);
+
+    dexcom_pwd_eye_label = lv_label_create(eye_btn);
+    lv_label_set_text(dexcom_pwd_eye_label, LV_SYMBOL_EYE_CLOSE);
+    lv_obj_set_style_text_color(dexcom_pwd_eye_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(dexcom_pwd_eye_label);
+    lv_obj_add_event_cb(eye_btn, dexcom_eye_btn_cb, LV_EVENT_CLICKED, NULL);
 
     // OK button (accent blue)
     lv_obj_t *ok_btn = lv_btn_create(screen_dexcom_password_entry);
@@ -946,14 +1061,31 @@ void create_dexcom_password_entry_screen(void) {
     lv_textarea_set_max_length(dexcom_password_entry_ta, 63);
     lv_textarea_set_text(dexcom_password_entry_ta, dexcom_password_buf);
 
-    // Keyboard
+    // Keyboard — glass theme
     dexcom_password_entry_keyboard = lv_keyboard_create(screen_dexcom_password_entry);
     lv_obj_set_size(dexcom_password_entry_keyboard, 320, 175);
     lv_obj_align(dexcom_password_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_keyboard_set_textarea(dexcom_password_entry_keyboard, dexcom_password_entry_ta);
     lv_keyboard_set_mode(dexcom_password_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_CARD_BG), 0);
+
+    // Glass keyboard background
+    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(0x0F1419), 0);
     lv_obj_set_style_bg_opa(dexcom_password_entry_keyboard, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(dexcom_password_entry_keyboard, 0, 0);
+    lv_obj_set_style_pad_all(dexcom_password_entry_keyboard, 2, 0);
+
+    // Glass key styling
+    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(dexcom_password_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(dexcom_password_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
+    lv_obj_set_style_border_width(dexcom_password_entry_keyboard, 0, LV_PART_ITEMS);
+    lv_obj_set_style_radius(dexcom_password_entry_keyboard, 6, LV_PART_ITEMS);
+    lv_obj_set_style_shadow_width(dexcom_password_entry_keyboard, 0, LV_PART_ITEMS);
+
+    // Pressed key highlight
+    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
+                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(dexcom_password_entry_ta, dexcom_password_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, dexcom_password_entry_label);
 }

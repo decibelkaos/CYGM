@@ -21,6 +21,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_sntp.h"
@@ -100,7 +101,7 @@ static const char *TAG = "CYGM";
 // Percentage based on under-load voltage: 4.0V=100%, 3.7V=50%, 3.2V=0% (shutdown to prevent damage)
 #define BATTERY_ADC_CHANNEL ADC_CHANNEL_3   // GPIO 39 (ADC1_CH3)
 #define BATTERY_ADC_GPIO    39
-#define BATTERY_VOLTAGE_DIVIDER 1.46        // Calibrated: shows under-load voltage
+#define BATTERY_VOLTAGE_DIVIDER 1.50        // Calibrated: shows under-load voltage
 #define BATTERY_FULL_VOLTAGE 4.0            // Fully charged under load (100%)
 #define BATTERY_NOMINAL_VOLTAGE 3.7         // Nominal voltage (50%)
 #define BATTERY_LOW_VOLTAGE 3.2             // Safe shutdown threshold (prevents damage)
@@ -199,7 +200,6 @@ bool battery_low_warning_shown = false;  // Track if low battery warning played
 lv_obj_t *battery_icon = NULL;           // Battery icon on home screen
 lv_obj_t *battery_canvas = NULL;         // Battery canvas for custom drawn icon
 lv_obj_t *battery_percent_label = NULL;  // Battery percentage text label
-lv_obj_t *battery_charging_icon = NULL;  // Lightning bolt icon (shown when charging)
 lv_timer_t *battery_flash_timer = NULL;  // Timer for flashing red at low battery
 lv_timer_t *battery_charging_fade_timer = NULL;  // Timer for fading charging icon
 
@@ -1085,7 +1085,6 @@ static void audio_alarm_repeat_timer_cb(lv_timer_t *timer);
 static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
 void check_glucose_alarms(int glucose_mg_dl);
 void update_glucose_display(void);
-void glucose_timer_bar_event_cb(lv_event_t *e);
 static void visual_alarm_disarm_event_cb(lv_event_t *e);
 
 // Get alarm color based on glucose value and alarm thresholds
@@ -1264,15 +1263,29 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
     }
 }
 
-// Timer callback for repeating audio alarm (every 3 seconds)
+// Timer callback for repeating audio alarm.
+// Runs in LVGL task context (Core 1) — safe to call buzzer without cross-core
+// LEDC spinlock contention.
 static void audio_alarm_repeat_timer_cb(lv_timer_t *timer) {
     if (active_alarm_config != NULL && active_alarm_config->audio_enabled) {
-        ESP_LOGI(TAG, "Repeating alarm tone: %d at volume %d%%", active_alarm_config->tone, active_alarm_config->volume);
+        ESP_LOGI(TAG, "Playing alarm tone: %d at volume %d%%", active_alarm_config->tone, active_alarm_config->volume);
         play_alarm_tone(active_alarm_config->tone, active_alarm_config->volume);
+
+        // If repeat is disabled, this was a one-shot — clean up
+        if (!active_alarm_config->audio_repeat) {
+            active_alarm_config = NULL;
+            audio_alarm_timer = NULL;
+            lv_timer_del(timer);  // Safe: already in LVGL context
+        }
     }
 }
 
-// Start audio alarm (with optional repeat)
+// Start audio alarm (with optional repeat).
+// IMPORTANT: Does NOT call play_alarm_tone() directly, because this function
+// may be called from Core 0 (wifi_task).  Playing buzzer tones from Core 0
+// causes cross-core LEDC spinlock contention with LED/backlight on Core 1,
+// resulting in Interrupt WDT crashes.  Instead, an LVGL timer is created
+// with lv_timer_ready() so the tone plays on Core 1's next LVGL cycle.
 static void start_audio_alarm(alarm_config_t *alarm) {
     if (alarm == NULL || !alarm->audio_enabled) {
         return;
@@ -1284,26 +1297,34 @@ static void start_audio_alarm(alarm_config_t *alarm) {
     // Save reference to alarm config
     active_alarm_config = alarm;
 
-    // Play initial tone
-    ESP_LOGI(TAG, "Playing alarm tone: %d at volume %d%%", alarm->tone, alarm->volume);
-    play_alarm_tone(alarm->tone, alarm->volume);
+    ESP_LOGI(TAG, "Scheduling alarm tone: %d at volume %d%% (via LVGL timer)", alarm->tone, alarm->volume);
 
-    // Start repeat timer if enabled
-    if (alarm->audio_repeat) {
-        ESP_LOGI(TAG, "Starting audio alarm repeat timer (every 3 seconds)");
+    // Create LVGL timer to play tone from Core 1 (LVGL task context).
+    // lv_timer_ready() makes it fire on the very next LVGL cycle.
+    if (lvgl_port_lock(200)) {
         audio_alarm_timer = lv_timer_create(audio_alarm_repeat_timer_cb, 3000, NULL);
+        lv_timer_ready(audio_alarm_timer);  // Fire immediately
+        lvgl_port_unlock();
     }
 }
 
 // Stop audio alarm
 static void stop_audio_alarm(void) {
+    // Clear config FIRST so timer callback won't start a new tone
+    active_alarm_config = NULL;
+
     if (audio_alarm_timer != NULL) {
         ESP_LOGI(TAG, "Stopping audio alarm repeat timer");
-        lv_timer_del(audio_alarm_timer);
+        // Timeout must exceed longest alarm tone (Dixie Horn ~3.5s)
+        if (lvgl_port_lock(5000)) {
+            lv_timer_del(audio_alarm_timer);
+            lvgl_port_unlock();
+        } else {
+            ESP_LOGW(TAG, "LVGL lock timeout deleting alarm timer");
+        }
         audio_alarm_timer = NULL;
     }
-    active_alarm_config = NULL;
-    buzzer_stop();  // Ensure buzzer is stopped
+    buzzer_stop();  // Ensure buzzer is silenced
 }
 
 // Event handler for hold-to-disarm button
@@ -1677,6 +1698,11 @@ void update_glucose_display(void) {
 void glucose_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Glucose update task started (90 second interval)");
 
+    // Exponential backoff for persistent failures (API outage, signal loss)
+    // Normal: 90s.  After 3+ failures: 180s.  After 6+: 300s.  After 10+: 600s.
+    int consecutive_task_failures = 0;
+    int poll_interval_sec = 90;
+
     // Smart wait: Only wait remaining time if an initial fetch already happened
     const int64_t FETCH_INTERVAL_MS = 90000;  // 90 seconds
     int64_t wait_time_ms = FETCH_INTERVAL_MS;
@@ -1711,9 +1737,9 @@ void glucose_update_task(void *pvParameters) {
     }
 
     while (1) {
-        // Wait for 90 seconds OR until force-fetch is requested
+        // Wait for poll_interval_sec OR until force-fetch is requested
         // Check every 1 second to allow responsive force-fetch
-        for (int i = 0; i < 90; i++) {
+        for (int i = 0; i < poll_interval_sec; i++) {
             if (glucose_force_fetch_requested) {
                 ESP_LOGI(TAG, "Force-fetch requested, breaking wait loop early");
                 glucose_force_fetch_requested = false;
@@ -1722,24 +1748,61 @@ void glucose_update_task(void *pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(1000));  // Check every 1 second
         }
 
-        // STRICT runtime policy: never fetch off-home
-        if (pause_background_tasks || !home_screen_active) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
+        // SAFETY: Glucose fetching ALWAYS runs when WiFi is connected.
+        // Data freshness is life-critical — never skip just because user
+        // navigated to settings, alarms, or any other screen.
+        // Only UI updates (display, overlays) are gated on home_screen_active.
 
         // Check if WiFi is connected
         if (!wifi_connected) {
-            ESP_LOGI(TAG, "[Glucose Task] WiFi not connected - pausing (waiting 10s)");
-            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+            ESP_LOGI(TAG, "[Glucose Task] WiFi not connected - waiting 10s");
+            vTaskDelay(pdMS_TO_TICKS(10000));
             continue;
         }
 
-        // Only fetch if authenticated
+        // Auto-re-auth: if authentication was lost (WiFi drop, session expiry,
+        // failed re-auth during API outage), try again using stored credentials.
+        // This is the fix for "device never gets new data after WiFi reconnect".
         bool is_auth = dexcom_is_authenticated();
-        ESP_LOGI(TAG, "[Glucose Task] Auth status: %s, Free heap: %lu bytes",
-                 is_auth ? "AUTHENTICATED" : "NOT AUTHENTICATED",
-                 esp_get_free_heap_size());
+        if (!is_auth) {
+            char reauth_user[64], reauth_pass[64];
+            if (nvs_get_dexcom_credentials(reauth_user, sizeof(reauth_user),
+                                            reauth_pass, sizeof(reauth_pass)) == ESP_OK) {
+                ESP_LOGW(TAG, "[Glucose Task] Not authenticated — attempting re-auth (backoff=%ds)",
+                         poll_interval_sec);
+                if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+                    esp_err_t auth_ret = dexcom_authenticate(reauth_user, reauth_pass);
+                    if (auth_ret == ESP_OK) {
+                        ESP_LOGI(TAG, "[Glucose Task] Re-auth succeeded — resuming glucose fetch");
+                        sd_log(TAG, "Auto re-auth OK after WiFi recovery");
+                        is_auth = true;
+                        consecutive_task_failures = 0;
+                        poll_interval_sec = 90;
+                        // Close SSL from auth — glucose fetch will reopen
+                        dexcom_close_persistent_client();
+                    } else {
+                        ESP_LOGW(TAG, "[Glucose Task] Re-auth failed — will retry in %ds", poll_interval_sec);
+                        sd_log(TAG, "Auto re-auth failed, retry in %ds", poll_interval_sec);
+                        // Apply backoff to re-auth attempts too
+                        consecutive_task_failures++;
+                        if (consecutive_task_failures >= 10) {
+                            poll_interval_sec = 600;
+                        } else if (consecutive_task_failures >= 6) {
+                            poll_interval_sec = 300;
+                        } else if (consecutive_task_failures >= 3) {
+                            poll_interval_sec = 180;
+                        }
+                    }
+                    xSemaphoreGive(network_mutex);
+                }
+            } else {
+                ESP_LOGW(TAG, "[Glucose Task] Not authenticated and no stored credentials");
+            }
+
+            if (!is_auth) continue;  // Try again next cycle
+        }
+
+        ESP_LOGI(TAG, "[Glucose Task] Auth OK, Free heap: %lu bytes", esp_get_free_heap_size());
 
         if (is_auth) {
             // CRITICAL: Take network mutex to ensure exclusive access
@@ -1747,21 +1810,15 @@ void glucose_update_task(void *pvParameters) {
             if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
                 ESP_LOGI(TAG, "Network mutex acquired for glucose fetch");
 
-                // Re-check policy immediately after lock: abort off-home work
-                if (pause_background_tasks || !home_screen_active) {
-                    xSemaphoreGive(network_mutex);
-                    ESP_LOGI(TAG, "Network mutex released (off-home policy)");
-                    continue;
-                }
-
-                // Check if we have enough INTERNAL memory for SSL connection
-                // SSL MUST use internal DRAM, not external PSRAM
-                size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+                // Check if we have enough DRAM for SSL connection
+                // MUST use MALLOC_CAP_DEFAULT (DRAM only) — NOT MALLOC_CAP_INTERNAL
+                // INTERNAL includes ~27KB of IRAM that SSL can't use (byte-access required)
+                size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
                 size_t min_ever = esp_get_minimum_free_heap_size();
 
                 // Compact memory report
                 multi_heap_info_t heap_info;
-                heap_caps_get_info(&heap_info, MALLOC_CAP_INTERNAL);
+                heap_caps_get_info(&heap_info, MALLOC_CAP_DEFAULT);
                 float fragmentation = 0;
                 if (heap_info.total_free_bytes > 0) {
                     fragmentation = 100.0f * (1.0f - ((float)heap_info.largest_free_block / (float)heap_info.total_free_bytes));
@@ -1776,15 +1833,15 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
-                // SSL buffer sizes (sdkconfig): IN=4096, OUT=2048, variable length
+                // SSL buffer sizes (sdkconfig): IN=8192, OUT=2048, variable length
                 // Total SSL overhead: ~15-20KB (TLS context + buffers + cert chain)
                 // Previous 35KB/30KB thresholds caused infinite skip loops at 29KB
                 bool client_open = dexcom_persistent_client_is_open();
                 size_t required_memory = client_open ? 15000 : 25000;
                 const char *connection_type = client_open ? "REUSING existing SSL connection" : "CREATING new SSL connection";
 
-                // Check largest free block to detect fragmentation
-                size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+                // Check largest DRAM block to detect fragmentation (SSL needs byte-addressable memory)
+                size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
                 ESP_LOGI(TAG, "Largest contiguous block: %lu bytes", largest_block);
 
                 // SD log memory state every cycle
@@ -1877,6 +1934,16 @@ void glucose_update_task(void *pvParameters) {
                 esp_err_t ret = dexcom_fetch_glucose(&glucose);
 
             if (ret == ESP_OK && glucose.valid) {
+                // Duplicate detection: skip if same timestamp as last stored reading
+                if (glucose.timestamp == glucose_timestamp && glucose_data_valid) {
+                    ESP_LOGI(TAG, "Duplicate reading (same timestamp) — skipping storage");
+                    glucose_fetch_failed = false;
+                    glucose_fetch_in_progress = false;
+                    consecutive_task_failures = 0;
+                    poll_interval_sec = 90;
+                    last_glucose_fetch_time = esp_timer_get_time() / 1000;
+                    led_show_success();
+                } else {
                 // Update glucose data - "Last Known Good" approach
                 current_glucose = glucose.value;
                 current_trend = glucose.trend;
@@ -1903,17 +1970,28 @@ void glucose_update_task(void *pvParameters) {
                 glucose_fetch_failed = false;
                 glucose_fetch_in_progress = false;
 
-                // Stop animation and restore blue bar
-                if (lvgl_port_lock(0)) {
-                    if (glucose_fetch_animation_timer != NULL) {
-                        lv_timer_del(glucose_fetch_animation_timer);
-                        glucose_fetch_animation_timer = NULL;
+                // Reset backoff on success
+                if (consecutive_task_failures > 0) {
+                    ESP_LOGI(TAG, "Fetch succeeded after %d failures — resetting poll to 90s", consecutive_task_failures);
+                }
+                consecutive_task_failures = 0;
+                poll_interval_sec = 90;
+
+                // UI updates: only when on home screen (LVGL objects may not exist otherwise)
+                if (home_screen_active) {
+                    // Stop animation and restore blue bar
+                    if (lvgl_port_lock(0)) {
+                        if (glucose_fetch_animation_timer != NULL) {
+                            lv_timer_del(glucose_fetch_animation_timer);
+                            glucose_fetch_animation_timer = NULL;
+                        }
+                        if (glucose_fetch_timer_bar != NULL) {
+                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                        }
+                        lvgl_port_unlock();
                     }
-                    if (glucose_fetch_timer_bar != NULL) {
-                        lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                        lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                    }
-                    lvgl_port_unlock();
+                    update_glucose_display();
                 }
 
                 // Show success LED (green fade)
@@ -1931,7 +2009,7 @@ void glucose_update_task(void *pvParameters) {
                     play_success_sound();
                 }
 
-                // Check alarms - but ONLY on fresh data (never alarm on stale readings)
+                // Alarms ALWAYS run regardless of active screen (life-safety)
                 if (glucose_data_fresh) {
                     time_t alarm_now;
                     time(&alarm_now);
@@ -1942,9 +2020,7 @@ void glucose_update_task(void *pvParameters) {
                         ESP_LOGW(TAG, "Skipping alarm check - data is %d mins old", data_age_mins);
                     }
                 }
-
-                // Update display
-                update_glucose_display();
+                } // end of non-duplicate block
             } else {
                 // Fetch failed - mark data as stale
                 glucose_data_fresh = false;   // This fetch failed
@@ -1971,31 +2047,34 @@ void glucose_update_task(void *pvParameters) {
                 glucose_fetch_failed = true;
                 glucose_fetch_in_progress = false;
 
-                // Stop animation and update bar to red (but keep blue glow)
-                if (lvgl_port_lock(0)) {
-                    if (glucose_fetch_animation_timer != NULL) {
-                        lv_timer_del(glucose_fetch_animation_timer);
-                        glucose_fetch_animation_timer = NULL;
-                    }
-                    if (glucose_fetch_timer_bar != NULL) {
-                        lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
-                        lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                        // Keep blue glow even on failure
-                        lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                    }
-                    lvgl_port_unlock();
-                }
-
-                update_glucose_display();
-
-                // Show no-data overlay if signal lost (authenticated but no fresh data)
-                if (!sensor_change_mode &&
-                    (glucose.status == GLUCOSE_STATUS_NO_DATA ||
-                     glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS) &&
-                    home_screen_active) {
-                    if (lvgl_port_lock(200)) {
-                        show_nodata_overlay();
+                // UI updates: only when on home screen
+                if (home_screen_active) {
+                    // Stop animation and update bar to red (but keep blue glow)
+                    if (lvgl_port_lock(0)) {
+                        if (glucose_fetch_animation_timer != NULL) {
+                            lv_timer_del(glucose_fetch_animation_timer);
+                            glucose_fetch_animation_timer = NULL;
+                        }
+                        if (glucose_fetch_timer_bar != NULL) {
+                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                            lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                        }
                         lvgl_port_unlock();
+                    }
+
+                    update_glucose_display();
+
+                    // Show no-data overlay if signal lost (authenticated but no fresh data)
+                    // Only show sensor-change dialog if WiFi is UP — if WiFi is down,
+                    // the auto-reconnect task shows a separate WiFi overlay instead.
+                    if (!sensor_change_mode && wifi_connected &&
+                        (glucose.status == GLUCOSE_STATUS_NO_DATA ||
+                         glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS)) {
+                        if (lvgl_port_lock(200)) {
+                            show_nodata_overlay();
+                            lvgl_port_unlock();
+                        }
                     }
                 }
 
@@ -2015,30 +2094,75 @@ void glucose_update_task(void *pvParameters) {
                     sd_log(TAG, "FAIL: %s, status=%s, heap=%lu",
                            esp_err_to_name(ret), sts, esp_get_free_heap_size());
                 }
+
+                // Exponential backoff: reduce polling frequency during persistent failures.
+                // Saves SSL overhead and battery. Resets on first success.
+                consecutive_task_failures++;
+                if (consecutive_task_failures >= 10) {
+                    poll_interval_sec = 600;   // 10 min cap
+                } else if (consecutive_task_failures >= 6) {
+                    poll_interval_sec = 300;   // 5 min
+                } else if (consecutive_task_failures >= 3) {
+                    poll_interval_sec = 180;   // 3 min
+                } else {
+                    poll_interval_sec = 90;    // Normal
+                }
+
+                // SIGNAL_LOSS specifically: sensor is offline, data won't change quickly.
+                // Use 5-min minimum (no point hammering API for known-stale readings).
+                if (glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS && poll_interval_sec < 300) {
+                    poll_interval_sec = 300;
+                }
+
+                if (poll_interval_sec > 90) {
+                    ESP_LOGW(TAG, "Backoff active: next poll in %d seconds (failures=%d)",
+                             poll_interval_sec, consecutive_task_failures);
+                    sd_log(TAG, "Backoff: %ds (failures=%d)", poll_interval_sec, consecutive_task_failures);
+                }
             }
 
-                // AGGRESSIVE MEMORY FIX: Close SSL connection after EVERY fetch to prevent memory leaks
-                // Forces fresh SSL handshake every 90 seconds, but prevents memory accumulation
-                ESP_LOGI(TAG, "Closing Dexcom SSL connection to free memory (aggressive mode)");
-                dexcom_close_persistent_client();
-                ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
-
-                // Flush SD log after SSL close (max free memory for mount)
-                sd_log(TAG, "SSL closed, heap=%lu", esp_get_free_heap_size());
-                sd_logger_flush();
-
-                // Check for firmware updates (24h interval, after first glucose)
+                // MEMORY STRATEGY: Keep SSL alive between successful fetches.
+                // A new SSL handshake needs ~50KB peak — more than we have on a
+                // fragmented heap.  Reusing the existing connection avoids this entirely.
+                // Only close on: (a) fetch failure (connection is likely broken),
+                //                (b) update checker needs to run (needs its own SSL).
                 {
+                    bool need_close = false;
                     static bool update_notified = false;
-                    if (first_glucose_received && update_should_check()) {
-                        ESP_LOGI(TAG, "Periodic firmware update check...");
-                        update_check_now();
-                        if (update_get_info()->available && !update_notified) {
-                            update_notified = true;
-                            if (lvgl_port_lock(200)) {
-                                show_update_overlay();
-                                lvgl_port_unlock();
+                    bool want_update = update_should_check();
+
+                    if (glucose_fetch_failed) {
+                        need_close = true;  // Connection is likely broken
+                        ESP_LOGI(TAG, "Closing SSL after fetch failure");
+                    } else if (want_update) {
+                        need_close = true;  // Free memory for update checker's SSL
+                        ESP_LOGI(TAG, "Closing SSL for firmware update check");
+                    }
+
+                    if (need_close) {
+                        dexcom_close_persistent_client();
+                        ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
+                        sd_log(TAG, "SSL closed, heap=%lu", esp_get_free_heap_size());
+                        sd_logger_flush();
+                    } else {
+                        ESP_LOGI(TAG, "Keeping SSL alive for next fetch (heap=%lu)", esp_get_free_heap_size());
+                    }
+
+                    // Check for firmware updates (on boot + every 24h)
+                    if (want_update && need_close) {
+                        size_t update_largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+                        if (update_largest >= 15000) {
+                            ESP_LOGI(TAG, "Periodic firmware update check...");
+                            update_check_now();
+                            if (update_get_info()->available && !update_notified) {
+                                update_notified = true;
+                                if (lvgl_port_lock(200)) {
+                                    show_update_overlay();
+                                    lvgl_port_unlock();
+                                }
                             }
+                        } else {
+                            ESP_LOGW(TAG, "Update check deferred (largest_block=%u, need 15KB)", (unsigned)update_largest);
                         }
                     }
                 }
@@ -2123,25 +2247,6 @@ void temp_toggle_event_cb(lv_event_t *e) {
     }
 }
 
-// Animation timer for glucose fetch bouncing indicator (Knight Rider style for errors)
-// Event handler for tapping glucose timer bar to force immediate fetch
-void glucose_timer_bar_event_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    ESP_LOGI(TAG, "Timer bar event received: code=%d (CLICKED=%d)", code, LV_EVENT_CLICKED);
-
-    if (code == LV_EVENT_CLICKED) {
-        if (glucose_fetch_in_progress) {
-            ESP_LOGI(TAG, "Glucose fetch already in progress, ignoring click");
-            return;
-        }
-
-        ESP_LOGI(TAG, "Force glucose fetch requested by user (timer bar tapped)");
-        glucose_force_fetch_requested = true;
-        glucose_fetch_failed = false;
-        glucose_fetch_in_progress = true;
-    }
-}
-
 void menu_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
@@ -2151,6 +2256,7 @@ void menu_btn_event_cb(lv_event_t *e) {
         home_screen_active = false;
         pause_background_tasks = true;
         dismiss_nodata_overlay();
+        dismiss_wifi_disconnected_overlay();
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
         if (lvgl_port_lock(0)) {
@@ -2175,6 +2281,7 @@ void wifi_icon_event_cb(lv_event_t *e) {
         home_screen_active = false;
         pause_background_tasks = true;
         dismiss_nodata_overlay();
+        dismiss_wifi_disconnected_overlay();
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
         // Close Dexcom persistent client to free ~30KB memory for WiFi scan/UI
@@ -2281,6 +2388,11 @@ void menu_item_event_cb(lv_event_t *e) {
                     }
                     create_cgm_menu_screen();
                     lv_scr_load(screen_cgm_menu);
+                    // Single-screen rule: delete menu after loading sub-screen
+                    if (screen_menu != NULL) {
+                        lv_obj_del(screen_menu);
+                        screen_menu = NULL;
+                    }
                     lvgl_port_unlock();
                 }
                 break;
@@ -2301,6 +2413,11 @@ void menu_item_event_cb(lv_event_t *e) {
                     }
                     create_wifi_list_screen();
                     lv_scr_load(screen_wifi_list);
+                    // Single-screen rule: delete menu after loading sub-screen
+                    if (screen_menu != NULL) {
+                        lv_obj_del(screen_menu);
+                        screen_menu = NULL;
+                    }
                     lvgl_port_unlock();
                 }
 
@@ -2320,6 +2437,11 @@ void menu_item_event_cb(lv_event_t *e) {
                     }
                     create_time_weather_settings_screen();
                     lv_scr_load(screen_time_weather_settings);
+                    // Single-screen rule: delete menu after loading sub-screen
+                    if (screen_menu != NULL) {
+                        lv_obj_del(screen_menu);
+                        screen_menu = NULL;
+                    }
                     lvgl_port_unlock();
                 }
                 break;
@@ -2332,6 +2454,11 @@ void menu_item_event_cb(lv_event_t *e) {
                 create_alarm_settings_screen();
                 if (screen_alarm_settings != NULL) {
                     lv_scr_load(screen_alarm_settings);
+                    // Single-screen rule: delete menu after loading sub-screen
+                    if (screen_menu != NULL) {
+                        lv_obj_del(screen_menu);
+                        screen_menu = NULL;
+                    }
                 }
                 break;
             // Case 4 (Power) handled by power overlay in menu_screen.c
@@ -2607,7 +2734,26 @@ void app_main(void) {
     // Initialize SD card logger (mount-on-write, ~2.5KB permanent)
     add_boot_log("Init SD logger");
     sd_logger_init();  // Non-fatal if no card inserted
-    sd_log(TAG, "Boot: %s, heap=%lu", CYGM_VERSION_STRING, esp_get_free_heap_size());
+
+    // Log reset reason — critical for diagnosing crashes, watchdogs, brownouts
+    {
+        esp_reset_reason_t reason = esp_reset_reason();
+        const char *reason_str;
+        switch (reason) {
+            case ESP_RST_POWERON:  reason_str = "POWER_ON";   break;
+            case ESP_RST_SW:      reason_str = "SW_RESET";    break;
+            case ESP_RST_PANIC:   reason_str = "PANIC";       break;
+            case ESP_RST_INT_WDT: reason_str = "INT_WDT";     break;
+            case ESP_RST_TASK_WDT:reason_str = "TASK_WDT";    break;
+            case ESP_RST_WDT:     reason_str = "OTHER_WDT";   break;
+            case ESP_RST_DEEPSLEEP:reason_str = "DEEP_SLEEP"; break;
+            case ESP_RST_BROWNOUT:reason_str = "BROWNOUT";    break;
+            case ESP_RST_SDIO:    reason_str = "SDIO";        break;
+            default:              reason_str = "UNKNOWN";      break;
+        }
+        sd_log(TAG, "Boot: %s, reset=%s, heap=%lu", CYGM_VERSION_STRING, reason_str, esp_get_free_heap_size());
+        ESP_LOGI(TAG, "Reset reason: %s (%d)", reason_str, (int)reason);
+    }
     sd_logger_flush();
 
     // Initialize glucose history system (loads from NVS if exists)
@@ -2659,7 +2805,7 @@ void app_main(void) {
     xTaskCreatePinnedToCore(
         wifi_task_core0,
         "wifi_task",
-        4096,
+        8192,
         NULL,
         4,  // Medium priority
         &wifi_task_handle,

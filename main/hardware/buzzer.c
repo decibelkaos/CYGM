@@ -1,7 +1,20 @@
 /*
  * buzzer.c
  *
- * Buzzer/speaker control implementation
+ * Buzzer/speaker control implementation.
+ *
+ * IMPORTANT — LEDC spinlock safety:
+ * All LEDC channels using LEDC_LOW_SPEED_MODE (buzzer, RGB LED, backlight)
+ * share a single spinlock inside the ESP-IDF LEDC driver.  Acquiring that
+ * spinlock disables interrupts; if another core already holds it, the
+ * requesting core spins with interrupts masked, and the Interrupt WDT fires
+ * after ~300 ms.
+ *
+ * To avoid this, the SILENCE path uses NO LEDC calls at all — it detaches
+ * the GPIO from the LEDC peripheral via the GPIO matrix (a direct register
+ * write, no spinlock).  This also prevents WiFi EMI from coupling through
+ * the LEDC output driver into the 8002A amplifier, which would otherwise
+ * cause audible buzzing/crackling when the speaker should be quiet.
  */
 
 #include "buzzer.h"
@@ -10,8 +23,12 @@
 #include "driver/gpio.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_rom_gpio.h"
+#include "soc/ledc_periph.h"
+#include "soc/gpio_sig_map.h"
 
 static const char *TAG = "BUZZER";
+static volatile bool buzzer_active = false;
 
 void buzzer_init(void) {
     // Initialize LEDC timer for buzzer
@@ -24,7 +41,7 @@ void buzzer_init(void) {
     };
     ESP_ERROR_CHECK(ledc_timer_config(&timer));
 
-    // Initialize LEDC channel for buzzer
+    // Initialize LEDC channel for buzzer (one-time setup, never reconfigured)
     ledc_channel_config_t channel = {
         .gpio_num = BUZZER_GPIO,
         .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -35,59 +52,56 @@ void buzzer_init(void) {
     };
     ESP_ERROR_CHECK(ledc_channel_config(&channel));
 
-    // Fully silence: pause timer and detach GPIO to prevent EMI noise
-    ledc_timer_pause(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
-    gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
+    // Immediately disconnect GPIO from LEDC and hold low.
+    // Prevents 8002A amplifier from picking up WiFi EMI noise.
     gpio_set_level(BUZZER_GPIO, 0);
+    esp_rom_gpio_connect_out_signal(BUZZER_GPIO, SIG_GPIO_OUT_IDX, false, false);
 
     ESP_LOGI(TAG, "Buzzer PWM initialized (GPIO %d, silenced)", BUZZER_GPIO);
 }
 
 void buzzer_tone(uint32_t frequency, uint8_t volume) {
     if (frequency == 0 || volume == 0) {
-        // Full silence: stop PWM, pause timer, then detach GPIO and hold low.
-        // This prevents WiFi EMI from coupling noise through the LEDC peripheral.
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, 0);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
-        ledc_timer_pause(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
-        // Detach GPIO from LEDC and drive low as regular output
-        gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
+        if (!buzzer_active) return;  // Already silent, skip
+
+        // SILENCE — no LEDC calls, no spinlock, safe from any core.
+        // Disconnect GPIO from LEDC output and drive pin low via GPIO register.
+        // This cuts the electrical path from the LEDC peripheral to the 8002A
+        // amplifier, preventing WiFi EMI from producing audible noise.
         gpio_set_level(BUZZER_GPIO, 0);
+        esp_rom_gpio_connect_out_signal(BUZZER_GPIO, SIG_GPIO_OUT_IDX, false, false);
+        buzzer_active = false;
         return;
     }
 
     // Clamp volume to 0-100
     if (volume > 100) volume = 100;
 
-    // Resume timer FIRST (ledc_channel_config hangs if timer is paused)
+    // Configure LEDC frequency and duty BEFORE connecting the GPIO,
+    // so the very first PWM cycle the amplifier sees is already correct.
     ledc_timer_resume(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
-
-    // Re-attach GPIO to LEDC channel (may have been detached by silence)
-    ledc_channel_config_t channel = {
-        .gpio_num = BUZZER_GPIO,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel = BUZZER_CHANNEL,
-        .timer_sel = BUZZER_TIMER,
-        .duty = 0,
-        .hpoint = 0
-    };
-    ledc_channel_config(&channel);
-
-    // Set frequency
     ledc_set_freq(LEDC_LOW_SPEED_MODE, BUZZER_TIMER, frequency);
 
-    // Set duty cycle based on volume (0-100% -> 0-1023 duty)
-    // Use 50% duty cycle for clearest tone, scaled by volume
+    // 50% duty cycle scaled by volume (0-100% -> 0-512 of 1023)
     uint32_t duty = (512 * volume) / 100;
     ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
+
+    // Reconnect GPIO to LEDC output signal (fast GPIO-matrix register write).
+    // Only needed when transitioning from silent to active.
+    if (!buzzer_active) {
+        esp_rom_gpio_connect_out_signal(BUZZER_GPIO,
+            ledc_periph_signal[LEDC_LOW_SPEED_MODE].sig_out0_idx + BUZZER_CHANNEL,
+            false, false);
+        buzzer_active = true;
+    }
 }
 
 void buzzer_stop(void) {
     buzzer_tone(0, 0);
 }
 
-// Play boot-up sound: quick two-tone beep (low → high)
+// Play boot-up sound: quick two-tone beep (low -> high)
 void play_boot_sound(void) {
     const uint8_t volume = 50;
 

@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include <stdio.h>
 #include <string.h>
+#include "sd_logger.h"
 
 static const char *TAG = "MENU_SCREEN";
 
@@ -234,19 +235,22 @@ static void about_btn_event_cb(lv_event_t *e) {
 // ==================== Power Off Overlay ====================
 
 static lv_obj_t *power_overlay = NULL;
-static lv_obj_t *power_slider = NULL;
-static lv_obj_t *power_slide_label = NULL;
+static lv_obj_t *power_hold_bar = NULL;
+static uint32_t power_hold_start_ms = 0;
 
 static bool power_off_initiated = false;
 
 static void power_btn_event_cb(lv_event_t *e);
 static void power_close_event_cb(lv_event_t *e);
-static void power_slider_event_cb(lv_event_t *e);
+static void power_hold_event_cb(lv_event_t *e);
 static void menu_unload_event_cb(lv_event_t *e);
 
 // Shutdown task — runs on Core 0 to avoid deadlocking the LVGL task on Core 1
 static void power_off_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(100));  // Let LVGL event settle
+
+    sd_log(TAG, "POWER OFF: user-initiated shutdown");
+    sd_logger_flush();  // Flush before shutdown — last chance to write
 
     ESP_LOGI(TAG, "Stopping WiFi...");
     esp_wifi_stop();
@@ -265,8 +269,7 @@ static void dismiss_power_overlay(void) {
     if (power_overlay != NULL) {
         lv_obj_t *ov = power_overlay;
         power_overlay = NULL;
-        power_slider = NULL;
-        power_slide_label = NULL;
+        power_hold_bar = NULL;
         power_off_initiated = false;
         lv_obj_del_async(ov);
     }
@@ -278,32 +281,28 @@ static void power_close_event_cb(lv_event_t *e) {
     }
 }
 
-static void power_slider_event_cb(lv_event_t *e) {
+#define POWER_HOLD_DURATION_MS 2000
+
+static void power_hold_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
-    if (power_slider == NULL) return;
+    if (power_hold_bar == NULL) return;
 
-    if (code == LV_EVENT_VALUE_CHANGED) {
-        int val = lv_slider_get_value(power_slider);
+    if (code == LV_EVENT_PRESSED) {
+        power_hold_start_ms = lv_tick_get();
+    } else if (code == LV_EVENT_PRESSING) {
+        uint32_t elapsed = lv_tick_elaps(power_hold_start_ms);
+        int progress = (elapsed * 100) / POWER_HOLD_DURATION_MS;
+        if (progress > 100) progress = 100;
+        lv_bar_set_value(power_hold_bar, progress, LV_ANIM_OFF);
 
-        // Fade out the hint text as knob slides right
-        if (power_slide_label != NULL) {
-            lv_opa_t opa = (lv_opa_t)(255 - (val * 255 / 100));
-            lv_obj_set_style_text_opa(power_slide_label, opa, 0);
-        }
-
-        // Trigger at 97% — spawn shutdown on Core 0 (LVGL runs on Core 1)
-        if (val >= 97 && !power_off_initiated) {
+        if (progress >= 100 && !power_off_initiated) {
             power_off_initiated = true;
-            ESP_LOGI(TAG, "Power off confirmed via slider");
+            ESP_LOGI(TAG, "Power off confirmed via hold button");
             xTaskCreatePinnedToCore(power_off_task, "power_off", 4096, NULL, 10, NULL, 0);
         }
-    } else if (code == LV_EVENT_RELEASED) {
-        // Spring back if not slid far enough
-        if (lv_slider_get_value(power_slider) < 97) {
-            lv_slider_set_value(power_slider, 0, LV_ANIM_ON);
-            if (power_slide_label != NULL) {
-                lv_obj_set_style_text_opa(power_slide_label, LV_OPA_COVER, 0);
-            }
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        if (!power_off_initiated) {
+            lv_bar_set_value(power_hold_bar, 0, LV_ANIM_ON);
         }
     }
 }
@@ -369,43 +368,45 @@ static void show_power_overlay(void) {
     lv_obj_set_style_text_color(note, lv_color_hex(0x556677), 0);
     lv_obj_align(note, LV_ALIGN_TOP_MID, 0, 70);
 
-    // --- Slide-to-confirm slider ---
-    power_slider = lv_slider_create(card);
-    lv_obj_set_size(power_slider, 220, 30);
-    lv_obj_align(power_slider, LV_ALIGN_TOP_MID, 0, 94);
-    lv_slider_set_range(power_slider, 0, 100);
-    lv_slider_set_value(power_slider, 0, LV_ANIM_OFF);
-    lv_obj_add_flag(power_slider, LV_OBJ_FLAG_ADV_HITTEST);  // Must grab knob
-    lv_obj_set_style_anim_time(power_slider, 300, LV_PART_MAIN);  // Snap-back speed
+    // --- Hold-to-confirm button ---
+    lv_obj_t *hold_container = lv_obj_create(card);
+    lv_obj_remove_style_all(hold_container);
+    lv_obj_set_size(hold_container, 220, 34);
+    lv_obj_align(hold_container, LV_ALIGN_TOP_MID, 0, 92);
+    lv_obj_set_style_bg_color(hold_container, lv_color_hex(0x0d1520), 0);
+    lv_obj_set_style_bg_opa(hold_container, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(hold_container, 17, 0);
+    lv_obj_set_style_border_color(hold_container, lv_color_hex(0x1e2d3d), 0);
+    lv_obj_set_style_border_width(hold_container, 1, 0);
+    lv_obj_clear_flag(hold_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(hold_container, LV_OBJ_FLAG_CLICKABLE);
 
-    // Track — dark pill
-    lv_obj_set_style_bg_color(power_slider, lv_color_hex(0x0d1520), LV_PART_MAIN);
-    lv_obj_set_style_radius(power_slider, 16, LV_PART_MAIN);
-    lv_obj_set_style_border_color(power_slider, lv_color_hex(0x1e2d3d), LV_PART_MAIN);
-    lv_obj_set_style_border_width(power_slider, 1, LV_PART_MAIN);
+    // Progress bar (fills red as you hold)
+    power_hold_bar = lv_bar_create(hold_container);
+    lv_obj_set_size(power_hold_bar, 218, 32);
+    lv_obj_center(power_hold_bar);
+    lv_bar_set_range(power_hold_bar, 0, 100);
+    lv_bar_set_value(power_hold_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_opa(power_hold_bar, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(power_hold_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(power_hold_bar, LV_OPA_80, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(power_hold_bar, 16, LV_PART_MAIN);
+    lv_obj_set_style_radius(power_hold_bar, 16, LV_PART_INDICATOR);
+    lv_obj_set_style_anim_time(power_hold_bar, 300, LV_PART_MAIN);  // Snap-back speed
+    lv_obj_clear_flag(power_hold_bar, LV_OBJ_FLAG_CLICKABLE);  // Pass clicks to container
 
-    // Indicator — red fill as you slide
-    lv_obj_set_style_bg_color(power_slider, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(power_slider, LV_OPA_80, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(power_slider, 16, LV_PART_INDICATOR);
+    // Label on top
+    lv_obj_t *hold_label = lv_label_create(hold_container);
+    lv_label_set_text(hold_label, LV_SYMBOL_POWER "  Hold to Power Off");
+    lv_obj_set_style_text_color(hold_label, lv_color_hex(COLOR_RED), 0);
+    lv_obj_center(hold_label);
+    lv_obj_clear_flag(hold_label, LV_OBJ_FLAG_CLICKABLE);  // Pass clicks to container
 
-    // Knob — white circle, slightly larger than track
-    lv_obj_set_style_bg_color(power_slider, lv_color_hex(0xf0f0f0), LV_PART_KNOB);
-    lv_obj_set_style_radius(power_slider, 16, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(power_slider, 1, LV_PART_KNOB);
-    lv_obj_set_style_shadow_width(power_slider, 8, LV_PART_KNOB);
-    lv_obj_set_style_shadow_color(power_slider, lv_color_black(), LV_PART_KNOB);
-    lv_obj_set_style_shadow_opa(power_slider, LV_OPA_40, LV_PART_KNOB);
-
-    lv_obj_add_event_cb(power_slider, power_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(power_slider, power_slider_event_cb, LV_EVENT_RELEASED, NULL);
-
-    // "slide to power off" hint text overlaid on track
-    power_slide_label = lv_label_create(card);
-    lv_label_set_text(power_slide_label, "slide to power off  " LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(power_slide_label, lv_color_hex(0x44556a), 0);
-    lv_obj_align_to(power_slide_label, power_slider, LV_ALIGN_CENTER, 14, 0);
-    lv_obj_clear_flag(power_slide_label, LV_OBJ_FLAG_CLICKABLE);
+    // Events on container
+    lv_obj_add_event_cb(hold_container, power_hold_event_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(hold_container, power_hold_event_cb, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(hold_container, power_hold_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(hold_container, power_hold_event_cb, LV_EVENT_PRESS_LOST, NULL);
 }
 
 static void power_btn_event_cb(lv_event_t *e) {
