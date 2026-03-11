@@ -1,67 +1,28 @@
-﻿{
-    "versions":  [
-                     {
-                         "version":  "1.7.0",
-                         "date":  "2026-03-11",
-                         "stage":  "Beta",
-                         "notes":  "Critical fix: Dexcom API stale data bug — minutes param changed from 10 to 1440, preventing hours of stale glucose readings during brief signal gaps. Added proactive 2-hour session\r\n  refresh, duplicate reading detection, and immediate retry after re-auth.\r\n\r\n  New: Login success overlay, legal disclaimer with \"Don\u0027t show again\" (NVS-backed), WiFi disconnected overlay, hold-to-confirm power off and WiFi removal.\r\n\r\n  UI: Glucose chart redesign (1/3/6/12/24h ranges, target band, per-segment coloring), alarm and snooze visual overhaul, Dexcom login facelift, weather settings rewrite, battery HSV color\r\n   gradient.\r\n\r\n  Performance: CPU 160→240MHz, nano printf, mbedTLS stripped (TLS client only, 9 unused ECP curves removed, common cert bundle), binary reduced 1.57→1.37MB.\r\n\r\n  Fixes: WiFi NVS corruption (contiguous packing bug), settings screen crash (LVGL pool exhaustion), weather task stack overflow, alarm inactivity timer infinite loop, WiFi password eye\r\n  toggle UAF, screen transition crashes, WiFi auto-reconnect during network switching.\r\n\r\n  Battery: Trend-based charging detection, 8-sample rolling average, charging voltage curve, ±2% step clamping.\r\n\r\n  SD Logger v2: Mount-on-write, 8KB serial capture buffer, OOM resilience, 60-second periodic flush.",
-                         "files":  {
-                                       "merged":  "firmware/v1.7.0/cygm-merged.bin",
-                                       "app":  "firmware/v1.7.0/cygm.bin",
-                                       "bootloader":  "firmware/v1.7.0/bootloader.bin",
-                                       "partitions":  "firmware/v1.7.0/partition-table.bin",
-                                       "ota_data":  "firmware/v1.7.0/ota_data_initial.bin"
-                                   },
-                         "latest":  true
-                     },
-                     {
-                         "version":  "1.6.0",
-                         "date":  "2026-03-08",
-                         "stage":  "Beta",
-                         "notes":  "OTA update checker, sensor change overlay, SD card logging, About screen with QR code, theme unification, TLS certificate fix, dynamic web flasher, alarm crash",
-                         "files":  {
-                                       "merged":  "firmware/v1.6.0/cygm-merged.bin",
-                                       "app":  "firmware/v1.6.0/cygm.bin",
-                                       "bootloader":  "firmware/v1.6.0/bootloader.bin",
-                                       "partitions":  "firmware/v1.6.0/partition-table.bin",
-                                       "spiffs":  "firmware/v1.6.0/spiffs.bin"
-                                   }
-                     },
-                     {
-                         "version":  "1.5.7",
-                         "date":  "2026-03-08",
-                         "stage":  "Beta",
-                         "notes":  "About overlay, QR code, update checker, SD glucose CSV, theme unification, sensor change overlay when no data is recieved",
-                         "files":  {
-                                       "merged":  "firmware/v1.5.7/cygm-merged.bin",
-                                       "app":  "firmware/v1.5.7/cygm.bin",
-                                       "bootloader":  "firmware/v1.5.7/bootloader.bin",
-                                       "partitions":  "firmware/v1.5.7/partition-table.bin",
-                                       "spiffs":  "firmware/v1.5.7/spiffs.bin"
-                                   }
-                     },
-                     {
-                         "version":  "1.5.1",
-                         "date":  "2026-02-05",
-                         "stage":  "Beta",
-                         "notes":  "Tick overflow fix, battery monitoring improvements, visual alarm refinements, SD card logging",
-                         "files":  {
-                                       "merged":  "firmware/v1.5.1/cygm-merged.bin",
-                                       "app":  "firmware/v1.5.1/cygm.bin",
-                                       "bootloader":  "firmware/v1.5.1/bootloader.bin",
-                                       "partitions":  "firmware/v1.5.1/partition-table.bin",
-                                       "spiffs":  "firmware/v1.5.1/spiffs.bin"
-                                   }
-                     }
-                 ],
-    "chip":  "ESP32",
-    "flash_mode":  "dio",
-    "flash_freq":  "40m",
-    "flash_size":  "4MB",
-    "offsets":  {
-                    "bootloader":  "0x1000",
-                    "partitions":  "0x8000",
-                    "ota_data":  "0xd000",
-                    "app":  "0x10000"
-                }
+{
+    "versions": [
+        {
+            "version": "0.5.0",
+            "date": "2026-03-11",
+            "stage": "Beta",
+            "notes": "Initial public beta. Real-time Dexcom glucose display, weather, alarms, OTA updates, screenshot capture, SD card logging.",
+            "files": {
+                "merged": "firmware/v0.5.0/cygm-merged.bin",
+                "app": "firmware/v0.5.0/cygm.bin",
+                "bootloader": "firmware/v0.5.0/bootloader.bin",
+                "partitions": "firmware/v0.5.0/partition-table.bin",
+                "ota_data": "firmware/v0.5.0/ota_data_initial.bin"
+            },
+            "latest": true
+        }
+    ],
+    "chip": "ESP32",
+    "flash_mode": "dio",
+    "flash_freq": "40m",
+    "flash_size": "4MB",
+    "offsets": {
+        "bootloader": "0x1000",
+        "partitions": "0x8000",
+        "ota_data": "0xd000",
+        "app": "0x10000"
+    }
 }
