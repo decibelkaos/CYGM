@@ -1,5 +1,6 @@
-{
-  "version": "1.6.0",
-  "stage": "Beta",
-  "date": "2026-03-08"
+﻿{
+    "date":  "2026-03-11",
+    "firmware_url":  "https://digitalkaos.tech/firmware/v1.7.0/cygm.bin",
+    "version":  "1.7.0",
+    "stage":  "Beta"
 }

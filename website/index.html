@@ -3,2386 +3,1731 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CYGM Firmware Flasher</title>
-    <meta name="description" content="Flash CYGM firmware to your ESP32-based CGM display directly from your browser. No software installation required.">
-
-    <!-- ESP Web Tools -->
-    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+    <title>CYGM — Open-Source CGM Display</title>
+    <meta name="description" content="A ~$40 open-source continuous glucose monitor display. Real-time CGM data on a pocket-sized touchscreen. No subscriptions. #WeAreNotWaiting">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <style>
+        /* ============================================
+           CSS CUSTOM PROPERTIES
+           ============================================ */
         :root {
-            --bg-deep: #0a0e17;
-            --bg-surface: #111827;
-            --bg-card: #1a2234;
-            --bg-elevated: #1f2b3f;
-            --accent-glucose: #22d3ee;
-            --accent-glow: rgba(34, 211, 238, 0.15);
-            --accent-blue: #3b82f6;
-            --accent-green: #10b981;
-            --accent-orange: #f59e0b;
-            --accent-red: #ef4444;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --text-dim: #64748b;
-            --border: #1e293b;
-            --border-accent: rgba(34, 211, 238, 0.2);
+            --bg-primary: #0a0e17;
+            --bg-secondary: #0f1420;
+            --bg-tertiary: #151b2b;
+            --bg-card: #141a2a;
+            --bg-card-hover: #1a2236;
+
+            --text-primary: #e8ecf4;
+            --text-secondary: #8b95a8;
+            --text-muted: #505c72;
+
+            --accent: #00d4ff;
+            --accent-dim: #00a8cc;
+            --accent-glow: rgba(0, 212, 255, 0.15);
+            --accent-glow-strong: rgba(0, 212, 255, 0.3);
+
+            --glucose-green: #22c55e;
+            --glucose-yellow: #eab308;
+            --glucose-red: #ef4444;
+
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(0, 212, 255, 0.2);
+
+            --section-pad: clamp(4rem, 10vw, 8rem);
+            --container-max: 1200px;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        /* ============================================
+           RESET & BASE
+           ============================================ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
 
         body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg-deep);
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-primary);
             color: var(--text-primary);
-            min-height: 100vh;
+            line-height: 1.6;
             overflow-x: hidden;
         }
 
-        /* Subtle animated background grid */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background:
-                linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
-            background-size: 60px 60px;
-            pointer-events: none;
-            z-index: 0;
-        }
+        img { max-width: 100%; display: block; }
+        a { color: var(--accent); text-decoration: none; }
 
-        .page-wrapper {
-            position: relative;
-            z-index: 1;
-            max-width: 860px;
+        /* ============================================
+           UTILITY
+           ============================================ */
+        .container {
+            max-width: var(--container-max);
             margin: 0 auto;
-            padding: 40px 24px 80px;
+            padding: 0 clamp(1.25rem, 4vw, 2.5rem);
         }
 
-        /* ── Header ── */
-        .header {
-            text-align: center;
-            margin-bottom: 48px;
-        }
-
-        .logo-mark {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .logo-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
+        .section-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1rem;
             display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            box-shadow: 0 0 30px rgba(34, 211, 238, 0.3);
+            gap: 0.75rem;
         }
-
-        .logo-text {
-            font-size: 2.2rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-glucose) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .header-subtitle {
-            color: var(--text-secondary);
-            font-size: 1.05rem;
-            font-weight: 400;
-            line-height: 1.6;
-            max-width: 520px;
-            margin: 0 auto;
-        }
-
-        .header-subtitle strong {
-            color: var(--accent-glucose);
-            font-weight: 600;
-        }
-
-        /* ── Browser Support Banner ── */
-        .browser-notice {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-left: 3px solid var(--accent-orange);
-            border-radius: 8px;
-            padding: 14px 20px;
-            margin-bottom: 32px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-        }
-
-        .browser-notice .icon { font-size: 1.2rem; flex-shrink: 0; }
-
-        .browser-notice a {
-            color: var(--accent-glucose);
-            text-decoration: none;
-        }
-        .browser-notice a:hover { text-decoration: underline; }
-
-        /* ── Section Card ── */
-        .section-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 28px;
-            margin-bottom: 24px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .section-card::before {
+        .section-label::before {
             content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
+            width: 24px;
             height: 1px;
-            background: linear-gradient(90deg, transparent, var(--accent-glucose), transparent);
-            opacity: 0.4;
+            background: var(--accent);
         }
 
         .section-title {
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: var(--accent-glucose);
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .section-title .step-num {
-            background: var(--accent-glucose);
-            color: var(--bg-deep);
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            font-weight: 700;
-        }
-
-        .expert-mode-btn {
-            margin-left: auto;
-            padding: 6px 14px;
-            background: rgba(59, 130, 246, 0.15);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 6px;
-            color: var(--accent-blue);
             font-family: 'Outfit', sans-serif;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
+            font-size: clamp(2rem, 5vw, 3.25rem);
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+            margin-bottom: 1.25rem;
         }
 
-        .expert-mode-btn:hover {
-            background: rgba(59, 130, 246, 0.25);
-            border-color: var(--accent-blue);
-            transform: translateY(-1px);
+        .section-subtitle {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            line-height: 1.7;
         }
 
-        /* ── Firmware Selector ── */
-        .version-selector {
+        /* Scroll reveal */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ============================================
+           NAVIGATION
+           ============================================ */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 1rem 0;
+            transition: background 0.4s, backdrop-filter 0.4s, padding 0.4s;
+        }
+        .nav.scrolled {
+            background: rgba(10, 14, 23, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0.6rem 0;
+        }
+        .nav-inner {
             display: flex;
-            flex-direction: column;
-            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
         }
-
-        .version-dropdown {
+        .nav-logo {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            letter-spacing: -0.03em;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .nav-logo .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 12px var(--accent);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--accent); }
+            50% { opacity: 0.5; box-shadow: 0 0 4px var(--accent); }
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            list-style: none;
+        }
+        .nav-links a {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color 0.3s;
             position: relative;
         }
-
-        .version-dropdown select {
-            width: 100%;
-            padding: 14px 48px 14px 16px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.95rem;
-            font-weight: 500;
-            appearance: none;
-            cursor: pointer;
-            transition: border-color 0.2s;
-        }
-
-        .version-dropdown select:hover,
-        .version-dropdown select:focus {
-            border-color: var(--accent-glucose);
-            outline: none;
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
-
-        .version-dropdown::after {
-            content: '▾';
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-links a::after {
+            content: '';
             position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-dim);
-            pointer-events: none;
-            font-size: 1.1rem;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 1.5px;
+            background: var(--accent);
+            transition: width 0.3s var(--ease-out);
+        }
+        .nav-links a:hover::after { width: 100%; }
+
+        .nav-version {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            padding: 0.3rem 0.85rem;
+            background: rgba(0, 212, 255, 0.08);
+            border: 1px solid rgba(0, 212, 255, 0.18);
+            border-radius: 100px;
+            white-space: nowrap;
         }
 
-        .version-info {
+        .nav-cta {
+            font-size: 0.8125rem !important;
+            font-weight: 600 !important;
+            color: var(--bg-primary) !important;
+            background: var(--accent);
+            padding: 0.5rem 1.25rem;
+            border-radius: 100px;
+            transition: transform 0.3s var(--ease-spring), box-shadow 0.3s !important;
+        }
+        .nav-cta:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--accent-glow-strong);
+        }
+        .nav-cta::after { display: none !important; }
+
+        /* Mobile hamburger */
+        .nav-toggle {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            width: 32px;
+            height: 24px;
+            position: relative;
+            z-index: 110;
+        }
+        .nav-toggle span {
+            display: block;
+            width: 100%;
+            height: 2px;
+            background: var(--text-primary);
+            border-radius: 2px;
+            transition: all 0.3s;
+            position: absolute;
+            left: 0;
+        }
+        .nav-toggle span:nth-child(1) { top: 0; }
+        .nav-toggle span:nth-child(2) { top: 50%; transform: translateY(-50%); }
+        .nav-toggle span:nth-child(3) { bottom: 0; }
+        .nav-toggle.active span:nth-child(1) { top: 50%; transform: translateY(-50%) rotate(45deg); }
+        .nav-toggle.active span:nth-child(2) { opacity: 0; }
+        .nav-toggle.active span:nth-child(3) { bottom: 50%; transform: translateY(50%) rotate(-45deg); }
+
+        @media (max-width: 768px) {
+            .nav-toggle { display: block; }
+            .nav-links {
+                position: fixed;
+                inset: 0;
+                flex-direction: column;
+                justify-content: center;
+                gap: 2.5rem;
+                background: rgba(10, 14, 23, 0.97);
+                backdrop-filter: blur(30px);
+                -webkit-backdrop-filter: blur(30px);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.4s;
+            }
+            .nav-links.open { opacity: 1; pointer-events: all; }
+            .nav-links a { font-size: 1.25rem; }
+        }
+
+        /* ============================================
+           HERO
+           ============================================ */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding: 8rem 0 var(--section-pad);
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            right: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+            animation: float-glow 8s ease-in-out infinite;
+        }
+        @keyframes float-glow {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-30px, 20px); }
+        }
+        .hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+        }
+
+        .hero-inner {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .info-chip {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px 16px;
-        }
-
-        .info-chip-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--text-dim);
-            margin-bottom: 4px;
-        }
-
-        .info-chip-value {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .stage-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .stage-alpha { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
-        .stage-beta { background: rgba(245, 158, 11, 0.15); color: var(--accent-orange); }
-        .stage-release { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
-
-        .release-notes {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 14px 16px;
-            margin-top: 12px;
-            font-size: 0.88rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        }
-
-        .release-notes-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--text-dim);
-            margin-bottom: 6px;
-        }
-
-        /* ── Wizard ── */
-        .wizard-container {
+            gap: 4rem;
+            align-items: center;
             position: relative;
+            z-index: 1;
+        }
+        .hero-content { max-width: 560px; }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 1rem 0.4rem 0.6rem;
+            background: var(--accent-glow);
+            border: 1px solid var(--border-accent);
+            border-radius: 100px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.75rem;
+            animation: fade-in-up 0.8s var(--ease-out) both;
+        }
+        .hero-badge .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--glucose-green);
+            box-shadow: 0 0 8px var(--glucose-green);
+            animation: pulse-dot 1.5s ease-in-out infinite;
         }
 
-        .wizard-step {
-            display: none;
-            padding: 20px;
-            text-align: center;
+        .hero h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: clamp(2.75rem, 6vw, 4.5rem);
+            font-weight: 800;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            animation: fade-in-up 0.8s 0.1s var(--ease-out) both;
+        }
+        .hero h1 .accent { color: var(--accent); }
+
+        .hero-desc {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+            margin: 1.5rem 0 2.5rem;
+            max-width: 480px;
+            animation: fade-in-up 0.8s 0.2s var(--ease-out) both;
         }
 
-        .wizard-step.active {
-            display: block;
-            animation: fadeIn 0.4s ease;
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            animation: fade-in-up 0.8s 0.3s var(--ease-out) both;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(24px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .wizard-icon {
-            font-size: 3.5rem;
-            margin-bottom: 16px;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
-        .wizard-title {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 12px;
-        }
-
-        .wizard-text {
-            font-size: 1rem;
-            line-height: 1.7;
-            color: var(--text-secondary);
-            margin-bottom: 24px;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .wizard-text strong {
-            color: var(--accent-glucose);
-            font-weight: 600;
-        }
-
-        .wizard-checklist {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 24px;
-            text-align: left;
-            max-width: 500px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .wizard-check {
-            display: flex;
+        .btn {
+            display: inline-flex;
             align-items: center;
-            gap: 12px;
-            padding: 12px 0;
-            cursor: pointer;
-            font-size: 0.95rem;
-            color: var(--text-secondary);
-            transition: color 0.2s;
-        }
-
-        .wizard-check:hover {
-            color: var(--text-primary);
-        }
-
-        .wizard-check input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-            accent-color: var(--accent-glucose);
-        }
-
-        .wizard-btn {
-            padding: 14px 40px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
+            gap: 0.5rem;
+            padding: 0.875rem 2rem;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9375rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .wizard-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        .wizard-btn:not(:disabled):hover {
-            background: var(--accent-glucose);
-            color: var(--bg-deep);
-            border-color: var(--accent-glucose);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(34, 211, 238, 0.3);
-        }
-
-        .wizard-btn-primary {
-            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
             border: none;
-            color: var(--bg-deep);
-            font-size: 1.1rem;
-            padding: 16px 48px;
-            box-shadow: 0 4px 20px rgba(34, 211, 238, 0.3);
+            transition: all 0.3s var(--ease-spring);
         }
-
-        .wizard-btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 30px rgba(34, 211, 238, 0.5);
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
         }
-
-        .button-guide {
-            display: flex;
-            justify-content: center;
-            gap: 24px;
-            margin: 24px 0;
-            flex-wrap: wrap;
+        .btn-primary:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 30px var(--accent-glow-strong);
         }
-
-        .button-card {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 24px;
-            text-align: center;
-            flex: 1;
-            min-width: 180px;
-            max-width: 220px;
-        }
-
-        .button-visual {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 16px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.05em;
-            border: 3px solid;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-        }
-
-        .button-visual.boot {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            border-color: #60a5fa;
-            color: white;
-        }
-
-        .button-visual.reset {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-            border-color: #f87171;
-            color: white;
-        }
-
-        .button-label {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            line-height: 1.5;
-        }
-
-        .instruction-sequence {
-            background: var(--bg-surface);
-            border: 2px solid var(--border-accent);
-            border-radius: 12px;
-            padding: 24px;
-            margin: 24px auto;
-            max-width: 600px;
-            text-align: left;
-        }
-
-        .instruction-step {
-            display: flex;
-            gap: 20px;
-            align-items: flex-start;
-            padding: 16px 0;
-            border-bottom: 1px solid rgba(30, 41, 59, 0.5);
-        }
-
-        .instruction-step:last-child {
-            border-bottom: none;
-        }
-
-        .step-num-big {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--accent-glucose);
-            color: var(--bg-deep);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-            font-weight: 700;
-            flex-shrink: 0;
-        }
-
-        .step-content {
-            flex: 1;
-        }
-
-        .step-content strong {
-            display: block;
-            font-size: 1rem;
+        .btn-secondary {
+            background: transparent;
             color: var(--text-primary);
-            margin-bottom: 4px;
+            border: 1px solid var(--border-subtle);
+        }
+        .btn-secondary:hover {
+            border-color: var(--text-muted);
+            background: rgba(255,255,255,0.04);
         }
 
-        .step-detail {
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            font-style: italic;
+        .hero-stats {
+            display: flex;
+            gap: 2.5rem;
+            margin-top: 3rem;
+            animation: fade-in-up 0.8s 0.4s var(--ease-out) both;
         }
-
-        .wizard-alert {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            border-radius: 8px;
-            padding: 16px 20px;
-            margin: 24px auto;
-            max-width: 600px;
-            font-size: 0.95rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        }
-
-        .wizard-alert strong {
-            color: var(--accent-orange);
-        }
-
-        /* ── Flash Status Large ── */
-        .flash-status-large {
-            background: var(--bg-surface);
-            border: 2px solid var(--border-accent);
-            border-radius: 16px;
-            padding: 48px 32px;
-            text-align: center;
-        }
-
-        .status-icon-large {
-            font-size: 5rem;
-            margin-bottom: 24px;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        .status-icon-large.spinning {
-            animation: spin 1s linear infinite;
-        }
-
-        .status-icon-large.pulse-big {
-            animation: pulseBig 1.5s ease-in-out infinite;
-        }
-
-        @keyframes pulseBig {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.15); opacity: 0.8; }
-        }
-
-        .status-text-large {
-            font-size: 1.8rem;
+        .hero-stat-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.75rem;
             font-weight: 700;
             color: var(--text-primary);
-            margin-bottom: 12px;
+        }
+        .hero-stat-label {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
         }
 
-        .status-detail-large {
-            font-size: 1.1rem;
-            color: var(--text-secondary);
-            line-height: 1.7;
-            max-width: 600px;
-            margin: 0 auto;
+        .hero-visual {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            animation: fade-in-up 0.8s 0.3s var(--ease-out) both;
         }
-
-        .status-progress {
-            margin-top: 32px;
-            max-width: 500px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .progress-bar {
+        .hero-device-img {
             width: 100%;
-            height: 32px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            overflow: hidden;
+            max-width: 520px;
+            border-radius: var(--radius);
+            position: relative;
+            z-index: 2;
+            filter: drop-shadow(0 20px 60px rgba(0, 0, 0, 0.5));
+        }
+        .hero-visual::before {
+            content: '';
+            position: absolute;
+            width: 80%;
+            height: 80%;
+            background: radial-gradient(circle, var(--accent-glow-strong) 0%, transparent 60%);
+            filter: blur(40px);
+            z-index: 1;
+        }
+
+        @media (max-width: 900px) {
+            .hero-inner { grid-template-columns: 1fr; text-align: center; }
+            .hero-content { max-width: 100%; margin: 0 auto; }
+            .hero-desc { margin-left: auto; margin-right: auto; }
+            .hero-actions { justify-content: center; }
+            .hero-stats { justify-content: center; }
+            .hero-visual { margin-top: 2rem; }
+        }
+
+        @media (max-width: 600px) {
+            .hero {
+                min-height: auto;
+                padding: 6rem 0 3rem;
+            }
+            .hero h1 { font-size: 2.25rem; line-height: 1.1; }
+            .hero-desc { font-size: 0.9375rem; margin: 1rem 0 1.5rem; }
+            .hero-stats { gap: 1.5rem; margin-top: 2rem; flex-wrap: wrap; }
+            .hero-stat-value { font-size: 1.25rem; }
+            .hero-stat-label { font-size: 0.75rem; }
+            .hero-badge { font-size: 0.65rem; padding: 0.35rem 0.75rem 0.35rem 0.5rem; }
+            .hero-device-img { max-width: 100%; }
+            .btn { font-size: 0.875rem; padding: 0.75rem 1.5rem; }
+        }
+
+        /* ============================================
+           CAPABILITIES
+           ============================================ */
+        .capabilities {
+            padding: var(--section-pad) 0;
             position: relative;
         }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--accent-glucose), var(--accent-blue));
-            border-radius: 16px;
-            width: 0%;
-            transition: width 0.3s ease;
-            box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
+        .capabilities-header {
+            text-align: center;
+            margin-bottom: 4rem;
         }
+        .capabilities-header .section-subtitle { margin: 0 auto; }
 
-        .progress-text {
-            margin-top: 12px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: var(--accent-glucose);
+        .capabilities-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
         }
-
-        /* ── Device Monitor ── */
-        .device-monitor {
-            background: #0d1117;
-            border: 1px solid var(--border-accent);
-            border-radius: 10px;
+        .capability-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2rem;
+            transition: all 0.4s var(--ease-out);
+            position: relative;
             overflow: hidden;
-            margin-top: 24px;
-            font-family: 'JetBrains Mono', monospace;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         }
+        .capability-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+        .capability-card:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-accent);
+            transform: translateY(-4px);
+        }
+        .capability-card:hover::before { opacity: 1; }
 
-        .monitor-header {
-            background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
-            border-bottom: 1px solid var(--border);
-            padding: 10px 14px;
+        .capability-icon {
+            width: 48px;
+            height: 48px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: center;
+            background: var(--accent-glow);
+            border-radius: 12px;
+            margin-bottom: 1.25rem;
+            color: var(--accent);
+        }
+        .capability-icon svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 1.75;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        .monitor-title {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--accent-glucose);
-            letter-spacing: 0.05em;
-            flex: 1;
-        }
-
-        .monitor-clear,
-        .monitor-connect {
-            padding: 4px 10px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text-dim);
+        .capability-card h3 {
             font-family: 'Outfit', sans-serif;
-            font-size: 0.7rem;
+            font-size: 1.125rem;
             font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .capability-card p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+
+        @media (max-width: 900px) { .capabilities-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 600px) {
+            .capabilities-grid { grid-template-columns: 1fr; gap: 1rem; }
+            .capability-card { padding: 1.5rem 1.25rem; }
+            .capability-card h3 { font-size: 1rem; }
+            .capability-card p { font-size: 0.875rem; }
+            .section-title { font-size: 1.75rem; line-height: 1.2; margin-bottom: 0.75rem; }
+            .section-subtitle { font-size: 0.9375rem; line-height: 1.6; }
+            .section-label { font-size: 0.6875rem; padding: 0.35rem 0.75rem; }
+            section { padding: 3rem 0; }
+        }
+
+        /* ============================================
+           GALLERY
+           ============================================ */
+        .gallery {
+            padding: var(--section-pad) 0;
+        }
+        .gallery-header {
+            margin-bottom: 3rem;
+        }
+        .gallery-filters {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+        }
+        .gallery-filter {
+            background: transparent;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            padding: 0.4rem 1rem;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s;
+        }
+        .gallery-filter.active,
+        .gallery-filter:hover {
+            background: var(--accent-glow);
+            border-color: var(--border-accent);
+            color: var(--accent);
         }
 
-        .monitor-connect {
-            background: rgba(34, 211, 238, 0.1);
-            border-color: rgba(34, 211, 238, 0.3);
-            color: var(--accent-glucose);
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .gallery-item {
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            aspect-ratio: 16/10;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.4s var(--ease-out);
+        }
+        .gallery-item:hover { transform: scale(1.02); }
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s var(--ease-out);
+        }
+        .gallery-item:hover img { transform: scale(1.08); }
+        .gallery-item-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(10,14,23,0.8) 0%, transparent 50%);
+            opacity: 0;
+            transition: opacity 0.4s;
+            display: flex;
+            align-items: flex-end;
+            padding: 1.25rem;
+        }
+        .gallery-item:hover .gallery-item-overlay { opacity: 1; }
+        .gallery-item-overlay span {
+            font-size: 0.8125rem;
+            font-weight: 500;
         }
 
-        .monitor-clear:hover {
-            color: var(--accent-orange);
-            border-color: var(--accent-orange);
+        /* Lightbox */
+        .lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+            cursor: pointer;
+        }
+        .lightbox.active { opacity: 1; pointer-events: all; }
+        .lightbox img {
+            max-width: 90vw;
+            max-height: 90vh;
+            object-fit: contain;
+            border-radius: var(--radius-sm);
+        }
+        .lightbox-close {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            font-size: 1.25rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+        .lightbox-close:hover { background: rgba(255,255,255,0.2); }
+
+        @media (max-width: 600px) {
+            .gallery-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+            .gallery-item { aspect-ratio: 1; }
+            .gallery-filters { gap: 0.5rem; }
+            .gallery-filter { font-size: 0.75rem; padding: 0.5rem 0.875rem; }
         }
 
-        .monitor-connect:hover {
-            background: rgba(34, 211, 238, 0.2);
-            border-color: var(--accent-glucose);
+        /* ============================================
+           USE CASES
+           ============================================ */
+        .usecases {
+            padding: var(--section-pad) 0;
+        }
+        .usecases-header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+        .usecases-header .section-subtitle { margin: 0 auto; }
+        .usecases-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        .usecase-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2.25rem 2rem;
+            transition: all 0.4s var(--ease-out);
+        }
+        .usecase-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-4px);
+            border-color: var(--border-accent);
+        }
+        .usecase-icon {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-glow);
+            border-radius: 12px;
+            margin-bottom: 1.25rem;
+            color: var(--accent);
+        }
+        .usecase-icon svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 1.75;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .usecase-card h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .usecase-card p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+        @media (max-width: 768px) { .usecases-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) {
+            .usecases-grid { gap: 1rem; }
+            .usecase-card { padding: 1.5rem 1.25rem; }
+            .usecase-card h3 { font-size: 1rem; }
+            .usecase-card p { font-size: 0.875rem; }
         }
 
-        .monitor-connect:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
+        /* ============================================
+           ABOUT / STORY
+           ============================================ */
+        .about {
+            padding: var(--section-pad) 0;
+        }
+        .about-inner {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 4rem;
+            align-items: center;
+        }
+        .about-visual {
+            position: relative;
+        }
+        .about-img-main {
+            border-radius: var(--radius);
+            border: 1px solid var(--border-subtle);
+        }
+        .about-visual::after {
+            content: '';
+            position: absolute;
+            bottom: -20px;
+            right: -20px;
+            width: 200px;
+            height: 200px;
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius);
+            z-index: -1;
         }
 
-        .monitor-output {
-            padding: 12px;
-            max-height: 250px;
-            overflow-y: auto;
-            background: #0d1117;
+        .about-content .section-title { margin-bottom: 1.5rem; }
+        .about-text {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+        }
+        .about-text strong { color: var(--text-primary); font-weight: 600; }
+
+        .about-hashtag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--accent);
+            margin-top: 1rem;
+            padding: 0.6rem 1.25rem;
+            background: var(--accent-glow);
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius-xs);
+        }
+
+        @media (max-width: 900px) {
+            .about-inner { grid-template-columns: 1fr; }
+            .about-visual { max-width: 500px; margin: 0 auto; }
+        }
+        @media (max-width: 600px) {
+            .about-inner { gap: 2rem; }
+            .about-visual { max-width: 100%; }
+            .about-text { font-size: 0.9375rem; line-height: 1.7; margin-bottom: 1rem; }
+            .about-hashtag { font-size: 0.875rem; padding: 0.5rem 1rem; }
+            .about-visual::after { width: 100px; height: 100px; bottom: -10px; right: -10px; }
+        }
+
+        /* ============================================
+           DIY BUILD
+           ============================================ */
+        .diy {
+            padding: var(--section-pad) 0;
+        }
+        .diy-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        .diy-header .section-subtitle { margin: 0 auto; }
+        .diy-intro {
+            text-align: center;
+            max-width: 700px;
+            margin: 0 auto 3rem;
+            font-size: 1.0625rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+        }
+        .diy-parts {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+        .diy-part {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            transition: all 0.4s var(--ease-out);
+        }
+        .diy-part:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-accent);
+            transform: translateY(-4px);
+        }
+        .diy-part-emoji {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .diy-part h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .diy-part p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1.25rem;
+        }
+        .diy-part-price {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        .diy-part-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--accent);
+            padding: 0.4rem 1rem;
+            border: 1px solid var(--border-accent);
+            border-radius: 100px;
+            transition: all 0.3s;
+        }
+        .diy-part-link:hover {
+            background: var(--accent-glow);
+            box-shadow: 0 0 16px var(--accent-glow);
+        }
+        .diy-extras {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .diy-extra-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            transition: all 0.3s var(--ease-spring);
+            position: relative;
+            cursor: pointer;
+        }
+        .diy-extra-link:hover {
+            border-color: var(--border-accent);
+            background: rgba(255,255,255,0.04);
+        }
+        .coming-soon-tip {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-accent);
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            padding: 0.4rem 0.85rem;
+            border-radius: 8px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s var(--ease-spring);
+        }
+        .coming-soon-tip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: var(--border-accent);
+        }
+        .diy-extra-link:hover .coming-soon-tip,
+        .diy-extra-link:focus .coming-soon-tip {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        @media (max-width: 768px) { .diy-parts { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) {
+            .diy-intro { font-size: 0.9375rem; margin: 0 auto 2rem; }
+            .diy-parts { gap: 1rem; }
+            .diy-part { padding: 1.5rem 1.25rem; }
+            .diy-extras { gap: 0.75rem; flex-direction: column; align-items: center; }
+            .diy-extra-link { font-size: 0.875rem; padding: 0.875rem 1rem; }
+        }
+
+        /* ============================================
+           ABOUT THE DEVELOPER
+           ============================================ */
+        .developer {
+            padding: var(--section-pad) 0;
+        }
+        .developer-inner {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 3rem;
+            align-items: center;
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .developer-inner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
+        .developer-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-secondary));
+            border: 2px solid var(--border-accent);
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .developer-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .developer-info h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .developer-role {
+            font-family: 'JetBrains Mono', monospace;
             font-size: 0.75rem;
-            line-height: 1.5;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+        .developer-bio {
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            line-height: 1.75;
+            margin-bottom: 1.5rem;
+        }
+        .developer-links {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .developer-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            padding: 0.4rem 1rem;
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            transition: all 0.3s;
+        }
+        .developer-link:hover {
+            color: var(--accent);
+            border-color: var(--border-accent);
+            background: var(--accent-glow);
+        }
+        .developer-link svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        .monitor-output::-webkit-scrollbar {
-            width: 6px;
+        @media (max-width: 768px) {
+            .developer-inner {
+                grid-template-columns: 1fr;
+                text-align: center;
+                justify-items: center;
+                padding: 2.5rem 2rem;
+            }
+            .developer-links { justify-content: center; }
+        }
+        @media (max-width: 600px) {
+            .developer-inner { padding: 2rem 1.5rem; gap: 1.5rem; }
+            .developer-avatar { width: 96px; height: 96px; }
+            .developer-avatar svg { width: 36px; height: 36px; }
+            .developer-info h3 { font-size: 1.25rem; }
+            .developer-bio { font-size: 0.875rem; }
         }
 
-        .monitor-output::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.03);
+        /* ============================================
+           FIRMWARE STRIP
+           ============================================ */
+        .firmware-strip {
+            padding: 2rem 0;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .firmware-strip-inner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        .firmware-strip-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .firmware-strip-version {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 700;
+        }
+        .firmware-strip-stage {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            background: rgba(234, 179, 8, 0.15);
+            color: var(--glucose-yellow);
+        }
+        .firmware-strip-date {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+        }
+        .firmware-strip-notes {
+            font-size: 0.8125rem;
+            color: var(--accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            transition: opacity 0.3s;
+        }
+        .firmware-strip-notes:hover { opacity: 0.8; }
+        .firmware-strip-notes svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        .monitor-output::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 3px;
+        /* Release notes expandable */
+        .firmware-notes-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s var(--ease-out);
         }
-
-        .monitor-output::-webkit-scrollbar-thumb:hover {
-            background: var(--accent-glucose);
+        .firmware-notes-panel.open {
+            max-height: 500px;
         }
-
-        .monitor-line {
-            padding: 2px 0;
-            color: #e6edf3;
-            word-wrap: break-word;
+        .firmware-notes-content {
+            max-width: 800px;
+            margin: 1.5rem auto 0;
+            padding: 1.25rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
             white-space: pre-wrap;
         }
 
-        .monitor-line.info { color: var(--accent-blue); }
-        .monitor-line.warning { color: var(--accent-orange); }
-        .monitor-line.error { color: var(--accent-red); }
-        .monitor-line.success { color: var(--accent-green); }
+        @media (max-width: 600px) {
+            .firmware-strip-inner { gap: 1rem; }
+            .firmware-strip-version { font-size: 1rem; }
+        }
 
-        /* ── Collapsible Section ── */
-        .collapsible-header {
-            width: 100%;
-            padding: 16px 20px;
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
-            font-weight: 600;
-            text-align: left;
-            cursor: pointer;
+        /* ============================================
+           DISCLAIMER
+           ============================================ */
+        .disclaimer {
+            padding: 2rem 0;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .disclaimer-inner {
             display: flex;
-            align-items: center;
-            gap: 12px;
-            transition: color 0.2s;
-            border-radius: 8px;
+            gap: 1rem;
+            align-items: flex-start;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1.25rem 1.5rem;
+            background: rgba(239, 68, 68, 0.04);
+            border: 1px solid rgba(239, 68, 68, 0.12);
+            border-radius: var(--radius-xs);
         }
-
-        .collapsible-header:hover {
-            color: var(--text-primary);
-            background: rgba(34, 211, 238, 0.05);
+        .disclaimer-icon {
+            flex-shrink: 0;
+            color: var(--glucose-red);
+            margin-top: 2px;
         }
-
-        .collapsible-icon {
-            transition: transform 0.2s;
-            font-size: 0.8rem;
-        }
-
-        .collapsible-header.open .collapsible-icon {
-            transform: rotate(90deg);
-        }
-
-        .collapsible-title {
-            flex: 1;
-        }
-
-        .collapsible-content {
-            animation: slideDown 0.3s ease;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                max-height: 0;
-            }
-            to {
-                opacity: 1;
-                max-height: 600px;
-            }
-        }
-
-        /* ── Flash Button Area ── */
-        .flash-area {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
-        }
-
-        /* ESP Web Tools button styling */
-        esp-web-install-button {
-            --ewt-install-button-color: var(--accent-glucose);
-        }
-
-        esp-web-install-button button {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 16px 40px;
-            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
-            color: var(--bg-deep);
-            border: none;
-            border-radius: 10px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.05rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.25s;
-            box-shadow:
-                0 4px 20px rgba(34, 211, 238, 0.3),
-                0 0 60px rgba(34, 211, 238, 0.1);
-            letter-spacing: 0.02em;
-        }
-
-        esp-web-install-button button:hover {
-            transform: translateY(-2px);
-            box-shadow:
-                0 6px 30px rgba(34, 211, 238, 0.45),
-                0 0 80px rgba(34, 211, 238, 0.15);
-        }
-
-        esp-web-install-button button:active {
-            transform: translateY(0);
-        }
-
-        .flash-hint {
-            color: var(--text-dim);
-            font-size: 0.82rem;
-            text-align: center;
-            line-height: 1.5;
-        }
-
-        /* ── Manual Upload Option ── */
-        .manual-section {
-            border-top: 1px solid var(--border);
-            padding-top: 20px;
-            margin-top: 20px;
-        }
-
-        .manual-toggle {
-            background: none;
-            border: none;
-            color: var(--text-dim);
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.85rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: color 0.2s;
-        }
-
-        .manual-toggle:hover { color: var(--text-secondary); }
-
-        .manual-toggle .arrow {
-            transition: transform 0.2s;
-            font-size: 0.7rem;
-        }
-
-        .manual-toggle.open .arrow { transform: rotate(90deg); }
-
-        .manual-content {
-            display: none;
-            margin-top: 16px;
-        }
-
-        .manual-content.visible { display: block; }
-
-        .file-drop {
-            border: 2px dashed var(--border);
-            border-radius: 10px;
-            padding: 32px;
-            text-align: center;
-            transition: all 0.2s;
-            cursor: pointer;
-            position: relative;
-        }
-
-        .file-drop:hover,
-        .file-drop.dragover {
-            border-color: var(--accent-glucose);
-            background: var(--accent-glow);
-        }
-
-        .file-drop-icon {
-            font-size: 2rem;
-            margin-bottom: 8px;
-        }
-
-        .file-drop-text {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
-
-        .file-drop-text strong {
-            color: var(--accent-glucose);
-        }
-
-        .file-drop input[type="file"] {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-        .selected-file {
-            display: none;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            background: var(--bg-surface);
-            border: 1px solid var(--accent-glucose);
-            border-radius: 8px;
-            margin-top: 12px;
-        }
-
-        .selected-file.visible {
-            display: flex;
-        }
-
-        .selected-file-name {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.88rem;
-            color: var(--accent-glucose);
-            flex: 1;
-        }
-
-        .selected-file-size {
-            font-size: 0.8rem;
-            color: var(--text-dim);
-        }
-
-        .btn-flash-manual {
-            width: 100%;
-            padding: 14px;
-            margin-top: 12px;
-            background: linear-gradient(135deg, var(--accent-glucose), var(--accent-blue));
-            color: var(--bg-deep);
-            border: none;
-            border-radius: 8px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.95rem;
-            font-weight: 700;
-            cursor: pointer;
-            display: none;
-            transition: all 0.2s;
-        }
-
-        .btn-flash-manual.visible { display: block; }
-        .btn-flash-manual:hover { opacity: 0.9; }
-        .btn-flash-manual:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        /* ── Instructions ── */
-        .instructions-list {
-            list-style: none;
-            counter-reset: steps;
-        }
-
-        .instructions-list li {
-            counter-increment: steps;
-            padding: 10px 0 10px 40px;
-            position: relative;
-            color: var(--text-secondary);
-            font-size: 0.92rem;
-            line-height: 1.6;
-            border-bottom: 1px solid rgba(30, 41, 59, 0.5);
-        }
-
-        .instructions-list li:last-child { border-bottom: none; }
-
-        .instructions-list li::before {
-            content: counter(steps);
-            position: absolute;
-            left: 0;
-            top: 10px;
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'JetBrains Mono', monospace;
+        .disclaimer-text {
             font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--accent-glucose);
-        }
-
-        .instructions-list li strong {
-            color: var(--text-primary);
-        }
-
-        .instructions-list li code {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.82rem;
-            background: var(--bg-surface);
-            padding: 2px 6px;
-            border-radius: 4px;
-            color: var(--accent-glucose);
-        }
-
-        /* ── FAQ Accordion ── */
-        .faq-item {
-            border-bottom: 1px solid var(--border);
-        }
-
-        .faq-item:last-child { border-bottom: none; }
-
-        .faq-q {
-            width: 100%;
-            padding: 14px 0;
-            background: none;
-            border: none;
-            color: var(--text-primary);
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.95rem;
-            font-weight: 600;
-            text-align: left;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: color 0.2s;
-        }
-
-        .faq-q:hover { color: var(--accent-glucose); }
-
-        .faq-q .chevron {
-            transition: transform 0.2s;
-            font-size: 0.8rem;
-            color: var(--text-dim);
-        }
-
-        .faq-q.open .chevron { transform: rotate(180deg); }
-
-        .faq-a {
-            display: none;
-            padding: 0 0 14px;
-            color: var(--text-secondary);
-            font-size: 0.88rem;
+            color: var(--text-muted);
             line-height: 1.7;
         }
-
-        .faq-a.visible { display: block; }
-
-        /* ── Footer ── */
-        .footer {
-            text-align: center;
-            margin-top: 48px;
-            padding-top: 24px;
-            border-top: 1px solid var(--border);
-            color: var(--text-dim);
-            font-size: 0.82rem;
-            line-height: 1.8;
-        }
-
-        .footer a {
-            color: var(--accent-glucose);
-            text-decoration: none;
-        }
-        .footer a:hover { text-decoration: underline; }
-
-        .footer .disclaimer {
-            margin-top: 12px;
-            padding: 12px;
-            background: rgba(239, 68, 68, 0.08);
-            border: 1px solid rgba(239, 68, 68, 0.15);
-            border-radius: 6px;
+        .disclaimer-text strong {
             color: var(--text-secondary);
-            font-size: 0.78rem;
-        }
-
-        /* ── Terminal ── */
-        .terminal-container {
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            overflow: hidden;
-            font-family: 'JetBrains Mono', monospace;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }
-
-        .terminal-header {
-            background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
-            border-bottom: 1px solid var(--border);
-            padding: 10px 16px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .terminal-dots {
-            display: flex;
-            gap: 6px;
-        }
-
-        .terminal-dots .dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            opacity: 0.7;
-        }
-
-        .terminal-dots .dot.red { background: #ff5f56; }
-        .terminal-dots .dot.yellow { background: #ffbd2e; }
-        .terminal-dots .dot.green { background: #27c93f; }
-
-        .terminal-title {
-            flex: 1;
-            font-size: 0.8rem;
-            font-weight: 500;
-            color: var(--text-dim);
-            letter-spacing: 0.05em;
-        }
-
-        .terminal-status {
-            font-size: 0.75rem;
-            padding: 4px 10px;
-            border-radius: 12px;
-            background: rgba(34, 211, 238, 0.1);
-            color: var(--accent-glucose);
             font-weight: 600;
         }
 
-        .terminal-status.connected {
-            background: rgba(16, 185, 129, 0.15);
-            color: var(--accent-green);
-        }
-
-        .terminal-status.error {
-            background: rgba(239, 68, 68, 0.15);
-            color: var(--accent-red);
-        }
-
-        .terminal-clear {
-            padding: 4px 12px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-dim);
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-left: auto;
-        }
-
-        .terminal-clear:hover {
-            color: var(--accent-glucose);
-            border-color: var(--accent-glucose);
-        }
-
-        .terminal-output {
-            padding: 16px;
-            max-height: 400px;
-            overflow-y: auto;
-            background: #0d1117;
-            font-size: 0.82rem;
-            line-height: 1.6;
-        }
-
-        .terminal-output::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .terminal-output::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .terminal-output::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 4px;
-        }
-
-        .terminal-output::-webkit-scrollbar-thumb:hover {
-            background: var(--accent-glucose);
-        }
-
-        .terminal-line {
-            padding: 3px 0;
-            color: #e6edf3;
-            word-wrap: break-word;
-        }
-
-        .terminal-line.system { color: var(--accent-glucose); }
-        .terminal-line.success { color: var(--accent-green); }
-        .terminal-line.error { color: var(--accent-red); }
-        .terminal-line.warning { color: var(--accent-orange); }
-        .terminal-line.progress { color: var(--accent-blue); }
-        .terminal-line.dim { color: var(--text-dim); }
-
-        .terminal-line .timestamp {
-            color: var(--text-dim);
-            margin-right: 8px;
-            font-size: 0.75rem;
-        }
-
-        /* ── Loading State ── */
-        .loading-versions {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 24px;
-            color: var(--text-dim);
-        }
-
-        .spinner {
-            width: 18px;
-            height: 18px;
-            border: 2px solid var(--border);
-            border-top-color: var(--accent-glucose);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* ── Responsive ── */
         @media (max-width: 600px) {
-            .page-wrapper { padding: 24px 16px 60px; }
-            .logo-text { font-size: 1.8rem; }
-            .section-card { padding: 20px; }
-            .version-info { grid-template-columns: 1fr; }
-            .header-subtitle { font-size: 0.95rem; }
+            .disclaimer-inner { padding: 1rem 1.25rem; }
+            .disclaimer-text { font-size: 0.6875rem; }
+        }
+
+        /* ============================================
+           FOOTER
+           ============================================ */
+        .footer {
+            padding: 2.5rem 0;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .footer-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+        .footer-left {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+        }
+        .footer-left strong {
+            color: var(--text-primary);
+            font-weight: 700;
+        }
+        .footer-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+        .footer-links a {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            transition: color 0.3s;
+        }
+        .footer-links a:hover { color: var(--text-primary); }
+        .footer-hashtag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: var(--accent);
+        }
+
+        @media (max-width: 600px) {
+            .footer-inner {
+                flex-direction: column;
+                text-align: center;
+                gap: 1rem;
+            }
+            .footer-links { gap: 1.5rem; }
         }
     </style>
 </head>
 <body>
-    <div class="page-wrapper">
 
-        <!-- Header -->
-        <header class="header">
-            <div class="logo-mark">
-                <div class="logo-icon">📊</div>
-                <span class="logo-text">CYGM</span>
+    <!-- ============ NAVIGATION ============ -->
+    <nav class="nav" id="nav">
+        <div class="container nav-inner">
+            <div class="nav-logo">
+                <span class="dot"></span>
+                CYGM
             </div>
-            <p class="header-subtitle">
-                Flash firmware to your <strong>CGM Display</strong> directly from the browser.
-                No drivers, no software — just plug in and go.
-            </p>
-        </header>
-
-        <!-- Browser Support Notice -->
-        <div class="browser-notice" id="browser-notice">
-            <span class="icon">💡</span>
-            <span>
-                Requires <strong>Chrome</strong> or <strong>Edge</strong> desktop browser with
-                <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API" target="_blank">Web Serial</a> support.
-                Not supported on mobile or Safari.
-            </span>
-        </div>
-
-        <!-- Step 1: Choose Firmware -->
-        <div class="section-card">
-            <div class="section-title">
-                <span class="step-num">1</span>
-                Choose Firmware Version
-            </div>
-
-            <div class="version-selector">
-                <div class="version-dropdown">
-                    <select id="version-select" disabled>
-                        <option value="">Loading versions...</option>
-                    </select>
-                </div>
-
-                <div class="version-info" id="version-info" style="display: none;">
-                    <div class="info-chip">
-                        <div class="info-chip-label">Version</div>
-                        <div class="info-chip-value" id="info-version">—</div>
-                    </div>
-                    <div class="info-chip">
-                        <div class="info-chip-label">Stage</div>
-                        <div class="info-chip-value" id="info-stage">—</div>
-                    </div>
-                    <div class="info-chip">
-                        <div class="info-chip-label">Release Date</div>
-                        <div class="info-chip-value" id="info-date">—</div>
-                    </div>
-                    <div class="info-chip">
-                        <div class="info-chip-label">Target</div>
-                        <div class="info-chip-value" id="info-target">ESP32 (4MB)</div>
-                    </div>
-                </div>
-
-                <div class="release-notes" id="release-notes" style="display: none;">
-                    <div class="release-notes-label">Release Notes</div>
-                    <div id="notes-content"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 2: Connect & Flash -->
-        <div class="section-card">
-            <div class="section-title">
-                <span class="step-num">2</span>
-                Connect &amp; Flash
-                <button class="expert-mode-btn" onclick="skipToFlash()" title="Skip wizard for experienced users">
-                    ⚡ Expert Mode
-                </button>
-            </div>
-
-            <!-- Pre-Flash Wizard -->
-            <div class="wizard-container" id="wizard-container">
-                <div class="wizard-step active" id="wizard-step-1">
-                    <div class="wizard-icon">🔌</div>
-                    <h3 class="wizard-title">Step 1: Plug in your device</h3>
-                    <p class="wizard-text">
-                        Connect your CYGM device to your computer using a <strong>USB cable</strong>.
-                        <br>Make sure it's a <strong>data cable</strong>, not just a charging cable.
-                    </p>
-                    <div class="wizard-checklist">
-                        <label class="wizard-check">
-                            <input type="checkbox" id="check-cable">
-                            <span>Device is plugged into computer via USB</span>
-                        </label>
-                        <label class="wizard-check">
-                            <input type="checkbox" id="check-port">
-                            <span>I'm using a data cable (not charge-only)</span>
-                        </label>
-                    </div>
-                    <button class="wizard-btn" id="wizard-next-1" disabled onclick="wizardNext(2)">
-                        Continue →
-                    </button>
-                </div>
-
-                <div class="wizard-step" id="wizard-step-2">
-                    <div class="wizard-icon">👆</div>
-                    <h3 class="wizard-title">Step 2: Find the BOOT and RESET buttons</h3>
-                    <p class="wizard-text">
-                        Your device has two small buttons on it:
-                    </p>
-                    <div class="button-guide">
-                        <div class="button-card">
-                            <div class="button-visual boot">BOOT</div>
-                            <div class="button-label">Usually labeled "BOOT" or "IO0"</div>
-                        </div>
-                        <div class="button-card">
-                            <div class="button-visual reset">RESET</div>
-                            <div class="button-label">Usually labeled "RESET" or "EN"</div>
-                        </div>
-                    </div>
-                    <div class="wizard-checklist">
-                        <label class="wizard-check">
-                            <input type="checkbox" id="check-buttons">
-                            <span>I can see both buttons on my device</span>
-                        </label>
-                    </div>
-                    <button class="wizard-btn" id="wizard-next-2" disabled onclick="wizardNext(3)">
-                        Continue →
-                    </button>
-                </div>
-
-                <div class="wizard-step" id="wizard-step-3">
-                    <div class="wizard-icon">⏱️</div>
-                    <h3 class="wizard-title">Step 3: Get ready for button sequence</h3>
-                    <p class="wizard-text" style="font-size: 1.05rem; line-height: 1.8;">
-                        In the next step, your computer will ask you to choose your device from a list. <strong>First</strong>, let's review the button sequence:
-                    </p>
-                    <div class="instruction-sequence">
-                        <div class="instruction-step">
-                            <div class="step-num-big">1</div>
-                            <div class="step-content">
-                                <strong>Press and HOLD the BOOT button</strong>
-                                <div class="step-detail">Keep your finger on it!</div>
-                            </div>
-                        </div>
-                        <div class="instruction-step">
-                            <div class="step-num-big">2</div>
-                            <div class="step-content">
-                                <strong>While holding BOOT, press RESET once</strong>
-                                <div class="step-detail">Quick press, then release RESET</div>
-                            </div>
-                        </div>
-                        <div class="instruction-step">
-                            <div class="step-num-big">3</div>
-                            <div class="step-content">
-                                <strong>Keep holding BOOT for 3 seconds</strong>
-                                <div class="step-detail">Count: one-one-thousand, two-one-thousand, three-one-thousand</div>
-                            </div>
-                        </div>
-                        <div class="instruction-step">
-                            <div class="step-num-big">4</div>
-                            <div class="step-content">
-                                <strong>Release BOOT button</strong>
-                                <div class="step-detail">Your device is now ready to flash!</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="wizard-checklist">
-                        <label class="wizard-check">
-                            <input type="checkbox" id="check-ready">
-                            <span>I understand the button sequence and I'm ready to try it</span>
-                        </label>
-                    </div>
-                    <button class="wizard-btn wizard-btn-primary" id="wizard-next-3" disabled onclick="wizardNext(4)">
-                        Continue →
-                    </button>
-                </div>
-
-                <div class="wizard-step" id="wizard-step-4">
-                    <div class="wizard-icon">🎯</div>
-                    <h3 class="wizard-title">Step 4: Select your device and do the button sequence</h3>
-                    <p class="wizard-text" style="font-size: 1.05rem; line-height: 1.8;">
-                        When you click the button below:
-                    </p>
-                    <div class="wizard-alert" style="background: rgba(34, 211, 238, 0.1); border-color: rgba(34, 211, 238, 0.3);">
-                        <strong style="color: var(--accent-glucose);">📱 A window will pop up</strong> asking you to choose your device. Look for something like <strong>"USB Serial"</strong>, <strong>"CH340"</strong>, or <strong>"CP2102"</strong>. Click on it and press <strong>"Connect"</strong>.
-                    </div>
-                    <div class="instruction-sequence" style="margin-top: 20px;">
-                        <div class="instruction-step">
-                            <div class="step-num-big" style="background: var(--accent-orange);">!</div>
-                            <div class="step-content">
-                                <strong>IMMEDIATELY after selecting your device:</strong>
-                                <div class="step-detail" style="color: var(--text-primary); margin-top: 8px;">
-                                    Do the BOOT + RESET button sequence we just practiced.<br>
-                                    You have about 10 seconds - don't panic, you've got this!
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <button class="wizard-btn wizard-btn-primary" onclick="startFlashingProcess()" style="font-size: 1.2rem; padding: 18px 56px; margin-top: 24px;">
-                        🚀 Start Flashing Now
-                    </button>
-                    <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: 16px;">
-                        Don't worry if it doesn't work the first time - you can try again!
-                    </p>
-                </div>
-            </div>
-
-            <!-- Flash Progress (hidden initially) -->
-            <div class="flash-area" id="flash-area" style="display: none;">
-                <div class="flash-status-large" id="flash-status-large">
-                    <div class="status-icon-large" id="status-icon">⏳</div>
-                    <h3 class="status-text-large" id="status-text">Connecting...</h3>
-                    <p class="status-detail-large" id="status-detail">
-                        Do the BOOT + RESET button sequence now!
-                    </p>
-                    <div class="status-progress" id="status-progress" style="display: none;">
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progress-fill"></div>
-                        </div>
-                        <div class="progress-text" id="progress-text">0%</div>
-                    </div>
-                </div>
-
-                <!-- Device Serial Monitor -->
-                <div class="device-monitor" id="device-monitor" style="display: none;">
-                    <div class="monitor-header">
-                        <span class="monitor-title">📡 Device Serial Output (115200 baud)</span>
-                        <button class="monitor-clear" onclick="clearDeviceMonitor()">Clear</button>
-                        <button class="monitor-connect" id="monitor-connect-btn" onclick="connectSerialMonitor()">
-                            🔌 Connect Serial
-                        </button>
-                    </div>
-                    <div class="monitor-output" id="monitor-output">
-                        <div class="monitor-line">Click "Connect Serial" to see real-time device output...</div>
-                        <div class="monitor-line info">Tip: Watch boot messages, WiFi connection, and debug logs here</div>
-                    </div>
-                </div>
-
-                <button class="wizard-btn" onclick="retryFlash()" id="retry-btn" style="display: none; margin-top: 20px;">
-                    🔄 Try Again
-                </button>
-
-                <!-- ESP Web Tools install button — manifest is set dynamically (hidden) -->
-                <esp-web-install-button id="install-button" style="display: none;">
-                    <button slot="activate" disabled id="flash-btn">
-                        ⚡ Install Firmware
-                    </button>
-                    <span slot="unsupported">
-                        <div style="padding: 16px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; color: var(--accent-red); text-align: center;">
-                            Your browser does not support Web Serial.<br>
-                            Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.
-                        </div>
-                    </span>
-                    <span slot="not-allowed">
-                        <div style="padding: 16px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 8px; color: var(--accent-orange); text-align: center;">
-                            Web Serial is not available in this context.<br>
-                            Make sure you're using HTTPS or localhost.
-                        </div>
-                    </span>
-                </esp-web-install-button>
-
-                <p class="flash-hint">
-                    Connect your CYGM device via USB, then click the button above.<br>
-                    <strong style="color: var(--accent-green);">✓ Your WiFi and settings will be preserved!</strong>
-                </p>
-
-                <button class="wizard-btn" onclick="restartWizard()" style="margin-top: 20px;">
-                    ↻ Start Over
-                </button>
-            </div>
-
-            <!-- Manual upload for local .bin files -->
-            <div class="manual-section">
-                <button class="manual-toggle" id="manual-toggle" onclick="toggleManual()">
-                    <span class="arrow">▶</span>
-                    Or flash a local .bin file from your computer
-                </button>
-                <div class="manual-content" id="manual-content">
-                    <div class="file-drop" id="file-drop">
-                        <div class="file-drop-icon">📁</div>
-                        <div class="file-drop-text">
-                            <strong>Drop a merged .bin file here</strong> or click to browse
-                        </div>
-                        <input type="file" accept=".bin" id="file-input" onchange="handleFileSelect(event)">
-                    </div>
-                    <div class="selected-file" id="selected-file">
-                        <span class="selected-file-name" id="selected-file-name"></span>
-                        <span class="selected-file-size" id="selected-file-size"></span>
-                    </div>
-                    <button class="btn-flash-manual" id="btn-flash-manual" disabled onclick="flashLocalFile()">
-                        ⚡ Flash Local File
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Instructions -->
-        <div class="section-card">
-            <div class="section-title">
-                📋 What to Expect
-            </div>
-            <ol class="instructions-list">
-                <li><strong>Plug in your device</strong> using a USB cable that can transfer data (some cables only charge).</li>
-                <li><strong>Choose your firmware version</strong> from the list above. We've already selected the newest one for you.</li>
-                <li><strong>Follow the button pressing steps</strong> when you click "Start Flashing". Don't worry - we'll guide you through it with clear timing.</li>
-                <li><strong>Wait about 1-2 minutes</strong> while your device updates. You'll see a progress bar. Please don't unplug the cable during this time.</li>
-                <li><strong>Done!</strong> Your device will turn back on automatically with the new software. You can then set up your WiFi and glucose monitor settings.</li>
-            </ol>
-        </div>
-
-        <!-- FAQ -->
-        <div class="section-card">
-            <div class="section-title">
-                ❓ Troubleshooting
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-q" onclick="toggleFaq(this)">
-                    I can't find my device / No serial port appears
-                    <span class="chevron">▼</span>
-                </button>
-                <div class="faq-a">
-                    First, make sure your USB cable can transfer data - some cables only charge phones. Try a different cable if you have one. Also try plugging it into a different USB port on your computer. If that doesn't work, you may need to install a small driver program. Your device uses a chip called <strong>CH340</strong>. Download the driver from <a href="http://www.wch-ic.com/downloads/CH341SER_ZIP.html" target="_blank" style="color: var(--accent-glucose);">wch-ic.com</a> and install it, then restart your computer.
-                </div>
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-q" onclick="toggleFaq(this)">
-                    The update keeps failing / Says "timeout" or "can't connect"
-                    <span class="chevron">▼</span>
-                </button>
-                <div class="faq-a">
-                    This usually means the button pressing wasn't timed right. Here's the trick: When you see "NOW: Press and hold BOOT", you need to act quickly. Put your finger on the BOOT button and press and hold it. While still holding BOOT, quickly press the RESET button once and let go of RESET. Keep holding BOOT for 3 more seconds. Once you see "Connected" you can let go. It might take a couple tries to get the timing right - that's normal! Click "Start Over" and try again.
-                </div>
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-q" onclick="toggleFaq(this)">
-                    I'm nervous about pressing the wrong buttons
-                    <span class="chevron">▼</span>
-                </button>
-                <div class="faq-a">
-                    Don't worry! You can't break your device by pressing these buttons. The worst that happens is the update doesn't work and you just try again. The wizard will guide you step-by-step. If you're unsure, you can practice pressing the buttons before you start - nothing will happen unless the computer is actively trying to connect. Take your time and follow each step carefully.
-                </div>
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-q" onclick="toggleFaq(this)">
-                    Can I go back to a previous firmware version?
-                    <span class="chevron">▼</span>
-                </button>
-                <div class="faq-a">
-                    Yes! Simply select the older version from the dropdown and flash it. Note that downgrading may reset your settings if the NVS storage format changed between versions.
-                </div>
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-q" onclick="toggleFaq(this)">
-                    Will flashing erase my WiFi and CGM settings?
-                    <span class="chevron">▼</span>
-                </button>
-                <div class="faq-a">
-                    <strong>First-time install</strong>: Yes, the device will be fully erased for a clean install. <strong>Subsequent updates</strong>: Your settings in NVS storage are preserved — only the firmware and SPIFFS web files are updated.
-                </div>
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-q" onclick="toggleFaq(this)">
-                    How do I create a merged .bin for manual upload?
-                    <span class="chevron">▼</span>
-                </button>
-                <div class="faq-a">
-                    Use esptool to merge all partition files into one binary:<br>
-                    <code style="display: block; margin-top: 8px; padding: 10px; background: var(--bg-surface); border-radius: 6px; font-size: 0.82rem; line-height: 1.6; overflow-x: auto; white-space: pre;">esptool --chip esp32 merge_bin -o cygm-merged.bin \
-  --flash_mode dio --flash_freq 40m --flash_size 4MB \
-  0x1000 bootloader.bin \
-  0x8000 partition-table.bin \
-  0x10000 cygm.bin \
-  0x310000 spiffs.bin</code>
-                </div>
-            </div>
-        </div>
-
-        <!-- Technical Log (Collapsible) -->
-        <div class="section-card" id="terminal-section" style="display: none;">
-            <button class="collapsible-header" id="terminal-toggle" onclick="toggleTerminal()">
-                <span class="collapsible-icon" id="terminal-icon">▶</span>
-                <span class="collapsible-title">📟 Technical Log (for troubleshooting)</span>
+            <button class="nav-toggle" id="navToggle" aria-label="Menu">
+                <span></span><span></span><span></span>
             </button>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#capabilities">Features</a></li>
+                <li><a href="#gallery">Gallery</a></li>
+                <li><a href="#diy">Build</a></li>
+                <li><a href="#story">About</a></li>
+                <li><span class="nav-version" id="navVersion">v1.7.0 Beta</span></li>
+                <li><a href="#diy" class="nav-cta">Get Started</a></li>
+            </ul>
+        </div>
+    </nav>
 
-            <div class="collapsible-content" id="terminal-content" style="display: none;">
-                <div class="terminal-container" style="margin-top: 16px;">
-                    <div class="terminal-header">
-                        <div class="terminal-dots">
-                            <span class="dot red"></span>
-                            <span class="dot yellow"></span>
-                            <span class="dot green"></span>
-                        </div>
-                        <div class="terminal-title">ESP32 Console</div>
-                        <div class="terminal-status" id="terminal-status">Ready</div>
-                        <button class="terminal-clear" id="terminal-clear" onclick="clearTerminal()">Clear</button>
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="hero">
+        <div class="container hero-inner">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="status-dot"></span>
+                    <span id="heroBadgeText">v1.7.0 Beta — Now with OTA Updates</span>
+                </div>
+                <h1>Your glucose data, on <span class="accent">your terms</span></h1>
+                <p class="hero-desc">A pocket-sized, open-source CGM display you build yourself. Real-time readings, smart alarms, and weather — no subscriptions, no apps, ~$40.</p>
+                <div class="hero-actions">
+                    <a href="#diy" class="btn btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Get Started
+                    </a>
+                    <a href="#gallery" class="btn btn-secondary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                        View Gallery
+                    </a>
+                </div>
+                <div class="hero-stats">
+                    <div>
+                        <div class="hero-stat-value">~$40</div>
+                        <div class="hero-stat-label">Total cost</div>
                     </div>
-                    <div class="terminal-output" id="terminal-output">
-                        <div class="terminal-line system">$ Ready</div>
+                    <div>
+                        <div class="hero-stat-value">Real-time</div>
+                        <div class="hero-stat-label">Glucose data</div>
+                    </div>
+                    <div>
+                        <div class="hero-stat-value">OTA</div>
+                        <div class="hero-stat-label">Wireless updates</div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <p>
-                <strong>CYGM</strong> — Open-source CGM Display &nbsp;|&nbsp;
-                <a href="https://github.com/YOUR_GITHUB/CYGM" target="_blank">GitHub</a> &nbsp;|&nbsp;
-                MIT License
-            </p>
-            <div class="disclaimer">
-                ⚕️ <strong>Medical Disclaimer:</strong> CYGM is not a medical device. It is an informational display only.
-                Always confirm glucose readings with your approved CGM device. Do not make medical decisions based solely on this display.
+            <div class="hero-visual">
+                <img src="photos/cygm-purple-home-dashboard-desk-clean.jpeg" alt="CYGM glucose monitor display showing dashboard" class="hero-device-img">
             </div>
-        </footer>
+        </div>
+    </section>
 
+    <!-- ============ CAPABILITIES ============ -->
+    <section class="capabilities" id="capabilities">
+        <div class="container">
+            <div class="capabilities-header reveal">
+                <div class="section-label" style="justify-content: center;">Capabilities</div>
+                <h2 class="section-title">Everything you need, nothing you don't</h2>
+                <p class="section-subtitle">CYGM does one thing exceptionally well — puts your glucose data right where you can see it.</p>
+            </div>
+            <div class="capabilities-grid">
+                <div class="capability-card reveal reveal-delay-1">
+                    <div class="capability-icon">
+                        <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    </div>
+                    <h3>Live Glucose Readings</h3>
+                    <p>Real-time data from your Dexcom CGM, refreshed every 90 seconds. Always current, always visible.</p>
+                </div>
+                <div class="capability-card reveal reveal-delay-2">
+                    <div class="capability-icon">
+                        <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 6-10"/></svg>
+                    </div>
+                    <h3>Trend Charts</h3>
+                    <p>Interactive glucose graphs with 1, 3, 6, 12, and 24-hour ranges. Color-coded segments show highs, lows, and in-range.</p>
+                </div>
+                <div class="capability-card reveal reveal-delay-3">
+                    <div class="capability-icon">
+                        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    </div>
+                    <h3>Smart Alarms</h3>
+                    <p>Configurable high and low glucose alerts with adjustable thresholds, snooze durations, and custom alarm tones.</p>
+                </div>
+                <div class="capability-card reveal reveal-delay-1">
+                    <div class="capability-icon">
+                        <svg viewBox="0 0 24 24"><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg>
+                    </div>
+                    <h3>Weather & Time</h3>
+                    <p>Local weather conditions, temperature, date, and clock. A useful bedside companion beyond just glucose.</p>
+                </div>
+                <div class="capability-card reveal reveal-delay-2">
+                    <div class="capability-icon">
+                        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </div>
+                    <h3>OTA Firmware Updates</h3>
+                    <p>Update wirelessly over WiFi — no cable or computer needed after initial setup. Always running the latest version.</p>
+                </div>
+                <div class="capability-card reveal reveal-delay-3">
+                    <div class="capability-icon">
+                        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 9h2"/><path d="M15 9h2"/><path d="M7 13h10"/></svg>
+                    </div>
+                    <h3>Touchscreen Interface</h3>
+                    <p>Full capacitive touch UI for navigating settings, charts, alarms, and more — right from the 2.8" display.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ GALLERY ============ -->
+    <section class="gallery" id="gallery">
+        <div class="container">
+            <div class="gallery-header reveal">
+                <div class="section-label">Gallery</div>
+                <h2 class="section-title">See it in action</h2>
+                <p class="section-subtitle">Real photos of CYGM running on actual hardware — no renders, no mockups.</p>
+                <div class="gallery-filters">
+                    <button class="gallery-filter active" data-filter="all">All</button>
+                    <button class="gallery-filter" data-filter="dashboard">Dashboard</button>
+                    <button class="gallery-filter" data-filter="graph">Graph</button>
+                    <button class="gallery-filter" data-filter="settings">Settings</button>
+                </div>
+            </div>
+            <div class="gallery-grid" id="galleryGrid"></div>
+        </div>
+    </section>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox">
+        <button class="lightbox-close" aria-label="Close">&times;</button>
+        <img id="lightboxImg" src="" alt="Gallery fullscreen">
     </div>
 
+    <!-- ============ USE CASES ============ -->
+    <section class="usecases" id="usecases">
+        <div class="container">
+            <div class="usecases-header reveal">
+                <div class="section-label" style="justify-content: center;">Use Cases</div>
+                <h2 class="section-title">A display for every context</h2>
+                <p class="section-subtitle">Whether it's your nightstand or a nursing station, CYGM fits right in.</p>
+            </div>
+            <div class="usecases-grid">
+                <div class="usecase-card reveal reveal-delay-1">
+                    <div class="usecase-icon">
+                        <svg viewBox="0 0 24 24"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>
+                    </div>
+                    <h3>Bedside Monitor</h3>
+                    <p>Place it on your nightstand. See glucose readings at a glance without reaching for your phone. Night-time alarms wake you when levels are off.</p>
+                </div>
+                <div class="usecase-card reveal reveal-delay-2">
+                    <div class="usecase-icon">
+                        <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    </div>
+                    <h3>School Nurse's Office</h3>
+                    <p>Give school staff visibility into a student's glucose without needing their phone. A simple, dedicated display that anyone can read.</p>
+                </div>
+                <div class="usecase-card reveal reveal-delay-3">
+                    <div class="usecase-icon">
+                        <svg viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M12 10v4"/><path d="M10 12h4"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg>
+                    </div>
+                    <h3>Clinic or Care Facility</h3>
+                    <p>Affordable enough to place at every nursing station. Monitor residents with CGMs from a small, always-on display right at the desk.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ ABOUT / STORY ============ -->
+    <section class="about" id="story">
+        <div class="container">
+            <div class="about-inner reveal">
+                <div class="about-visual">
+                    <img src="photos/cygm-purple-home-dashboard-fireplace.jpeg" alt="CYGM device on a fireplace mantle" class="about-img-main">
+                </div>
+                <div class="about-content">
+                    <div class="section-label">Our Story</div>
+                    <h2 class="section-title">Built because waiting wasn't an option</h2>
+                    <p class="about-text">CYGM was born out of a simple need: <strong>a dedicated glucose display that doesn't depend on a phone</strong>. Something you can place on a nightstand, a desk, or a nursing station — and just glance at.</p>
+                    <p class="about-text">Commercial options are expensive, proprietary, and often require subscriptions. CYGM is the opposite: <strong>open-source, ~$40 in parts, and built by the community</strong> that needs it most.</p>
+                    <p class="about-text">This project is part of the <strong>#WeAreNotWaiting</strong> movement — a global community of people with diabetes and their families who build their own tools because the market moves too slowly.</p>
+                    <div class="about-hashtag">#WeAreNotWaiting</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ DIY BUILD ============ -->
+    <section class="diy" id="diy">
+        <div class="container">
+            <div class="diy-header reveal">
+                <div class="section-label" style="justify-content: center;">Build Your Own</div>
+                <h2 class="section-title">Ready to build in minutes</h2>
+            </div>
+            <p class="diy-intro reveal">Everything you need is available off the shelf. Order the parts, set up the firmware, and you're done — no soldering, no coding, no complicated setup.</p>
+
+            <div class="diy-parts">
+                <div class="diy-part reveal reveal-delay-1">
+                    <div class="diy-part-emoji">📟</div>
+                    <h3>ESP32 Display Board</h3>
+                    <p>2.8" touchscreen development board with WiFi, USB-C, and microSD slot. The heart of CYGM.</p>
+                    <div class="diy-part-price">~$20</div>
+                    <a href="https://www.amazon.com/dp/B0D5H84RDB" target="_blank" rel="noopener" class="diy-part-link">View on Amazon →</a>
+                </div>
+                <div class="diy-part reveal reveal-delay-2">
+                    <div class="diy-part-emoji">🔊</div>
+                    <h3>Mini Speaker</h3>
+                    <p>1W 8Ω full-range speaker with JST-PH 1.25mm connector. Plugs right in for alarm sounds.</p>
+                    <div class="diy-part-price">~$8</div>
+                    <a href="https://www.amazon.com/dp/B0D7SC3ZFG" target="_blank" rel="noopener" class="diy-part-link">View on Amazon →</a>
+                </div>
+                <div class="diy-part reveal reveal-delay-3">
+                    <div class="diy-part-emoji">🔋</div>
+                    <h3>3000mAh Battery</h3>
+                    <p>Rechargeable LiPo battery for portable use. Our 3D-printed case is designed to fit this exact size.</p>
+                    <div class="diy-part-price">~$12</div>
+                    <a href="https://www.amazon.com/dp/B0DK5BBKM5" target="_blank" rel="noopener" class="diy-part-link">View on Amazon →</a>
+                </div>
+            </div>
+
+            <div class="diy-extras reveal">
+                <a href="#" class="diy-extra-link" onclick="return false;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    Build Instructions
+                    <span class="coming-soon-tip">Coming soon</span>
+                </a>
+                <a href="#" class="diy-extra-link" onclick="return false;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    3D Print Files
+                    <span class="coming-soon-tip">Coming soon</span>
+                </a>
+                <a href="#" class="diy-extra-link" onclick="return false;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+                    GitHub Repo
+                    <span class="coming-soon-tip">Coming soon</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ ABOUT THE DEVELOPER ============ -->
+    <section class="developer" id="developer">
+        <div class="container">
+            <div class="reveal" style="text-align: center; margin-bottom: 3rem;">
+                <div class="section-label" style="justify-content: center;">The Developer</div>
+                <h2 class="section-title">Built with care, by one developer</h2>
+            </div>
+            <div class="developer-inner reveal">
+                <div class="developer-avatar">
+                    <img src="photos/carlb.jpg" alt="Carl and Stefanie Brothers">
+                </div>
+                <div class="developer-info">
+                    <h3>Carl Brothers</h3>
+                    <div class="developer-role">Creator of CYGM</div>
+                    <p class="developer-bio">Sound engineer, lighting tech, and stage manager in the live entertainment industry by trade — hobbyist developer by passion. When my step-daughter was diagnosed with Type 1 Diabetes, I knew I had to do something. With the incredible support of my wife Stefanie, CYGM was born: an affordable, open-source tool to make life a little easier for the families who need it most.</p>
+                    <p class="developer-bio" style="margin-top: -0.5rem;">Based in Auburn, WA. Driven by a simple belief: if I can help make someone's life easier, I should.</p>
+                    <div class="developer-links">
+                        <a href="#" class="developer-link">
+                            <svg viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+                            GitHub
+                        </a>
+                        <a href="#" class="developer-link">
+                            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            Contact
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ FIRMWARE STRIP ============ -->
+    <section class="firmware-strip">
+        <div class="container">
+            <div class="firmware-strip-inner">
+                <span class="firmware-strip-label">Latest Firmware</span>
+                <span class="firmware-strip-version" id="firmwareVersion">v1.7.0</span>
+                <span class="firmware-strip-stage" id="firmwareStage">Beta</span>
+                <span class="firmware-strip-date" id="firmwareDate">2026-03-11</span>
+                <span class="firmware-strip-notes" id="firmwareNotesToggle">
+                    Release notes
+                    <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </span>
+            </div>
+            <div class="firmware-notes-panel" id="firmwareNotesPanel">
+                <div class="firmware-notes-content" id="firmwareNotesContent"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ DISCLAIMER ============ -->
+    <section class="disclaimer">
+        <div class="container">
+            <div class="disclaimer-inner">
+                <div class="disclaimer-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                </div>
+                <div class="disclaimer-text">
+                    <strong>Medical Disclaimer</strong> — CYGM is an open-source hobby project and is <strong>not a medical device</strong>. It is not FDA-approved, not clinically validated, and should never be used to make medical decisions. Always consult your healthcare provider and rely on your primary CGM receiver or app for treatment decisions. CYGM is provided as-is, with no warranty. Use at your own risk. The developers are not responsible for any adverse outcomes resulting from use of this device or software.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ FOOTER ============ -->
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="footer-left">
+                <strong>CYGM</strong> &middot; Open-source CGM display &middot; &copy; 2026
+            </div>
+            <ul class="footer-links">
+                <li><a href="#capabilities">Features</a></li>
+                <li><a href="#diy">Build</a></li>
+                <li><a href="#developer">Developer</a></li>
+                <li><a href="#story">About</a></li>
+            </ul>
+            <div class="footer-hashtag">#WeAreNotWaiting</div>
+        </div>
+    </footer>
+
+    <!-- ============ SCRIPTS ============ -->
     <script>
-        // ══════════════════════════════════════════════
-        //  CYGM Web Flasher — Dynamic Manifest Builder
-        // ══════════════════════════════════════════════
+    (function() {
+        'use strict';
 
-        let releasesData = null;
-        let selectedVersion = null;
-        let localFileData = null;
+        // ---- NAV ----
+        const nav = document.getElementById('nav');
+        const navToggle = document.getElementById('navToggle');
+        const navLinks = document.getElementById('navLinks');
 
-        // ── Serial Monitor Management ──
-        let serialPort = null;
-        let serialReader = null;
-        let serialReadLoop = null;
-
-        async function connectSerialMonitor() {
-            const connectBtn = document.getElementById('monitor-connect-btn');
-
-            try {
-                if (serialPort && serialPort.readable) {
-                    // Disconnect
-                    await disconnectSerialMonitor();
-                    return;
-                }
-
-                // Request a port
-                serialPort = await navigator.serial.requestPort();
-                await serialPort.open({ baudRate: 115200 });
-
-                connectBtn.textContent = '🔌 Connected';
-                connectBtn.style.background = 'rgba(16, 185, 129, 0.15)';
-                connectBtn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-                connectBtn.style.color = 'var(--accent-green)';
-
-                appendMonitorLine('✓ Serial connected at 115200 baud', 'success');
-                appendTerminalLine('📡 Serial monitor connected', 'system');
-
-                // Start reading
-                readSerialData();
-            } catch (err) {
-                console.error('Serial connection error:', err);
-                appendMonitorLine(`✗ Connection failed: ${err.message}`, 'error');
-            }
-        }
-
-        async function disconnectSerialMonitor() {
-            const connectBtn = document.getElementById('monitor-connect-btn');
-
-            try {
-                if (serialReader) {
-                    await serialReader.cancel();
-                    serialReader = null;
-                }
-
-                if (serialPort) {
-                    await serialPort.close();
-                    serialPort = null;
-                }
-
-                connectBtn.textContent = '🔌 Connect Serial';
-                connectBtn.style.background = 'rgba(34, 211, 238, 0.1)';
-                connectBtn.style.borderColor = 'rgba(34, 211, 238, 0.3)';
-                connectBtn.style.color = 'var(--accent-glucose)';
-
-                appendMonitorLine('✓ Disconnected', 'info');
-            } catch (err) {
-                console.error('Disconnect error:', err);
-            }
-        }
-
-        async function readSerialData() {
-            const textDecoder = new TextDecoderStream();
-            const readableStreamClosed = serialPort.readable.pipeTo(textDecoder.writable);
-            serialReader = textDecoder.readable.getReader();
-
-            let buffer = '';
-
-            try {
-                while (true) {
-                    const { value, done } = await serialReader.read();
-                    if (done) {
-                        break;
-                    }
-
-                    // Add to buffer
-                    buffer += value;
-
-                    // Process complete lines
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-                    for (const line of lines) {
-                        if (line.trim()) {
-                            const colorClass = classifyLogLine(line);
-                            appendMonitorLine(line.trim(), colorClass);
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error('Read error:', err);
-                if (err.name !== 'AbortError' && err.name !== 'NetworkError') {
-                    appendMonitorLine(`✗ Connection lost: ${err.message}`, 'error');
-                    appendMonitorLine('ℹ Device may have restarted. Click "Connect Serial" to reconnect.', 'info');
-                }
-            } finally {
-                if (serialReader) {
-                    try {
-                        serialReader.releaseLock();
-                    } catch (e) {
-                        // Ignore
-                    }
-                }
-            }
-
-            await readableStreamClosed.catch(() => {});
-
-            // Auto-reset button state
-            const connectBtn = document.getElementById('monitor-connect-btn');
-            if (connectBtn) {
-                connectBtn.textContent = '🔌 Connect Serial';
-                connectBtn.style.background = 'rgba(34, 211, 238, 0.1)';
-                connectBtn.style.borderColor = 'rgba(34, 211, 238, 0.3)';
-                connectBtn.style.color = 'var(--accent-glucose)';
-            }
-        }
-
-        function classifyLogLine(line) {
-            const lower = line.toLowerCase();
-            if (lower.includes('error') || lower.includes('fail') || lower.includes('exception')) {
-                return 'error';
-            } else if (lower.includes('warn')) {
-                return 'warning';
-            } else if (lower.includes('ok') || lower.includes('success') || lower.includes('ready') || lower.includes('connected')) {
-                return 'success';
-            } else if (lower.includes('info') || lower.includes('i (')) {
-                return 'info';
-            }
-            return '';
-        }
-
-        function appendMonitorLine(text, className = '') {
-            const monitorOutput = document.getElementById('monitor-output');
-            const line = document.createElement('div');
-            line.className = `monitor-line ${className}`;
-            line.textContent = text;
-            monitorOutput.appendChild(line);
-
-            // Auto-scroll to bottom
-            monitorOutput.scrollTop = monitorOutput.scrollHeight;
-
-            // Limit to 200 lines
-            while (monitorOutput.children.length > 200) {
-                monitorOutput.removeChild(monitorOutput.firstChild);
-            }
-        }
-
-        function clearDeviceMonitor() {
-            const monitorOutput = document.getElementById('monitor-output');
-            monitorOutput.innerHTML = '<div class="monitor-line">Monitor cleared</div>';
-        }
-
-        // ── Terminal Management ──
-        const terminalOutput = document.getElementById('terminal-output');
-        const terminalSection = document.getElementById('terminal-section');
-        const terminalStatus = document.getElementById('terminal-status');
-
-        function appendTerminalLine(message, className = '') {
-            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const line = document.createElement('div');
-            line.className = `terminal-line ${className}`;
-            line.innerHTML = `<span class="timestamp">[${timestamp}]</span>${escapeHtml(message)}`;
-            terminalOutput.appendChild(line);
-            terminalOutput.scrollTop = terminalOutput.scrollHeight;
-        }
-
-        function clearTerminal() {
-            terminalOutput.innerHTML = '<div class="terminal-line system">$ Terminal cleared</div>';
-        }
-
-        function setTerminalStatus(status, text) {
-            terminalStatus.textContent = text;
-            terminalStatus.className = `terminal-status ${status}`;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // ── Wizard Flow ──
-        let currentWizardStep = 1;
-
-        // Enable wizard step 1 next button when both checkboxes checked
-        document.addEventListener('DOMContentLoaded', () => {
-            const check1 = document.getElementById('check-cable');
-            const check2 = document.getElementById('check-port');
-            const next1 = document.getElementById('wizard-next-1');
-
-            [check1, check2].forEach(cb => {
-                cb.addEventListener('change', () => {
-                    next1.disabled = !(check1.checked && check2.checked);
-                });
-            });
-
-            // Enable wizard step 2 next button
-            const check3 = document.getElementById('check-buttons');
-            const next2 = document.getElementById('wizard-next-2');
-            check3.addEventListener('change', () => {
-                next2.disabled = !check3.checked;
-            });
-
-            // Enable wizard step 3 next button
-            const check4 = document.getElementById('check-ready');
-            const next3 = document.getElementById('wizard-next-3');
-            check4.addEventListener('change', () => {
-                next3.disabled = !check4.checked;
-            });
-
-            loadReleases();
-            setupTerminalCapture();
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 50);
         });
 
-        function wizardNext(step) {
-            document.getElementById(`wizard-step-${currentWizardStep}`).classList.remove('active');
-            currentWizardStep = step;
-            document.getElementById(`wizard-step-${step}`).classList.add('active');
-        }
+        navToggle.addEventListener('click', () => {
+            navToggle.classList.toggle('active');
+            navLinks.classList.toggle('open');
+        });
 
-        function restartWizard() {
-            // Reset to step 1
-            document.getElementById('flash-area').style.display = 'none';
-            document.getElementById('wizard-container').style.display = 'block';
+        navLinks.querySelectorAll('a').forEach(a => {
+            a.addEventListener('click', () => {
+                navToggle.classList.remove('active');
+                navLinks.classList.remove('open');
+            });
+        });
 
-            // Hide all steps, show step 1
-            for (let i = 1; i <= 4; i++) {
-                const step = document.getElementById(`wizard-step-${i}`);
-                if (step) step.classList.remove('active');
-            }
-            currentWizardStep = 1;
-            document.getElementById('wizard-step-1').classList.add('active');
-
-            // Uncheck all checkboxes
-            document.getElementById('check-cable').checked = false;
-            document.getElementById('check-port').checked = false;
-            document.getElementById('check-buttons').checked = false;
-            document.getElementById('check-ready').checked = false;
-            document.getElementById('wizard-next-1').disabled = true;
-            document.getElementById('wizard-next-2').disabled = true;
-            document.getElementById('wizard-next-3').disabled = true;
-
-            // Hide retry button
-            document.getElementById('retry-btn').style.display = 'none';
-
-            appendTerminalLine('🔄 Starting over from the beginning', 'system');
-        }
-
-        function startFlashingProcess() {
-            // Hide wizard, show flash area
-            document.getElementById('wizard-container').style.display = 'none';
-            document.getElementById('flash-area').style.display = 'flex';
-            terminalSection.style.display = 'block';
-
-            const statusIcon = document.getElementById('status-icon');
-            const statusText = document.getElementById('status-text');
-            const statusDetail = document.getElementById('status-detail');
-
-            statusIcon.textContent = '👆';
-            statusIcon.classList.add('pulse-big');
-            statusText.textContent = 'Do the button sequence NOW!';
-            statusDetail.innerHTML = '<strong style="color: var(--accent-orange); font-size: 1.15rem;">Press and HOLD BOOT → Press RESET once → Keep holding BOOT for 3 seconds</strong>';
-
-            appendTerminalLine('🚀 Flash process started', 'system');
-
-            // Trigger the ESP Web Tools button immediately
-            const flashBtn = document.getElementById('flash-btn');
-            flashBtn.disabled = false;
-
-            // Small delay to let user read the instruction
-            setTimeout(() => {
-                flashBtn.click();
-            }, 500);
-        }
-
-        function retryFlash() {
-            document.getElementById('retry-btn').style.display = 'none';
-            document.getElementById('status-progress').style.display = 'none';
-
-            const statusIcon = document.getElementById('status-icon');
-            const statusText = document.getElementById('status-text');
-            const statusDetail = document.getElementById('status-detail');
-
-            statusIcon.textContent = '👆';
-            statusIcon.classList.remove('spinning');
-            statusIcon.classList.add('pulse-big');
-            statusText.textContent = 'Let\'s try again - Do the button sequence!';
-            statusDetail.innerHTML = '<strong style="color: var(--accent-orange); font-size: 1.15rem;">Press and HOLD BOOT → Press RESET once → Keep holding BOOT for 3 seconds</strong>';
-
-            appendTerminalLine('🔄 Retrying flash...', 'system');
-
-            // Trigger the ESP Web Tools button
-            const flashBtn = document.getElementById('flash-btn');
-            setTimeout(() => {
-                flashBtn.click();
-            }, 500);
-        }
-
-        function toggleTerminal() {
-            const content = document.getElementById('terminal-content');
-            const toggle = document.getElementById('terminal-toggle');
-            const icon = document.getElementById('terminal-icon');
-
-            if (content.style.display === 'none') {
-                content.style.display = 'block';
-                toggle.classList.add('open');
-            } else {
-                content.style.display = 'none';
-                toggle.classList.remove('open');
-            }
-        }
-
-        function skipToFlash() {
-            // Skip directly to flash (for experts)
-            document.getElementById('wizard-container').style.display = 'none';
-            document.getElementById('flash-area').style.display = 'flex';
-            terminalSection.style.display = 'block';
-
-            const statusIcon = document.getElementById('status-icon');
-            const statusText = document.getElementById('status-text');
-            const statusDetail = document.getElementById('status-detail');
-
-            statusIcon.textContent = '⚡';
-            statusText.textContent = 'Ready to flash';
-            statusDetail.innerHTML = 'Click the button below, select your device port, then do BOOT+RESET sequence';
-
-            // Show the actual ESP Web Tools button for direct access
-            const installButton = document.getElementById('install-button');
-            installButton.style.display = 'block';
-
-            // Show device monitor
-            document.getElementById('device-monitor').style.display = 'block';
-
-            appendTerminalLine('⚡ Expert mode - direct flash access', 'system');
-            appendTerminalLine('ℹ️  Select device port, then do BOOT+RESET sequence', 'system');
-            appendMonitorLine('📡 Serial monitor ready - connect to see device output', 'info');
-        }
-
-        // Capture ESP Web Tools events
-        function setupTerminalCapture() {
-            const installButton = document.getElementById('install-button');
-            const statusIcon = document.getElementById('status-icon');
-            const statusText = document.getElementById('status-text');
-            const statusDetail = document.getElementById('status-detail');
-            const statusProgress = document.getElementById('status-progress');
-            const progressFill = document.getElementById('progress-fill');
-            const progressText = document.getElementById('progress-text');
-            const retryBtn = document.getElementById('retry-btn');
-
-            installButton.addEventListener('state-changed', (e) => {
-                terminalSection.style.display = 'block';
-                const state = e.detail.state;
-
-                switch(state) {
-                    case 'INITIALIZING':
-                        appendTerminalLine('🔌 Connecting to device...', 'system');
-                        setTerminalStatus('', 'Connecting');
-                        statusIcon.textContent = '🔌';
-                        statusIcon.classList.remove('pulse-big');
-                        statusIcon.classList.add('spinning');
-                        statusText.textContent = 'Connecting...';
-                        statusDetail.innerHTML = '<span style="color: var(--accent-green); font-size: 1.1rem;">✅ Great! You can release the BOOT button now!</span>';
-                        break;
-
-                    case 'PREPARING':
-                        appendTerminalLine('✅ Device connected successfully!', 'success');
-                        appendTerminalLine('📦 Preparing firmware...', 'system');
-                        setTerminalStatus('connected', 'Preparing');
-                        statusIcon.textContent = '📦';
-                        statusIcon.classList.remove('spinning');
-                        statusText.textContent = 'Connected! Preparing...';
-                        statusDetail.textContent = 'Reading firmware and getting ready to flash';
-                        statusProgress.style.display = 'block';
-                        progressFill.style.width = '0%';
-                        progressText.textContent = '0%';
-
-                        // Disconnect serial monitor if connected (flashing will reset it)
-                        if (serialPort && serialPort.readable) {
-                            disconnectSerialMonitor();
-                            appendMonitorLine('⚠ Disconnected for flashing - reconnect after flash completes', 'warning');
-                        }
-                        break;
-
-                    case 'INSTALLING':
-                        appendTerminalLine('⚡ Flashing firmware to device...', 'progress');
-                        appendTerminalLine('⚠️  DO NOT unplug the device!', 'warning');
-                        setTerminalStatus('connected', 'Flashing');
-                        statusIcon.textContent = '⚡';
-                        statusIcon.classList.add('spinning');
-                        statusText.textContent = 'Flashing in progress...';
-                        statusDetail.innerHTML = '<strong style="color: var(--accent-orange);">Please wait - this takes 1-2 minutes</strong><br>Keep your device plugged in!';
-                        break;
-
-                    case 'FINISHED':
-                        appendTerminalLine('✅ Firmware installed successfully!', 'success');
-                        appendTerminalLine('🎉 Your device will restart automatically', 'success');
-                        appendTerminalLine('ℹ️  You can now unplug the device', 'system');
-                        setTerminalStatus('connected', 'Complete');
-                        statusIcon.textContent = '🎉';
-                        statusIcon.classList.remove('spinning');
-                        statusText.textContent = 'Success!';
-                        statusDetail.innerHTML = '<span style="color: var(--accent-green); font-size: 1.15rem; font-weight: 600;">✅ All done! Your device will restart with the new firmware.</span><br><br>Click "Connect Serial" below to watch it boot up!';
-                        progressFill.style.width = '100%';
-                        progressText.textContent = '100%';
-
-                        // Show device monitor
-                        document.getElementById('device-monitor').style.display = 'block';
-                        appendMonitorLine('✓ Flash complete! Click "Connect Serial" to see device output', 'success');
-                        break;
-
-                    case 'ERROR':
-                        const errorMsg = e.detail.message || 'Flash failed';
-                        appendTerminalLine(`❌ Error: ${errorMsg}`, 'error');
-                        setTerminalStatus('error', 'Error');
-                        statusIcon.textContent = '😕';
-                        statusIcon.classList.remove('spinning');
-                        statusText.textContent = 'Oops, something went wrong';
-
-                        if (errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('failed to connect')) {
-                            statusDetail.innerHTML = `<span style="color: var(--accent-orange); font-size: 1.05rem;">The button timing didn't work this time.</span><br><br>
-                            <strong>Let's try again:</strong><br>
-                            1. Unplug your device and plug it back in<br>
-                            2. Click "Try Again" below<br>
-                            3. Do the button sequence carefully`;
-                            appendTerminalLine('💡 Tip: Press and HOLD BOOT first, then quickly press RESET while still holding BOOT', 'warning');
-                        } else {
-                            statusDetail.innerHTML = `<span style="color: var(--accent-red);">${errorMsg}</span><br><br>
-                            Try unplugging your device, waiting 5 seconds, then plugging it back in. Click "Try Again" below.`;
-                        }
-
-                        retryBtn.style.display = 'block';
-                        break;
+        // ---- SCROLL REVEAL ----
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    e.target.classList.add('visible');
+                    revealObserver.unobserve(e.target);
                 }
             });
+        }, { threshold: 0.1 });
 
-            installButton.addEventListener('error', (e) => {
-                appendTerminalLine(`❌ ${e.detail.message}`, 'error');
-                setTerminalStatus('error', 'Error');
-                retryBtn.style.display = 'block';
-            });
+        document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
 
-            installButton.addEventListener('progress', (e) => {
-                const pct = e.detail.progress;
-                const total = e.detail.total;
-                if (pct !== undefined) {
-                    progressFill.style.width = `${pct}%`;
-                    progressText.textContent = `${pct.toFixed(0)}%`;
+        // ---- GALLERY ----
+        const photos = [
+            { src: 'photos/cygm-purple-home-dashboard-desk-clean.jpeg', label: 'Home dashboard — clean desk', tags: ['dashboard', 'purple'] },
+            { src: 'photos/cygm-yellow-home-dashboard-handheld.jpg', label: 'Home dashboard — handheld', tags: ['dashboard', 'yellow'] },
+            { src: 'photos/cygm-purple-home-dashboard-fireplace.jpeg', label: 'Home dashboard — fireplace mantle', tags: ['dashboard', 'purple'] },
+            { src: 'photos/cygm-purple-home-dashboard-high-glucose.jpeg', label: 'Dashboard — high glucose alert', tags: ['dashboard', 'purple'] },
+            { src: 'photos/cygm-purple-glucose-trend-graph-tooltip.jpeg', label: 'Trend graph with tooltip', tags: ['graph', 'purple'] },
+            { src: 'photos/cygm-yellow-glucose-trend-graph-handheld.jpg', label: '6-hour glucose trend graph', tags: ['graph', 'yellow'] },
+            { src: 'photos/cygm-purple-alarm-settings-close.jpeg', label: 'Alarm settings overview', tags: ['settings', 'purple'] },
+            { src: 'photos/cygm-yellow-high-alarm-settings.jpg', label: 'High alarm configuration', tags: ['settings', 'yellow'] },
+            { src: 'photos/cygm-purple-weather-settings-sharp.jpeg', label: 'Weather settings', tags: ['settings', 'purple'] },
+            { src: 'photos/cygm-yellow-location-search-keyboard.jpg', label: 'Location search keyboard', tags: ['settings', 'yellow'] },
+            { src: 'photos/cygm-yellow-tone-picker-menu.jpg', label: 'Alarm tone picker', tags: ['settings', 'yellow'] },
+            { src: 'photos/cygm-yellow-home-dashboard-desk-night.jpg', label: 'Home dashboard — night mode', tags: ['dashboard', 'yellow'] },
+        ];
 
-                    if (pct % 25 === 0) { // Log every 25%
-                        appendTerminalLine(`📊 Progress: ${pct.toFixed(0)}%`, 'dim');
-                    }
-                }
-            });
-        }
+        const galleryGrid = document.getElementById('galleryGrid');
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightboxImg');
 
-        async function loadReleases() {
-            try {
-                const resp = await fetch('releases.json');
-                if (!resp.ok) {
-                    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-                }
-                releasesData = await resp.json();
-                console.log('Loaded releases:', releasesData);
-                populateVersions();
-            } catch (err) {
-                console.error('Failed to load releases:', err);
-                appendTerminalLine(`❌ Failed to load releases.json: ${err.message}`, 'error');
-                const sel = document.getElementById('version-select');
-                sel.innerHTML = '<option value="">Failed to load versions — check releases.json</option>';
-            }
-        }
+        function renderGallery(filter) {
+            const filtered = filter === 'all' ? photos : photos.filter(p => p.tags.includes(filter));
+            galleryGrid.innerHTML = filtered.map(p => `
+                <div class="gallery-item" data-src="${p.src}">
+                    <img src="${p.src}" alt="${p.label}" loading="lazy">
+                    <div class="gallery-item-overlay"><span>${p.label}</span></div>
+                </div>
+            `).join('');
 
-        function populateVersions() {
-            const sel = document.getElementById('version-select');
-            sel.innerHTML = '';
-
-            releasesData.versions.forEach((v, i) => {
-                const opt = document.createElement('option');
-                opt.value = i;
-                opt.textContent = `v${v.version} ${v.stage}${v.latest ? ' (Latest)' : ''} — ${v.date}`;
-                sel.appendChild(opt);
-            });
-
-            sel.disabled = false;
-            sel.addEventListener('change', onVersionChange);
-
-            // Auto-select latest
-            const latestIdx = releasesData.versions.findIndex(v => v.latest);
-            if (latestIdx >= 0) {
-                sel.value = latestIdx;
-            } else {
-                sel.value = 0;
-            }
-            onVersionChange();
-        }
-
-        function onVersionChange() {
-            const sel = document.getElementById('version-select');
-            const idx = parseInt(sel.value);
-            if (isNaN(idx)) return;
-
-            selectedVersion = releasesData.versions[idx];
-
-            // Update info chips
-            document.getElementById('version-info').style.display = 'grid';
-            document.getElementById('info-version').textContent = `v${selectedVersion.version}`;
-
-            const stageEl = document.getElementById('info-stage');
-            const stageClass = selectedVersion.stage.toLowerCase();
-            stageEl.innerHTML = `<span class="stage-badge stage-${stageClass}">${selectedVersion.stage}</span>`;
-
-            document.getElementById('info-date').textContent = selectedVersion.date;
-
-            // Show release notes
-            if (selectedVersion.notes) {
-                document.getElementById('release-notes').style.display = 'block';
-                document.getElementById('notes-content').textContent = selectedVersion.notes;
-            } else {
-                document.getElementById('release-notes').style.display = 'none';
-            }
-
-            // Build and set the ESP Web Tools manifest
-            updateManifest();
-        }
-
-        function updateManifest() {
-            if (!selectedVersion) return;
-
-            // Get base URL for resolving relative paths
-            const baseUrl = window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-
-            // Build manifest for ESP Web Tools
-            // Using merged binary approach (single file at offset 0)
-            const manifest = {
-                name: "CYGM Firmware",
-                version: selectedVersion.version,
-                new_install_prompt_erase: false,  // Don't erase NVS - preserve WiFi/settings
-                builds: [
-                    {
-                        chipFamily: releasesData.chip || "ESP32",
-                        improv: false,
-                        parts: []
-                    }
-                ]
-            };
-
-            // Check if a merged binary exists
-            if (selectedVersion.files.merged) {
-                manifest.builds[0].parts.push({
-                    path: baseUrl + selectedVersion.files.merged,
-                    offset: 0
+            galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    lightboxImg.src = item.dataset.src;
+                    lightbox.classList.add('active');
                 });
-            } else {
-                // Use individual files with offsets
-                const offsets = releasesData.offsets;
-                if (selectedVersion.files.bootloader) {
-                    manifest.builds[0].parts.push({
-                        path: baseUrl + selectedVersion.files.bootloader,
-                        offset: parseInt(offsets.bootloader)
-                    });
-                }
-                if (selectedVersion.files.partitions) {
-                    manifest.builds[0].parts.push({
-                        path: baseUrl + selectedVersion.files.partitions,
-                        offset: parseInt(offsets.partitions)
-                    });
-                }
-                if (selectedVersion.files.app) {
-                    manifest.builds[0].parts.push({
-                        path: baseUrl + selectedVersion.files.app,
-                        offset: parseInt(offsets.app)
-                    });
-                }
-                if (selectedVersion.files.spiffs) {
-                    manifest.builds[0].parts.push({
-                        path: baseUrl + selectedVersion.files.spiffs,
-                        offset: parseInt(offsets.spiffs)
-                    });
-                }
-            }
-
-            // Log manifest for debugging
-            console.log('Generated manifest:', manifest);
-            appendTerminalLine(`📦 Manifest created with ${manifest.builds[0].parts.length} file(s)`, 'system');
-
-            // Verify firmware files exist
-            verifyFirmwareFiles(manifest.builds[0].parts);
-
-            // Create blob URL for the manifest
-            const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-
-            // Set the manifest on the install button
-            const installBtn = document.getElementById('install-button');
-            installBtn.manifest = url;
-
-            // Enable the flash button
-            document.getElementById('flash-btn').disabled = false;
-        }
-
-        async function verifyFirmwareFiles(parts) {
-            for (const part of parts) {
-                try {
-                    const response = await fetch(part.path, { method: 'HEAD' });
-                    if (response.ok) {
-                        const size = response.headers.get('content-length');
-                        console.log(`✓ ${part.path} (${formatBytes(parseInt(size))})`);
-                        appendTerminalLine(`✓ Found: ${part.path.split('/').pop()} (${formatBytes(parseInt(size))})`, 'dim');
-                    } else {
-                        console.error(`✗ ${part.path} - HTTP ${response.status}`);
-                        appendTerminalLine(`❌ Missing: ${part.path}`, 'error');
-                    }
-                } catch (err) {
-                    console.error(`✗ ${part.path} - ${err.message}`);
-                    appendTerminalLine(`❌ Cannot access: ${part.path}`, 'error');
-                }
-            }
-        }
-
-        // ── Manual File Upload ──
-
-        function toggleManual() {
-            const toggle = document.getElementById('manual-toggle');
-            const content = document.getElementById('manual-content');
-            toggle.classList.toggle('open');
-            content.classList.toggle('visible');
-        }
-
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // Validate it's a .bin file
-            if (!file.name.endsWith('.bin')) {
-                alert('Please select a .bin firmware file.');
-                return;
-            }
-
-            localFileData = file;
-
-            // Show file info
-            document.getElementById('selected-file').classList.add('visible');
-            document.getElementById('selected-file-name').textContent = file.name;
-            document.getElementById('selected-file-size').textContent = formatBytes(file.size);
-            document.getElementById('btn-flash-manual').classList.add('visible');
-            document.getElementById('btn-flash-manual').disabled = false;
-        }
-
-        async function flashLocalFile() {
-            if (!localFileData) return;
-
-            // Build a manifest for the local file
-            const manifest = {
-                name: "CYGM Firmware (Local)",
-                version: "local",
-                new_install_prompt_erase: true,
-                builds: [
-                    {
-                        chipFamily: "ESP32",
-                        improv: false,
-                        parts: [
-                            {
-                                path: URL.createObjectURL(localFileData),
-                                offset: 0
-                            }
-                        ]
-                    }
-                ]
-            };
-
-            const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-
-            const installBtn = document.getElementById('install-button');
-            installBtn.manifest = url;
-
-            // Trigger click on the install button
-            const btn = installBtn.querySelector('button[slot="activate"]') || document.getElementById('flash-btn');
-            if (btn) btn.click();
-        }
-
-        // ── Drag & Drop ──
-
-        const fileDrop = document.getElementById('file-drop');
-        if (fileDrop) {
-            fileDrop.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                fileDrop.classList.add('dragover');
-            });
-            fileDrop.addEventListener('dragleave', () => {
-                fileDrop.classList.remove('dragover');
-            });
-            fileDrop.addEventListener('drop', (e) => {
-                e.preventDefault();
-                fileDrop.classList.remove('dragover');
-                const file = e.dataTransfer.files[0];
-                if (file) {
-                    document.getElementById('file-input').files = e.dataTransfer.files;
-                    handleFileSelect({ target: { files: e.dataTransfer.files } });
-                }
             });
         }
 
-        // ── FAQ Toggle ──
+        renderGallery('all');
 
-        function toggleFaq(btn) {
-            btn.classList.toggle('open');
-            const answer = btn.nextElementSibling;
-            answer.classList.toggle('visible');
+        document.querySelectorAll('.gallery-filter').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.gallery-filter').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderGallery(btn.dataset.filter);
+            });
+        });
+
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox || e.target.classList.contains('lightbox-close')) {
+                lightbox.classList.remove('active');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') lightbox.classList.remove('active');
+        });
+
+        // ---- FIRMWARE VERSION ----
+        async function loadFirmwareInfo() {
+            try {
+                const cacheBust = `cb=${Date.now()}`;
+                const resp = await fetch(`releases.json?${cacheBust}`, {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const latest = data.versions.find(v => v.latest) || data.versions[0];
+
+                if (!latest) return;
+
+                // Nav version pill
+                const navVersion = document.getElementById('navVersion');
+                if (navVersion) navVersion.textContent = `v${latest.version} ${latest.stage}`;
+
+                // Hero badge
+                const heroBadgeText = document.getElementById('heroBadgeText');
+                if (heroBadgeText) heroBadgeText.textContent = `v${latest.version} ${latest.stage} — Now with OTA Updates`;
+
+                // Firmware strip
+                const fwVersion = document.getElementById('firmwareVersion');
+                const fwStage = document.getElementById('firmwareStage');
+                const fwDate = document.getElementById('firmwareDate');
+                const fwNotes = document.getElementById('firmwareNotesContent');
+
+                if (fwVersion) fwVersion.textContent = `v${latest.version}`;
+                if (fwStage) fwStage.textContent = latest.stage;
+                if (fwDate) fwDate.textContent = latest.date;
+                if (fwNotes && latest.notes) fwNotes.textContent = latest.notes;
+
+            } catch (err) {
+                console.error('Failed to load firmware info:', err);
+                const heroBadgeText = document.getElementById('heroBadgeText');
+                if (heroBadgeText) heroBadgeText.textContent = 'Open Source CGM Display';
+            }
         }
 
-        // ── Utilities ──
+        loadFirmwareInfo();
 
-        function formatBytes(bytes) {
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-            return (bytes / 1048576).toFixed(2) + ' MB';
+        // Firmware notes toggle
+        const fwNotesToggle = document.getElementById('firmwareNotesToggle');
+        const fwNotesPanel = document.getElementById('firmwareNotesPanel');
+        if (fwNotesToggle && fwNotesPanel) {
+            fwNotesToggle.addEventListener('click', () => {
+                fwNotesPanel.classList.toggle('open');
+            });
         }
+
+    })();
     </script>
+
 </body>
 </html>

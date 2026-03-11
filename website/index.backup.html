@@ -1,0 +1,3383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYGM — Open-Source CGM Display</title>
+    <meta name="description" content="A ~$40 open-source continuous glucose monitor display. Real-time CGM data on a pocket-sized touchscreen. No subscriptions. #WeAreNotWaiting">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- ESP Web Tools for reliable firmware flashing -->
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+
+    <style>
+        /* ============================================
+           CSS CUSTOM PROPERTIES
+           ============================================ */
+        :root {
+            /* Core palette — dark medical-device aesthetic with electric cyan accents */
+            --bg-primary: #0a0e17;
+            --bg-secondary: #0f1420;
+            --bg-tertiary: #151b2b;
+            --bg-card: #141a2a;
+            --bg-card-hover: #1a2236;
+            
+            --text-primary: #e8ecf4;
+            --text-secondary: #8b95a8;
+            --text-muted: #505c72;
+            
+            --accent: #00d4ff;
+            --accent-dim: #00a8cc;
+            --accent-glow: rgba(0, 212, 255, 0.15);
+            --accent-glow-strong: rgba(0, 212, 255, 0.3);
+            
+            --glucose-green: #22c55e;
+            --glucose-yellow: #eab308;
+            --glucose-red: #ef4444;
+            
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(0, 212, 255, 0.2);
+            
+            /* Spacing */
+            --section-pad: clamp(4rem, 10vw, 8rem);
+            --container-max: 1200px;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+            
+            /* Transitions */
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* ============================================
+           RESET & BASE
+           ============================================ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        html { 
+            scroll-behavior: smooth; 
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        img { max-width: 100%; display: block; }
+        a { color: var(--accent); text-decoration: none; }
+
+        /* ============================================
+           UTILITY
+           ============================================ */
+        .container {
+            max-width: var(--container-max);
+            margin: 0 auto;
+            padding: 0 clamp(1.25rem, 4vw, 2.5rem);
+        }
+
+        /* Mobile: prevent overflow */
+        @media (max-width: 600px) {
+            body {
+                overflow-x: hidden;
+            }
+            .container {
+                padding: 0 1rem;
+            }
+            * {
+                max-width: 100%;
+            }
+            img, svg {
+                max-width: 100%;
+                height: auto;
+            }
+
+            /* Reduce section padding on mobile */
+            section {
+                padding: 3rem 0 !important;
+            }
+
+            /* Hero adjustments */
+            .hero {
+                min-height: auto !important;
+                padding: 4rem 0 3rem !important;
+            }
+            .hero h1 {
+                font-size: 2rem !important;
+                line-height: 1.2 !important;
+            }
+            .hero-desc {
+                font-size: 0.9375rem !important;
+                margin: 1rem 0 1.5rem !important;
+            }
+            .hero-stats {
+                gap: 1.5rem !important;
+                margin-top: 2rem !important;
+                flex-wrap: wrap;
+            }
+            .hero-stat-value {
+                font-size: 1.25rem !important;
+            }
+            .hero-stat-label {
+                font-size: 0.75rem !important;
+            }
+            .hero-badge {
+                font-size: 0.75rem !important;
+                padding: 0.35rem 0.75rem !important;
+            }
+            .hero-visual {
+                margin-top: 2rem !important;
+            }
+            .hero-device-img {
+                max-width: 100% !important;
+            }
+
+            /* Section titles and text */
+            .section-title {
+                font-size: 1.75rem !important;
+                line-height: 1.2 !important;
+                margin-bottom: 0.75rem !important;
+            }
+            .section-subtitle {
+                font-size: 0.9375rem !important;
+                line-height: 1.6 !important;
+            }
+            .section-label {
+                font-size: 0.6875rem !important;
+                padding: 0.35rem 0.75rem !important;
+            }
+
+            /* Buttons */
+            .btn {
+                font-size: 0.875rem !important;
+                padding: 0.75rem 1.25rem !important;
+            }
+            .btn svg {
+                width: 14px !important;
+                height: 14px !important;
+            }
+        }
+
+        .section-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .section-label::before {
+            content: '';
+            width: 24px;
+            height: 1px;
+            background: var(--accent);
+        }
+
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: clamp(2rem, 5vw, 3.25rem);
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+            margin-bottom: 1.25rem;
+        }
+
+        .section-subtitle {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            line-height: 1.7;
+        }
+
+        /* Scroll reveal */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ============================================
+           NAVIGATION
+           ============================================ */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 1rem 0;
+            transition: background 0.4s, backdrop-filter 0.4s, padding 0.4s;
+        }
+        .nav.scrolled {
+            background: rgba(10, 14, 23, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0.6rem 0;
+        }
+        .nav-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .nav-logo {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            letter-spacing: -0.03em;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .nav-logo .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 12px var(--accent);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--accent); }
+            50% { opacity: 0.5; box-shadow: 0 0 4px var(--accent); }
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            list-style: none;
+        }
+        .nav-links a {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color 0.3s;
+            position: relative;
+        }
+        .nav-links a:hover { color: var(--text-primary); }
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 1.5px;
+            background: var(--accent);
+            transition: width 0.3s var(--ease-out);
+        }
+        .nav-links a:hover::after { width: 100%; }
+
+        .nav-cta {
+            font-size: 0.8125rem !important;
+            font-weight: 600 !important;
+            color: var(--bg-primary) !important;
+            background: var(--accent);
+            padding: 0.5rem 1.25rem;
+            border-radius: 100px;
+            transition: transform 0.3s var(--ease-spring), box-shadow 0.3s !important;
+        }
+        .nav-cta:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--accent-glow-strong);
+        }
+        .nav-cta::after { display: none !important; }
+
+        /* Mobile hamburger */
+        .nav-toggle {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            width: 32px;
+            height: 24px;
+            position: relative;
+            z-index: 110;
+        }
+        .nav-toggle span {
+            display: block;
+            width: 100%;
+            height: 2px;
+            background: var(--text-primary);
+            border-radius: 2px;
+            transition: all 0.3s;
+            position: absolute;
+            left: 0;
+        }
+        .nav-toggle span:nth-child(1) { top: 0; }
+        .nav-toggle span:nth-child(2) { top: 50%; transform: translateY(-50%); }
+        .nav-toggle span:nth-child(3) { bottom: 0; }
+        .nav-toggle.active span:nth-child(1) { top: 50%; transform: translateY(-50%) rotate(45deg); }
+        .nav-toggle.active span:nth-child(2) { opacity: 0; }
+        .nav-toggle.active span:nth-child(3) { bottom: 50%; transform: translateY(50%) rotate(-45deg); }
+
+        @media (max-width: 768px) {
+            .nav-toggle { display: block; }
+            .nav-links {
+                position: fixed;
+                inset: 0;
+                flex-direction: column;
+                justify-content: center;
+                gap: 2.5rem;
+                background: rgba(10, 14, 23, 0.97);
+                backdrop-filter: blur(30px);
+                -webkit-backdrop-filter: blur(30px);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.4s;
+            }
+            .nav-links.open { opacity: 1; pointer-events: all; }
+            .nav-links a { font-size: 1.25rem; }
+        }
+
+        /* ============================================
+           HERO
+           ============================================ */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding: 8rem 0 var(--section-pad);
+            overflow: hidden;
+        }
+        /* Ambient glow backdrop */
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            right: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+            animation: float-glow 8s ease-in-out infinite;
+        }
+        @keyframes float-glow {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-30px, 20px); }
+        }
+        /* Grid noise overlay */
+        .hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+        }
+
+        .hero-inner {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+        .hero-content { max-width: 560px; }
+        
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 1rem 0.4rem 0.6rem;
+            background: var(--accent-glow);
+            border: 1px solid var(--border-accent);
+            border-radius: 100px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.75rem;
+            animation: fade-in-up 0.8s var(--ease-out) both;
+        }
+        .hero-badge .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--glucose-green);
+            box-shadow: 0 0 8px var(--glucose-green);
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        .hero h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: clamp(2.75rem, 6vw, 4.5rem);
+            font-weight: 800;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            animation: fade-in-up 0.8s 0.1s var(--ease-out) both;
+        }
+        .hero h1 .accent { color: var(--accent); }
+
+        .hero-desc {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+            margin: 1.5rem 0 2.5rem;
+            max-width: 480px;
+            animation: fade-in-up 0.8s 0.2s var(--ease-out) both;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            animation: fade-in-up 0.8s 0.3s var(--ease-out) both;
+        }
+
+        @keyframes fade-in-up {
+            from { opacity: 0; transform: translateY(24px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.875rem 2rem;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s var(--ease-spring);
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 30px var(--accent-glow-strong);
+        }
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border-subtle);
+        }
+        .btn-secondary:hover {
+            border-color: var(--text-muted);
+            background: rgba(255,255,255,0.04);
+        }
+
+        .hero-stats {
+            display: flex;
+            gap: 2.5rem;
+            margin-top: 3rem;
+            animation: fade-in-up 0.8s 0.4s var(--ease-out) both;
+        }
+        .hero-stat-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .hero-stat-label {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        /* Hero image area */
+        .hero-visual {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            animation: fade-in-up 0.8s 0.3s var(--ease-out) both;
+        }
+        .hero-device-img {
+            width: 100%;
+            max-width: 520px;
+            border-radius: var(--radius);
+            position: relative;
+            z-index: 2;
+            filter: drop-shadow(0 20px 60px rgba(0, 0, 0, 0.5));
+        }
+        .hero-visual::before {
+            content: '';
+            position: absolute;
+            width: 80%;
+            height: 80%;
+            background: radial-gradient(circle, var(--accent-glow-strong) 0%, transparent 60%);
+            filter: blur(40px);
+            z-index: 1;
+        }
+
+        @media (max-width: 900px) {
+            .hero-inner { grid-template-columns: 1fr; text-align: center; }
+            .hero-content { max-width: 100%; margin: 0 auto; }
+            .hero-desc { margin-left: auto; margin-right: auto; }
+            .hero-actions { justify-content: center; }
+            .hero-stats { justify-content: center; }
+            .hero-visual { margin-top: 2rem; }
+        }
+
+        /* ============================================
+           FEATURES
+           ============================================ */
+        .features {
+            padding: var(--section-pad) 0;
+            position: relative;
+        }
+        .features-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+        .features-header .section-subtitle { margin: 0 auto; }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2rem;
+            transition: all 0.4s var(--ease-out);
+            position: relative;
+            overflow: hidden;
+        }
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+        .feature-card:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-accent);
+            transform: translateY(-4px);
+        }
+        .feature-card:hover::before { opacity: 1; }
+        
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-glow);
+            border-radius: 12px;
+            font-size: 1.5rem;
+            margin-bottom: 1.25rem;
+        }
+        .feature-card h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .feature-card p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+
+        @media (max-width: 900px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 600px) {
+            .features-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            .feature-card {
+                padding: 1.5rem 1.25rem;
+            }
+            .feature-icon {
+                font-size: 2rem !important;
+            }
+            .feature-card h3 {
+                font-size: 1rem !important;
+            }
+            .feature-card p {
+                font-size: 0.875rem !important;
+            }
+        }
+
+        /* ============================================
+           GALLERY
+           ============================================ */
+        .gallery {
+            padding: var(--section-pad) 0;
+        }
+        .gallery-header {
+            margin-bottom: 3rem;
+        }
+        .gallery-filters {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+        }
+        .gallery-filter {
+            background: transparent;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            padding: 0.4rem 1rem;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .gallery-filter.active,
+        .gallery-filter:hover {
+            background: var(--accent-glow);
+            border-color: var(--border-accent);
+            color: var(--accent);
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        @media (max-width: 600px) {
+            .gallery-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.5rem;
+            }
+            .gallery-item {
+                aspect-ratio: 1;
+            }
+            .gallery-filters {
+                gap: 0.5rem;
+                flex-wrap: wrap;
+            }
+            .gallery-filter {
+                font-size: 0.75rem;
+                padding: 0.5rem 0.875rem;
+            }
+        }
+        .gallery-item {
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            aspect-ratio: 16/10;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.4s var(--ease-out);
+        }
+        .gallery-item:hover { transform: scale(1.02); }
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s var(--ease-out);
+        }
+        .gallery-item:hover img { transform: scale(1.08); }
+        .gallery-item-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(10,14,23,0.8) 0%, transparent 50%);
+            opacity: 0;
+            transition: opacity 0.4s;
+            display: flex;
+            align-items: flex-end;
+            padding: 1.25rem;
+        }
+        .gallery-item:hover .gallery-item-overlay { opacity: 1; }
+        .gallery-item-overlay span {
+            font-size: 0.8125rem;
+            font-weight: 500;
+        }
+
+        /* Lightbox */
+        .lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+            cursor: pointer;
+        }
+        .lightbox.active { opacity: 1; pointer-events: all; }
+        .lightbox img {
+            max-width: 90vw;
+            max-height: 90vh;
+            object-fit: contain;
+            border-radius: var(--radius-sm);
+        }
+        .lightbox-close {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            font-size: 1.25rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+        .lightbox-close:hover { background: rgba(255,255,255,0.2); }
+
+        /* ============================================
+           ABOUT / STORY
+           ============================================ */
+        .about {
+            padding: var(--section-pad) 0;
+        }
+        .about-inner {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 4rem;
+            align-items: center;
+        }
+        .about-visual {
+            position: relative;
+        }
+        .about-img-main {
+            border-radius: var(--radius);
+            border: 1px solid var(--border-subtle);
+        }
+        .about-visual::after {
+            content: '';
+            position: absolute;
+            bottom: -20px;
+            right: -20px;
+            width: 200px;
+            height: 200px;
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius);
+            z-index: -1;
+        }
+
+        .about-content .section-title { margin-bottom: 1.5rem; }
+        .about-text {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+        }
+        .about-text strong { color: var(--text-primary); font-weight: 600; }
+        
+        .about-hashtag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--accent);
+            margin-top: 1rem;
+            padding: 0.6rem 1.25rem;
+            background: var(--accent-glow);
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius-xs);
+        }
+
+        @media (max-width: 900px) {
+            .about-inner { grid-template-columns: 1fr; }
+            .about-visual { max-width: 500px; margin: 0 auto; }
+        }
+        @media (max-width: 600px) {
+            .about-inner {
+                gap: 2rem;
+            }
+            .about-visual {
+                max-width: 100%;
+            }
+            .about-text {
+                font-size: 0.9375rem !important;
+                line-height: 1.7 !important;
+                margin-bottom: 1rem !important;
+            }
+            .about-hashtag {
+                font-size: 0.875rem !important;
+                padding: 0.5rem 1rem !important;
+            }
+            .about-visual::after {
+                width: 100px !important;
+                height: 100px !important;
+                bottom: -10px !important;
+                right: -10px !important;
+            }
+        }
+
+        /* ============================================
+           SPECS
+           ============================================ */
+        .specs {
+            padding: var(--section-pad) 0;
+        }
+        .specs-header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+        .specs-header .section-subtitle { margin: 0 auto; }
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+        }
+        .spec-item {
+            text-align: center;
+            padding: 2rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            transition: border-color 0.3s;
+        }
+        .spec-item:hover { border-color: var(--border-accent); }
+        .spec-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.25rem;
+        }
+        .spec-label {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        @media (max-width: 768px) { .specs-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 600px) {
+            .specs-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.75rem;
+            }
+            .spec-item {
+                padding: 1rem;
+            }
+            .spec-value {
+                font-size: 1.5rem !important;
+            }
+            .spec-label {
+                font-size: 0.75rem !important;
+            }
+        }
+
+        /* ============================================
+           USE CASES
+           ============================================ */
+        .usecases {
+            padding: var(--section-pad) 0;
+        }
+        .usecases-header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+        .usecases-header .section-subtitle { margin: 0 auto; }
+        .usecases-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        .usecase-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2.25rem 2rem;
+            transition: all 0.4s var(--ease-out);
+        }
+        .usecase-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-4px);
+            border-color: var(--border-accent);
+        }
+        .usecase-emoji {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .usecase-card h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .usecase-card p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+        @media (max-width: 768px) { .usecases-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) {
+            .usecases-grid {
+                gap: 1rem;
+            }
+            .usecase-card {
+                padding: 1.5rem 1.25rem;
+            }
+            .usecase-emoji {
+                font-size: 2rem !important;
+            }
+            .usecase-card h3 {
+                font-size: 1rem !important;
+            }
+            .usecase-card p {
+                font-size: 0.875rem !important;
+            }
+        }
+
+        /* ============================================
+           DIY BUILD
+           ============================================ */
+        .diy {
+            padding: var(--section-pad) 0;
+        }
+        .diy-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        .diy-header .section-subtitle { margin: 0 auto; }
+        .diy-intro {
+            text-align: center;
+            max-width: 700px;
+            margin: 0 auto 3rem;
+            font-size: 1.0625rem;
+            color: var(--text-secondary);
+            line-height: 1.75;
+        }
+        .diy-parts {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+        .diy-part {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            transition: all 0.4s var(--ease-out);
+            position: relative;
+        }
+        .diy-part:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-accent);
+            transform: translateY(-4px);
+        }
+        .diy-part-emoji {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .diy-part h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .diy-part p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1.25rem;
+        }
+        .diy-part-price {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        .diy-part-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--accent);
+            padding: 0.4rem 1rem;
+            border: 1px solid var(--border-accent);
+            border-radius: 100px;
+            transition: all 0.3s;
+        }
+        .diy-part-link:hover {
+            background: var(--accent-glow);
+            box-shadow: 0 0 16px var(--accent-glow);
+        }
+        .diy-extras {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .diy-extra-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            transition: all 0.3s var(--ease-spring);
+            position: relative;
+            cursor: pointer;
+        }
+        .diy-extra-link:hover {
+            border-color: var(--border-accent);
+            background: rgba(255,255,255,0.04);
+        }
+        /* Coming soon tooltip */
+        .coming-soon-tip {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%) scale(0.9);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-accent);
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            padding: 0.4rem 0.85rem;
+            border-radius: 8px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s var(--ease-spring);
+        }
+        .coming-soon-tip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: var(--border-accent);
+        }
+        .diy-extra-link:hover .coming-soon-tip,
+        .diy-extra-link:focus .coming-soon-tip {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        @media (max-width: 768px) { .diy-parts { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) {
+            .diy-intro {
+                font-size: 0.9375rem !important;
+                margin: 0 auto 2rem !important;
+            }
+            .diy-parts {
+                gap: 1rem;
+            }
+            .diy-part {
+                padding: 1.5rem 1.25rem;
+            }
+            .diy-part-emoji {
+                font-size: 2.5rem !important;
+            }
+            .diy-part h3 {
+                font-size: 1.125rem !important;
+            }
+            .diy-part p {
+                font-size: 0.875rem !important;
+            }
+            .diy-part-price {
+                font-size: 1.25rem !important;
+            }
+            .diy-part-link {
+                font-size: 0.875rem !important;
+            }
+            .diy-extras {
+                gap: 0.75rem;
+                flex-direction: column;
+            }
+            .diy-extra-link {
+                font-size: 0.875rem !important;
+                padding: 0.875rem 1rem !important;
+            }
+        }
+
+        /* ============================================
+           FIRMWARE FLASHER
+           ============================================ */
+        .flasher {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 12, 24, 0.88);
+            backdrop-filter: blur(8px);
+            z-index: 3000;
+            display: none;
+            overflow-y: auto;
+            padding: 30px 20px;
+        }
+        .flasher.open {
+            display: block;
+        }
+        .flasher-close-bar {
+            max-width: 960px;
+            margin: 0 auto 12px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .flasher-close-btn {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #c0ccd8;
+            font-size: 14px;
+            padding: 6px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .flasher-close-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .flasher-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(8,12,24,.72);
+            backdrop-filter: blur(6px);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .flasher-modal.open { display: flex; }
+        .flasher-modal-card {
+            width: min(920px, 100%);
+            max-height: 92vh;
+            overflow: auto;
+            background: linear-gradient(180deg, #10182d 0%, #0e1526 100%);
+            border: 1px solid rgba(137,167,255,.28);
+            border-radius: 18px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.45);
+            padding: 18px;
+        }
+        .flasher-modal-head {
+            display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;
+        }
+        .flasher-modal-title { font-weight: 700; font-size: 1.05rem; color:#eaf1ff; }
+        .flasher-modal-close {
+            border:1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color:#eaf1ff;
+            border-radius: 10px; padding:8px 10px; cursor:pointer;
+        }
+        .flasher-steps {
+            background: rgba(255,255,255,.04);
+            border:1px solid rgba(255,255,255,.12);
+            border-radius:12px;
+            padding:12px 14px;
+            line-height:1.45;
+            margin-bottom:12px;
+        }
+        .flasher-steps ol { margin:0; padding-left:18px; display:grid; gap:4px; }
+        .flasher-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        .flasher-header .section-subtitle { margin: 0 auto; }
+
+        .flasher-box {
+            max-width: 700px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        /* Mobile: hide flasher content, show friendly message */
+        @media (max-width: 768px) {
+            .flasher-box-body {
+                display: none !important;
+            }
+            .flasher-desktop-only {
+                display: block !important;
+            }
+            .serial-terminal-box {
+                display: none !important;
+            }
+        }
+        .flasher-box-header {
+            padding: 1.25rem 2rem;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .flasher-box-header .flasher-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .flasher-box-header .flasher-indicator .bar {
+            width: 3px;
+            height: 14px;
+            border-radius: 2px;
+            background: var(--accent);
+            opacity: 0.3;
+        }
+        .flasher-box-header .flasher-indicator .bar:nth-child(1) { height: 8px; animation: bar-pulse 1.4s ease-in-out 0s infinite; }
+        .flasher-box-header .flasher-indicator .bar:nth-child(2) { height: 14px; animation: bar-pulse 1.4s ease-in-out 0.15s infinite; }
+        .flasher-box-header .flasher-indicator .bar:nth-child(3) { height: 11px; animation: bar-pulse 1.4s ease-in-out 0.3s infinite; }
+        .flasher-box-header .flasher-indicator .bar:nth-child(4) { height: 16px; animation: bar-pulse 1.4s ease-in-out 0.45s infinite; }
+        .flasher-box-header .flasher-indicator .bar:nth-child(5) { height: 10px; animation: bar-pulse 1.4s ease-in-out 0.6s infinite; }
+        @keyframes bar-pulse {
+            0%, 100% { opacity: 0.25; }
+            50% { opacity: 1; }
+        }
+        .flasher-box-header span.flasher-title-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            margin-left: 0.5rem;
+        }
+
+        .flasher-box-body {
+            padding: 2.5rem 2rem;
+        }
+
+        @media (max-width: 600px) {
+            .flasher-box {
+                border-radius: var(--radius-sm);
+            }
+            .flasher-box-header {
+                padding: 1rem 1.25rem;
+            }
+            .flasher-box-body {
+                padding: 1.75rem 1.25rem;
+            }
+        }
+
+        /* Desktop-only notice */
+        .flasher-desktop-only {
+            display: none;
+            text-align: center;
+            padding: 2.5rem 1.5rem;
+        }
+        .flasher-desktop-only .desktop-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1.25rem;
+            filter: grayscale(0.3);
+        }
+        .flasher-desktop-only h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+        .flasher-desktop-only p {
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            line-height: 1.7;
+            max-width: 100%;
+            margin: 0 auto 1.5rem;
+        }
+        .flasher-desktop-only .desktop-features {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .flasher-desktop-only .desktop-feature {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0.75rem 0;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            justify-content: center;
+        }
+        .flasher-desktop-only .desktop-feature svg {
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .flasher-version-select {
+            margin-bottom: 2rem;
+        }
+        .flasher-version-select label {
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .flasher-version-select select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23505c72' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+        }
+        .flasher-version-select select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        @media (max-width: 600px) {
+            .flasher-version-select select {
+                font-size: 0.8125rem;
+                padding: 0.65rem 0.85rem;
+            }
+        }
+
+        .flasher-version-info {
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-xs);
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+            font-size: 0.875rem;
+        }
+        .flasher-version-info .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.3rem 0;
+            gap: 1rem;
+        }
+        .flasher-version-info .info-label {
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .flasher-version-info .info-value {
+            color: var(--text-primary);
+            font-weight: 500;
+            text-align: right;
+            word-break: break-word;
+        }
+        .flasher-version-info .info-value.stage-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(234, 179, 8, 0.15);
+            color: var(--glucose-yellow);
+        }
+        .flasher-notes {
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--border-subtle);
+            margin-top: 0.5rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        @media (max-width: 600px) {
+            .flasher-version-info {
+                padding: 0.875rem 1rem;
+                font-size: 0.8125rem;
+            }
+            .flasher-notes {
+                font-size: 0.8125rem;
+                line-height: 1.6;
+            }
+        }
+
+        /* ESP Web Tools Install Button Styling */
+        .flasher-install-area {
+            text-align: center;
+        }
+        .flasher-install-area esp-web-install-button {
+            --esp-tools-button-color: var(--accent);
+            --esp-tools-button-text-color: var(--bg-primary);
+        }
+        .flasher-install-area esp-web-install-button button,
+        .flasher-install-area .btn-flash {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 2.5rem;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-spring);
+            width: auto;
+            max-width: 100%;
+        }
+        .flasher-install-area esp-web-install-button button:hover,
+        .flasher-install-area .btn-flash:hover {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 30px var(--accent-glow-strong);
+        }
+
+        @media (max-width: 600px) {
+            .flasher-install-area .btn-flash {
+                width: 100%;
+                padding: 0.875rem 1.5rem;
+                font-size: 0.9375rem;
+            }
+        }
+
+        .flasher-browser-note {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* ---- PROGRESS BAR ---- */
+        .flash-progress-container {
+            margin: 1.5rem 0;
+            display: none; /* Hidden until flashing starts */
+        }
+        .flash-progress-container.active {
+            display: block;
+        }
+        .flash-progress-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .flash-progress-percent {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .flash-progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 100px;
+            overflow: hidden;
+            position: relative;
+        }
+        .flash-progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent-dim));
+            border-radius: 100px;
+            width: 0%;
+            transition: width 0.3s ease-out;
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        /* ---- FLASH STATUS ---- */
+        .flash-status {
+            margin: 1rem 0;
+            padding: 0.85rem 1.25rem;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--border-subtle);
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .flash-status.active {
+            display: flex;
+        }
+        .flash-status-icon {
+            font-size: 1.25rem;
+        }
+        .flash-status-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+        .flash-status.success {
+            border-color: var(--glucose-green);
+            background: rgba(34, 197, 94, 0.08);
+        }
+        .flash-status.success .flash-status-text {
+            color: var(--glucose-green);
+        }
+        .flash-status.error {
+            border-color: var(--glucose-red);
+            background: rgba(239, 68, 68, 0.08);
+        }
+        .flash-status.error .flash-status-text {
+            color: var(--glucose-red);
+        }
+
+        /* ---- BOOT INSTRUCTIONS ---- */
+        .flasher-boot-instructions {
+            margin-bottom: 2rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius-xs);
+            overflow: hidden;
+        }
+
+        @media (max-width: 600px) {
+            .flasher-boot-instructions {
+                font-size: 0.875rem;
+            }
+            .boot-step-content h4 {
+                font-size: 0.9rem;
+            }
+            .boot-step-content p {
+                font-size: 0.8125rem;
+            }
+        }
+        .boot-instructions-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.85rem 1.25rem;
+            background: rgba(0, 212, 255, 0.06);
+            border-bottom: 1px solid var(--border-accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--accent);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .boot-instructions-body {
+            padding: 1.25rem;
+        }
+        .boot-step {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            padding: 0.75rem 0;
+        }
+        .boot-step + .boot-step {
+            border-top: 1px solid var(--border-subtle);
+        }
+        .boot-step-num {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-glow);
+            border: 1px solid var(--border-accent);
+            border-radius: 50%;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        .boot-step-content h4 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+        .boot-step-content p {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
+        .boot-step-content .key-combo {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--border-accent);
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+        }
+
+        /* ---- SAFE MODE DISCLAIMER ---- */
+        .flasher-safe-note {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+            padding: 1rem 1.25rem;
+            background: rgba(34, 197, 94, 0.06);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: var(--radius-xs);
+        }
+        .safe-note-icon {
+            font-size: 1.5rem;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .safe-note-content {
+            flex: 1;
+        }
+        .safe-note-content strong {
+            display: block;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--glucose-green);
+            margin-bottom: 0.35rem;
+        }
+        .safe-note-content p {
+            font-size: 0.8125rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+        .safe-note-content .key-combo {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--border-accent);
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+        }
+        @media (max-width: 600px) {
+            .flasher-safe-note {
+                padding: 0.875rem 1rem;
+                gap: 0.75rem;
+            }
+            .safe-note-icon {
+                font-size: 1.25rem;
+            }
+            .safe-note-content strong {
+                font-size: 0.8125rem;
+            }
+            .safe-note-content p {
+                font-size: 0.75rem;
+            }
+        }
+
+        /* ---- SERIAL TERMINAL ---- */
+        .serial-terminal-box {
+            margin-top: 2rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+            overflow: hidden;
+        }
+        .serial-terminal-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            padding: 0.65rem 1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .serial-terminal-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .serial-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+        .serial-status-dot.connected {
+            background: var(--glucose-green);
+            box-shadow: 0 0 8px var(--glucose-green);
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+        .serial-terminal-toolbar label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+        }
+        .serial-terminal-toolbar select {
+            padding: 0.3rem 0.6rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .serial-terminal-toolbar select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .serial-terminal-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .serial-btn {
+            padding: 0.35rem 0.85rem;
+            border-radius: 100px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid var(--border-subtle);
+            background: transparent;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        .serial-btn:hover {
+            border-color: var(--border-accent);
+            color: var(--text-primary);
+        }
+        .serial-btn.connect-btn {
+            background: var(--accent-glow);
+            border-color: var(--border-accent);
+            color: var(--accent);
+        }
+        .serial-btn.connect-btn:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+        .serial-btn.disconnect-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--glucose-red);
+        }
+        .serial-output {
+            height: 240px;
+            overflow-y: auto;
+            overflow-x: auto;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            line-height: 1.65;
+            color: var(--glucose-green);
+            background: #050a12;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-subtle) transparent;
+            white-space: pre;
+        }
+        .serial-output::-webkit-scrollbar { width: 6px; }
+        .serial-output::-webkit-scrollbar-track { background: transparent; }
+        .serial-output::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+        .serial-output .line-system {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        .serial-output .line-error {
+            color: var(--glucose-red);
+        }
+        .serial-output .line-info {
+            color: var(--accent);
+        }
+        .serial-output .line-success {
+            color: var(--glucose-green);
+        }
+        .serial-output .line-warning {
+            color: #fbbf24;
+        }
+        .serial-output .timestamp {
+            color: var(--text-muted);
+            margin-right: 0.5rem;
+            user-select: none;
+        }
+
+        .flasher-advanced-toggle {
+            margin-top: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-subtle);
+            border-radius: 999px;
+            padding: 0.35rem 0.85rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            cursor: pointer;
+        }
+        .flasher-advanced-toggle:hover {
+            color: var(--text-primary);
+            border-color: var(--border-accent);
+        }
+        .flasher-diagnostics-panel {
+            margin-top: 0.9rem;
+            display: none;
+            border: 1px dashed var(--border-subtle);
+            border-radius: var(--radius-xs);
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.35);
+        }
+        .flasher-diagnostics-panel.open {
+            display: block;
+        }
+        .flasher-diagnostics-panel pre {
+            margin: 0;
+            max-height: 220px;
+            overflow: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .flash-recovery {
+            margin-top: 0.75rem;
+            display: none;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            background: rgba(239, 68, 68, 0.08);
+            border-radius: var(--radius-xs);
+            padding: 0.7rem 0.8rem;
+        }
+        .flash-recovery.active {
+            display: block;
+        }
+        .flash-recovery strong {
+            display: block;
+            color: #fecaca;
+            margin-bottom: 0.25rem;
+            font-size: 0.8rem;
+        }
+        .flash-recovery p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            line-height: 1.55;
+        }
+
+        .flasher-faq {
+            max-width: 700px;
+            margin: 3rem auto 0;
+        }
+        .faq-item {
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .faq-question {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 0;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+        }
+        .faq-question .faq-icon {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            transition: transform 0.3s;
+        }
+        .faq-item.open .faq-question .faq-icon { transform: rotate(45deg); }
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s var(--ease-out);
+        }
+        .faq-answer-inner {
+            padding-bottom: 1.25rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        @media (max-width: 600px) {
+            .flasher-faq {
+                margin-top: 2rem !important;
+            }
+            .faq-question {
+                padding: 1rem 0 !important;
+                font-size: 0.875rem !important;
+            }
+            .faq-icon {
+                font-size: 1.125rem !important;
+            }
+            .faq-answer-inner {
+                padding-bottom: 1rem !important;
+                font-size: 0.8125rem !important;
+            }
+        }
+
+        /* ============================================
+           FOOTER
+           ============================================ */
+        .footer {
+            padding: 3rem 0;
+            border-top: 1px solid var(--border-subtle);
+            margin-top: var(--section-pad);
+        }
+        .footer-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .footer-left {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+        .footer-left strong {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .footer-links {
+            display: flex;
+            gap: 1.75rem;
+            list-style: none;
+        }
+        .footer-links a {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            transition: color 0.3s;
+        }
+        .footer-links a:hover { color: var(--accent); }
+        .footer-hashtag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: var(--accent-dim);
+        }
+
+        @media (max-width: 600px) {
+            .footer-inner {
+                flex-direction: column;
+                text-align: center;
+            }
+            .footer {
+                padding: 2rem 0 !important;
+                margin-top: 3rem !important;
+            }
+            .footer-left {
+                font-size: 0.8125rem !important;
+            }
+            .footer-links {
+                gap: 1.25rem !important;
+            }
+            .footer-links a {
+                font-size: 0.75rem !important;
+            }
+            .footer-hashtag {
+                font-size: 0.75rem !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============ NAVIGATION ============ -->
+    <nav class="nav" id="nav">
+        <div class="container nav-inner">
+            <a href="#" class="nav-logo">
+                <span class="dot"></span>
+                CYGM
+            </a>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
+                <span></span><span></span><span></span>
+            </button>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#gallery">Gallery</a></li>
+                <li><a href="#story">Our Story</a></li>
+                <li><a href="#specs">Specs</a></li>
+                <li><a href="#diy">Build</a></li>
+                <li><a href="#flasher" class="nav-cta">Flash Firmware</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="hero">
+        <div class="container hero-inner">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="status-dot"></span>
+                    <span id="heroBadgeText">Loading version...</span>
+                </div>
+                <h1>Your glucose.<br>At a <span class="accent">glance.</span></h1>
+                <p class="hero-desc">A pocket-sized, open-source CGM display that puts real-time glucose data where you need it. Built for the diabetes community, by the diabetes community. No subscriptions. Just ~$40.</p>
+                <div class="hero-actions">
+                    <a href="#flasher" class="btn btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Flash Firmware
+                    </a>
+                    <a href="#features" class="btn btn-secondary">Learn More</a>
+                </div>
+                <div class="hero-stats">
+                    <div>
+                        <div class="hero-stat-value">~$40</div>
+                        <div class="hero-stat-label">Total hardware cost</div>
+                    </div>
+                    <div>
+                        <div class="hero-stat-value" style="font-size: 1.5rem;">Dexcom</div>
+                        <div class="hero-stat-label">CGM source &middot; live now</div>
+                    </div>
+                    <div>
+                        <div class="hero-stat-value" style="color: var(--glucose-yellow);">+2</div>
+                        <div class="hero-stat-label">Sources in dev<br><span style="color: var(--text-muted); font-size: 0.7rem;">Libre &middot; Nightscout</span></div>
+                    </div>
+                    <div>
+                        <div class="hero-stat-value">0</div>
+                        <div class="hero-stat-label">Subscriptions required</div>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <img src="photos/cygm-yellow-home-dashboard-desk-night.jpg" alt="CYGM device showing glucose reading and weather on a yellow 3D-printed case" class="hero-device-img">
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ FEATURES ============ -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="features-header reveal">
+                <div class="section-label">Features</div>
+                <h2 class="section-title">Everything you need.<br>Nothing you don't.</h2>
+                <p class="section-subtitle">Designed from the ground up for one purpose — making glucose data visible, accessible, and actionable.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card reveal reveal-delay-1">
+                    <div class="feature-icon">📊</div>
+                    <h3>Real-Time Glucose</h3>
+                    <p>Live readings from Dexcom Share, Nightscout, or LibreLinkUp. Large, clear numbers with trend arrows you can read across a room.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2">
+                    <div class="feature-icon">📈</div>
+                    <h3>6-Hour Trend Graph</h3>
+                    <p>Interactive touchscreen graph with target range markers. Tap any point to see the exact reading and timestamp.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3">
+                    <div class="feature-icon">🔔</div>
+                    <h3>Customizable Alarms</h3>
+                    <p>Set high/low thresholds with audio tones, visual LED alerts, and repeat-until-dismissed mode. Choose from 12+ 8-bit alarm sounds.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-1">
+                    <div class="feature-icon">🌤️</div>
+                    <h3>Weather & Clock</h3>
+                    <p>Integrated weather display with automatic timezone detection, sunrise/sunset times, and location search — all on the home screen.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2">
+                    <div class="feature-icon">🔋</div>
+                    <h3>Battery Powered</h3>
+                    <p>Built-in battery monitoring with percentage display. Charge via USB-C and take it anywhere — nightstand, desk, or on the go.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3">
+                    <div class="feature-icon">📱</div>
+                    <h3>Touchscreen UI</h3>
+                    <p>2.8" capacitive touchscreen with full on-device keyboard for setup. No phone or computer needed after initial firmware flash.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ GALLERY ============ -->
+    <section class="gallery" id="gallery">
+        <div class="container">
+            <div class="gallery-header reveal">
+                <div class="section-label">Gallery</div>
+                <h2 class="section-title">See it in action</h2>
+                <div class="gallery-filters">
+                    <button class="gallery-filter active" data-filter="all">All</button>
+                    <button class="gallery-filter" data-filter="dashboard">Dashboard</button>
+                    <button class="gallery-filter" data-filter="graph">Trend Graph</button>
+                    <button class="gallery-filter" data-filter="settings">Settings</button>
+                    <button class="gallery-filter" data-filter="yellow">Yellow Case</button>
+                    <button class="gallery-filter" data-filter="purple">Purple Case</button>
+                </div>
+            </div>
+            <div class="gallery-grid" id="galleryGrid">
+                <!-- JS populated -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox">
+        <button class="lightbox-close" aria-label="Close">&times;</button>
+        <img id="lightboxImg" src="" alt="Enlarged view">
+    </div>
+
+    <!-- ============ ABOUT / STORY ============ -->
+    <section class="about" id="story">
+        <div class="container about-inner">
+            <div class="about-visual reveal">
+                <img src="photos/cygm-purple-home-dashboard-fireplace.jpeg" alt="CYGM device in purple case on a mantle" class="about-img-main">
+            </div>
+            <div class="about-content reveal reveal-delay-2">
+                <div class="section-label">The Story</div>
+                <h2 class="section-title">Built because it<br>needed to exist.</h2>
+                <p class="about-text">
+                    CYGM was born from a simple frustration: <strong>why does seeing your glucose data have to be expensive?</strong> Commercial CGM displays cost hundreds of dollars, require subscriptions, and lock you into ecosystems.
+                </p>
+                <p class="about-text">
+                    I'm Carl — a self-taught developer, a member of the diabetes community, and someone who believes technology should serve people, not profit margins. I started with a $20 ESP32 development board, a 2.8-inch touchscreen, and a lot of late nights learning embedded programming through trial and error.
+                </p>
+                <p class="about-text">
+                    CYGM is fully open source. No subscriptions, no accounts, no cloud dependency. Just a small device that does one thing really well — <strong>putting your glucose reading where you can see it.</strong> Every line of code, every schematic, every 3D-print file will be available for the community to use, improve, and share.
+                </p>
+                <div class="about-hashtag">#WeAreNotWaiting</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ SPECS ============ -->
+    <section class="specs" id="specs">
+        <div class="container">
+            <div class="specs-header reveal">
+                <div class="section-label" style="justify-content: center;">Tech Specs</div>
+                <h2 class="section-title">Small device.<br>Big capability.</h2>
+                <p class="section-subtitle">Built on the JC2432W328 development board with ESP32-D0WD.</p>
+            </div>
+            <div class="specs-grid reveal">
+                <div class="spec-item">
+                    <div class="spec-value">2.8"</div>
+                    <div class="spec-label">Touchscreen</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">320×240</div>
+                    <div class="spec-label">Resolution</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">WiFi</div>
+                    <div class="spec-label">Connectivity</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">USB-C</div>
+                    <div class="spec-label">Charging</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">ESP32</div>
+                    <div class="spec-label">Processor</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">4MB</div>
+                    <div class="spec-label">Flash Storage</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">RGB</div>
+                    <div class="spec-label">LED Alerts</div>
+                </div>
+                <div class="spec-item">
+                    <div class="spec-value">8-Bit</div>
+                    <div class="spec-label">Speaker Audio</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ USE CASES ============ -->
+    <section class="usecases" id="usecases">
+        <div class="container">
+            <div class="usecases-header reveal">
+                <div class="section-label" style="justify-content: center;">Use Cases</div>
+                <h2 class="section-title">A display for every context</h2>
+                <p class="section-subtitle">Whether it's your nightstand or a nursing station, CYGM fits right in.</p>
+            </div>
+            <div class="usecases-grid">
+                <div class="usecase-card reveal reveal-delay-1">
+                    <div class="usecase-emoji">🛏️</div>
+                    <h3>Bedside Monitor</h3>
+                    <p>Place it on your nightstand. See glucose readings at a glance without reaching for your phone. Night-time alarms wake you when levels are off.</p>
+                </div>
+                <div class="usecase-card reveal reveal-delay-2">
+                    <div class="usecase-emoji">🏫</div>
+                    <h3>School Nurse's Office</h3>
+                    <p>Give school staff visibility into a student's glucose without needing their phone. A simple, dedicated display that anyone can read.</p>
+                </div>
+                <div class="usecase-card reveal reveal-delay-3">
+                    <div class="usecase-emoji">🏥</div>
+                    <h3>Clinic or Care Facility</h3>
+                    <p>Affordable enough to place at every nursing station. Monitor residents with CGMs from a small, always-on display right at the desk.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ DIY BUILD ============ -->
+    <section class="diy" id="diy">
+        <div class="container">
+            <div class="diy-header reveal">
+                <div class="section-label" style="justify-content: center;">Build Your Own</div>
+                <h2 class="section-title">Ready to build in minutes</h2>
+            </div>
+            <p class="diy-intro reveal">Everything you need is available off the shelf. Order the parts, flash the firmware from your browser, and you're done — no soldering, no coding, no complicated setup.</p>
+
+            <div class="diy-parts">
+                <div class="diy-part reveal reveal-delay-1">
+                    <div class="diy-part-emoji">📟</div>
+                    <h3>ESP32 Display Board</h3>
+                    <p>2.8" touchscreen development board with WiFi, USB-C, and microSD slot. The heart of CYGM.</p>
+                    <div class="diy-part-price">~$20</div>
+                    <a href="https://www.amazon.com/dp/B0D5H84RDB" target="_blank" rel="noopener" class="diy-part-link">View on Amazon →</a>
+                </div>
+                <div class="diy-part reveal reveal-delay-2">
+                    <div class="diy-part-emoji">🔊</div>
+                    <h3>Mini Speaker</h3>
+                    <p>1W 8Ω full-range speaker with JST-PH 1.25mm connector. Plugs right in for alarm sounds.</p>
+                    <div class="diy-part-price">~$8</div>
+                    <a href="https://www.amazon.com/dp/B0D7SC3ZFG" target="_blank" rel="noopener" class="diy-part-link">View on Amazon →</a>
+                </div>
+                <div class="diy-part reveal reveal-delay-3">
+                    <div class="diy-part-emoji">🔋</div>
+                    <h3>3000mAh Battery</h3>
+                    <p>Rechargeable LiPo battery for portable use. Our 3D-printed case is designed to fit this exact size.</p>
+                    <div class="diy-part-price">~$12</div>
+                    <a href="https://www.amazon.com/dp/B0DK5BBKM5" target="_blank" rel="noopener" class="diy-part-link">View on Amazon →</a>
+                </div>
+            </div>
+
+            <div class="diy-extras reveal">
+                <a href="#" class="diy-extra-link" onclick="return false;">
+                    📸 Build Instructions
+                    <span class="coming-soon-tip">Coming soon</span>
+                </a>
+                <a href="#" class="diy-extra-link" onclick="return false;">
+                    🖨️ 3D Print Files
+                    <span class="coming-soon-tip">Coming soon</span>
+                </a>
+                <a href="#" class="diy-extra-link" onclick="return false;">
+                    📂 GitHub Repo
+                    <span class="coming-soon-tip">Coming soon</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ FIRMWARE FLASHER ============ -->
+    <section class="flasher" id="flasher">
+        <div class="container">
+            <div class="flasher-close-bar">
+                <button class="flasher-close-btn" id="flasherCloseBtn">Close</button>
+            </div>
+            <div class="flasher-header reveal visible">
+                <div class="section-label" style="justify-content: center;">Firmware</div>
+                <h2 class="section-title">Flash your device</h2>
+                <p class="section-subtitle">Install or update CYGM firmware directly from your browser. No software to download — just plug in and go.</p>
+            </div>
+
+            <div class="flasher-box reveal visible">
+                <div class="flasher-box-header">
+                    <div class="flasher-indicator"><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span></div>
+                    <span class="flasher-title-text">cygm-flasher</span>
+                </div>
+
+                <!-- Desktop content -->
+                <div class="flasher-box-body" id="flasherBody">
+                    <!-- Boot Instructions -->
+                    <div class="flasher-boot-instructions">
+                        <div class="boot-instructions-header">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                            How to enter flash mode
+                        </div>
+                        <div class="boot-instructions-body">
+                            <div class="boot-step">
+                                <div class="boot-step-num">1</div>
+                                <div class="boot-step-content">
+                                    <h4>Press and hold both buttons, then release</h4>
+                                    <p>Press and hold <span class="key-combo">BOOT</span> and <span class="key-combo">RESET</span> together for 1 second, then release <strong>both buttons</strong>.</p>
+                                </div>
+                            </div>
+                            <div class="boot-step">
+                                <div class="boot-step-num">2</div>
+                                <div class="boot-step-content">
+                                    <h4>Verify boot mode</h4>
+                                    <p>Your device screen should be <strong>OFF</strong>, with the LED glowing slightly red. This means the device is in boot mode and ready to flash.</p>
+                                </div>
+                            </div>
+                            <div class="boot-step">
+                                <div class="boot-step-num">3</div>
+                                <div class="boot-step-content">
+                                    <h4>Select firmware &amp; click Install</h4>
+                                    <p>Choose your firmware version below, then click <span class="key-combo">Install Firmware</span>. Select your device's COM port when the browser asks.</p>
+                                </div>
+                            </div>
+                            <div class="boot-step">
+                                <div class="boot-step-num">4</div>
+                                <div class="boot-step-content">
+                                    <h4>Hold BOOT when prompted</h4>
+                                    <p>The terminal will show instructions. When ready, hold the <span class="key-combo">BOOT</span> button and click the confirmation. Keep holding <span class="key-combo">BOOT</span> until flashing starts, then release it.</p>
+                                </div>
+                            </div>
+                            <div class="boot-step">
+                                <div class="boot-step-num">5</div>
+                                <div class="boot-step-content">
+                                    <h4>Wait for completion</h4>
+                                    <p>Watch the progress bar. <strong>Do not unplug</strong> until complete. The device will reboot automatically when finished.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Safe Mode Disclaimer -->
+                    <div class="flasher-safe-note">
+                        <div class="safe-note-icon">💡</div>
+                        <div class="safe-note-content">
+                            <strong>Don't worry — this is safe!</strong>
+                            <p>If you accidentally entered boot mode or weren't ready, just press the <span class="key-combo">RESET</span> button to wake the device back up. You can't break the device this way — it's completely safe to experiment.</p>
+                        </div>
+                    </div>
+
+                    <div class="flasher-version-info" id="versionInfo">
+                        <div class="info-row">
+                            <span class="info-label">Current Version</span>
+                            <span class="info-value" id="currentVersion">Loading...</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Release Date</span>
+                            <span class="info-value" id="releaseDate">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Stage</span>
+                            <span class="info-value stage-badge" id="releaseStage">—</span>
+                        </div>
+                        <div class="flasher-notes" id="releaseNotes" style="display: none;"></div>
+                    </div>
+                    <!-- Progress Bar -->
+                    <div class="flash-progress-container" id="flashProgress">
+                        <div class="flash-progress-label">
+                            <span id="flashProgressLabel">Flashing firmware...</span>
+                            <span class="flash-progress-percent" id="flashProgressPercent">0%</span>
+                        </div>
+                        <div class="flash-progress-bar-bg">
+                            <div class="flash-progress-bar-fill" id="flashProgressBar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Flash Status -->
+                    <div class="flash-status" id="flashStatus">
+                        <span class="flash-status-icon" id="flashStatusIcon"></span>
+                        <span class="flash-status-text" id="flashStatusText"></span>
+                    </div>
+
+                    <!-- Flash Button -->
+                    <div class="flasher-install-area" id="installArea">
+                        <div style="width:100%; display:grid; gap:10px;">
+                            <div style="background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px 14px; font-size:.95rem; color:#d7e3ff; line-height:1.45;">
+                                <strong style="display:block; margin-bottom:6px;">Before you start (quick checklist):</strong>
+                                <ol style="margin:0; padding-left:18px; display:grid; gap:4px;">
+                                    <li>Enter boot mode: hold <span class="key-combo">BOOT</span> + <span class="key-combo">RESET</span> for 1 second, then release both.</li>
+                                    <li>Click <strong>Install</strong> and select your CYGM COM port.</li>
+                                    <li>When prompted, choose <strong>Install CYGM</strong> (or <strong>Logs &amp; Console</strong> if you only need diagnostics).</li>
+                                    <li><strong>Do not choose “Erase Device”</strong> unless you intentionally want to wipe all settings and saved data.</li>
+                                    <li>Hold <span class="key-combo">BOOT</span> while clicking Install; when the percentage/progress appears, release <span class="key-combo">BOOT</span>.</li>
+                                </ol>
+                            </div>
+                            <label style="display:flex; align-items:flex-start; gap:10px; font-size:.92rem; color:#d7e3ff;">
+                                <input type="checkbox" id="flashConsent" style="margin-top:3px;">
+                                <span>I read the boot-mode steps and understand the browser will show security prompts for USB/COM access.</span>
+                            </label>
+                            <button class="btn-flash" id="flashBtn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                Flash Firmware
+                            </button>
+                        </div>
+                    </div>
+                    <p class="flasher-browser-note">Requires <strong>Chrome</strong> or <strong>Edge</strong> on desktop &middot; Uses Web Serial API</p>
+                    <button type="button" class="flasher-advanced-toggle" id="toggleDiagnostics">Advanced diagnostics</button>
+                    <div class="flasher-diagnostics-panel" id="diagnosticsPanel" aria-live="polite">
+                        <pre id="diagnosticsOutput">{ "status": "idle" }</pre>
+                    </div>
+                    <div class="flash-recovery" id="flashRecovery">
+                        <strong>Recovery steps</strong>
+                        <p id="flashRecoveryText">If flashing fails, unplug USB, hold BOOT + RESET for 1 second, release both, reconnect USB, then retry.</p>
+                    </div>
+                </div>
+
+                <!-- Mobile fallback -->
+                <div class="flasher-desktop-only">
+                    <div class="desktop-icon">💻</div>
+                    <h3>Firmware Upgrade Requires a PC</h3>
+                    <p>To flash firmware to your CYGM device, you'll need to use a desktop or laptop computer with <strong>Chrome</strong> or <strong>Edge</strong> browser.</p>
+                    <p>The firmware flasher uses the Web Serial API to communicate directly with your device via USB — this technology is only available on desktop browsers for security reasons.</p>
+
+                    <div class="desktop-features">
+                        <div class="desktop-feature">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                            <span>Chrome or Edge on Windows/Mac/Linux</span>
+                        </div>
+                        <div class="desktop-feature">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                            <span>USB-C cable for device connection</span>
+                        </div>
+                        <div class="desktop-feature">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                            <span>About 2-3 minutes for the flash process</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Serial flash terminal — hidden until flashing starts -->
+                <div class="serial-terminal-box" id="serialTerminalBox" style="display:none;">
+                    <div class="serial-terminal-toolbar">
+                        <div class="serial-terminal-toolbar-left">
+                            <span class="serial-status-dot" id="serialStatusDot"></span>
+                            <label>Flash Console</label>
+                        </div>
+                    </div>
+                    <div class="serial-output" id="serialOutput"></div>
+                </div>
+            </div>
+
+            <!-- FAQ -->
+            <div class="flasher-faq reveal">
+                <div class="faq-item">
+                    <button class="faq-question">
+                        <span>What do I need to flash firmware?</span>
+                        <span class="faq-icon">+</span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">A CYGM device (JC2432W328 board), a USB-C cable, and a desktop computer running Chrome or Edge. No drivers or software installation needed — everything happens in the browser.</div>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">
+                        <span>Will this erase my settings?</span>
+                        <span class="faq-icon">+</span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">A full flash (merged binary) will reset all settings to defaults. After flashing, you'll go through the on-device setup wizard to configure your WiFi, CGM source, location, and alarm preferences.</div>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">
+                        <span>My device isn't detected — what do I do?</span>
+                        <span class="faq-icon">+</span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">Make sure your USB cable supports data transfer (not charge-only). Try a different USB port. Follow the boot mode instructions above: hold BOOT + RESET for 1 second, release RESET while keeping BOOT held, then click "Install Firmware" in the browser. If the browser still doesn't see the device, you may need the <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: underline;">CP210x USB driver from Silicon Labs</a>.</div>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">
+                        <span>Can I flash from my phone?</span>
+                        <span class="faq-icon">+</span>
+                    </button>
+                    <div class="faq-answer">
+                        <div class="faq-answer-inner">Not currently. The Web Serial API is only supported in desktop browsers (Chrome and Edge). We're working on an SD-card based update method that won't require a computer at all.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- In-page Flasher Modal -->
+    <div class="flasher-modal" id="flasherModal" aria-hidden="true">
+        <div class="flasher-modal-card" role="dialog" aria-modal="true" aria-labelledby="flasherModalTitle">
+            <div class="flasher-modal-head">
+                <div class="flasher-modal-title" id="flasherModalTitle">CYGM Firmware Flasher</div>
+                <button class="flasher-modal-close" id="flasherModalClose" type="button">Close</button>
+            </div>
+
+            <div class=”flasher-steps”>
+                <strong style=”display:block; margin-bottom:6px;”>Before you click Install:</strong>
+                <ol>
+                    <li>Enter boot mode: hold <span class=”key-combo”>BOOT</span> + <span class=”key-combo”>RESET</span> for 1 second, then release both.</li>
+                    <li>Click <strong id=”flasher-step-version”>Install CYGM</strong> and select your CYGM COM port.</li>
+                    <li>Choose <strong>Install CYGM</strong> (or <strong>Logs &amp; Console</strong> for diagnostics only).</li>
+                    <li><strong>Do not choose “Erase Device”</strong> unless you intentionally want to wipe all settings/data.</li>
+                    <li>Hold <span class=”key-combo”>BOOT</span> while clicking install; when percentage/progress appears, release <span class=”key-combo”>BOOT</span>.</li>
+                </ol>
+            </div>
+
+            <div class=”flasher-install-area” style=”margin-bottom:8px;”>
+                <esp-web-install-button id=”esp-install-btn” manifest=”/cygm-manifest.json”>
+                    <button slot=”activate” id=”flash-activate-btn”>Install CYGM</button>
+                    <span slot=”unsupported”>Use desktop Chrome/Edge over HTTPS.</span>
+                    <span slot=”not-allowed”>Open this page using HTTPS.</span>
+                </esp-web-install-button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ FOOTER ============ -->
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div class="footer-left">
+                <strong>CYGM</strong> &middot; Open-source CGM display &middot; &copy; 2026
+            </div>
+            <ul class="footer-links">
+                <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+                <li><a href="#flasher">Firmware</a></li>
+                <li><a href="#diy">Build</a></li>
+                <li><a href="#story">About</a></li>
+            </ul>
+            <div class="footer-hashtag">#WeAreNotWaiting</div>
+        </div>
+    </footer>
+
+    <!-- ============ SCRIPTS ============ -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ---- NAV ----
+        const nav = document.getElementById('nav');
+        const navToggle = document.getElementById('navToggle');
+        const navLinks = document.getElementById('navLinks');
+
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 50);
+        });
+
+        navToggle.addEventListener('click', () => {
+            navToggle.classList.toggle('active');
+            navLinks.classList.toggle('open');
+        });
+
+        navLinks.querySelectorAll('a').forEach(a => {
+            a.addEventListener('click', () => {
+                navToggle.classList.remove('active');
+                navLinks.classList.remove('open');
+            });
+        });
+
+        // Open in-page modal flasher windowlet
+        const flasherModal = document.getElementById('flasherModal');
+        const flasherModalClose = document.getElementById('flasherModalClose');
+
+        function openFlasherModal() {
+            if (!flasherModal) return;
+            flasherModal.classList.add('open');
+            flasherModal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeFlasherModal() {
+            if (!flasherModal) return;
+            flasherModal.classList.remove('open');
+            flasherModal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        // Flash Firmware — open/close as overlay modal
+        const flasherOverlay = document.getElementById('flasher');
+        const flasherCloseBtn = document.getElementById('flasherCloseBtn');
+
+        function openFlasher() {
+            if (flasherOverlay) {
+                flasherOverlay.classList.add('open');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+        function closeFlasher() {
+            if (flasherOverlay) {
+                flasherOverlay.classList.remove('open');
+                document.body.style.overflow = '';
+            }
+        }
+
+        document.querySelectorAll('a[href="#flasher"]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                openFlasher();
+            });
+        });
+
+        if (flasherCloseBtn) flasherCloseBtn.addEventListener('click', closeFlasher);
+        if (flasherOverlay) flasherOverlay.addEventListener('click', (e) => {
+            if (e.target === flasherOverlay) closeFlasher();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeFlasher();
+        });
+
+        // Version labels handled by loadLatestVersion() in the main flasher section
+
+        // ---- SCROLL REVEAL ----
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    e.target.classList.add('visible');
+                    revealObserver.unobserve(e.target);
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+        // ---- GALLERY ----
+        const photos = [
+            { src: 'photos/cygm-purple-home-dashboard-desk-clean.jpeg', label: 'Home dashboard — clean desk', tags: ['dashboard', 'purple'] },
+            { src: 'photos/cygm-yellow-home-dashboard-handheld.jpg', label: 'Home dashboard — handheld', tags: ['dashboard', 'yellow'] },
+            { src: 'photos/cygm-purple-home-dashboard-fireplace.jpeg', label: 'Home dashboard — fireplace mantle', tags: ['dashboard', 'purple'] },
+            { src: 'photos/cygm-purple-home-dashboard-high-glucose.jpeg', label: 'Dashboard — high glucose alert', tags: ['dashboard', 'purple'] },
+            { src: 'photos/cygm-purple-glucose-trend-graph-tooltip.jpeg', label: 'Trend graph with tooltip', tags: ['graph', 'purple'] },
+            { src: 'photos/cygm-yellow-glucose-trend-graph-handheld.jpg', label: '6-hour glucose trend graph', tags: ['graph', 'yellow'] },
+            { src: 'photos/cygm-purple-alarm-settings-close.jpeg', label: 'Alarm settings overview', tags: ['settings', 'purple'] },
+            { src: 'photos/cygm-yellow-high-alarm-settings.jpg', label: 'High alarm configuration', tags: ['settings', 'yellow'] },
+            { src: 'photos/cygm-purple-weather-settings-sharp.jpeg', label: 'Weather settings', tags: ['settings', 'purple'] },
+            { src: 'photos/cygm-yellow-location-search-keyboard.jpg', label: 'Location search keyboard', tags: ['settings', 'yellow'] },
+            { src: 'photos/cygm-yellow-tone-picker-menu.jpg', label: 'Alarm tone picker', tags: ['settings', 'yellow'] },
+            { src: 'photos/cygm-yellow-home-dashboard-desk-night.jpg', label: 'Home dashboard — night mode', tags: ['dashboard', 'yellow'] },
+        ];
+
+        const galleryGrid = document.getElementById('galleryGrid');
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightboxImg');
+
+        function renderGallery(filter) {
+            const filtered = filter === 'all' ? photos : photos.filter(p => p.tags.includes(filter));
+            galleryGrid.innerHTML = filtered.map(p => `
+                <div class="gallery-item" data-src="${p.src}">
+                    <img src="${p.src}" alt="${p.label}" loading="lazy">
+                    <div class="gallery-item-overlay"><span>${p.label}</span></div>
+                </div>
+            `).join('');
+
+            galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    lightboxImg.src = item.dataset.src;
+                    lightbox.classList.add('active');
+                });
+            });
+        }
+
+        renderGallery('all');
+
+        document.querySelectorAll('.gallery-filter').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.gallery-filter').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderGallery(btn.dataset.filter);
+            });
+        });
+
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox || e.target.classList.contains('lightbox-close')) {
+                lightbox.classList.remove('active');
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') lightbox.classList.remove('active');
+        });
+
+        // ---- FAQ ----
+        document.querySelectorAll('.faq-question').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const item = btn.parentElement;
+                const answer = item.querySelector('.faq-answer');
+                const isOpen = item.classList.contains('open');
+                
+                document.querySelectorAll('.faq-item.open').forEach(openItem => {
+                    openItem.classList.remove('open');
+                    openItem.querySelector('.faq-answer').style.maxHeight = '0';
+                });
+
+                if (!isOpen) {
+                    item.classList.add('open');
+                    answer.style.maxHeight = answer.scrollHeight + 'px';
+                }
+            });
+        });
+
+        // Force HTTPS for Web Serial API support (required by Chrome/Edge)
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            location.replace(`https://${location.host}${location.pathname}${location.search}${location.hash}`);
+        }
+
+        // ---- CUSTOM INLINE FIRMWARE FLASHER ----
+        const flashBtn = document.getElementById('flashBtn');
+        const flashConsent = document.getElementById('flashConsent');
+        const flashProgress = document.getElementById('flashProgress');
+        const flashProgressBar = document.getElementById('flashProgressBar');
+        const flashProgressPercent = document.getElementById('flashProgressPercent');
+        const flashProgressLabel = document.getElementById('flashProgressLabel');
+        const flashStatus = document.getElementById('flashStatus');
+        const flashStatusIcon = document.getElementById('flashStatusIcon');
+        const flashStatusText = document.getElementById('flashStatusText');
+        const diagnosticsPanel = document.getElementById('diagnosticsPanel');
+        const diagnosticsOutput = document.getElementById('diagnosticsOutput');
+        const toggleDiagnosticsBtn = document.getElementById('toggleDiagnostics');
+        const flashRecovery = document.getElementById('flashRecovery');
+        const flashRecoveryText = document.getElementById('flashRecoveryText');
+
+        let latestVersion = null;
+
+        const FLASH_STATES = {
+            IDLE: 'idle',
+            PREFLIGHT: 'preflight',
+            SELECTING_PORT: 'selecting-port',
+            PREPARING_DEVICE: 'preparing-device',
+            DOWNLOADING: 'downloading',
+            CONNECTING: 'connecting',
+            WRITING: 'writing',
+            VERIFYING: 'verifying',
+            RESETTING: 'resetting',
+            COMPLETED: 'completed',
+            FAILED: 'failed'
+        };
+
+        const flashContext = {
+            state: FLASH_STATES.IDLE,
+            busy: false,
+            port: null,
+            mode: 'install',
+            attempt: 0,
+            writtenAnyData: false,
+            logs: []
+        };
+
+        const ERROR_MAP = [
+            { test: (msg) => /no port selected|cancelled/i.test(msg), user: 'No serial port selected.', recovery: 'Click Install Firmware again and select the CYGM COM port.' },
+            { test: (msg) => /failed to download|networkerror|fetch/i.test(msg), user: 'Firmware download failed.', recovery: 'Check your internet connection and retry. If needed, refresh the page first.' },
+            { test: (msg) => /not supported|web serial/i.test(msg), user: 'Browser does not support Web Serial.', recovery: 'Use latest desktop Chrome or Edge over HTTPS.' },
+            { test: (msg) => /timed out|timeout/i.test(msg), user: 'Connection timed out waiting for bootloader.', recovery: 'Re-enter boot mode (BOOT + RESET), hold BOOT, then retry.' },
+            { test: (msg) => /failed to connect|sync|invalid head/i.test(msg), user: 'Could not connect to ESP bootloader.', recovery: 'Unplug USB, enter boot mode again, hold BOOT longer, and retry.' },
+            { test: (msg) => /chip identity is undefined|cannot read properties of undefined.*(chip|BOOTLOADER_FLASH_OFFSET)|undefined.*chip|missing flash offsets|chip metadata is incomplete/i.test(msg), user: 'Device connected, but flasher chip metadata was incomplete.', recovery: 'Press RESET, re-enter BOOT mode (hold BOOT, tap RESET), keep BOOT held until writing starts, then retry.' },
+            { test: () => true, user: 'Flashing failed.', recovery: 'Press RESET, reconnect USB, then retry flashing.' }
+        ];
+
+        // Serial terminal elements
+        const terminalOutput = document.getElementById('serialOutput');
+        const terminalStatusDot = document.getElementById('serialStatusDot');
+
+        function setFlashState(nextState, extra = {}) {
+            flashContext.state = nextState;
+            pushDiag('state_change', { state: nextState, ...extra });
+        }
+
+        function pushDiag(event, details = {}) {
+            const row = {
+                ts: new Date().toISOString(),
+                event,
+                state: flashContext.state,
+                mode: flashContext.mode,
+                attempt: flashContext.attempt,
+                ...details
+            };
+            flashContext.logs.push(row);
+            if (flashContext.logs.length > 120) flashContext.logs.shift();
+            diagnosticsOutput.textContent = JSON.stringify({
+                status: flashContext.state,
+                mode: flashContext.mode,
+                attempt: flashContext.attempt,
+                last: row,
+                recent: flashContext.logs.slice(-20)
+            }, null, 2);
+        }
+
+        toggleDiagnosticsBtn?.addEventListener('click', () => {
+            diagnosticsPanel.classList.toggle('open');
+        });
+
+        // Terminal logger
+        function logToTerminal(message, type = 'info') {
+            const line = document.createElement('div');
+            line.className = `line-${type}`;
+            const ts = document.createElement('span');
+            ts.className = 'timestamp';
+            ts.textContent = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}]`;
+            line.appendChild(ts);
+            line.appendChild(document.createTextNode(` ${message}`));
+            terminalOutput.appendChild(line);
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+
+        function getFlashMode(versionObj) {
+            const stage = String(versionObj?.stage || '').toLowerCase();
+            if (stage.includes('stable') || stage.includes('release')) return 'update';
+            return 'install';
+        }
+
+        // Progress updater
+        function updateProgress(percent, label) {
+            flashProgressBar.style.width = `${percent}%`;
+            flashProgressPercent.textContent = `${Math.round(percent)}%`;
+            if (label) flashProgressLabel.textContent = label;
+            pushDiag('progress', { percent: Math.round(percent), label: label || '' });
+        }
+
+        // Status updater
+        function showStatus(message, type = 'info', icon = '?') {
+            flashStatus.className = `flash-status active ${type}`;
+            flashStatusIcon.textContent = icon;
+            flashStatusText.textContent = message;
+            pushDiag('status', { type, message });
+        }
+
+        function hideStatus() {
+            flashStatus.classList.remove('active');
+        }
+
+        function setRecovery(msg, active = true) {
+            flashRecoveryText.textContent = msg;
+            flashRecovery.classList.toggle('active', active);
+        }
+
+        function mapFlashError(err) {
+            const message = String(err?.message || err || 'Unknown error');
+            return ERROR_MAP.find((rule) => rule.test(message));
+        }
+
+        function preflightChecks() {
+            setFlashState(FLASH_STATES.PREFLIGHT);
+            if (!('serial' in navigator)) {
+                throw new Error('Web Serial API not supported in this browser.');
+            }
+            if (!latestVersion || !latestVersion.files) {
+                throw new Error('No firmware manifest loaded.');
+            }
+
+            const hasMerged = !!latestVersion.files.merged;
+            const hasSegmented = !!(latestVersion.files.bootloader && latestVersion.files.partitions && latestVersion.files.app);
+            if (!hasMerged && !hasSegmented) {
+                throw new Error('Firmware manifest missing required binaries (merged or segmented files).');
+            }
+
+            pushDiag('preflight_ok', { hasMerged, hasSegmented, version: latestVersion.version });
+        }
+
+        function getFilesToFlash(version) {
+            // Prefer merged binary — single file at offset 0x0 covers the entire
+            // flash image with no gaps.  Segmented flashing leaves holes (NVS,
+            // phy_init, OTA-data regions) that may retain stale bootloader config
+            // from a previous firmware version, causing the device to boot old code.
+            if (version.files?.merged) {
+                return [{ url: version.files.merged, address: 0x0, name: 'merged firmware' }];
+            }
+
+            const hasSegmented = !!(version.files?.bootloader && version.files?.partitions && version.files?.app);
+            if (hasSegmented) {
+                return [
+                    { url: version.files.bootloader, address: 0x1000, name: 'bootloader' },
+                    { url: version.files.partitions, address: 0x8000, name: 'partition table' },
+                    { url: version.files.app, address: 0x10000, name: 'application' },
+                    ...(version.files?.spiffs ? [{ url: version.files.spiffs, address: 0x310000, name: 'spiffs' }] : [])
+                ];
+            }
+
+            return [];
+        }
+
+        function normalizeFirmwareUrl(path) {
+            if (!path) return null;
+            const cleanPath = String(path).replace(/^\/+/, '');
+            return new URL(cleanPath, window.location.href).toString();
+        }
+
+        async function assertFirmwareFileAvailable(file) {
+            const url = normalizeFirmwareUrl(file.url);
+            if (!url) throw new Error(`Missing URL for ${file.name}`);
+
+            const headResp = await fetch(`${url}${url.includes('?') ? '&' : '?'}cb=${Date.now()}`, {
+                method: 'HEAD',
+                cache: 'no-store',
+                headers: { 'Cache-Control': 'no-cache' }
+            });
+
+            if (!headResp.ok) {
+                throw new Error(`Firmware artifact unavailable: ${file.name} (${headResp.status})`);
+            }
+
+            return url;
+        }
+
+        async function loadLatestVersion() {
+            try {
+                const cacheBust = `cb=${Date.now()}`;
+                // Load from releases.json (maintained by release script).
+                // Do NOT use get-latest-firmware.php — it may have stale/hardcoded paths.
+                const resp = await fetch(`releases.json?${cacheBust}`, {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (!resp.ok) throw new Error(`Failed to load releases.json (HTTP ${resp.status})`);
+                const data = await resp.json();
+                latestVersion = data.versions.find(v => v.latest) || data.versions[0];
+
+                if (!latestVersion) throw new Error('No firmware versions found');
+
+                document.getElementById('currentVersion').textContent = `v${latestVersion.version}`;
+                document.getElementById('releaseDate').textContent = latestVersion.date;
+                document.getElementById('releaseStage').textContent = latestVersion.stage;
+
+                if (latestVersion.notes) {
+                    const notesEl = document.getElementById('releaseNotes');
+                    notesEl.textContent = latestVersion.notes;
+                    notesEl.style.display = 'block';
+                }
+
+                flashContext.mode = getFlashMode(latestVersion);
+                pushDiag('manifest_loaded', {
+                    version: latestVersion.version,
+                    stage: latestVersion.stage,
+                    mode: flashContext.mode,
+                    hasMerged: !!latestVersion.files?.merged
+                });
+
+                const heroBadgeText = document.getElementById('heroBadgeText');
+                if (heroBadgeText) {
+                    heroBadgeText.textContent = `Current Version: v${latestVersion.version} ${latestVersion.stage}`;
+                }
+            } catch (err) {
+                console.error('Failed to load releases.json:', err);
+                document.getElementById('currentVersion').textContent = 'Error loading version';
+                pushDiag('manifest_error', { error: String(err?.message || err) });
+
+                const heroBadgeText = document.getElementById('heroBadgeText');
+                if (heroBadgeText) {
+                    heroBadgeText.textContent = 'Open Source � CYGM';
+                }
+            }
+        }
+
+        async function closePortSafely() {
+            if (!flashContext.port) return;
+            try {
+                await flashContext.port.close();
+            } catch (closeErr) {
+                logToTerminal(`[WARN] Non-fatal serial close warning: ${closeErr.message}`, 'warning');
+                pushDiag('close_warning', { message: closeErr.message });
+            } finally {
+                flashContext.port = null;
+            }
+        }
+
+        function hasChipIdentity(chip) {
+            if (!chip) return false;
+            if (typeof chip === 'string') return chip.trim().length > 0;
+            if (typeof chip === 'object') {
+                return !!(chip.name || chip.chipName || chip.CHIP_NAME || chip.family || chip._chipName);
+            }
+            return false;
+        }
+
+        function hasChipFlashOffsets(chip) {
+            if (!chip || typeof chip !== 'object') return false;
+            // esptool-js chip classes usually expose these constants.
+            return Number.isFinite(chip.BOOTLOADER_FLASH_OFFSET) || Number.isFinite(chip.APP_FLASH_OFFSET);
+        }
+
+        function chipLabel(chip) {
+            if (!chip) return 'Unknown chip';
+            if (typeof chip === 'string') return chip;
+            if (typeof chip === 'object') {
+                return chip.name || chip.chipName || chip.CHIP_NAME || chip.family || chip._chipName || 'Unknown chip';
+            }
+            return String(chip);
+        }
+
+        function validateSuccess(esploader) {
+            // Conservative success criteria:
+            // 1) writeFlash completed without throwing
+            // 2) we observed progress callback OR chip identity exists
+            const chipOk = hasChipIdentity(esploader?.chip);
+            if (!chipOk) {
+                logToTerminal('[WARN] Validation: chip identity missing', 'warning');
+            }
+            if (!flashContext.writtenAnyData) {
+                logToTerminal('[WARN] Validation: no progress callbacks observed (unusual but proceeding)', 'warning');
+            }
+            return chipOk || flashContext.writtenAnyData;
+        }
+
+        async function flashFirmware() {
+            if (flashContext.busy) return;
+            if (!latestVersion) {
+                alert('Firmware list still loading. Please try again in a moment.');
+                return;
+            }
+
+            flashContext.busy = true;
+            flashContext.attempt += 1;
+            flashContext.writtenAnyData = false;
+            flashContext.successLocked = false;  // Reset success lock
+            flashContext.mode = getFlashMode(latestVersion);
+            flashContext.logs = [];
+
+            flashBtn.disabled = true;
+            flashBtn.textContent = flashContext.mode === 'update' ? 'Updating...' : 'Installing...';
+            flashProgress.classList.add('active');
+            hideStatus();
+            setRecovery('', false);
+
+            // IMPORTANT: requestPort() MUST be the first await after user click.
+            // Any prior await (even on sync-only async functions) consumes the
+            // browser's transient user-activation, causing requestPort() to
+            // silently fail without showing the COM-port picker dialog.
+            try {
+                // Run preflight checks synchronously (no await) to preserve gesture
+                preflightChecks();
+
+                flashContext.port = await navigator.serial.requestPort();
+
+                // Now safe to do async work — port is already selected
+                // Show the flash console terminal
+                const termBox = document.getElementById('serialTerminalBox');
+                if (termBox) termBox.style.display = '';
+                terminalOutput.innerHTML = '<div class="line-system">Starting flash process...</div>';
+                updateProgress(3, 'Preflight passed');
+
+                logToTerminal('-------------------------------------------', 'system');
+                logToTerminal(`  ${flashContext.mode === 'update' ? 'FIRMWARE UPDATE' : 'FIRST INSTALL'} STARTING`, 'system');
+                logToTerminal('-------------------------------------------', 'system');
+
+                setFlashState(FLASH_STATES.PREPARING_DEVICE);
+                logToTerminal('[OK] Port selected', 'success');
+                logToTerminal('[INFO] Enter boot mode now, then hold BOOT and click the confirmation button below.', 'info');
+
+                const confirmed = await new Promise((resolve) => {
+                    const confirmBtn = document.createElement('div');
+                    confirmBtn.style.cssText = `
+                        margin: 1rem 0;
+                        padding: 1rem 1.5rem;
+                        background: var(--accent);
+                        color: var(--bg-primary);
+                        border-radius: 8px;
+                        cursor: pointer;
+                        text-align: center;
+                        font-weight: 600;
+                        transition: transform 0.2s;
+                        user-select: none;
+                    `;
+                    confirmBtn.textContent = '[OK] I\'m holding BOOT - Start Flashing';
+                    confirmBtn.onmouseover = () => confirmBtn.style.transform = 'scale(1.02)';
+                    confirmBtn.onmouseout = () => confirmBtn.style.transform = 'scale(1)';
+                    confirmBtn.onclick = () => {
+                        confirmBtn.remove();
+                        resolve(true);
+                    };
+                    terminalOutput.appendChild(confirmBtn);
+                    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                });
+
+                if (!confirmed) throw new Error('No port selected or operation cancelled by user.');
+
+                setFlashState(FLASH_STATES.DOWNLOADING);
+                updateProgress(15, 'Downloading firmware files...');
+                const files = getFilesToFlash(latestVersion);
+                if (!files.length) throw new Error('No firmware files available for this release.');
+                logToTerminal(`[INFO] Flash plan: ${files.map(f => `${f.name}@0x${f.address.toString(16)}`).join(', ')}`, 'info');
+
+                logToTerminal(`[INFO] Source: releases.json v${latestVersion.version}`, 'info');
+
+                const fileData = [];
+                const downloadToken = Date.now();
+                for (const file of files) {
+                    const normalizedUrl = await assertFirmwareFileAvailable(file);
+                    logToTerminal(`[INFO] Fetching: ${normalizedUrl}`, 'system');
+                    const cacheBustedUrl = `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}cb=${downloadToken}`;
+                    const response = await fetch(cacheBustedUrl, {
+                        cache: 'no-store',
+                        headers: { 'Cache-Control': 'no-cache' }
+                    });
+                    if (!response.ok) throw new Error(`Failed to download ${file.name}`);
+                    const blob = await response.blob();
+                    fileData.push({ ...file, url: normalizedUrl, blob });
+                    logToTerminal(`? Downloaded ${file.name} (${(blob.size / 1024).toFixed(1)} KB)`, 'success');
+                }
+
+                setFlashState(FLASH_STATES.CONNECTING);
+                updateProgress(28, 'Loading flasher library...');
+                const { ESPLoader, Transport } = await import('https://unpkg.com/esptool-js@0.5.7/bundle.js');
+
+                const transport = new Transport(flashContext.port, true);
+                const esploader = new ESPLoader({
+                    transport,
+                    baudrate: 115200,
+                    terminal: {
+                        clean: () => {},
+                        writeLine: (msg) => logToTerminal(msg, 'info'),
+                        write: () => {}
+                    }
+                });
+
+                const connectResult = await esploader.connect();
+                // IMPORTANT: don't blindly overwrite esploader.chip with connect() return value.
+                // Different esptool-js versions return different shapes here (string/object),
+                // while esploader.chip may already hold the proper chip class with flash offsets.
+                const activeChip = esploader.chip || connectResult;
+
+                if (!hasChipIdentity(activeChip)) {
+                    throw new Error('Connected to serial port, but chip identity is undefined. Re-enter BOOT mode and retry.');
+                }
+
+                // If library didn't set esploader.chip but connect result has proper chip constants, use it.
+                if (!esploader.chip && hasChipFlashOffsets(connectResult)) {
+                    esploader.chip = connectResult;
+                }
+
+                terminalStatusDot.classList.add('connected');
+                logToTerminal(`[OK] Connected to ${chipLabel(activeChip)}`, 'success');
+
+                const fileArray = [];
+                for (const file of fileData) {
+                    const arrayBuffer = await file.blob.arrayBuffer();
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    let binaryString = '';
+                    const chunkSize = 1024 * 64;
+                    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+                        binaryString += String.fromCharCode.apply(null, chunk);
+                    }
+                    fileArray.push({ data: binaryString, address: file.address });
+                }
+
+                setFlashState(FLASH_STATES.WRITING);
+                updateProgress(40, 'Writing firmware...');
+
+                if (!hasChipFlashOffsets(esploader.chip)) {
+                    throw new Error('Flasher chip metadata is incomplete (missing flash offsets). Reset device, re-enter BOOT mode, and retry.');
+                }
+
+                await esploader.writeFlash({
+                    fileArray,
+                    flashSize: 'keep',
+                    // Always erase entire flash before writing to prevent stale
+                    // bootloader config, NVS, or OTA data from causing the device
+                    // to boot an old firmware version.
+                    eraseAll: true,
+                    compress: true,
+                    reportProgress: (fileIndex, written, total) => {
+                        flashContext.writtenAnyData = flashContext.writtenAnyData || written > 0;
+                        const fileCount = fileArray.length || 1;
+                        const fileProgress = total > 0 ? (written / total) : 0;
+                        const overallProgress = (fileIndex + fileProgress) / fileCount;
+                        const percent = 40 + Math.floor(overallProgress * 52);
+                        updateProgress(percent, `${(written / 1024).toFixed(1)}/${(total / 1024).toFixed(1)} KB`);
+                    }
+                });
+
+                setFlashState(FLASH_STATES.VERIFYING);
+                updateProgress(94, 'Verifying flash completion...');
+
+                const success = validateSuccess(esploader);
+                if (!success) {
+                    throw new Error('Flash write ended without reliable completion markers.');
+                }
+
+                setFlashState(FLASH_STATES.RESETTING);
+                try {
+                    if (esploader.hardReset) {
+                        await esploader.hardReset();
+                    } else if (esploader.transport && esploader.transport.setRTS) {
+                        await esploader.transport.setRTS(true);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        await esploader.transport.setRTS(false);
+                    }
+                } catch (e) {
+                    logToTerminal('[WARN] Auto-reset failed - manually press RESET button', 'warning');
+                    pushDiag('reset_warning', { message: String(e?.message || e) });
+                }
+
+                setFlashState(FLASH_STATES.COMPLETED);
+                flashContext.successLocked = true;  // Lock success - prevent post-success errors from showing FAILED
+                updateProgress(100, 'Complete!');
+                logToTerminal('[OK] FIRMWARE FLASH COMPLETE!', 'success');
+                showStatus(`Firmware ${flashContext.mode === 'update' ? 'updated' : 'installed'} successfully!`, 'success', '?');
+            } catch (error) {
+                console.error('Flash error:', error);
+                // Only set FAILED state if flash didn't already succeed
+                if (!flashContext.successLocked) {
+                    setFlashState(FLASH_STATES.FAILED, { error: String(error?.message || error) });
+                    const mapped = mapFlashError(error);
+                    logToTerminal(`[ERR] ${mapped.user} ${mapped.recovery}`, 'error');
+                    showStatus(`${mapped.user}`, 'error', '?');
+                    setRecovery(mapped.recovery, true);
+                    updateProgress(0, 'Failed');
+                } else {
+                    // Flash succeeded but cleanup threw - log warning only
+                    logToTerminal(`[WARN] Post-flash cleanup warning: ${error.message}`, 'warning');
+                    pushDiag('post_success_warning', { message: String(error?.message || error) });
+                }
+            } finally {
+                await closePortSafely();
+                terminalStatusDot.classList.remove('connected');
+                flashContext.busy = false;
+                flashBtn.disabled = false;
+                flashBtn.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    Flash Firmware
+                `;
+                if (flashContext.state !== FLASH_STATES.COMPLETED) {
+                    pushDiag('retry_ready', { message: 'User can retry safely after recovery steps.' });
+                }
+                setTimeout(() => {
+                    if (flashContext.state === FLASH_STATES.COMPLETED) flashProgress.classList.remove('active');
+                }, 5000);
+                if (flashContext.state !== FLASH_STATES.FAILED) {
+                    setRecovery('', false);
+                }
+                if (flashContext.state === FLASH_STATES.COMPLETED) {
+                    setFlashState(FLASH_STATES.IDLE);
+                }
+            }
+        }
+
+        // Event listeners
+        flashBtn.addEventListener('click', () => {
+            if (!flashConsent?.checked) {
+                showStatus('Please check the instruction confirmation box first.', 'error', '!');
+                setRecovery('Read and confirm the instructions, then try again.', true);
+                return;
+            }
+
+            flashFirmware();
+        });
+
+        // Load latest version on page load
+        loadLatestVersion();
+
+        // ---- SERIAL TERMINAL ----
+        const serialOutput = document.getElementById('serialOutput');
+        const serialConnectBtn = document.getElementById('serialConnectBtn');
+        const serialClearBtn = document.getElementById('serialClearBtn');
+        const serialStatusDot = document.getElementById('serialStatusDot');
+        const baudRateSelect = document.getElementById('baudRateSelect');
+
+        if (serialOutput && serialConnectBtn && serialClearBtn && serialStatusDot && baudRateSelect) {
+            let serialPort = null;
+            let serialReader = null;
+            let serialReadable = null;
+            let keepReading = false;
+
+            function getTimestamp() {
+                const d = new Date();
+                return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+
+            function appendLine(text, className) {
+                const line = document.createElement('div');
+                if (className) line.className = className;
+                const ts = document.createElement('span');
+                ts.className = 'timestamp';
+                ts.textContent = `[${getTimestamp()}]`;
+                line.appendChild(ts);
+                line.appendChild(document.createTextNode(text));
+                serialOutput.appendChild(line);
+                serialOutput.scrollTop = serialOutput.scrollHeight;
+            }
+
+            function setConnected(connected) {
+                if (connected) {
+                    serialStatusDot.classList.add('connected');
+                    serialConnectBtn.textContent = 'Disconnect';
+                    serialConnectBtn.classList.remove('connect-btn');
+                    serialConnectBtn.classList.add('disconnect-btn');
+                } else {
+                    serialStatusDot.classList.remove('connected');
+                    serialConnectBtn.textContent = 'Connect';
+                    serialConnectBtn.classList.remove('disconnect-btn');
+                    serialConnectBtn.classList.add('connect-btn');
+                }
+            }
+
+            async function connectSerial() {
+                if (!('serial' in navigator)) {
+                    appendLine('Web Serial API not supported in this browser. Use Chrome or Edge.', 'line-error');
+                    return;
+                }
+
+                try {
+                    serialPort = await navigator.serial.requestPort();
+                    const baudRate = parseInt(baudRateSelect.value);
+                    await serialPort.open({ baudRate: baudRate });
+
+                    setConnected(true);
+                    appendLine(`Device connected at ${baudRate} baud`, 'line-success');
+                    appendLine('You can now release the BOOT button. Listening for data...', 'line-info');
+
+                    keepReading = true;
+                    readLoop();
+                } catch (err) {
+                    if (err.name === 'NotFoundError') {
+                        appendLine('No device selected — connection cancelled.', 'line-system');
+                    } else {
+                        appendLine(`Connection failed: ${err.message}`, 'line-error');
+                    }
+                }
+            }
+
+            async function readLoop() {
+                while (serialPort && serialPort.readable && keepReading) {
+                    const decoder = new TextDecoderStream();
+                    serialReadable = serialPort.readable.pipeTo(decoder.writable);
+                    const reader = decoder.readable.getReader();
+                    serialReader = reader;
+
+                    let lineBuffer = '';
+
+                    try {
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            if (value) {
+                                lineBuffer += value;
+                                const lines = lineBuffer.split('\n');
+                                lineBuffer = lines.pop() || '';
+                                for (const line of lines) {
+                                    const trimmed = line.replace(/\r/g, '').trimEnd();
+                                    if (trimmed.length > 0) appendLine(trimmed, 'line-success');
+                                }
+                            }
+                        }
+
+                        const tail = lineBuffer.replace(/\r/g, '').trim();
+                        if (tail.length > 0) appendLine(tail, 'line-success');
+                    } catch (err) {
+                        if (keepReading) appendLine(`Read error: ${err.message}`, 'line-error');
+                    } finally {
+                        reader.releaseLock();
+                    }
+                }
+            }
+
+            async function disconnectSerial() {
+                keepReading = false;
+                try { if (serialReader) { await serialReader.cancel(); serialReader = null; } } catch (e) {}
+                try { if (serialReadable) { await serialReadable.catch(() => {}); serialReadable = null; } } catch (e) {}
+                try { if (serialPort) { await serialPort.close(); serialPort = null; } } catch (e) {}
+                setConnected(false);
+                appendLine('Device disconnected.', 'line-system');
+            }
+
+            serialConnectBtn.addEventListener('click', () => {
+                if (serialPort) disconnectSerial(); else connectSerial();
+            });
+
+            serialClearBtn.addEventListener('click', () => {
+                serialOutput.innerHTML = '<div class="line-system">Terminal cleared.</div>';
+            });
+
+            window.addEventListener('beforeunload', () => {
+                if (serialPort) disconnectSerial();
+            });
+        }
+
+    })();
+    </script>
+</body>
+</html>
