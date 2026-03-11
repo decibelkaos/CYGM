@@ -430,3 +430,44 @@ bool sd_logger_available(void)
 {
     return spi_initialized && card_detected;
 }
+
+esp_err_t sd_card_mount(sdmmc_card_t **out_card)
+{
+    if (!spi_initialized || !card_detected) return ESP_ERR_NOT_FOUND;
+    if (!log_mutex || !out_card) return ESP_ERR_INVALID_STATE;
+
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) return ESP_ERR_TIMEOUT;
+
+    serial_capture_paused = true;
+
+    // No conservative pre-check here — sd_logger_flush() has its own 15KB guard.
+    // Callers like screenshot_take() need to attempt mount with whatever memory
+    // is available; esp_vfs_fat_sdspi_mount() returns ESP_ERR_NO_MEM gracefully.
+
+    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
+        .format_if_mount_failed = false,
+        .max_files = 1,
+        .allocation_unit_size = 0,
+    };
+
+    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_cfg, out_card);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SD mount failed: %s", esp_err_to_name(ret));
+        if (ret == ESP_ERR_NOT_FOUND) card_detected = false;
+        serial_capture_paused = false;
+        xSemaphoreGive(log_mutex);
+    }
+    // On success: caller holds log_mutex until sd_card_unmount()
+    return ret;
+}
+
+void sd_card_unmount(sdmmc_card_t *card)
+{
+    if (card) {
+        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+    }
+    serial_capture_paused = false;
+    if (log_mutex) {
+        xSemaphoreGive(log_mutex);
+    }
+}

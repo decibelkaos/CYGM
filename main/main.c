@@ -50,6 +50,7 @@
 #include "hardware/buzzer.h"
 #include "hardware/battery.h"
 #include "hardware/display.h"
+#include "hardware/screenshot.h"
 #include "features/time_system.h"
 #include "features/weather_system.h"
 #include "features/glucose_history.h"
@@ -787,283 +788,151 @@ void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t fram
 }
 
 // Draw trend arrow on canvas (60x60 pixels)
+// Style: Solid severity-colored glow (wide) + solid blue core (narrow) on top.
+// ALL glow segments drawn first, then ALL core segments — proper z-layering
+// so the blue core is always cleanly on top at junctions.
+// Green glow = stable (flat, 45°), Orange = warning (single), Red = alarm (double)
 void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
     if (canvas == NULL) return;
 
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-    line_dsc.round_start = 1;
-    line_dsc.round_end = 1;
+    // Glow (outer) — severity color, full opacity, wide
+    lv_draw_line_dsc_t glow;
+    lv_draw_line_dsc_init(&glow);
+    glow.round_start = 1;
+    glow.round_end = 1;
+    glow.width = 12;
 
-    lv_draw_line_dsc_t glow_dsc;
-    lv_draw_line_dsc_init(&glow_dsc);
-    glow_dsc.round_start = 1;
-    glow_dsc.round_end = 1;
+    // Core (inner) — blue, full opacity, narrower
+    lv_draw_line_dsc_t core;
+    lv_draw_line_dsc_init(&core);
+    core.round_start = 1;
+    core.round_end = 1;
+    core.color = lv_color_hex(0x3B82F6);
+    core.width = 8;
 
-    lv_point_t points[10];
+    // Set glow color based on severity
+    switch (trend) {
+        case TREND_FLAT:
+        case TREND_FORTY_FIVE_UP:
+        case TREND_FORTY_FIVE_DOWN:
+            glow.color = lv_color_hex(0x10B981);  // Green — stable
+            break;
+        case TREND_SINGLE_UP:
+        case TREND_SINGLE_DOWN:
+            glow.color = lv_color_hex(0xF59E0B);  // Orange — warning
+            break;
+        case TREND_DOUBLE_UP:
+        case TREND_DOUBLE_DOWN:
+            glow.color = lv_color_hex(0xEF4444);  // Red — alarm
+            break;
+        default:
+            return;
+    }
+
+    // Helper: draw a single line segment on canvas
+    #define DRAW_SEG(dsc, x1, y1, x2, y2) do { \
+        lv_point_t _p[2] = {{x1, y1}, {x2, y2}}; \
+        lv_canvas_draw_line(canvas, _p, 2, &dsc); \
+    } while(0)
+
+    // For double arrows, use slightly narrower lines to avoid overlap
+    lv_draw_line_dsc_t glow_d = glow;
+    lv_draw_line_dsc_t core_d = core;
+    glow_d.width = 11;
+    core_d.width = 7;
 
     switch (trend) {
-        case TREND_FLAT: {
-            // Green glow - horizontal arrow (LARGER, 1.3x scale)
-            glow_dsc.color = lv_color_hex(0x10B981);
-            glow_dsc.width = 12;
-            // Horizontal shaft (centered at 30,30)
-            points[0] = (lv_point_t){6, 30};
-            points[1] = (lv_point_t){50, 30};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead V-shape (perfectly symmetric)
-            points[0] = (lv_point_t){50, 30};  // Tip
-            points[1] = (lv_point_t){41, 21};  // Upper winglet
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){50, 30};  // Tip
-            points[1] = (lv_point_t){41, 39};  // Lower winglet (symmetric: 30-9=21, 30+9=39)
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrow
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 9;
-            points[0] = (lv_point_t){6, 30};
-            points[1] = (lv_point_t){50, 30};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){50, 30};
-            points[1] = (lv_point_t){41, 21};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){50, 30};
-            points[1] = (lv_point_t){41, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_FLAT:
+            // Horizontal arrow pointing right, centered at (30,30)
+            // --- Glow layer (all segments) ---
+            DRAW_SEG(glow, 6, 30, 50, 30);       // shaft
+            DRAW_SEG(glow, 50, 30, 41, 21);      // upper winglet
+            DRAW_SEG(glow, 50, 30, 41, 39);      // lower winglet
+            // --- Core layer (all segments) ---
+            DRAW_SEG(core, 6, 30, 50, 30);
+            DRAW_SEG(core, 50, 30, 41, 21);
+            DRAW_SEG(core, 50, 30, 41, 39);
             break;
-        }
 
-        case TREND_FORTY_FIVE_UP: {
-            // Green glow (LARGER, 1.3x scale)
-            glow_dsc.color = lv_color_hex(0x10B981);
-            glow_dsc.width = 12;
-            // Diagonal shaft
-            points[0] = (lv_point_t){10, 50};
-            points[1] = (lv_point_t){47, 13};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead V-shape (rotated 45°)
-            points[0] = (lv_point_t){47, 13};
-            points[1] = (lv_point_t){35, 12};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){47, 13};
-            points[1] = (lv_point_t){48, 25};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrow
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 9;
-            points[0] = (lv_point_t){10, 50};
-            points[1] = (lv_point_t){47, 13};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){47, 13};
-            points[1] = (lv_point_t){35, 12};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){47, 13};
-            points[1] = (lv_point_t){48, 25};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_FORTY_FIVE_UP:
+            // Diagonal: bottom-left to upper-right
+            DRAW_SEG(glow, 10, 50, 47, 13);      // shaft
+            DRAW_SEG(glow, 47, 13, 35, 12);      // winglet left
+            DRAW_SEG(glow, 47, 13, 48, 25);      // winglet down
+            DRAW_SEG(core, 10, 50, 47, 13);
+            DRAW_SEG(core, 47, 13, 35, 12);
+            DRAW_SEG(core, 47, 13, 48, 25);
             break;
-        }
 
-        case TREND_FORTY_FIVE_DOWN: {
-            // Green glow (LARGER, 1.3x scale)
-            glow_dsc.color = lv_color_hex(0x10B981);
-            glow_dsc.width = 12;
-            // Diagonal shaft
-            points[0] = (lv_point_t){10, 10};
-            points[1] = (lv_point_t){47, 47};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead V-shape (rotated -45°)
-            points[0] = (lv_point_t){47, 47};
-            points[1] = (lv_point_t){35, 48};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){47, 47};
-            points[1] = (lv_point_t){48, 35};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrow
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 9;
-            points[0] = (lv_point_t){10, 10};
-            points[1] = (lv_point_t){47, 47};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){47, 47};
-            points[1] = (lv_point_t){35, 48};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){47, 47};
-            points[1] = (lv_point_t){48, 35};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_FORTY_FIVE_DOWN:
+            // Diagonal: upper-left to bottom-right (mirror of 45-up)
+            DRAW_SEG(glow, 10, 10, 47, 47);      // shaft
+            DRAW_SEG(glow, 47, 47, 35, 48);      // winglet left
+            DRAW_SEG(glow, 47, 47, 48, 35);      // winglet up
+            DRAW_SEG(core, 10, 10, 47, 47);
+            DRAW_SEG(core, 47, 47, 35, 48);
+            DRAW_SEG(core, 47, 47, 48, 35);
             break;
-        }
 
-        case TREND_SINGLE_UP: {
-            // Orange glow (LARGER, 1.3x scale)
-            glow_dsc.color = lv_color_hex(0xFFA500);
-            glow_dsc.width = 12;
-            // Vertical shaft
-            points[0] = (lv_point_t){30, 54};
-            points[1] = (lv_point_t){30, 13};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead (symmetric)
-            points[0] = (lv_point_t){30, 13};
-            points[1] = (lv_point_t){21, 22};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){30, 13};
-            points[1] = (lv_point_t){39, 22};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrow
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 9;
-            points[0] = (lv_point_t){30, 54};
-            points[1] = (lv_point_t){30, 13};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){30, 13};
-            points[1] = (lv_point_t){21, 22};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){30, 13};
-            points[1] = (lv_point_t){39, 22};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_SINGLE_UP:
+            // Vertical arrow pointing up, centered at x=30
+            DRAW_SEG(glow, 30, 54, 30, 13);      // shaft
+            DRAW_SEG(glow, 30, 13, 21, 22);      // left winglet
+            DRAW_SEG(glow, 30, 13, 39, 22);      // right winglet
+            DRAW_SEG(core, 30, 54, 30, 13);
+            DRAW_SEG(core, 30, 13, 21, 22);
+            DRAW_SEG(core, 30, 13, 39, 22);
             break;
-        }
 
-        case TREND_SINGLE_DOWN: {
-            // Orange glow
-            glow_dsc.color = lv_color_hex(0xFFA500);
-            glow_dsc.width = 11;
-            // Vertical shaft (38 pixels)
-            points[0] = (lv_point_t){30, 8};
-            points[1] = (lv_point_t){30, 46};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Arrowhead
-            points[0] = (lv_point_t){30, 46};
-            points[1] = (lv_point_t){22, 39};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){30, 46};
-            points[1] = (lv_point_t){38, 39};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrow
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            points[0] = (lv_point_t){30, 8};
-            points[1] = (lv_point_t){30, 46};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){30, 46};
-            points[1] = (lv_point_t){22, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){30, 46};
-            points[1] = (lv_point_t){38, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_SINGLE_DOWN:
+            // Vertical arrow pointing down, centered at x=30
+            DRAW_SEG(glow, 30, 6, 30, 47);       // shaft
+            DRAW_SEG(glow, 30, 47, 21, 38);      // left winglet
+            DRAW_SEG(glow, 30, 47, 39, 38);      // right winglet
+            DRAW_SEG(core, 30, 6, 30, 47);
+            DRAW_SEG(core, 30, 47, 21, 38);
+            DRAW_SEG(core, 30, 47, 39, 38);
             break;
-        }
 
-        case TREND_DOUBLE_UP: {
-            // Red glow
-            glow_dsc.color = lv_color_hex(0xFF4444);
-            glow_dsc.width = 11;
-            // Left arrow (36 pixels)
-            points[0] = (lv_point_t){19, 52};
-            points[1] = (lv_point_t){19, 16};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){19, 16};
-            points[1] = (lv_point_t){11, 23};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){19, 16};
-            points[1] = (lv_point_t){26, 23};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Right arrow (36 pixels)
-            points[0] = (lv_point_t){41, 52};
-            points[1] = (lv_point_t){41, 16};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){41, 16};
-            points[1] = (lv_point_t){34, 23};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){41, 16};
-            points[1] = (lv_point_t){49, 23};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrows
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            // Left arrow
-            points[0] = (lv_point_t){19, 52};
-            points[1] = (lv_point_t){19, 16};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){19, 16};
-            points[1] = (lv_point_t){11, 23};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){19, 16};
-            points[1] = (lv_point_t){26, 23};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            // Right arrow
-            points[0] = (lv_point_t){41, 52};
-            points[1] = (lv_point_t){41, 16};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){41, 16};
-            points[1] = (lv_point_t){34, 23};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){41, 16};
-            points[1] = (lv_point_t){49, 23};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_DOUBLE_UP:
+            // Two vertical arrows at x=19 and x=41 (22px apart)
+            // --- All glow first ---
+            DRAW_SEG(glow_d, 19, 52, 19, 16);    // left shaft
+            DRAW_SEG(glow_d, 19, 16, 11, 23);    // left winglet L
+            DRAW_SEG(glow_d, 19, 16, 26, 23);    // left winglet R
+            DRAW_SEG(glow_d, 41, 52, 41, 16);    // right shaft
+            DRAW_SEG(glow_d, 41, 16, 34, 23);    // right winglet L
+            DRAW_SEG(glow_d, 41, 16, 49, 23);    // right winglet R
+            // --- All core second ---
+            DRAW_SEG(core_d, 19, 52, 19, 16);
+            DRAW_SEG(core_d, 19, 16, 11, 23);
+            DRAW_SEG(core_d, 19, 16, 26, 23);
+            DRAW_SEG(core_d, 41, 52, 41, 16);
+            DRAW_SEG(core_d, 41, 16, 34, 23);
+            DRAW_SEG(core_d, 41, 16, 49, 23);
             break;
-        }
 
-        case TREND_DOUBLE_DOWN: {
-            // Red glow
-            glow_dsc.color = lv_color_hex(0xFF4444);
-            glow_dsc.width = 11;
-            // Left arrow (38 pixels)
-            points[0] = (lv_point_t){19, 8};
-            points[1] = (lv_point_t){19, 46};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){19, 46};
-            points[1] = (lv_point_t){11, 39};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){19, 46};
-            points[1] = (lv_point_t){26, 39};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            // Right arrow (38 pixels)
-            points[0] = (lv_point_t){41, 8};
-            points[1] = (lv_point_t){41, 46};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){41, 46};
-            points[1] = (lv_point_t){34, 39};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-            points[0] = (lv_point_t){41, 46};
-            points[1] = (lv_point_t){49, 39};
-            lv_canvas_draw_line(canvas, points, 2, &glow_dsc);
-
-            // Blue arrows
-            line_dsc.color = lv_color_hex(0x3B82F6);
-            line_dsc.width = 8;
-            // Left arrow
-            points[0] = (lv_point_t){19, 8};
-            points[1] = (lv_point_t){19, 46};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){19, 46};
-            points[1] = (lv_point_t){11, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){19, 46};
-            points[1] = (lv_point_t){26, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            // Right arrow
-            points[0] = (lv_point_t){41, 8};
-            points[1] = (lv_point_t){41, 46};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){41, 46};
-            points[1] = (lv_point_t){34, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
-            points[0] = (lv_point_t){41, 46};
-            points[1] = (lv_point_t){49, 39};
-            lv_canvas_draw_line(canvas, points, 2, &line_dsc);
+        case TREND_DOUBLE_DOWN:
+            // Two vertical arrows at x=19 and x=41
+            DRAW_SEG(glow_d, 19, 8, 19, 44);     // left shaft
+            DRAW_SEG(glow_d, 19, 44, 11, 37);    // left winglet L
+            DRAW_SEG(glow_d, 19, 44, 26, 37);    // left winglet R
+            DRAW_SEG(glow_d, 41, 8, 41, 44);     // right shaft
+            DRAW_SEG(glow_d, 41, 44, 34, 37);    // right winglet L
+            DRAW_SEG(glow_d, 41, 44, 49, 37);    // right winglet R
+            DRAW_SEG(core_d, 19, 8, 19, 44);
+            DRAW_SEG(core_d, 19, 44, 11, 37);
+            DRAW_SEG(core_d, 19, 44, 26, 37);
+            DRAW_SEG(core_d, 41, 8, 41, 44);
+            DRAW_SEG(core_d, 41, 44, 34, 37);
+            DRAW_SEG(core_d, 41, 44, 49, 37);
             break;
-        }
 
         default:
-            // No trend or unknown - draw nothing
             break;
     }
+
+    #undef DRAW_SEG
 }
 
 // ==================== Time & SNTP Functions ====================
@@ -2740,6 +2609,7 @@ void app_main(void) {
     // Initialize SD card logger (mount-on-write, ~2.5KB permanent)
     add_boot_log("Init SD logger");
     sd_logger_init();  // Non-fatal if no card inserted
+    screenshot_init(); // Serial command listener (type "ss" in monitor)
 
     // Log reset reason — critical for diagnosing crashes, watchdogs, brownouts
     {

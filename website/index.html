@@ -577,34 +577,10 @@
         .gallery-header {
             margin-bottom: 3rem;
         }
-        .gallery-filters {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            margin-top: 1.5rem;
-        }
-        .gallery-filter {
-            background: transparent;
-            border: 1px solid var(--border-subtle);
-            color: var(--text-secondary);
-            padding: 0.4rem 1rem;
-            border-radius: 100px;
-            font-family: 'DM Sans', sans-serif;
-            font-size: 0.8125rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .gallery-filter.active,
-        .gallery-filter:hover {
-            background: var(--accent-glow);
-            border-color: var(--border-accent);
-            color: var(--accent);
-        }
 
         .gallery-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
         }
         .gallery-item {
@@ -638,6 +614,44 @@
             font-size: 0.8125rem;
             font-weight: 500;
         }
+
+        /* Divider between photos and screenshots */
+        .gallery-divider {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.5rem 0 0.5rem;
+        }
+        .gallery-divider::before,
+        .gallery-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-subtle);
+        }
+        .gallery-divider span {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        /* Screenshots — pixel-perfect device captures */
+        .gallery-item--screenshot {
+            aspect-ratio: 4/3;
+            background: #0a0e17;
+            border: 1px solid var(--border-subtle);
+        }
+        .gallery-item--screenshot img {
+            object-fit: contain;
+            image-rendering: crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+        }
+        .gallery-item--screenshot:hover img { transform: scale(1.04); }
 
         /* Lightbox */
         .lightbox {
@@ -682,10 +696,9 @@
         .lightbox-close:hover { background: rgba(255,255,255,0.2); }
 
         @media (max-width: 600px) {
-            .gallery-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
-            .gallery-item { aspect-ratio: 1; }
-            .gallery-filters { gap: 0.5rem; }
-            .gallery-filter { font-size: 0.75rem; padding: 0.5rem 0.875rem; }
+            .gallery-grid { gap: 0.5rem; }
+            .gallery-item { aspect-ratio: 16/10; }
+            .gallery-item--screenshot { aspect-ratio: 4/3; }
         }
 
         /* ============================================
@@ -1377,13 +1390,6 @@
             <div class="gallery-header reveal">
                 <div class="section-label">Gallery</div>
                 <h2 class="section-title">See it in action</h2>
-                <p class="section-subtitle">Real photos of CYGM running on actual hardware — no renders, no mockups.</p>
-                <div class="gallery-filters">
-                    <button class="gallery-filter active" data-filter="all">All</button>
-                    <button class="gallery-filter" data-filter="dashboard">Dashboard</button>
-                    <button class="gallery-filter" data-filter="graph">Graph</button>
-                    <button class="gallery-filter" data-filter="settings">Settings</button>
-                </div>
             </div>
             <div class="gallery-grid" id="galleryGrid"></div>
         </div>
@@ -1621,48 +1627,45 @@
 
         // ---- GALLERY ----
         const photos = [
-            { src: 'photos/cygm-purple-home-dashboard-desk-clean.jpeg', label: 'Home dashboard — clean desk', tags: ['dashboard', 'purple'] },
-            { src: 'photos/cygm-yellow-home-dashboard-handheld.jpg', label: 'Home dashboard — handheld', tags: ['dashboard', 'yellow'] },
-            { src: 'photos/cygm-purple-home-dashboard-fireplace.jpeg', label: 'Home dashboard — fireplace mantle', tags: ['dashboard', 'purple'] },
-            { src: 'photos/cygm-purple-home-dashboard-high-glucose.jpeg', label: 'Dashboard — high glucose alert', tags: ['dashboard', 'purple'] },
-            { src: 'photos/cygm-purple-glucose-trend-graph-tooltip.jpeg', label: 'Trend graph with tooltip', tags: ['graph', 'purple'] },
-            { src: 'photos/cygm-yellow-glucose-trend-graph-handheld.jpg', label: '6-hour glucose trend graph', tags: ['graph', 'yellow'] },
-            { src: 'photos/cygm-purple-alarm-settings-close.jpeg', label: 'Alarm settings overview', tags: ['settings', 'purple'] },
-            { src: 'photos/cygm-yellow-high-alarm-settings.jpg', label: 'High alarm configuration', tags: ['settings', 'yellow'] },
-            { src: 'photos/cygm-purple-weather-settings-sharp.jpeg', label: 'Weather settings', tags: ['settings', 'purple'] },
-            { src: 'photos/cygm-yellow-location-search-keyboard.jpg', label: 'Location search keyboard', tags: ['settings', 'yellow'] },
-            { src: 'photos/cygm-yellow-tone-picker-menu.jpg', label: 'Alarm tone picker', tags: ['settings', 'yellow'] },
-            { src: 'photos/cygm-yellow-home-dashboard-desk-night.jpg', label: 'Home dashboard — night mode', tags: ['dashboard', 'yellow'] },
+            { src: 'photos/cygm-purple-home-dashboard-fireplace.jpeg', label: 'Home dashboard — fireplace mantle' },
+            { src: 'photos/cygm-yellow-home-dashboard-desk-night.jpg', label: 'Home dashboard — night mode' },
+        ];
+        const screenshots = [
+            { src: 'photos/screenshot-home-dashboard.jpg', label: 'Home dashboard' },
+            { src: 'photos/screenshot-settings-menu.jpg', label: 'Settings menu' },
+            { src: 'photos/screenshot-alarms-on.jpg', label: 'Alarm configuration' },
+            { src: 'photos/screenshot-alarm-detail-editor.jpg', label: 'Alarm detail editor' },
+            { src: 'photos/screenshot-tone-picker.jpg', label: 'Alarm tone picker' },
+            { src: 'photos/screenshot-time-weather-settings.jpg', label: 'Time & weather settings' },
+            { src: 'photos/screenshot-wifi-scanning.jpg', label: 'WiFi network scanner' },
+            { src: 'photos/screenshot-brightness-slider.jpg', label: 'Brightness control' },
+            { src: 'photos/screenshot-about-overlay.jpg', label: 'About & version info' },
+            { src: 'photos/screenshot-ota-update.jpg', label: 'OTA update notification' },
         ];
 
         const galleryGrid = document.getElementById('galleryGrid');
         const lightbox = document.getElementById('lightbox');
         const lightboxImg = document.getElementById('lightboxImg');
 
-        function renderGallery(filter) {
-            const filtered = filter === 'all' ? photos : photos.filter(p => p.tags.includes(filter));
-            galleryGrid.innerHTML = filtered.map(p => `
+        galleryGrid.innerHTML =
+            photos.map(p => `
                 <div class="gallery-item" data-src="${p.src}">
+                    <img src="${p.src}" alt="${p.label}" loading="lazy">
+                    <div class="gallery-item-overlay"><span>${p.label}</span></div>
+                </div>
+            `).join('') +
+            '<div class="gallery-divider"><span>Screenshots taken directly from the device</span></div>' +
+            screenshots.map(p => `
+                <div class="gallery-item gallery-item--screenshot" data-src="${p.src}">
                     <img src="${p.src}" alt="${p.label}" loading="lazy">
                     <div class="gallery-item-overlay"><span>${p.label}</span></div>
                 </div>
             `).join('');
 
-            galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    lightboxImg.src = item.dataset.src;
-                    lightbox.classList.add('active');
-                });
-            });
-        }
-
-        renderGallery('all');
-
-        document.querySelectorAll('.gallery-filter').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.gallery-filter').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                renderGallery(btn.dataset.filter);
+        galleryGrid.querySelectorAll('.gallery-item').forEach(item => {
+            item.addEventListener('click', () => {
+                lightboxImg.src = item.dataset.src;
+                lightbox.classList.add('active');
             });
         });
 

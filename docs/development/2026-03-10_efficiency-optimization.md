@@ -13,18 +13,18 @@
 |---|------|----------|--------|-------------|
 | A | Compiler optimization: DEBUG → SIZE | Critical | [x] APPLIED | ~250-400 KB flash, faster execution |
 | B | FreeRTOS tick rate: 1000Hz → 100Hz | Critical | [x] APPLIED | CPU cycles (10x fewer scheduler interrupts) |
-| C | Reclaim unused SPIFFS partition (960KB) | Critical | [ ] TODO | 960 KB flash for OTA or larger app |
+| C | Reclaim SPIFFS → OTA dual partition | Critical | [x] APPLIED | OTA updates enabled (2x 1.94MB slots) |
 | D | mbedTLS SSL_IN_CONTENT_LEN: 8192 → 4096 | Critical | [~] BLOCKED | 4 KB peak RAM (see notes) |
-| E | Disable mbedTLS TLS Server | Medium | [ ] TODO | ~10-20 KB flash |
-| F | Strip unused mbedTLS features | Medium | [ ] TODO | ~15-25 KB flash |
-| G | Reduce ECP curves: 12 → 2 | Medium | [ ] TODO | ~20-40 KB flash |
-| H | Certificate bundle: FULL → CMN | Medium | [ ] TODO | ~25 KB flash |
+| E | Disable mbedTLS TLS Server | Medium | [x] APPLIED | ~10-20 KB flash |
+| F | Strip unused mbedTLS features | Medium | [x] APPLIED | ~15-25 KB flash |
+| G | Reduce ECP curves: 12 → 2 | Medium | [x] APPLIED | ~20-40 KB flash |
+| H | Certificate bundle: FULL → CMN | Medium | [x] APPLIED | ~25 KB flash |
 | I | Disable IPv6 | **Critical** | [x] APPLIED | ~7 KB DRAM + ~39 KB flash |
 | J | Disable DHCP server + SoftAP | **Critical** | [x] APPLIED | ~3-5 KB DRAM + flash |
 | K | Reduce network buffer counts | **Critical** | [x] APPLIED | ~6.4 KB DRAM (WiFi static RX) |
-| L | Enable NEWLIB_NANO_FORMAT | Medium | [ ] TODO | ~50 KB flash |
+| L | Enable NEWLIB_NANO_FORMAT | Medium | [x] APPLIED | ~50 KB flash |
 | M | Log level: INFO → WARN (production) | Minor | [ ] TODO | Flash (fewer strings) |
-| N | CPU frequency: 160MHz → 240MHz | Minor | [ ] TODO | ~33% faster SSL/UI |
+| N | CPU frequency: 160MHz → 240MHz | Minor | [x] APPLIED | ~33% faster SSL/UI |
 
 ---
 
@@ -87,30 +87,43 @@ led.c:94      — vTaskDelay(pdMS_TO_TICKS(6))  → vTaskDelay(1)  // LED fade s
 
 ---
 
-## C. Reclaim Unused SPIFFS Partition
+## C. Reclaim SPIFFS → OTA Dual Partition
 
-**What:** 960KB of flash is allocated to a SPIFFS partition that exists solely for the web server, which is disabled (`ENABLE_WEB_SERVER 0`).
-
-**Why it matters:** 960KB is nearly 1MB of wasted flash. Could be used for OTA (wireless firmware updates) or just expand the factory partition.
-
-**Options:**
-1. Remove SPIFFS entirely (simplest, reclaim for larger factory partition)
-2. Replace with OTA partition layout (enables wireless updates)
-3. Leave as-is if web server might return in the future
+**What:** Replaced unused SPIFFS (960KB) + single factory app with dual OTA partition layout. Enables wireless firmware updates.
 
 **Before:**
 ```csv
-# partitions.csv
-nvs,      data, nvs,     0x9000,   0x6000,
-phy_init, data, phy,     0xf000,   0x1000,
-factory,  app,  factory, 0x10000,  0x300000,
-spiffs,   data, spiffs,  0x310000, 0xF0000,
+nvs,      data, nvs,     0x9000,   0x6000,    # 24KB
+phy_init, data, phy,     0xf000,   0x1000,    # 4KB
+factory,  app,  factory, 0x10000,  0x300000,  # 3MB (single slot)
+spiffs,   data, spiffs,  0x310000, 0xF0000,   # 960KB (UNUSED)
 ```
 
 **After:**
+```csv
+nvs,      data, nvs,     0x9000,   0x4000,    # 16KB
+otadata,  data, ota,     0xd000,   0x2000,    # 8KB (tracks active slot)
+phy_init, data, phy,     0xf000,   0x1000,    # 4KB
+ota_0,    app,  ota_0,   0x10000,  0x1F0000,  # 1.94MB
+ota_1,    app,  ota_1,   0x200000, 0x1F0000,  # 1.94MB
 ```
-(pending)
-```
+
+**Changes made:**
+- `partitions.csv` — new OTA layout
+- `sdkconfig.defaults` — `CONFIG_PARTITION_TABLE_CUSTOM=y`, rollback enabled
+- `update_checker.c` — full OTA download with progress overlay, rollback confirmation
+- `update_checker.h` — added `firmware_url`, `update_start_ota()`, `update_confirm_boot()`
+- `main.c` — calls `update_confirm_boot()` on successful init
+- `version.json` — added `firmware_url` field for OTA download URL
+- `CMakeLists.txt` — added `esp_https_ota` dependency
+
+**Notes:**
+- NVS reduced 24KB→16KB (device uses ~3KB, plenty of headroom)
+- Each OTA slot: 1.94MB vs ~1.52MB binary = ~420KB growth headroom
+- First flash after partition change MUST be via USB
+- Subsequent updates can be wireless (OTA)
+- Rollback: if new firmware crashes before `update_confirm_boot()`, bootloader auto-reverts
+- OTA download: closes Dexcom SSL first, uses ~20-25KB DRAM, streams in 1KB chunks
 
 ---
 
@@ -157,7 +170,7 @@ CONFIG_MBEDTLS_TLS_SERVER=y
 
 **After:**
 ```
-(pending)
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
 ```
 
 ---
@@ -170,7 +183,7 @@ CONFIG_MBEDTLS_TLS_SERVER=y
 - `MBEDTLS_X509_CRL_PARSE_C` — Certificate Revocation Lists (not checked)
 - `MBEDTLS_X509_CSR_PARSE_C` — Certificate Signing Requests (not generated)
 - `MBEDTLS_PKCS7_C` — PKCS#7 format (not used)
-- `MBEDTLS_SHA512_C` — SHA-384/512 (not required for TLS 1.2 with AES-GCM)
+- ~~`MBEDTLS_SHA512_C`~~ — **MUST KEEP**: SHA-384 is required for Dexcom cert validation (ECDSA SHA-384)
 
 **How:** `idf.py menuconfig` → Component config → mbedTLS → disable each feature
 
@@ -186,21 +199,27 @@ CONFIG_MBEDTLS_SHA512_C=y
 
 **After:**
 ```
-(pending)
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
+CONFIG_MBEDTLS_PEM_WRITE_C=n
+CONFIG_MBEDTLS_X509_CRL_PARSE_C=n
+CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
+CONFIG_MBEDTLS_PKCS7_C=n
+# CONFIG_MBEDTLS_SHA512_C=y  ← KEPT (SHA-384 needed for Dexcom ECDSA certs)
 ```
 
 ---
 
-## G. Reduce ECP Curves (12 → 2)
+## G. Reduce ECP Curves (12 → 3)
 
-**What:** 12 elliptic curves are enabled for key exchange. Modern TLS servers (Dexcom, Open-Meteo, GitHub) use SECP256R1 and/or CURVE25519. The other 10 are dead code.
+**What:** 12 elliptic curves are enabled for key exchange. Reduced to 3 essential curves.
 
 **Curves to KEEP:**
 - `SECP256R1` (P-256) — most common
+- `SECP384R1` (P-384) — used by Dexcom certs (ECDSA SHA-384)
 - `CURVE25519` — modern alternative
 
 **Curves to DISABLE:**
-- SECP192R1, SECP224R1, SECP384R1, SECP521R1
+- SECP192R1, SECP224R1, SECP521R1
 - SECP192K1, SECP224K1, SECP256K1
 - BP256R1, BP384R1, BP512R1
 
@@ -226,7 +245,17 @@ CONFIG_MBEDTLS_ECP_DP_CURVE25519_ENABLED=y   # KEEP
 
 **After:**
 ```
-(pending)
+CONFIG_MBEDTLS_ECP_DP_SECP192R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP224R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP384R1_ENABLED=y   # MUST KEEP (Dexcom ECDSA certs)
+CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP192K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP224K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+# KEPT: SECP256R1 + SECP384R1 + CURVE25519
 ```
 
 ---
@@ -249,7 +278,8 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_MAX_CERTS=200
 
 **After:**
 ```
-(pending)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+# ~40 common CAs vs 200+ full bundle
 ```
 
 ---
@@ -359,7 +389,8 @@ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
 
 **After:**
 ```
-(pending)
+CONFIG_NEWLIB_NANO_FORMAT=y
+CONFIG_LIBC_NEWLIB_NANO_FORMAT=y
 ```
 
 ---
@@ -405,19 +436,22 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=160
 
 **After:**
 ```
-(pending)
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
 ```
 
 ---
 
 ## Running Total
 
-| Metric | Before | Current (A+B+I+J+K) | After All (est.) |
+| Metric | Before | After A+B+I+J+K | After All (A-N exc. D,M) |
 |--------|--------|---------|-----------------|
-| Binary size | 1,644,448 bytes | ~1,480,000 bytes (est. -10%) | ~1,250,000 bytes (-24%) |
-| Free flash (factory) | 1,501,280 bytes | ~1,665,000 bytes | ~1,895,000 bytes |
-| DRAM freed | — | ~16-20 KB (IPv6 + WiFi + DHCP/SoftAP) | ~20-25 KB |
+| Binary size | 1,644,448 bytes | ~1,480,000 bytes | Est. ~1,250,000 bytes (-24%) |
+| Free flash (per OTA slot) | — | ~460 KB | Est. ~690 KB |
+| DRAM freed | — | ~16-20 KB | ~20-25 KB |
 | CPU efficiency | 160MHz + 1000Hz tick | 160MHz + 100Hz tick | 240MHz + 100Hz tick |
+| mbedTLS flash | baseline | baseline | -70-110 KB (E+F+G+H) |
+| printf flash | baseline | baseline | -50 KB (L) |
 
 ### Critical Bug Fixes Applied with I/J/K
 

@@ -85,10 +85,10 @@ function Save-FtpConfig($cfg) {
 function Get-BuildFiles {
     $bd = "$script:Root\build"
     $files = @(
-        @{ Name = "cygm.bin";             Local = "$bd\cygm.bin";                              Remote = "" }
-        @{ Name = "bootloader.bin";       Local = "$bd\bootloader\bootloader.bin";              Remote = "" }
-        @{ Name = "partition-table.bin";  Local = "$bd\partition_table\partition-table.bin";    Remote = "" }
-        @{ Name = "spiffs.bin";           Local = "$bd\spiffs.bin";                             Remote = "" }
+        @{ Name = "cygm.bin";                Local = "$bd\cygm.bin";                              Remote = "" }
+        @{ Name = "bootloader.bin";          Local = "$bd\bootloader\bootloader.bin";              Remote = "" }
+        @{ Name = "partition-table.bin";     Local = "$bd\partition_table\partition-table.bin";    Remote = "" }
+        @{ Name = "ota_data_initial.bin";    Local = "$bd\ota_data_initial.bin";                  Remote = "" }
     )
     foreach ($f in $files) {
         $f.Exists = Test-Path $f.Local
@@ -107,10 +107,10 @@ function New-MergedBinary($ver) {
 
     $boot = "$bd\bootloader\bootloader.bin"
     $part = "$bd\partition_table\partition-table.bin"
+    $ota  = "$bd\ota_data_initial.bin"
     $app  = "$bd\cygm.bin"
-    $spi  = "$bd\spiffs.bin"
 
-    foreach ($f in @($boot, $part, $app, $spi)) {
+    foreach ($f in @($boot, $part, $ota, $app)) {
         if (!(Test-Path $f)) { return $null }
     }
 
@@ -119,16 +119,17 @@ function New-MergedBinary($ver) {
         --flash_mode dio --flash_freq 40m --flash_size 4MB `
         0x1000  $boot `
         0x8000  $part `
-        0x10000 $app `
-        0x310000 $spi 2>&1 | Out-Null
+        0xd000  $ota `
+        0x10000 $app 2>&1 | Out-Null
 
     if (Test-Path $out) { return $out }
     return $null
 }
 
 function Update-WebsiteManifests($ver, $notes) {
-    # --- version.json ---
-    @{ version = $ver.Version; stage = $ver.Stage; date = $ver.Date } |
+    # --- version.json (includes firmware_url for OTA) ---
+    $fwUrl = "https://digitalkaos.tech/firmware/$($ver.Tag)/cygm.bin"
+    @{ version = $ver.Version; stage = $ver.Stage; date = $ver.Date; firmware_url = $fwUrl } |
         ConvertTo-Json | Set-Content "$script:Root\website\version.json" -Encoding UTF8
 
     # --- releases.json ---
@@ -144,7 +145,7 @@ function Update-WebsiteManifests($ver, $notes) {
         app        = "firmware/$($ver.Tag)/cygm.bin"
         bootloader = "firmware/$($ver.Tag)/bootloader.bin"
         partitions = "firmware/$($ver.Tag)/partition-table.bin"
-        spiffs     = "firmware/$($ver.Tag)/spiffs.bin"
+        ota_data   = "firmware/$($ver.Tag)/ota_data_initial.bin"
     }
 
     $existing = $rel.versions | Where-Object { $_.version -eq $ver.Version }
@@ -164,6 +165,47 @@ function Update-WebsiteManifests($ver, $notes) {
     }
 
     $rel | ConvertTo-Json -Depth 5 | Set-Content $rp -Encoding UTF8
+
+    # --- Per-version manifest.json (in firmware folder) ---
+    $fwManifest = [PSCustomObject]@{
+        name = "CYGM"
+        version = $ver.Version
+        new_install_prompt_erase = $false
+        builds = @(
+            [PSCustomObject]@{
+                chipFamily = "ESP32"
+                improv = $false
+                parts = @(
+                    [PSCustomObject]@{
+                        path = "cygm-merged.bin"
+                        offset = 0
+                    }
+                )
+            }
+        )
+    }
+    $fwManifestPath = "$script:Root\website\firmware\$($ver.Tag)\manifest.json"
+    $fwManifest | ConvertTo-Json -Depth 5 | Set-Content $fwManifestPath -Encoding UTF8
+
+    # --- Root cygm-manifest.json (always points to latest) ---
+    $rootManifest = [PSCustomObject]@{
+        name = "CYGM"
+        version = $ver.Version
+        new_install_prompt_erase = $false
+        builds = @(
+            [PSCustomObject]@{
+                chipFamily = "ESP32"
+                improv = $false
+                parts = @(
+                    [PSCustomObject]@{
+                        path = "firmware/$($ver.Tag)/cygm-merged.bin"
+                        offset = 0
+                    }
+                )
+            }
+        )
+    }
+    $rootManifest | ConvertTo-Json -Depth 5 | Set-Content "$script:Root\website\cygm-manifest.json" -Encoding UTF8
 }
 
 function Copy-FirmwareToWebsite($ver, $mergedPath) {
@@ -175,7 +217,7 @@ function Copy-FirmwareToWebsite($ver, $mergedPath) {
     Copy-Item "$bd\cygm.bin"                           "$fwDir\cygm.bin"
     Copy-Item "$bd\bootloader\bootloader.bin"           "$fwDir\bootloader.bin"
     Copy-Item "$bd\partition_table\partition-table.bin"  "$fwDir\partition-table.bin"
-    Copy-Item "$bd\spiffs.bin"                          "$fwDir\spiffs.bin"
+    Copy-Item "$bd\ota_data_initial.bin"                "$fwDir\ota_data_initial.bin"
     if ($mergedPath -and (Test-Path $mergedPath)) {
         Copy-Item $mergedPath "$fwDir\cygm-merged.bin"
     }
@@ -210,6 +252,15 @@ function Curl-Upload($host_, $user_, $pass_, $remotePath, $localPath, $ssl) {
         }
         throw "CURL_EXIT_${code}|${detail}"
     }
+
+    # Set world-readable permissions (non-fatal if server rejects chmod)
+    $chmodArgs = @(
+        "--user", "${user_}:${pass_}",
+        "--insecure", "--connect-timeout", "15", "-s", "-S",
+        "-Q", "chmod 644 $remotePath",
+        "sftp://${host_}/"
+    )
+    & "C:\Program Files\Git\mingw64\bin\curl.exe" @chmodArgs 2>&1 | Out-Null
 }
 
 function Curl-Mkdir($host_, $user_, $pass_, $dirPath, $ssl) {
@@ -526,9 +577,11 @@ if ($missing) {
         $sizeStr = "$($_.SizeKB) KB".PadLeft(10)
         "  $([char]0x2713)  $($_.Name.PadRight(24)) $sizeStr"
     }
-    # Add manifest files
+    # Add manifest/website files
     $lines += "  $([char]0x2713)  version.json"
     $lines += "  $([char]0x2713)  releases.json"
+    $lines += "  $([char]0x2713)  cygm-manifest.json"
+    $lines += "  $([char]0x2713)  index.html"
     $lblFiles.Text = $lines -join "`n"
 }
 
@@ -595,8 +648,10 @@ $btnUpload.Add_Click({
         Get-ChildItem $fwDir | ForEach-Object {
             $uploads += @{ LocalPath = $_.FullName; RemotePath = "${fwRemote}$($_.Name)"; Name = "firmware/$($ver.Tag)/$($_.Name)" }
         }
-        $uploads += @{ LocalPath = "$script:Root\website\version.json";  RemotePath = "${path_}version.json";  Name = "version.json" }
-        $uploads += @{ LocalPath = "$script:Root\website\releases.json"; RemotePath = "${path_}releases.json"; Name = "releases.json" }
+        $uploads += @{ LocalPath = "$script:Root\website\version.json";      RemotePath = "${path_}version.json";      Name = "version.json" }
+        $uploads += @{ LocalPath = "$script:Root\website\releases.json";     RemotePath = "${path_}releases.json";     Name = "releases.json" }
+        $uploads += @{ LocalPath = "$script:Root\website\cygm-manifest.json"; RemotePath = "${path_}cygm-manifest.json"; Name = "cygm-manifest.json" }
+        $uploads += @{ LocalPath = "$script:Root\website\index.html";         RemotePath = "${path_}index.html";         Name = "index.html" }
 
         # Step 3: Upload via curl (--ftp-create-dirs handles directory creation)
         Set-Progress 20 "Uploading to $host_..."
@@ -652,7 +707,7 @@ $btnExtra.Add_Click({
     $user_  = $txtUser.Text.Trim()
     $pass_  = $txtPass.Password
     $path_  = $txtPath.Text.Trim().TrimEnd("/") + "/"
-    $ssl_   = [bool]$chkSsl.IsChecked
+    $ssl_   = $false
 
     if (!$host_ -or !$user_ -or !$pass_) {
         Log "ERROR: Fill in server credentials first."

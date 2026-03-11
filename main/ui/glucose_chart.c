@@ -2,7 +2,8 @@
  * glucose_chart.c
  *
  * Glucose history trend chart overlay — glass-themed, multi-range
- * Supports 1h, 3h, 6h, 12h, 24h views with left/right cycling
+ * Supports 1h, 3h, 6h, 12h, 24h views with tappable tabs + swipe gestures
+ * Tap-to-inspect with highlighted dot, dashed bridge lines for data gaps
  */
 
 #include "glucose_chart.h"
@@ -47,14 +48,15 @@ static const chart_range_t RANGES[] = {
 #define CHART_LINE_YELLOW 0xFBBF24  // Warning line
 #define CHART_LINE_ORANGE 0xF59E0B  // High warning line
 #define CHART_LINE_RED    0xEF4444  // Alarm line
+#define CHART_GAP_COLOR   0x4B5563  // Dashed bridge line for gaps
 
 // ==================== Layout Constants ====================
 #define OVERLAY_W       310
-#define OVERLAY_H       220
+#define OVERLAY_H       228
 #define CHART_X_OFFSET  20   // Left margin for Y labels
 #define CHART_W         268  // Chart drawing area width
 #define CHART_H         130  // Chart drawing area height
-#define CHART_TOP       30   // Top of chart area (below title row)
+#define CHART_TOP       38   // Top of chart area (below title + tabs)
 #define CHART_PAD       2    // Internal chart padding
 
 #define Y_MIN  40
@@ -69,12 +71,13 @@ static lv_obj_t *chart = NULL;
 static lv_chart_series_t *glucose_series = NULL;
 static lv_obj_t *info_popup = NULL;
 static lv_obj_t *title_label = NULL;
-static lv_obj_t *range_label = NULL;
 static lv_obj_t *stats_label = NULL;
 static lv_obj_t *time_labels[7] = {0};
 static lv_obj_t *y_labels[5] = {0};
 static lv_obj_t *no_data_label = NULL;
+static lv_obj_t *tab_btns[RANGE_COUNT] = {0};
 static int current_range_index = DEFAULT_RANGE_INDEX;
+static int selected_point_idx = -1;  // Tap-to-inspect selected point
 
 // Filtered data for current view
 static glucose_history_point_t filtered_points[MAX_CHART_POINTS];
@@ -83,39 +86,15 @@ static int filtered_count = 0;
 // ==================== Forward Declarations ====================
 static void populate_chart(void);
 static void update_time_labels(void);
-static void left_btn_cb(lv_event_t *e);
-static void right_btn_cb(lv_event_t *e);
+static void update_tab_styles(void);
+static void tab_btn_cb(lv_event_t *e);
 static void close_btn_cb(lv_event_t *e);
 static void chart_touch_event_cb(lv_event_t *e);
+static void chart_gesture_event_cb(lv_event_t *e);
 static void chart_draw_event_cb(lv_event_t *e);
 static void show_reading_popup(int glucose, int64_t timestamp, lv_coord_t x, lv_coord_t y);
 static void hide_reading_popup(void);
 static uint32_t get_color_for_glucose(int glucose);
-
-// ==================== Helper: ghost nav button ====================
-static lv_obj_t *create_nav_button(lv_obj_t *parent, const char *symbol,
-                                    lv_align_t align, lv_coord_t x_ofs,
-                                    lv_event_cb_t cb) {
-    lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, 32, 26);
-    lv_obj_align(btn, align, x_ofs, 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(btn, 0, 0);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_set_style_radius(btn, 6, 0);
-    lv_obj_set_style_pad_all(btn, 0, 0);
-
-    lv_obj_t *lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, symbol);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_center(lbl);
-
-    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
-    return btn;
-}
 
 // ==================== Main Create ====================
 void create_glucose_chart_overlay(void) {
@@ -131,6 +110,7 @@ void create_glucose_chart_overlay(void) {
     }
 
     current_range_index = DEFAULT_RANGE_INDEX;
+    selected_point_idx = -1;
     ESP_LOGI(TAG, "Creating glucose chart (%d total readings)", total_count);
 
     // ---- Glass overlay container ----
@@ -149,21 +129,38 @@ void create_glucose_chart_overlay(void) {
     lv_obj_set_style_pad_all(chart_overlay, 8, 0);
     lv_obj_clear_flag(chart_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
-    // ---- Title row: [<]  "Glucose Trend — 6h"  [>] ----
-    lv_obj_t *title_row = lv_obj_create(chart_overlay);
-    lv_obj_remove_style_all(title_row);
-    lv_obj_set_size(title_row, 294, 26);
-    lv_obj_align(title_row, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_clear_flag(title_row, LV_OBJ_FLAG_SCROLLABLE);
-
-    create_nav_button(title_row, LV_SYMBOL_LEFT, LV_ALIGN_LEFT_MID, 0, left_btn_cb);
-    create_nav_button(title_row, LV_SYMBOL_RIGHT, LV_ALIGN_RIGHT_MID, 0, right_btn_cb);
-
-    // Title text
-    title_label = lv_label_create(title_row);
+    // ---- Title: "Glucose Trend" (centered) ----
+    title_label = lv_label_create(chart_overlay);
+    lv_label_set_text(title_label, "Glucose Trend");
     lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(title_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(title_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 0);
+
+    // ---- Range tabs: [1h] [3h] [6h] [12h] [24h] ----
+    lv_obj_t *tab_row = lv_obj_create(chart_overlay);
+    lv_obj_remove_style_all(tab_row);
+    lv_obj_set_size(tab_row, 270, 22);
+    lv_obj_align(tab_row, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_clear_flag(tab_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(tab_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(tab_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    for (int i = 0; i < RANGE_COUNT; i++) {
+        lv_obj_t *btn = lv_btn_create(tab_row);
+        lv_obj_set_size(btn, 44, 20);
+        lv_obj_set_style_radius(btn, 6, 0);
+        lv_obj_set_style_shadow_width(btn, 0, 0);
+        lv_obj_set_style_border_width(btn, 0, 0);
+        lv_obj_set_style_pad_all(btn, 0, 0);
+
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, RANGES[i].label);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+        lv_obj_center(lbl);
+
+        lv_obj_add_event_cb(btn, tab_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        tab_btns[i] = btn;
+    }
 
     // ---- Chart widget ----
     chart = lv_chart_create(chart_overlay);
@@ -198,12 +195,16 @@ void create_glucose_chart_overlay(void) {
     glucose_series = lv_chart_add_series(chart, lv_color_hex(CHART_LINE_GREEN),
                                           LV_CHART_AXIS_PRIMARY_Y);
 
-    // Draw event for target band + per-segment coloring
+    // Draw event for target band + per-segment coloring + selected dot
     lv_obj_add_event_cb(chart, chart_draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
 
-    // Touch interaction
+    // Touch interaction (tap-to-inspect)
     lv_obj_add_flag(chart, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(chart, chart_touch_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Swipe gesture for range cycling
+    lv_obj_add_flag(chart, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(chart_overlay, chart_gesture_event_cb, LV_EVENT_GESTURE, NULL);
 
     // ---- Y-axis labels (left of chart) ----
     static const int y_vals[] = {400, 300, 200, 100, 40};
@@ -228,19 +229,13 @@ void create_glucose_chart_overlay(void) {
         lv_obj_set_style_text_color(time_labels[i], lv_color_hex(COLOR_TEXT_DIM), 0);
     }
 
-    // ---- Range indicator (top-right of chart area, subtle badge) ----
-    range_label = lv_label_create(chart_overlay);
-    lv_obj_set_style_text_font(range_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(range_label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
-    lv_obj_align(range_label, LV_ALIGN_TOP_RIGHT, -6, CHART_TOP + 4);
-
     // ---- No-data label (hidden by default) ----
     no_data_label = lv_label_create(chart_overlay);
     lv_label_set_text(no_data_label, "Not enough data\nfor this range");
     lv_obj_set_style_text_font(no_data_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(no_data_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_set_style_text_align(no_data_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(no_data_label, LV_ALIGN_CENTER, 8, -10);
+    lv_obj_align(no_data_label, LV_ALIGN_CENTER, 8, 0);
     lv_obj_add_flag(no_data_label, LV_OBJ_FLAG_HIDDEN);
 
     // ---- Bottom row: stats + close ----
@@ -270,35 +265,39 @@ void create_glucose_chart_overlay(void) {
     lv_obj_center(close_lbl);
     lv_obj_add_event_cb(close_btn, close_btn_cb, LV_EVENT_CLICKED, NULL);
 
-    // ---- Populate with initial range data ----
+    // ---- Set initial tab styles and populate ----
+    update_tab_styles();
     populate_chart();
 
     ESP_LOGI(TAG, "Glucose chart created (range: %s)", RANGES[current_range_index].label);
 }
 
+// ==================== Tab Button Styles ====================
+static void update_tab_styles(void) {
+    for (int i = 0; i < RANGE_COUNT; i++) {
+        if (tab_btns[i] == NULL) continue;
+        lv_obj_t *btn = tab_btns[i];
+        lv_obj_t *lbl = lv_obj_get_child(btn, 0);
+
+        if (i == current_range_index) {
+            // Active tab: accent blue bg, white text
+            lv_obj_set_style_bg_color(btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+            lv_obj_set_style_bg_opa(btn, LV_OPA_30, 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        } else {
+            // Inactive tab: transparent, dim text
+            lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+        }
+    }
+}
+
 // ==================== Populate Chart With Current Range ====================
 static void populate_chart(void) {
     hide_reading_popup();
+    selected_point_idx = -1;
 
     const chart_range_t *range = &RANGES[current_range_index];
-
-    // Update title
-    lv_label_set_text(title_label, "Glucose Trend");
-
-    // Update range indicator badge: "· · 6h · ·"
-    char range_buf[64];
-    char *p = range_buf;
-    for (int i = 0; i < RANGE_COUNT; i++) {
-        if (i > 0) {
-            p += snprintf(p, sizeof(range_buf) - (p - range_buf), "  ");
-        }
-        if (i == current_range_index) {
-            p += snprintf(p, sizeof(range_buf) - (p - range_buf), "%s", RANGES[i].label);
-        } else {
-            p += snprintf(p, sizeof(range_buf) - (p - range_buf), "\xE2\x80\xA2");  // bullet •
-        }
-    }
-    lv_label_set_text(range_label, range_buf);
 
     // Fetch raw readings from history
     glucose_history_point_t raw_points[MAX_CHART_POINTS];
@@ -407,9 +406,7 @@ static void update_time_labels(void) {
     time_t now;
     time(&now);
 
-    // Chart data area within overlay content area:
-    // Chart at TOP_MID+8, content_w=294, chart_w=268, pad_left=4, pad_right=4
-    // data_left = (294-268)/2 + 8 + 4 = 25, data_right = 25 + 260 = 285
+    // Chart data area within overlay content area
     lv_coord_t data_left = 25;
     lv_coord_t data_span = 260;
     lv_coord_t y_pos = CHART_TOP + CHART_H + 2;
@@ -447,7 +444,7 @@ static void update_time_labels(void) {
     }
 }
 
-// ==================== Draw Event: Target Band + Line Colors ====================
+// ==================== Draw Event: Target Band + Line Colors + Selected Dot ====================
 static void chart_draw_event_cb(lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
 
@@ -462,19 +459,17 @@ static void chart_draw_event_cb(lv_event_t *e) {
             lv_coord_t h = lv_obj_get_height(obj) - pad_t - pad_b;
             lv_coord_t w_area = lv_obj_get_width(obj) - pad_l - pad_r;
 
-            // Use alarm thresholds for target band (default 70-180)
             int target_low = current_alarm_settings.low_warning.threshold;
             int target_high = current_alarm_settings.high_warning.threshold;
             if (target_low < Y_MIN) target_low = Y_MIN;
             if (target_high > Y_MAX) target_high = Y_MAX;
 
-            // Convert to pixel coords
             lv_coord_t y_high = obj->coords.y1 + pad_t +
                                 h - ((target_high - Y_MIN) * h / (Y_MAX - Y_MIN));
             lv_coord_t y_low  = obj->coords.y1 + pad_t +
                                 h - ((target_low - Y_MIN) * h / (Y_MAX - Y_MIN));
 
-            // Draw semi-transparent green band
+            // Semi-transparent green band
             lv_draw_rect_dsc_t rect_dsc;
             lv_draw_rect_dsc_init(&rect_dsc);
             rect_dsc.bg_color = lv_color_hex(CHART_TARGET_GREEN);
@@ -489,7 +484,7 @@ static void chart_draw_event_cb(lv_event_t *e) {
             band.y2 = y_low;
             lv_draw_rect(dsc->draw_ctx, &rect_dsc, &band);
 
-            // Draw thin border lines at target edges
+            // Thin border lines at target edges
             lv_draw_rect_dsc_t line_dsc;
             lv_draw_rect_dsc_init(&line_dsc);
             line_dsc.bg_color = lv_color_hex(CHART_TARGET_GREEN);
@@ -497,28 +492,102 @@ static void chart_draw_event_cb(lv_event_t *e) {
             line_dsc.border_width = 0;
             line_dsc.radius = 0;
 
-            // Top line (high threshold)
             lv_area_t top_line = { band.x1, y_high, band.x2, y_high + 1 };
             lv_draw_rect(dsc->draw_ctx, &line_dsc, &top_line);
-
-            // Bottom line (low threshold)
             lv_area_t bot_line = { band.x1, y_low - 1, band.x2, y_low };
             lv_draw_rect(dsc->draw_ctx, &line_dsc, &bot_line);
+
+            // --- Draw dashed bridge lines for data gaps ---
+            if (filtered_count > 1) {
+                lv_coord_t data_w = w_area;
+                lv_coord_t data_x0 = obj->coords.x1 + pad_l;
+                lv_coord_t data_y0 = obj->coords.y1 + pad_t;
+
+                int gap_start = -1;
+                for (int i = 0; i < filtered_count; i++) {
+                    if (!filtered_points[i].valid) {
+                        if (gap_start < 0 && i > 0 && filtered_points[i - 1].valid) {
+                            gap_start = i - 1;
+                        }
+                    } else if (gap_start >= 0) {
+                        // Found valid point after gap — draw dashed bridge
+                        int from = gap_start;
+                        int to = i;
+                        int g_from = filtered_points[from].glucose;
+                        int g_to = filtered_points[to].glucose;
+
+                        // Clamp to chart range
+                        if (g_from < Y_MIN) g_from = Y_MIN;
+                        if (g_from > Y_MAX) g_from = Y_MAX;
+                        if (g_to < Y_MIN) g_to = Y_MIN;
+                        if (g_to > Y_MAX) g_to = Y_MAX;
+
+                        lv_coord_t x1 = data_x0 + (from * data_w) / (filtered_count - 1);
+                        lv_coord_t y1 = data_y0 + h - ((g_from - Y_MIN) * h / (Y_MAX - Y_MIN));
+                        lv_coord_t x2 = data_x0 + (to * data_w) / (filtered_count - 1);
+                        lv_coord_t y2 = data_y0 + h - ((g_to - Y_MIN) * h / (Y_MAX - Y_MIN));
+
+                        lv_draw_line_dsc_t dash_dsc;
+                        lv_draw_line_dsc_init(&dash_dsc);
+                        dash_dsc.color = lv_color_hex(CHART_GAP_COLOR);
+                        dash_dsc.width = 1;
+                        dash_dsc.opa = LV_OPA_50;
+                        dash_dsc.dash_width = 4;
+                        dash_dsc.dash_gap = 3;
+
+                        lv_point_t pts[2] = {{x1, y1}, {x2, y2}};
+                        lv_draw_line(dsc->draw_ctx, &dash_dsc, &pts[0], &pts[1]);
+
+                        gap_start = -1;
+                    }
+                }
+            }
+
+            // --- Draw selected point dot ---
+            if (selected_point_idx >= 0 && selected_point_idx < filtered_count &&
+                filtered_points[selected_point_idx].valid) {
+                int g = filtered_points[selected_point_idx].glucose;
+                if (g < Y_MIN) g = Y_MIN;
+                if (g > Y_MAX) g = Y_MAX;
+
+                lv_coord_t px = obj->coords.x1 + pad_l +
+                    (selected_point_idx * w_area) / (filtered_count - 1);
+                lv_coord_t py = obj->coords.y1 + pad_t +
+                    h - ((g - Y_MIN) * h / (Y_MAX - Y_MIN));
+
+                uint32_t dot_color = get_color_for_glucose(g);
+
+                // Outer glow circle (8px diameter)
+                lv_draw_rect_dsc_t glow_dot;
+                lv_draw_rect_dsc_init(&glow_dot);
+                glow_dot.bg_color = lv_color_hex(dot_color);
+                glow_dot.bg_opa = LV_OPA_40;
+                glow_dot.border_width = 0;
+                glow_dot.radius = LV_RADIUS_CIRCLE;
+                lv_area_t glow_area = { px - 5, py - 5, px + 5, py + 5 };
+                lv_draw_rect(dsc->draw_ctx, &glow_dot, &glow_area);
+
+                // Inner solid circle (4px diameter)
+                lv_draw_rect_dsc_t inner_dot;
+                lv_draw_rect_dsc_init(&inner_dot);
+                inner_dot.bg_color = lv_color_hex(dot_color);
+                inner_dot.bg_opa = LV_OPA_COVER;
+                inner_dot.border_width = 0;
+                inner_dot.radius = LV_RADIUS_CIRCLE;
+                lv_area_t inner_area = { px - 3, py - 3, px + 3, py + 3 };
+                lv_draw_rect(dsc->draw_ctx, &inner_dot, &inner_area);
+            }
         }
     }
 
     // --- Per-segment line coloring based on glucose value ---
     if (dsc->part == LV_PART_ITEMS) {
-        // Color the line segment based on the Y value
         if (dsc->p1 && dsc->p2) {
-            // Use the endpoint glucose value to determine color
-            // Map pixel Y back to glucose value
             lv_obj_t *obj = lv_event_get_target(e);
             lv_coord_t pad_t = lv_obj_get_style_pad_top(obj, 0);
             lv_coord_t pad_b = lv_obj_get_style_pad_bottom(obj, 0);
             lv_coord_t h = lv_obj_get_height(obj) - pad_t - pad_b;
 
-            // Average Y of the two points
             lv_coord_t avg_y = (dsc->p1->y + dsc->p2->y) / 2;
             lv_coord_t y_top = obj->coords.y1 + pad_t;
             int glucose_val = Y_MAX - ((avg_y - y_top) * (Y_MAX - Y_MIN) / h);
@@ -529,7 +598,7 @@ static void chart_draw_event_cb(lv_event_t *e) {
     }
 }
 
-// ==================== Glucose → Color Mapping ====================
+// ==================== Glucose -> Color Mapping ====================
 static uint32_t get_color_for_glucose(int glucose) {
     if (glucose >= current_alarm_settings.high_alarm.threshold) {
         return COLOR_RED;
@@ -543,19 +612,26 @@ static uint32_t get_color_for_glucose(int glucose) {
     return CHART_LINE_GREEN;
 }
 
-// ==================== Navigation Callbacks ====================
-static void left_btn_cb(lv_event_t *e) {
-    (void)e;
-    if (current_range_index > 0) {
-        current_range_index--;
+// ==================== Tab Button Callback ====================
+static void tab_btn_cb(lv_event_t *e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx >= 0 && idx < RANGE_COUNT && idx != current_range_index) {
+        current_range_index = idx;
+        update_tab_styles();
         populate_chart();
     }
 }
 
-static void right_btn_cb(lv_event_t *e) {
-    (void)e;
-    if (current_range_index < RANGE_COUNT - 1) {
+// ==================== Swipe Gesture Callback ====================
+static void chart_gesture_event_cb(lv_event_t *e) {
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+    if (dir == LV_DIR_LEFT && current_range_index < RANGE_COUNT - 1) {
         current_range_index++;
+        update_tab_styles();
+        populate_chart();
+    } else if (dir == LV_DIR_RIGHT && current_range_index > 0) {
+        current_range_index--;
+        update_tab_styles();
         populate_chart();
     }
 }
@@ -584,9 +660,22 @@ static void chart_touch_event_cb(lv_event_t *e) {
     if (point_index >= filtered_count) point_index = filtered_count - 1;
 
     if (filtered_points[point_index].valid) {
-        show_reading_popup(filtered_points[point_index].glucose,
-                          filtered_points[point_index].timestamp,
-                          touch_point.x, touch_point.y);
+        // Toggle: tap same point again to deselect
+        if (selected_point_idx == point_index) {
+            selected_point_idx = -1;
+            hide_reading_popup();
+        } else {
+            selected_point_idx = point_index;
+            show_reading_popup(filtered_points[point_index].glucose,
+                              filtered_points[point_index].timestamp,
+                              touch_point.x, touch_point.y);
+        }
+        lv_obj_invalidate(chart);  // Trigger redraw for dot
+    } else {
+        // Tapped empty space — deselect
+        selected_point_idx = -1;
+        hide_reading_popup();
+        lv_obj_invalidate(chart);
     }
 }
 
@@ -645,7 +734,6 @@ static void show_reading_popup(int glucose, int64_t timestamp,
     localtime_r(&time_sec, &ti);
     char t_text[16];
     strftime(t_text, sizeof(t_text), "%I:%M %p", &ti);
-    // Remove leading zero
     if (t_text[0] == '0') memmove(t_text, t_text + 1, strlen(t_text));
     lv_label_set_text(t_label, t_text);
     lv_obj_set_style_text_font(t_label, &lv_font_montserrat_10, 0);
@@ -669,12 +757,13 @@ void close_glucose_chart_overlay(void) {
         chart = NULL;
         glucose_series = NULL;
         title_label = NULL;
-        range_label = NULL;
         stats_label = NULL;
         no_data_label = NULL;
         for (int i = 0; i < 7; i++) time_labels[i] = NULL;
         for (int i = 0; i < 5; i++) y_labels[i] = NULL;
+        for (int i = 0; i < RANGE_COUNT; i++) tab_btns[i] = NULL;
         filtered_count = 0;
+        selected_point_idx = -1;
         ESP_LOGI(TAG, "Glucose chart overlay closed");
     }
 }

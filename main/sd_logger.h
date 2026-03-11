@@ -16,6 +16,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include "sdmmc_cmd.h"
 #include <stdbool.h>
 
 /**
@@ -60,3 +61,22 @@ void sd_log_glucose(int mg_dl, const char *trend);
  * Returns true if SD card was detected during init.
  */
 bool sd_logger_available(void);
+
+/**
+ * Mount SD card for external use (e.g., screenshot capture).
+ * Acquires log_mutex and pauses serial capture for the duration.
+ * Caller MUST call sd_card_unmount() when done.
+ *
+ * @param out_card  Receives the mounted card handle
+ * @return ESP_OK on success, error otherwise
+ */
+esp_err_t sd_card_mount(sdmmc_card_t **out_card);
+
+/**
+ * Unmount SD card after external use.
+ * Releases log_mutex and resumes serial capture.
+ */
+void sd_card_unmount(sdmmc_card_t *card);
+
+/** Mount point path for SD card file operations */
+#define SD_MOUNT_POINT "/sdcard"

@@ -10,6 +10,7 @@
                             "hardware/buzzer.c"
                             "hardware/battery.c"
                             "hardware/display.c"
+                            "hardware/screenshot.c"
                             "features/time_system.c"
                             "features/weather_system.c"
                             "features/geocoding_api.c"
