@@ -362,6 +362,205 @@ void dismiss_wifi_disconnected_overlay(void) {
     }
 }
 
+// ==================== Login Success Overlay ====================
+
+static lv_obj_t *login_success_overlay = NULL;
+
+static void login_success_dismiss_cb(lv_event_t *e) {
+    (void)e;
+    if (login_success_overlay) {
+        lv_obj_del(login_success_overlay);
+        login_success_overlay = NULL;
+    }
+}
+
+static void login_success_timer_cb(lv_timer_t *timer) {
+    lv_timer_del(timer);
+    if (login_success_overlay) {
+        lv_obj_del(login_success_overlay);
+        login_success_overlay = NULL;
+    }
+}
+
+void show_login_success_overlay_ui(void) {
+    if (login_success_overlay != NULL) return;
+
+    // Dimmed backdrop
+    login_success_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(login_success_overlay);
+    lv_obj_set_size(login_success_overlay, 320, 240);
+    lv_obj_set_style_bg_color(login_success_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(login_success_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(login_success_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(login_success_overlay);
+    lv_obj_add_event_cb(login_success_overlay, login_success_dismiss_cb, LV_EVENT_CLICKED, NULL);
+
+    // Glass card — green accent for success
+    lv_obj_t *card = lv_obj_create(login_success_overlay);
+    lv_obj_set_size(card, 250, 140);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 25, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Check icon
+    lv_obj_t *icon = lv_label_create(card);
+    lv_label_set_text(icon, LV_SYMBOL_OK);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 16);
+
+    // Title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "Login Successful");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 58);
+
+    // Subtitle
+    lv_obj_t *sub = lv_label_create(card);
+    lv_label_set_text(sub, "CGM data will begin updating shortly");
+    lv_obj_set_style_text_font(sub, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(sub, 220);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 88);
+
+    // Hint
+    lv_obj_t *hint = lv_label_create(card);
+    lv_label_set_text(hint, "Tap to dismiss");
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    // Auto-dismiss after 4 seconds
+    lv_timer_create(login_success_timer_cb, 4000, NULL);
+
+    ESP_LOGI(TAG, "Login success overlay shown");
+}
+
+// ==================== Legal Disclaimer Overlay ====================
+
+static lv_obj_t *disclaimer_overlay = NULL;
+static lv_obj_t *disclaimer_checkbox = NULL;
+
+static void disclaimer_agree_cb(lv_event_t *e) {
+    (void)e;
+    if (disclaimer_checkbox && lv_obj_has_state(disclaimer_checkbox, LV_STATE_CHECKED)) {
+        nvs_set_disclaimer_accepted();
+        ESP_LOGI(TAG, "Disclaimer accepted permanently (saved to NVS)");
+    } else {
+        ESP_LOGI(TAG, "Disclaimer accepted for this session");
+    }
+
+    if (disclaimer_overlay) {
+        lv_obj_del(disclaimer_overlay);
+        disclaimer_overlay = NULL;
+        disclaimer_checkbox = NULL;
+    }
+}
+
+void show_disclaimer_overlay(void) {
+    if (disclaimer_overlay != NULL) return;
+
+    // Full-screen dark backdrop (no dismiss on tap — must press button)
+    disclaimer_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(disclaimer_overlay);
+    lv_obj_set_size(disclaimer_overlay, 320, 240);
+    lv_obj_set_style_bg_color(disclaimer_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(disclaimer_overlay, LV_OPA_80, 0);
+    lv_obj_clear_flag(disclaimer_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(disclaimer_overlay);
+
+    // Glass card — blue accent (informational)
+    lv_obj_t *card = lv_obj_create(disclaimer_overlay);
+    lv_obj_set_size(card, 300, 220);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 25, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Warning icon
+    lv_obj_t *icon = lv_label_create(card);
+    lv_label_set_text(icon, LV_SYMBOL_WARNING);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+
+    // Title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "Important Notice");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 32);
+
+    // Divider
+    lv_obj_t *div = lv_obj_create(card);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 270, 1);
+    lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 54);
+
+    // Legal text
+    lv_obj_t *msg = lv_label_create(card);
+    lv_label_set_text(msg,
+        "This device is NOT a medical device.\n"
+        "It is for informational purposes only\n"
+        "and must NOT be used for medical\n"
+        "decisions. Always consult your CGM\n"
+        "and healthcare provider.");
+    lv_obj_set_style_text_font(msg, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(msg, 280);
+    lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 62);
+
+    // "Don't show again" checkbox
+    disclaimer_checkbox = lv_checkbox_create(card);
+    lv_checkbox_set_text(disclaimer_checkbox, "Don't show again");
+    lv_obj_set_style_text_font(disclaimer_checkbox, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(disclaimer_checkbox, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_border_color(disclaimer_checkbox, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(disclaimer_checkbox, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_align(disclaimer_checkbox, LV_ALIGN_BOTTOM_LEFT, 16, -48);
+
+    // "I Agree" button (ghost-green)
+    lv_obj_t *btn_agree = lv_btn_create(card);
+    lv_obj_set_size(btn_agree, 268, 36);
+    lv_obj_align(btn_agree, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_set_style_bg_opa(btn_agree, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn_agree, lv_color_hex(0x1a3a2a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn_agree, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn_agree, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_border_width(btn_agree, 1, 0);
+    lv_obj_set_style_radius(btn_agree, 8, 0);
+    lv_obj_set_style_shadow_width(btn_agree, 0, 0);
+    lv_obj_t *lbl_agree = lv_label_create(btn_agree);
+    lv_label_set_text(lbl_agree, LV_SYMBOL_OK "  I Understand & Agree");
+    lv_obj_set_style_text_color(lbl_agree, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_center(lbl_agree);
+    lv_obj_add_event_cb(btn_agree, disclaimer_agree_cb, LV_EVENT_CLICKED, NULL);
+
+    ESP_LOGI(TAG, "Legal disclaimer overlay shown");
+}
+
 // Expand/collapse layout constants
 #define NORMAL_LEFT_X       6
 #define NORMAL_LEFT_W       150

@@ -35,11 +35,11 @@ extern "C" {
 #define CYGM_VERSION_MINOR 6
 #define CYGM_VERSION_PATCH 1
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-03-10"
+#define CYGM_VERSION_DATE "2026-03-11"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "1.6.1.2026-03-10.Beta"
+#define CYGM_VERSION_STRING "1.6.1.2026-03-11.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -128,6 +128,7 @@ extern TaskHandle_t ui_task_handle;
 extern TaskHandle_t weather_task_handle;
 extern TaskHandle_t glucose_task_handle;
 extern TaskHandle_t time_task_handle;
+extern TaskHandle_t battery_task_handle;
 
 // ==================== LED State ====================
 

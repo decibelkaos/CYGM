@@ -167,4 +167,8 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms);
 esp_err_t nvs_save_brightness(uint8_t brightness_percent);
 esp_err_t nvs_load_brightness(uint8_t *brightness_percent);
 
+// Legal disclaimer acceptance
+esp_err_t nvs_set_disclaimer_accepted(void);
+bool nvs_get_disclaimer_accepted(void);
+
 #endif // NVS_CONFIG_H

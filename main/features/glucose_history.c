@@ -54,8 +54,8 @@ void glucose_history_add(int glucose_value, int64_t timestamp) {
     g_history.readings[g_history.head].glucose = glucose_value;
     g_history.readings[g_history.head].valid = true;
 
-    ESP_LOGI(TAG, "Added reading: %d mg/dL at slot %d (timestamp: %lld)",
-             glucose_value, g_history.head, timestamp);
+    ESP_LOGI(TAG, "Added reading: %d mg/dL at slot %d (timestamp: %ld)",
+             glucose_value, g_history.head, (long)timestamp);
 
     // Advance head (circular)
     g_history.head = (g_history.head + 1) % GLUCOSE_HISTORY_MAX_POINTS;

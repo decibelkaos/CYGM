@@ -653,8 +653,8 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
             ESP_LOGW(TAG, "Session expired (12 hours), re-authenticating...");
             needs_reauth = true;
         } else if (session_age > SESSION_REFRESH_MS) {
-            ESP_LOGI(TAG, "Proactive session refresh (age: %llu min)", session_age / 60000);
-            sd_log(TAG, "Session refresh (age=%llu min)", session_age / 60000);
+            ESP_LOGI(TAG, "Proactive session refresh (age: %lu min)", (unsigned long)(session_age / 60000));
+            sd_log(TAG, "Session refresh (age=%lu min)", (unsigned long)(session_age / 60000));
             needs_reauth = true;
         }
     }
@@ -676,7 +676,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     if (last_glucose_fetch_time > 0) {
         uint64_t fetch_elapsed = now_ms - last_glucose_fetch_time;
         if (fetch_elapsed < RATE_LIMIT_MS) {
-            ESP_LOGW(TAG, "Rate limited - wait %llu seconds", (RATE_LIMIT_MS - fetch_elapsed) / 1000);
+            ESP_LOGW(TAG, "Rate limited - wait %lu seconds", (unsigned long)((RATE_LIMIT_MS - fetch_elapsed) / 1000));
             glucose->status = GLUCOSE_STATUS_OK;
             return ESP_ERR_INVALID_STATE;
         }
@@ -813,9 +813,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
             uint64_t since_last_reauth = now_ms - last_reauth_time;
 
             if (last_reauth_time > 0 && since_last_reauth < REAUTH_COOLDOWN_MS) {
-                ESP_LOGW(TAG, "Re-auth cooldown active (%llu s remaining) — skipping re-auth",
-                         (REAUTH_COOLDOWN_MS - since_last_reauth) / 1000);
-                sd_log(TAG, "Re-auth cooldown (%llus left), skip", (REAUTH_COOLDOWN_MS - since_last_reauth) / 1000);
+                ESP_LOGW(TAG, "Re-auth cooldown active (%lu s remaining) — skipping re-auth",
+                         (unsigned long)((REAUTH_COOLDOWN_MS - since_last_reauth) / 1000));
+                sd_log(TAG, "Re-auth cooldown (%lus left), skip", (unsigned long)((REAUTH_COOLDOWN_MS - since_last_reauth) / 1000));
                 glucose->status = GLUCOSE_STATUS_NO_DATA;
                 cleanup_persistent_client();
                 return ESP_FAIL;
@@ -889,7 +889,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         // Determine likely reason for no data
         uint64_t time_since_login = (uint64_t)(esp_timer_get_time() / 1000) - last_login_time;
         if (time_since_login < 7200000) {  // Less than 2 hours since login
-            ESP_LOGI(TAG, "Likely sensor warmup period (logged in %llu min ago)", time_since_login / 60000);
+            ESP_LOGI(TAG, "Likely sensor warmup period (logged in %lu min ago)", (unsigned long)(time_since_login / 60000));
             glucose->status = GLUCOSE_STATUS_WARMUP;
         } else {
             ESP_LOGI(TAG, "No data available (signal loss or no sensor)");

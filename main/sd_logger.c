@@ -159,9 +159,9 @@ esp_err_t sd_logger_init(void)
     if (ret == ESP_OK) {
         card_detected = true;
         spi_initialized = true;
-        ESP_LOGI(TAG, "SD card: %s, %lluMB — logging enabled",
+        ESP_LOGI(TAG, "SD card: %s, %luMB — logging enabled",
                  card->cid.name,
-                 ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
+                 (unsigned long)(((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024)));
         esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
 
         // Enable serial capture — intercept ALL ESP_LOG output

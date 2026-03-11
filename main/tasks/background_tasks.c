@@ -86,6 +86,14 @@ void ui_task_core1(void *pvParameters) {
     pause_background_tasks = false;
     ESP_LOGI(TAG, "Home screen loaded - background tasks enabled");
 
+    // Show legal disclaimer overlay on boot (unless user has accepted permanently)
+    if (!nvs_get_disclaimer_accepted()) {
+        if (lvgl_port_lock(100)) {
+            show_disclaimer_overlay();
+            lvgl_port_unlock();
+        }
+    }
+
     // Stop WiFi boot blink when home screen loads
     led_stop_wifi_boot_blink();
 
@@ -97,7 +105,7 @@ void ui_task_core1(void *pvParameters) {
         3072,
         NULL,
         2,  // Low priority
-        NULL,
+        &battery_task_handle,
         0   // Core 0
     );
 
@@ -290,7 +298,7 @@ void wifi_task_core0(void *pvParameters) {
                         // Still start tasks - glucose task will retry auth once time syncs
                         if (weather_task_handle == NULL) {
                             ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
-                            xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+                            xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
                         }
                         if (glucose_task_handle == NULL) {
                             ESP_LOGI(TAG, "Starting glucose task (will auto-retry after time syncs)...");
@@ -359,7 +367,7 @@ void wifi_task_core0(void *pvParameters) {
                                 // Start weather task (uses HTTP - no SSL overhead!)
                                 if (weather_task_handle == NULL) {
                                     ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
-                                    xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+                                    xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
                                 }
 
                                 // Wait for weather to complete first fetch before starting glucose task
@@ -397,7 +405,7 @@ void wifi_task_core0(void *pvParameters) {
                         // The glucose task has auto-re-auth logic and will keep trying
                         if (weather_task_handle == NULL) {
                             ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
-                            xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+                            xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
                         }
                         if (glucose_task_handle == NULL) {
                             ESP_LOGI(TAG, "Starting glucose task (will auto-reconnect to Dexcom)...");
@@ -409,7 +417,7 @@ void wifi_task_core0(void *pvParameters) {
                 // No Dexcom credentials - start weather task immediately
                 ESP_LOGI(TAG, "No Dexcom credentials found, starting weather task (HTTP mode)...");
                 if (weather_task_handle == NULL) {
-                    xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+                    xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
                 }
             }
         } else {

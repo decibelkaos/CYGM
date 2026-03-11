@@ -225,7 +225,7 @@ esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *cou
         return (ret == ESP_OK) ? ESP_OK : ret;
     }
 
-    // Load each saved network
+    // Load each saved network (pack contiguously — skip failed slots)
     for (int i = 0; i < saved_count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
         char ssid_key[16], pass_key[16];
         size_t ssid_len = MAX_SSID_LEN;
@@ -234,10 +234,10 @@ esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *cou
         snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
         snprintf(pass_key, sizeof(pass_key), "wifi_%d_pass", i);
 
-        ret = nvs_get_str(nvs_handle, ssid_key, networks[i].ssid, &ssid_len);
+        ret = nvs_get_str(nvs_handle, ssid_key, networks[*count].ssid, &ssid_len);
         if (ret != ESP_OK) continue;
 
-        ret = nvs_get_str(nvs_handle, pass_key, networks[i].password, &pass_len);
+        ret = nvs_get_str(nvs_handle, pass_key, networks[*count].password, &pass_len);
         if (ret != ESP_OK) continue;
 
         (*count)++;
@@ -1134,5 +1134,41 @@ esp_err_t nvs_load_brightness(uint8_t *brightness_percent) {
 
     nvs_close(nvs_handle);
     return ESP_OK;  // Always return OK, with default if not found
+}
+
+// ========== Legal Disclaimer Acceptance ==========
+
+esp_err_t nvs_set_disclaimer_accepted(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for writing disclaimer");
+        return ret;
+    }
+
+    ret = nvs_set_u8(nvs_handle, "disclaim_ok", 1);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Disclaimer acceptance saved to NVS");
+        }
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+bool nvs_get_disclaimer_accepted(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return false;
+    }
+
+    uint8_t val = 0;
+    ret = nvs_get_u8(nvs_handle, "disclaim_ok", &val);
+    nvs_close(nvs_handle);
+
+    return (ret == ESP_OK && val != 0);
 }
 

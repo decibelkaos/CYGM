@@ -135,6 +135,7 @@ TaskHandle_t ui_task_handle = NULL;
 TaskHandle_t weather_task_handle = NULL;
 TaskHandle_t glucose_task_handle = NULL;
 TaskHandle_t time_task_handle = NULL;
+TaskHandle_t battery_task_handle = NULL;
 
 // LED breathing (disabled to save power - variables kept for future use)
 volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
@@ -1153,7 +1154,7 @@ static void trigger_alarm(active_alarm_state_t state) {
     time_t now;
     time(&now);
     if (alarm_snooze_until > 0 && now < alarm_snooze_until) {
-        ESP_LOGI(TAG, "Alarm snoozed until %lld (current: %ld)", alarm_snooze_until, (long)now);
+        ESP_LOGI(TAG, "Alarm snoozed until %ld (current: %ld)", (long)alarm_snooze_until, (long)now);
         return;
     }
 
@@ -1200,8 +1201,8 @@ void check_glucose_alarms(int glucose_mg_dl) {
             // Still snoozed - don't trigger alarm
             int minutes_remaining = (alarm_snooze_until - now) / 60;
             int seconds_remaining = (alarm_snooze_until - now) % 60;
-            ESP_LOGI(TAG, "Alarm snoozed for %d min %d sec more (until %lld, current %ld)",
-                     minutes_remaining, seconds_remaining, alarm_snooze_until, (long)now);
+            ESP_LOGI(TAG, "Alarm snoozed for %d min %d sec more (until %ld, current %ld)",
+                     minutes_remaining, seconds_remaining, (long)alarm_snooze_until, (long)now);
             return;  // Exit early - alarm is snoozed
         } else if (new_state != ALARM_STATE_NONE) {
             // Snooze expired and alarm condition still exists - re-trigger
@@ -1606,7 +1607,12 @@ void update_glucose_display(void) {
                 lv_label_set_text(label_time_ago, stale_str);
                 lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_RED), 0);
 
-                ESP_LOGW(TAG, "Glucose data is %d minutes old - hiding value for safety", minutes_ago);
+                // Throttle this warning to once per minute (avoid log spam every second)
+                static int last_logged_stale_minute = -1;
+                if (minutes_ago != last_logged_stale_minute) {
+                    last_logged_stale_minute = minutes_ago;
+                    ESP_LOGW(TAG, "Glucose data is %d minutes old - hiding value for safety", minutes_ago);
+                }
             } else {
                 // Data is recent enough to display
                 char glucose_str[16];
@@ -1714,9 +1720,9 @@ void glucose_update_task(void *pvParameters) {
 
         if (elapsed < FETCH_INTERVAL_MS) {
             wait_time_ms = FETCH_INTERVAL_MS - elapsed;
-            ESP_LOGI(TAG, "Last fetch was %lld ms ago, waiting %lld ms until next fetch", elapsed, wait_time_ms);
+            ESP_LOGI(TAG, "Last fetch was %lu ms ago, waiting %lu ms until next fetch", (unsigned long)elapsed, (unsigned long)wait_time_ms);
         } else {
-            ESP_LOGI(TAG, "Last fetch was %lld ms ago (>90s), fetching immediately", elapsed);
+            ESP_LOGI(TAG, "Last fetch was %lu ms ago (>90s), fetching immediately", (unsigned long)elapsed);
             wait_time_ms = 0;
         }
     } else {
@@ -1849,9 +1855,9 @@ void glucose_update_task(void *pvParameters) {
                        heap_info.total_free_bytes, heap_info.largest_free_block,
                        fragmentation, heap_info.allocated_blocks, heap_info.free_blocks);
 
-                // SSL buffer sizes (from sdkconfig): IN=4096, OUT=2048
-                // Largest single SSL allocation is ~4-5KB, not 30KB
-                // 10KB threshold gives safety margin for TLS context + cert chain
+                // SSL uses DYNAMIC_BUFFER: allocates per-record, not the full IN_CONTENT_LEN.
+                // Dexcom sends small TLS records (~2-4KB), so ~10KB contiguous is enough.
+                // (Apache OTA sends 16KB records, but OTA has its own aggressive memory prep.)
                 if (largest_block < 10000 && !client_open) {
                     ESP_LOGW(TAG, "Memory fragmented! Largest block: %lu (need ~10KB for SSL alloc)", largest_block);
                     ESP_LOGW(TAG, "Skipping glucose fetch - will retry in 90 seconds");
@@ -2814,6 +2820,9 @@ void app_main(void) {
 
     add_boot_log("System ready!");
     ESP_LOGI(TAG, "System initialized - tasks running");
+
+    // Confirm OTA boot (prevents automatic rollback to previous firmware)
+    update_confirm_boot();
 
     // Play boot-up sound to indicate device is ready
     vTaskDelay(pdMS_TO_TICKS(500));  // Small delay to let everything settle

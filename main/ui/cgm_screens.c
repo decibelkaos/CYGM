@@ -16,6 +16,7 @@
 #include <string.h>
 #include "sd_logger.h"
 #include "ui/menu_screen.h"
+#include "ui/home_screen.h"
 
 static const char *TAG = "CGM_SCREENS";
 static volatile bool dexcom_login_in_progress = false;
@@ -53,6 +54,10 @@ static void dexcom_login_task(void *pvParameters) {
             if (screen_cgm_menu != NULL) { lv_obj_del(screen_cgm_menu); screen_cgm_menu = NULL; }
             home_screen_active = true;
             pause_background_tasks = false;
+
+            // Show one-time login success overlay
+            show_login_success_overlay_ui();
+
             lvgl_port_unlock();
         } else {
             ESP_LOGW(TAG, "Failed to lock LVGL to return to home screen after login");

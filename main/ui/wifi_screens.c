@@ -1310,7 +1310,7 @@ static void wifi_connect_task(void *pvParameters) {
         // Start weather task if not already running (HTTP mode, no SSL)
         if (weather_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting weather task (HTTP mode)...");
-            xTaskCreate(weather_update_task, "weather_update", 6144, NULL, 1, &weather_task_handle);
+            xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
         }
 
         // Start glucose task if not already running and Dexcom tokens exist

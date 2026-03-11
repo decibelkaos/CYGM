@@ -5,8 +5,9 @@
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
 
-# Partition Table
-CONFIG_PARTITION_TABLE_SINGLE_APP=y
+# Partition Table (custom OTA layout)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # FreeRTOS
 CONFIG_FREERTOS_HZ=100
@@ -42,8 +43,23 @@ CONFIG_LV_USE_QRCODE=y
 CONFIG_ESP_TLS_INSECURE=y
 CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
 
-# mbedTLS - Larger input buffer for certificate chains (digitalkaos.tech needs ~7KB)
+# ESP HTTPS OTA - Allow without cert verification (digitalkaos.tech CA not in bundle)
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# mbedTLS - TLS buffer sizes (tuned for ESP32 memory constraints)
+# IN: 8KB is enough — OTA uses Range requests (4KB chunks) so no TLS record exceeds 8KB.
+#     Dexcom/weather APIs also use small responses.  Do NOT increase to 16384.
+# OUT: 2KB is enough (device only sends small GET/POST requests)
 CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
+
+# Dynamic SSL buffers: allocate/free on demand instead of keeping permanently.
+# CRITICAL: Do NOT use CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH — it aggressively
+# resizes buffers post-handshake causing -0x7100 read errors on streaming connections
+# (ESP-IDF issues #17816, #11833). DYNAMIC_BUFFER is the safe alternative.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
 
 # Compiler optimization (size, not debug)
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
@@ -66,3 +82,39 @@ CONFIG_LWIP_MAX_ACTIVE_TCP=4
 CONFIG_LWIP_MAX_LISTENING_TCP=2
 CONFIG_LWIP_MAX_UDP_PCBS=4
 CONFIG_LWIP_MAX_RAW_PCBS=4
+
+# OTA rollback — auto-reverts to previous firmware if new one crashes on boot
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# [E] mbedTLS — TLS client only (device never serves TLS, saves ~10-20KB flash)
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+
+# [F] mbedTLS — Strip unused features (saves ~15-25KB flash)
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
+CONFIG_MBEDTLS_PEM_WRITE_C=n
+CONFIG_MBEDTLS_X509_CRL_PARSE_C=n
+CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
+CONFIG_MBEDTLS_PKCS7_C=n
+# CONFIG_MBEDTLS_SHA512_C — MUST stay enabled (SHA-384 needed for Dexcom cert validation)
+
+# [G] mbedTLS — Keep SECP256R1 + SECP384R1 + CURVE25519 (saves ~15-30KB flash)
+CONFIG_MBEDTLS_ECP_DP_SECP192R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP224R1_ENABLED=n
+# CONFIG_MBEDTLS_ECP_DP_SECP384R1 — MUST stay enabled (Dexcom certs use P-384)
+CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP192K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP224K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+
+# [H] mbedTLS — Common cert bundle only (~40 CAs vs 200+, saves ~25KB flash)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# [L] Nano printf (saves ~50KB flash — lighter printf/sprintf implementation)
+CONFIG_NEWLIB_NANO_FORMAT=y
+
+# [N] CPU 240MHz (33% faster SSL handshakes and LVGL rendering)
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240

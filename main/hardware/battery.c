@@ -288,12 +288,12 @@ void update_battery_display(void) {
 // consecutive readings plus sudden-jump detection for mid-session plug-in.
 #define CHARGE_BOOT_FAST_COUNT  3      // Number of fast readings at boot (10s intervals)
 #define CHARGE_BOOT_INTERVAL_MS 2000   // 2s between fast boot readings
-#define CHARGE_TREND_TOLERANCE  0.03f  // Voltage within 0.03V = "not dropping"
 #define CHARGE_MIN_VOLTAGE      3.50f  // Below this, definitely not charging
-#define CHARGE_STABLE_VOLTAGE   3.85f  // Stable above this = likely charging (raised from 3.75 to avoid false positives at 65-80% SOC)
+#define CHARGE_STABLE_VOLTAGE   3.90f  // Stable above this = might be charging (raised from 3.85 to avoid false positives in flat discharge region)
 #define CHARGE_JUMP_PERCENT     15     // Raw% jump > 15 in one cycle = plug-in detected
-#define UNPLUG_DROP_VOLTAGE     0.12f  // Voltage drop > 0.12V in one cycle = charger removed
-#define CHARGE_CUMULATIVE_DROP  0.05f  // Dropped 0.05V below charge-start = false positive
+#define UNPLUG_DROP_VOLTAGE     0.06f  // Voltage drop > 0.06V in one cycle = charger removed (lowered from 0.12 for full-battery unplug)
+#define CHARGE_CUMULATIVE_DROP  0.03f  // Dropped 0.03V below charge-start = false positive (lowered from 0.05)
+#define CHARGE_DECLINE_COUNT    3      // 3 consecutive voltage declines while "charging" = stop
 
 static int  bat_history[BATTERY_AVG_SAMPLES];
 static int  bat_history_count = 0;
@@ -307,6 +307,7 @@ static int   bat_boot_readings = 0;         // Counter for fast boot phase
 static float bat_charge_start_voltage = 0;  // Voltage when charging detected
 static float bat_voltage_history[3] = {0};  // Last 3 voltages for trend detection
 static int   bat_voltage_hist_count = 0;    // How many trend entries collected
+static int   bat_decline_count = 0;         // Consecutive voltage declines while "charging"
 
 static int battery_compute_average(void) {
     if (bat_history_count == 0) return 0;
@@ -334,14 +335,19 @@ static void battery_start_charging(bool from_jump) {
     battery_percent = bat_pre_charge_percent;
     charging_anim_base = (bat_pre_charge_percent > 0) ? bat_pre_charge_percent : 0;
 
+    bat_decline_count = 0;
+
     ESP_LOGI(TAG, "Charging detected (%.3fV, corrected=%d%%, anim_base=%d%%, method=%s)",
              battery_voltage, bat_pre_charge_percent, charging_anim_base,
              from_jump ? "jump" : "trend");
     sd_log(TAG, "Charging: STARTED (%.3fV, corrected=%d%%)", battery_voltage, bat_pre_charge_percent);
 
-    // Start fill animation
-    if (battery_charging_fade_timer == NULL) {
-        battery_charging_fade_timer = lv_timer_create(charging_anim_timer_cb, 100, NULL);
+    // Start fill animation (LVGL lock required for thread-safe timer creation)
+    if (lvgl_port_lock(100)) {
+        if (battery_charging_fade_timer == NULL) {
+            battery_charging_fade_timer = lv_timer_create(charging_anim_timer_cb, 100, NULL);
+        }
+        lvgl_port_unlock();
     }
 
     // Set percentage label to green immediately
@@ -351,20 +357,22 @@ static void battery_start_charging(bool from_jump) {
 static void battery_stop_charging(void) {
     if (!bat_confirmed_charging) return;
     bat_confirmed_charging = false;
+    bat_decline_count = 0;
 
     ESP_LOGI(TAG, "Charging stopped (%.3fV)", battery_voltage);
     sd_log(TAG, "Charging: STOPPED (%.3fV)", battery_voltage);
 
-    // Stop animation timer
-    if (battery_charging_fade_timer != NULL) {
-        lv_timer_del(battery_charging_fade_timer);
-        battery_charging_fade_timer = NULL;
-    }
-
-    // Redraw battery icon at current level with correct color
-    if (battery_canvas != NULL && lvgl_port_lock(0)) {
-        uint32_t color = battery_percent_to_color(battery_percent);
-        draw_battery_icon(battery_canvas, color, battery_percent);
+    // Stop animation timer and redraw icon (LVGL lock covers both operations
+    // atomically — prevents orphaned timers from race with LVGL task)
+    if (lvgl_port_lock(200)) {
+        if (battery_charging_fade_timer != NULL) {
+            lv_timer_del(battery_charging_fade_timer);
+            battery_charging_fade_timer = NULL;
+        }
+        if (battery_canvas != NULL) {
+            uint32_t color = battery_percent_to_color(battery_percent);
+            draw_battery_icon(battery_canvas, color, battery_percent);
+        }
         lvgl_port_unlock();
     }
 
@@ -415,12 +423,13 @@ void battery_monitor_task(void *arg) {
                 from_jump = true;
             }
 
-            // Method 2: Voltage trend — stable or rising over 3 readings at ≥3.85V
-            // Catches charging at boot when there's no previous reading to compare
+            // Method 2: Voltage trend — net non-declining over 3 readings at ≥3.90V
+            // Catches charging at boot when there's no previous reading to compare.
+            // Require newest >= oldest - 0.01V (net flat/rising) to avoid false positives
+            // from the flat LiPo discharge plateau (3.85-3.95V).
             if (!detected && bat_voltage_hist_count >= 3 &&
                 battery_voltage >= CHARGE_STABLE_VOLTAGE) {
-                if (bat_voltage_history[1] >= bat_voltage_history[0] - CHARGE_TREND_TOLERANCE &&
-                    bat_voltage_history[2] >= bat_voltage_history[1] - CHARGE_TREND_TOLERANCE) {
+                if (bat_voltage_history[2] >= bat_voltage_history[0] - 0.01f) {
                     // Sanity check: the charging curve should give a reasonable SOC.
                     // If it returns < 25%, this voltage is too low for real TP4056 charging
                     // (ADC noise on a 65-85% battery mimics a rising trend).
@@ -463,6 +472,21 @@ void battery_monitor_task(void *arg) {
                 ESP_LOGI(TAG, "Charging stopped (cumulative drop): start=%.3f now=%.3f",
                          bat_charge_start_voltage, battery_voltage);
                 should_stop = true;
+            }
+
+            // Check 4: Voltage declining while "charging" (catches false positives)
+            // If voltage drops for CHARGE_DECLINE_COUNT consecutive readings,
+            // device is clearly discharging, not charging.
+            if (!should_stop && bat_prev_voltage > 0 &&
+                battery_voltage < bat_prev_voltage - 0.005f) {
+                bat_decline_count++;
+                if (bat_decline_count >= CHARGE_DECLINE_COUNT) {
+                    ESP_LOGI(TAG, "Charging stopped (declining trend): %d consecutive drops, V=%.3f",
+                             bat_decline_count, battery_voltage);
+                    should_stop = true;
+                }
+            } else if (!should_stop) {
+                bat_decline_count = 0;
             }
 
             if (should_stop) {

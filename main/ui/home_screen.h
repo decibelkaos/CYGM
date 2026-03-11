@@ -36,6 +36,12 @@ void reset_nodata_overlay_cycle(void);
 void show_wifi_disconnected_overlay(void);
 void dismiss_wifi_disconnected_overlay(void);
 
+// Login success overlay (one-time after CGM login)
+void show_login_success_overlay_ui(void);
+
+// Legal disclaimer overlay (shown on boot until user accepts)
+void show_disclaimer_overlay(void);
+
 #ifdef __cplusplus
 }
 #endif

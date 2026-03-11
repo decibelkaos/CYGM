@@ -207,22 +207,89 @@ static void show_about_overlay(void) {
     lv_obj_set_style_border_width(qr, 2, 0);
 }
 
-// Background task: check for updates then show result overlay
+// Background task: check for updates, wait for user decision, optionally do OTA.
+// OTA runs in THIS task to avoid wasting ~4.6KB heap on a separate task stack.
 static void check_update_task_fn(void *param) {
+    // Wait for home screen transition to complete
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    // Delete menu screen to reclaim LVGL pool
+    if (lvgl_port_lock(200)) {
+        if (screen_menu != NULL) {
+            lv_obj_del(screen_menu);
+            screen_menu = NULL;
+        }
+        lvgl_port_unlock();
+    }
+
+    // Free heap: pause background tasks + close Dexcom SSL
+    update_prepare_memory();
+
+    // Version check
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) == pdTRUE) {
         update_check_now();
         xSemaphoreGive(network_mutex);
     }
+
     if (lvgl_port_lock(200)) {
         show_update_overlay();
         lvgl_port_unlock();
     }
+
+    // If update is available with OTA URL, wait for user to tap Install or Dismiss
+    const update_info_t *info = update_get_info();
+    if (info->available && info->firmware_url[0] != '\0') {
+        update_set_manual_polling(true);  // Prevent fallback task creation
+        update_clear_ota_request();
+
+        // Poll for user decision (Install button sets ota_install_requested)
+        // Timeout after 120 seconds
+        for (int i = 0; i < 1200; i++) {
+            if (update_ota_install_requested()) break;
+            if (!info->available) break;  // Overlay was dismissed
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+
+        update_set_manual_polling(false);
+
+        if (update_ota_install_requested()) {
+            update_clear_ota_request();
+
+            // Show OTA progress overlay
+            if (lvgl_port_lock(200)) {
+                dismiss_update_overlay();
+                show_ota_overlay("Stopping tasks...");
+                lvgl_port_unlock();
+            }
+
+            // AGGRESSIVE cleanup: delete all tasks to maximize heap for OTA TLS.
+            // update_prepare_memory() was already called for the version check,
+            // but that only paused tasks. Now we DELETE them to free stack memory.
+            update_stop_all_tasks();
+
+            // Run OTA download in THIS task.
+            // On success: reboots. On failure: also reboots (tasks were deleted).
+            update_do_ota_download();
+            // If we get here, update_do_ota_download already handles reboot
+        }
+    }
+
+    // Restore background tasks
+    update_restore_tasks();
+
     vTaskDelete(NULL);
 }
 
 static void check_update_btn_cb(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+
+    // Dismiss about overlay and navigate back to home screen first.
+    // Update overlay shows on lv_layer_top() so it's visible on home screen.
     dismiss_about_overlay();
+    lv_scr_load(screen_home);
+    home_screen_active = true;
+    pause_background_tasks = true;  // Prevent background tasks during check
+
     xTaskCreatePinnedToCore(check_update_task_fn, "upd_chk", 8192, NULL, 5, NULL, 0);
 }
 

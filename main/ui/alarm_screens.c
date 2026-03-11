@@ -1256,8 +1256,8 @@ static void alarm_snooze_event_cb(lv_event_t *e) {
         time(&now);
         alarm_snooze_until = now + (snooze_minutes * 60);
 
-        ESP_LOGI(TAG, "Alarm snoozed for %d minutes (until timestamp %lld, current %ld)",
-                 snooze_minutes, alarm_snooze_until, (long)now);
+        ESP_LOGI(TAG, "Alarm snoozed for %d minutes (until timestamp %ld, current %ld)",
+                 snooze_minutes, (long)alarm_snooze_until, (long)now);
         sd_log(TAG, "ALARM: snoozed %dmin, glucose=%d, state=%d",
                snooze_minutes, current_glucose, current_alarm_state);
 
