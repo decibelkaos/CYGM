@@ -286,14 +286,16 @@ void update_battery_display(void) {
 // The TP4056 shares the ADC pin; terminal voltage is elevated during charging,
 // making single-reading detection unreliable.  We use voltage trend over
 // consecutive readings plus sudden-jump detection for mid-session plug-in.
-#define CHARGE_BOOT_FAST_COUNT  3      // Number of fast readings at boot (10s intervals)
-#define CHARGE_BOOT_INTERVAL_MS 2000   // 2s between fast boot readings
+#define CHARGE_BOOT_FAST_COUNT  5      // 5 fast readings at boot for reliable trend analysis
+#define CHARGE_BOOT_INTERVAL_MS 10000  // 10s between boot readings (50s observation window)
 #define CHARGE_MIN_VOLTAGE      3.50f  // Below this, definitely not charging
-#define CHARGE_STABLE_VOLTAGE   3.90f  // Stable above this = might be charging (raised from 3.85 to avoid false positives in flat discharge region)
+#define CHARGE_STABLE_VOLTAGE   3.90f  // Must be above this for trend detection
+#define CHARGE_HIGH_VOLTAGE     4.05f  // Above this = definitely charging (OCV rarely exceeds 4.0V)
+#define CHARGE_RISE_THRESHOLD   0.025f // 25mV net positive rise required for trend detection
 #define CHARGE_JUMP_PERCENT     15     // Raw% jump > 15 in one cycle = plug-in detected
-#define UNPLUG_DROP_VOLTAGE     0.06f  // Voltage drop > 0.06V in one cycle = charger removed (lowered from 0.12 for full-battery unplug)
-#define CHARGE_CUMULATIVE_DROP  0.03f  // Dropped 0.03V below charge-start = false positive (lowered from 0.05)
-#define CHARGE_DECLINE_COUNT    3      // 3 consecutive voltage declines while "charging" = stop
+#define UNPLUG_DROP_VOLTAGE     0.06f  // Voltage drop > 0.06V in one cycle = charger removed
+#define CHARGE_CUMULATIVE_DROP  0.03f  // Dropped 0.03V below charge-start = false positive
+#define CHARGE_DECLINE_COUNT    2      // 2 consecutive voltage declines while "charging" = stop
 
 static int  bat_history[BATTERY_AVG_SAMPLES];
 static int  bat_history_count = 0;
@@ -305,7 +307,7 @@ static int  bat_prev_raw_percent = -1;   // Previous cycle raw percent
 static int  bat_pre_charge_percent = -1; // Last trustworthy % before charger was plugged in
 static int   bat_boot_readings = 0;         // Counter for fast boot phase
 static float bat_charge_start_voltage = 0;  // Voltage when charging detected
-static float bat_voltage_history[3] = {0};  // Last 3 voltages for trend detection
+static float bat_voltage_history[5] = {0};  // Last 5 voltages for trend detection (40s window at boot)
 static int   bat_voltage_hist_count = 0;    // How many trend entries collected
 static int   bat_decline_count = 0;         // Consecutive voltage declines while "charging"
 
@@ -399,14 +401,13 @@ void battery_monitor_task(void *arg) {
         int raw_percent = battery_voltage_to_percent(battery_voltage);
 
         // --- Track voltage history for trend detection ---
-        // [0]=oldest, [2]=newest
-        if (bat_voltage_hist_count < 3) {
+        // [0]=oldest, [4]=newest — 5-entry sliding window
+        if (bat_voltage_hist_count < 5) {
             bat_voltage_history[bat_voltage_hist_count] = battery_voltage;
             bat_voltage_hist_count++;
         } else {
-            bat_voltage_history[0] = bat_voltage_history[1];
-            bat_voltage_history[1] = bat_voltage_history[2];
-            bat_voltage_history[2] = battery_voltage;
+            for (int i = 0; i < 4; i++) bat_voltage_history[i] = bat_voltage_history[i + 1];
+            bat_voltage_history[4] = battery_voltage;
         }
 
         // --- Charging detection ---
@@ -423,26 +424,43 @@ void battery_monitor_task(void *arg) {
                 from_jump = true;
             }
 
-            // Method 2: Voltage trend — net non-declining over 3 readings at ≥3.90V
-            // Catches charging at boot when there's no previous reading to compare.
-            // Require newest >= oldest - 0.01V (net flat/rising) to avoid false positives
-            // from the flat LiPo discharge plateau (3.85-3.95V).
-            if (!detected && bat_voltage_hist_count >= 3 &&
+            // Method 2: Rising voltage trend over 5 readings at ≥3.90V
+            // Requires MONOTONIC positive slope (each reading >= previous - 3mV)
+            // AND total rise > 25mV.  ADC noise is ~5-10mV per reading; without
+            // the monotonic check, random fluctuations on the flat LiPo plateau
+            // (3.85-3.95V) can produce apparent 8-15mV rises and false positives.
+            // Real TP4056 charging at 850mA adds 85-255mV, so 25mV is conservative.
+            if (!detected && bat_voltage_hist_count >= 5 &&
                 battery_voltage >= CHARGE_STABLE_VOLTAGE) {
-                if (bat_voltage_history[2] >= bat_voltage_history[0] - 0.01f) {
-                    // Sanity check: the charging curve should give a reasonable SOC.
-                    // If it returns < 25%, this voltage is too low for real TP4056 charging
-                    // (ADC noise on a 65-85% battery mimics a rising trend).
-                    int trend_corrected = charging_voltage_to_percent(battery_voltage);
-                    if (trend_corrected >= 25) {
-                        ESP_LOGI(TAG, "Charger detected (trend): V=%.3f->%.3f->%.3f (corrected=%d%%)",
-                                 bat_voltage_history[0], bat_voltage_history[1], battery_voltage, trend_corrected);
-                        detected = true;
-                    } else {
-                        ESP_LOGW(TAG, "Trend rejected (false positive): V=%.3f->%.3f->%.3f, charging_curve=%d%% < 25%%",
-                                 bat_voltage_history[0], bat_voltage_history[1], battery_voltage, trend_corrected);
+                float rise = bat_voltage_history[4] - bat_voltage_history[0];
+                bool monotonic = true;
+                for (int i = 1; i < 5; i++) {
+                    if (bat_voltage_history[i] < bat_voltage_history[i - 1] - 0.003f) {
+                        monotonic = false;
+                        break;
                     }
                 }
+                if (monotonic && rise > CHARGE_RISE_THRESHOLD) {
+                    int trend_corrected = charging_voltage_to_percent(battery_voltage);
+                    if (trend_corrected >= 25) {
+                        ESP_LOGI(TAG, "Charger detected (trend): V=%.3f->%.3f->%.3f->%.3f->%.3f (+%.1fmV, corrected=%d%%)",
+                                 bat_voltage_history[0], bat_voltage_history[1], bat_voltage_history[2],
+                                 bat_voltage_history[3], bat_voltage_history[4], rise * 1000.0f, trend_corrected);
+                        detected = true;
+                    }
+                } else {
+                    ESP_LOGD(TAG, "Trend check: V=%.3f->%.3f (rise=%.1fmV, mono=%d)",
+                             bat_voltage_history[0], bat_voltage_history[4], rise * 1000.0f, monotonic);
+                }
+            }
+
+            // Method 3: High voltage — OCV almost never exceeds 4.05V during
+            // normal discharge.  If terminal voltage is this high, the TP4056
+            // charger is almost certainly connected.
+            if (!detected && battery_voltage >= CHARGE_HIGH_VOLTAGE) {
+                ESP_LOGI(TAG, "Charger detected (high voltage): V=%.3f >= %.3fV",
+                         battery_voltage, CHARGE_HIGH_VOLTAGE);
+                detected = true;
             }
 
             if (detected) {

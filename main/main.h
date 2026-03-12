@@ -78,6 +78,7 @@ void draw_sunset_icon(lv_obj_t *canvas);
  * @param trend Dexcom trend direction
  */
 void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend);
+void draw_trend_arrow_sized(lv_obj_t *canvas, dexcom_trend_t trend, int sz);
 
 // ==================== Glucose Functions ====================
 

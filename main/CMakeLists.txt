@@ -24,4 +24,5 @@
                             "ui/time_weather_screens.c"
                             "ui/glucose_chart.c"
                             "tasks/background_tasks.c"
+                            "font_montserrat_120.c"
                        INCLUDE_DIRS "." "hardware" "features" "ui" "tasks")

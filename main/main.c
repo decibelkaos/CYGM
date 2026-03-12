@@ -792,15 +792,19 @@ void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t fram
 // ALL glow segments drawn first, then ALL core segments — proper z-layering
 // so the blue core is always cleanly on top at junctions.
 // Green glow = stable (flat, 45°), Orange = warning (single), Red = alarm (double)
-void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
+void draw_trend_arrow_sized(lv_obj_t *canvas, dexcom_trend_t trend, int sz) {
     if (canvas == NULL) return;
+
+    // Scale factor: all coordinates are designed for 60px canvas
+    // S(v) maps a 60-unit coordinate to the target size
+    #define S(v) ((v) * sz / 60)
 
     // Glow (outer) — severity color, full opacity, wide
     lv_draw_line_dsc_t glow;
     lv_draw_line_dsc_init(&glow);
     glow.round_start = 1;
     glow.round_end = 1;
-    glow.width = 12;
+    glow.width = S(12);
 
     // Core (inner) — blue, full opacity, narrower
     lv_draw_line_dsc_t core;
@@ -808,7 +812,7 @@ void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
     core.round_start = 1;
     core.round_end = 1;
     core.color = lv_color_hex(0x3B82F6);
-    core.width = 8;
+    core.width = S(8);
 
     // Set glow color based on severity
     switch (trend) {
@@ -829,81 +833,72 @@ void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
             return;
     }
 
-    // Helper: draw a single line segment on canvas
+    // Helper: draw a single line segment on canvas (coordinates auto-scaled)
     #define DRAW_SEG(dsc, x1, y1, x2, y2) do { \
-        lv_point_t _p[2] = {{x1, y1}, {x2, y2}}; \
+        lv_point_t _p[2] = {{S(x1), S(y1)}, {S(x2), S(y2)}}; \
         lv_canvas_draw_line(canvas, _p, 2, &dsc); \
     } while(0)
 
     // For double arrows, use slightly narrower lines to avoid overlap
     lv_draw_line_dsc_t glow_d = glow;
     lv_draw_line_dsc_t core_d = core;
-    glow_d.width = 11;
-    core_d.width = 7;
+    glow_d.width = S(11);
+    core_d.width = S(7);
 
     switch (trend) {
         case TREND_FLAT:
             // Horizontal arrow pointing right, centered at (30,30)
-            // --- Glow layer (all segments) ---
             DRAW_SEG(glow, 6, 30, 50, 30);       // shaft
             DRAW_SEG(glow, 50, 30, 41, 21);      // upper winglet
             DRAW_SEG(glow, 50, 30, 41, 39);      // lower winglet
-            // --- Core layer (all segments) ---
             DRAW_SEG(core, 6, 30, 50, 30);
             DRAW_SEG(core, 50, 30, 41, 21);
             DRAW_SEG(core, 50, 30, 41, 39);
             break;
 
         case TREND_FORTY_FIVE_UP:
-            // Diagonal: bottom-left to upper-right
-            DRAW_SEG(glow, 10, 50, 47, 13);      // shaft
-            DRAW_SEG(glow, 47, 13, 35, 12);      // winglet left
-            DRAW_SEG(glow, 47, 13, 48, 25);      // winglet down
+            DRAW_SEG(glow, 10, 50, 47, 13);
+            DRAW_SEG(glow, 47, 13, 35, 12);
+            DRAW_SEG(glow, 47, 13, 48, 25);
             DRAW_SEG(core, 10, 50, 47, 13);
             DRAW_SEG(core, 47, 13, 35, 12);
             DRAW_SEG(core, 47, 13, 48, 25);
             break;
 
         case TREND_FORTY_FIVE_DOWN:
-            // Diagonal: upper-left to bottom-right (mirror of 45-up)
-            DRAW_SEG(glow, 10, 10, 47, 47);      // shaft
-            DRAW_SEG(glow, 47, 47, 35, 48);      // winglet left
-            DRAW_SEG(glow, 47, 47, 48, 35);      // winglet up
+            DRAW_SEG(glow, 10, 10, 47, 47);
+            DRAW_SEG(glow, 47, 47, 35, 48);
+            DRAW_SEG(glow, 47, 47, 48, 35);
             DRAW_SEG(core, 10, 10, 47, 47);
             DRAW_SEG(core, 47, 47, 35, 48);
             DRAW_SEG(core, 47, 47, 48, 35);
             break;
 
         case TREND_SINGLE_UP:
-            // Vertical arrow pointing up, centered at x=30
-            DRAW_SEG(glow, 30, 54, 30, 13);      // shaft
-            DRAW_SEG(glow, 30, 13, 21, 22);      // left winglet
-            DRAW_SEG(glow, 30, 13, 39, 22);      // right winglet
+            DRAW_SEG(glow, 30, 54, 30, 13);
+            DRAW_SEG(glow, 30, 13, 21, 22);
+            DRAW_SEG(glow, 30, 13, 39, 22);
             DRAW_SEG(core, 30, 54, 30, 13);
             DRAW_SEG(core, 30, 13, 21, 22);
             DRAW_SEG(core, 30, 13, 39, 22);
             break;
 
         case TREND_SINGLE_DOWN:
-            // Vertical arrow pointing down, centered at x=30
-            DRAW_SEG(glow, 30, 6, 30, 47);       // shaft
-            DRAW_SEG(glow, 30, 47, 21, 38);      // left winglet
-            DRAW_SEG(glow, 30, 47, 39, 38);      // right winglet
+            DRAW_SEG(glow, 30, 6, 30, 47);
+            DRAW_SEG(glow, 30, 47, 21, 38);
+            DRAW_SEG(glow, 30, 47, 39, 38);
             DRAW_SEG(core, 30, 6, 30, 47);
             DRAW_SEG(core, 30, 47, 21, 38);
             DRAW_SEG(core, 30, 47, 39, 38);
             break;
 
         case TREND_DOUBLE_UP:
-            // Two vertical arrows at x=19 and x=41 (22px apart)
-            // --- All glow first ---
-            DRAW_SEG(glow_d, 19, 52, 19, 16);    // left shaft
-            DRAW_SEG(glow_d, 19, 16, 11, 23);    // left winglet L
-            DRAW_SEG(glow_d, 19, 16, 26, 23);    // left winglet R
-            DRAW_SEG(glow_d, 41, 52, 41, 16);    // right shaft
-            DRAW_SEG(glow_d, 41, 16, 34, 23);    // right winglet L
-            DRAW_SEG(glow_d, 41, 16, 49, 23);    // right winglet R
-            // --- All core second ---
+            DRAW_SEG(glow_d, 19, 52, 19, 16);
+            DRAW_SEG(glow_d, 19, 16, 11, 23);
+            DRAW_SEG(glow_d, 19, 16, 26, 23);
+            DRAW_SEG(glow_d, 41, 52, 41, 16);
+            DRAW_SEG(glow_d, 41, 16, 34, 23);
+            DRAW_SEG(glow_d, 41, 16, 49, 23);
             DRAW_SEG(core_d, 19, 52, 19, 16);
             DRAW_SEG(core_d, 19, 16, 11, 23);
             DRAW_SEG(core_d, 19, 16, 26, 23);
@@ -913,13 +908,12 @@ void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
             break;
 
         case TREND_DOUBLE_DOWN:
-            // Two vertical arrows at x=19 and x=41
-            DRAW_SEG(glow_d, 19, 8, 19, 44);     // left shaft
-            DRAW_SEG(glow_d, 19, 44, 11, 37);    // left winglet L
-            DRAW_SEG(glow_d, 19, 44, 26, 37);    // left winglet R
-            DRAW_SEG(glow_d, 41, 8, 41, 44);     // right shaft
-            DRAW_SEG(glow_d, 41, 44, 34, 37);    // right winglet L
-            DRAW_SEG(glow_d, 41, 44, 49, 37);    // right winglet R
+            DRAW_SEG(glow_d, 19, 8, 19, 44);
+            DRAW_SEG(glow_d, 19, 44, 11, 37);
+            DRAW_SEG(glow_d, 19, 44, 26, 37);
+            DRAW_SEG(glow_d, 41, 8, 41, 44);
+            DRAW_SEG(glow_d, 41, 44, 34, 37);
+            DRAW_SEG(glow_d, 41, 44, 49, 37);
             DRAW_SEG(core_d, 19, 8, 19, 44);
             DRAW_SEG(core_d, 19, 44, 11, 37);
             DRAW_SEG(core_d, 19, 44, 26, 37);
@@ -933,6 +927,11 @@ void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
     }
 
     #undef DRAW_SEG
+    #undef S
+}
+
+void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
+    draw_trend_arrow_sized(canvas, trend, 60);
 }
 
 // ==================== Time & SNTP Functions ====================
@@ -1488,18 +1487,24 @@ void update_glucose_display(void) {
                 snprintf(glucose_str, sizeof(glucose_str), "%d", current_glucose);
                 lv_label_set_text(label_glucose, glucose_str);
 
-                // Realign unit label when in expanded CGM mode (bottom-right of glucose)
-                if (cgm_expanded && label_unit != NULL) {
-                    lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
+                // Realign unit label when expanded (stays below glucose center)
+                if (cgm_expanded) {
+                    if (label_unit != NULL) {
+                        lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 20, -4);
+                    }
                 }
 
                 // Color code based on alarm thresholds (configured by user)
                 uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
                 lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
 
-                // Update trend arrow canvas
+                // Update trend arrow canvas (80px when expanded, 60px normal)
                 lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
-                draw_trend_arrow(trend_canvas, current_trend);
+                if (cgm_expanded) {
+                    draw_trend_arrow_sized(trend_canvas, current_trend, 80);
+                } else {
+                    draw_trend_arrow(trend_canvas, current_trend);
+                }
 
                 char time_ago_str[32];
                 if (minutes_ago < 1) {

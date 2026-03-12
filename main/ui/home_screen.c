@@ -24,8 +24,13 @@
 
 static const char *TAG = "HOME_SCREEN";
 
+// Large glucose font (digits only, generated via lv_font_conv)
+extern const lv_font_t font_montserrat_120;
+
 // File-scope references for expand/collapse repositioning
 static lv_obj_t *brightness_btn_ref = NULL;
+static lv_obj_t *expanded_weather_icon = NULL;  // Mini weather icon for expanded top bar
+static lv_color_t canvas_buf_trend[LV_CANVAS_BUF_SIZE_TRUE_COLOR(80, 80)];  // Sized for expanded 80x80
 
 // Forward declarations
 static void brightness_icon_event_cb(lv_event_t *e);
@@ -926,6 +931,103 @@ static void expand_left_fade_done_cb(lv_anim_t *a) {
     lv_obj_add_flag(left_card, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Draw a tiny weather condition icon on a 20x20 canvas
+static void draw_mini_weather_icon(lv_obj_t *canvas, int weather_code) {
+    if (canvas == NULL) return;
+    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+
+    lv_draw_rect_dsc_t r;
+    lv_draw_rect_dsc_init(&r);
+    r.bg_opa = LV_OPA_COVER;
+    r.radius = LV_RADIUS_CIRCLE;
+
+    lv_draw_line_dsc_t l;
+    lv_draw_line_dsc_init(&l);
+    l.width = 2;
+    l.round_start = 1;
+    l.round_end = 1;
+
+    switch (weather_code) {
+        case 0: // Clear — sun (yellow circle)
+            r.bg_color = lv_color_hex(0xFBBF24);
+            lv_canvas_draw_rect(canvas, 5, 5, 10, 10, &r);
+            break;
+        case 1: // Partly cloudy — small sun + cloud
+            r.bg_color = lv_color_hex(0xFBBF24);
+            lv_canvas_draw_rect(canvas, 2, 3, 8, 8, &r);
+            r.bg_color = lv_color_hex(0xCBD5E1);
+            lv_canvas_draw_rect(canvas, 7, 8, 11, 8, &r);
+            break;
+        case 2: // Cloudy — cloud
+            r.bg_color = lv_color_hex(0x94A3B8);
+            lv_canvas_draw_rect(canvas, 2, 4, 16, 10, &r);
+            r.bg_color = lv_color_hex(0xCBD5E1);
+            lv_canvas_draw_rect(canvas, 5, 2, 10, 10, &r);
+            break;
+        case 3: { // Rain — cloud + drops
+            r.bg_color = lv_color_hex(0x94A3B8);
+            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
+            l.color = lv_color_hex(0x60A5FA);
+            lv_point_t d1[] = {{5, 12}, {4, 16}};
+            lv_canvas_draw_line(canvas, d1, 2, &l);
+            lv_point_t d2[] = {{10, 12}, {9, 16}};
+            lv_canvas_draw_line(canvas, d2, 2, &l);
+            lv_point_t d3[] = {{15, 12}, {14, 16}};
+            lv_canvas_draw_line(canvas, d3, 2, &l);
+            break;
+        }
+        case 4: // Snow — cloud + dots
+            r.bg_color = lv_color_hex(0x94A3B8);
+            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
+            r.bg_color = lv_color_hex(0xE2E8F0);
+            r.radius = LV_RADIUS_CIRCLE;
+            lv_canvas_draw_rect(canvas, 4, 13, 3, 3, &r);
+            lv_canvas_draw_rect(canvas, 9, 13, 3, 3, &r);
+            lv_canvas_draw_rect(canvas, 14, 13, 3, 3, &r);
+            break;
+        case 5: { // Thunderstorm — cloud + bolt
+            r.bg_color = lv_color_hex(0x64748B);
+            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
+            l.color = lv_color_hex(0xFBBF24);
+            l.width = 2;
+            lv_point_t b1[] = {{10, 10}, {8, 14}};
+            lv_canvas_draw_line(canvas, b1, 2, &l);
+            lv_point_t b2[] = {{8, 14}, {12, 14}};
+            lv_canvas_draw_line(canvas, b2, 2, &l);
+            lv_point_t b3[] = {{12, 14}, {9, 18}};
+            lv_canvas_draw_line(canvas, b3, 2, &l);
+            break;
+        }
+        case 6: { // Fog — horizontal lines
+            l.color = lv_color_hex(0x94A3B8);
+            l.width = 2;
+            lv_point_t f1[] = {{2, 5}, {18, 5}};
+            lv_canvas_draw_line(canvas, f1, 2, &l);
+            lv_point_t f2[] = {{4, 10}, {16, 10}};
+            lv_canvas_draw_line(canvas, f2, 2, &l);
+            lv_point_t f3[] = {{2, 15}, {18, 15}};
+            lv_canvas_draw_line(canvas, f3, 2, &l);
+            break;
+        }
+        case 7: { // Freezing rain — cloud + blue drops
+            r.bg_color = lv_color_hex(0x94A3B8);
+            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
+            l.color = lv_color_hex(0x93C5FD);
+            lv_point_t d1[] = {{5, 12}, {4, 16}};
+            lv_canvas_draw_line(canvas, d1, 2, &l);
+            lv_point_t d2[] = {{10, 12}, {9, 16}};
+            lv_canvas_draw_line(canvas, d2, 2, &l);
+            lv_point_t d3[] = {{15, 12}, {14, 16}};
+            lv_canvas_draw_line(canvas, d3, 2, &l);
+            break;
+        }
+        default: // Unknown — small cloud
+            r.bg_color = lv_color_hex(0x94A3B8);
+            lv_canvas_draw_rect(canvas, 3, 4, 14, 10, &r);
+            break;
+    }
+}
+
 static void expand_cgm_card(void) {
     if (left_card == NULL || right_card == NULL) return;
     cgm_expanded = true;
@@ -964,7 +1066,7 @@ static void expand_cgm_card(void) {
     lv_anim_set_values(&a, NORMAL_RIGHT_W, EXPANDED_RIGHT_W);
     lv_anim_start(&a);
 
-    // --- Fade in time/temp labels ---
+    // --- Fade in expanded top bar elements ---
     lv_anim_init(&a);
     lv_anim_set_time(&a, ANIM_DURATION / 2);
     lv_anim_set_delay(&a, ANIM_DURATION / 2);
@@ -984,46 +1086,62 @@ static void expand_cgm_card(void) {
         lv_anim_set_var(&a, expanded_temp_label);
         lv_anim_start(&a);
     }
+    if (expanded_weather_icon != NULL) {
+        draw_mini_weather_icon(expanded_weather_icon, current_weather_code);
+        lv_obj_clear_flag(expanded_weather_icon, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_opa(expanded_weather_icon, 0, 0);
+        lv_anim_set_var(&a, expanded_weather_icon);
+        lv_anim_start(&a);
+    }
 
     // --- Reposition elements for expanded layout ---
     // Expanded card: 308px wide (288px usable), 220px tall (200px usable)
     //
-    //  Top:    [battery]  [12:30  72°F]                  [💡]
+    //  Top:  [🔋100%]    [08:16  72°F ☀]    [💡] [⚙]
     //
-    //  Left:   [trend ↑]  120
+    //  Center:          150  [→]
     //                     mg/dL
-    //                     5 min ago
     //
-    //  Bottom: [=============== timer bar 75% ===============]
+    //                   5 min ago
+    //
+    //  Bottom: [================ timer bar ================]
 
-    // Glucose: left side, vertically centered, shifted up for mg/dL + time_ago below
+    // Switch to large font for glucose — centered at fixed position
     if (label_glucose != NULL) {
-        lv_obj_align(label_glucose, LV_ALIGN_LEFT_MID, 85, -20);
+        lv_obj_set_style_text_font(label_glucose, &font_montserrat_120, 0);
+        lv_obj_align(label_glucose, LV_ALIGN_CENTER, -40, -8);
     }
 
-    // Unit "mg/dL": bottom-right of glucose number
-    if (label_unit != NULL && label_glucose != NULL) {
-        lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
-    }
-
-    // Trend arrow: left of glucose, vertically centered
+    // Resize trend arrow canvas to 80x80 to match large digits
     if (trend_canvas != NULL) {
-        lv_obj_align(trend_canvas, LV_ALIGN_LEFT_MID, 10, -10);
+        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 80, 80, LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+        draw_trend_arrow_sized(trend_canvas, current_trend, 80);
     }
 
-    // Time ago: below unit label
-    if (label_time_ago != NULL && label_glucose != NULL) {
-        lv_obj_align_to(label_time_ago, label_glucose, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 20);
+    // Trend arrow: fixed position on right side of card (doesn't shift with digit count)
+    if (trend_canvas != NULL) {
+        lv_obj_align(trend_canvas, LV_ALIGN_RIGHT_MID, -16, -8);
     }
 
-    // Timer bar: expand to 75% of card width (~216px)
+    // Unit "mg/dL": below glucose, centered under the value
+    if (label_unit != NULL && label_glucose != NULL) {
+        lv_obj_align_to(label_unit, label_glucose, LV_ALIGN_OUT_BOTTOM_RIGHT, 20, -4);
+    }
+
+    // Time ago: centered near bottom
+    if (label_time_ago != NULL) {
+        lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -22);
+    }
+
+    // Timer bar: fill most of card width
     if (glucose_fetch_timer_bar != NULL) {
-        lv_obj_set_width(glucose_fetch_timer_bar, 216);
+        lv_obj_set_width(glucose_fetch_timer_bar, 260);
     }
 
-    // Brightness: shift right but stay clear of settings gear (gear at screen TOP_RIGHT, -10)
+    // Brightness: to the left of gear cog (TOP_RIGHT minus gear width and gap)
     if (brightness_btn_ref != NULL) {
-        lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_RIGHT, -40, 0);
+        lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_RIGHT, -34, 0);
     }
 }
 
@@ -1058,22 +1176,29 @@ static void collapse_cgm_card(void) {
     lv_anim_set_values(&a, EXPANDED_RIGHT_W, NORMAL_RIGHT_W);
     lv_anim_start(&a);
 
-    // Hide expanded time/temp labels
+    // Hide expanded top bar elements
     if (expanded_time_label != NULL) {
         lv_obj_add_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
     }
     if (expanded_temp_label != NULL) {
         lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
     }
+    if (expanded_weather_icon != NULL) {
+        lv_obj_add_flag(expanded_weather_icon, LV_OBJ_FLAG_HIDDEN);
+    }
 
     // --- Restore all elements to normal positions ---
     if (label_glucose != NULL) {
+        lv_obj_set_style_text_font(label_glucose, &lv_font_montserrat_48, 0);
         lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
     }
     if (label_unit != NULL) {
         lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 75);
     }
     if (trend_canvas != NULL) {
+        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+        draw_trend_arrow(trend_canvas, current_trend);
         lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
     }
     if (label_time_ago != NULL) {
@@ -1284,9 +1409,7 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_unit, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 75);
     
-    // Trend arrow
-    // Trend arrow (canvas for custom drawing, 60x60 for memory optimization)
-    static lv_color_t canvas_buf_trend[LV_CANVAS_BUF_SIZE_TRUE_COLOR(60, 60)];
+    // Trend arrow (canvas for custom drawing, buffer sized for expanded 80x80)
     trend_canvas = lv_canvas_create(right_card);
     lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
@@ -1352,16 +1475,14 @@ void create_home_screen(void) {
         weather_icon_anim_timer = lv_timer_create(weather_icon_animation_timer_cb, 100, NULL);
     }
 
-    // --- EXPANDED VIEW LABELS (hidden, shown in CGM card top bar when expanded) ---
-    // These are children of right_card, positioned between battery (left) and brightness (right)
-    // Expanded view: time + temp in top bar between battery and brightness
-    // In expanded mode (308px card), TOP_MID is at ~144px. Brightness at TOP_MID+22 = 166.
-    // Position labels left-of-center to avoid brightness overlap.
+    // --- EXPANDED VIEW TOP BAR (hidden, shown when CGM card is expanded) ---
+    // Layout: [battery]    [time  temp ☀]    [💡] [⚙]
+    // Time and temp shifted left of center; mini weather icon right of temp
     expanded_time_label = lv_label_create(right_card);
     lv_label_set_text(expanded_time_label, "00:00");
     lv_obj_set_style_text_font(expanded_time_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(expanded_time_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(expanded_time_label, LV_ALIGN_TOP_MID, -60, 2);
+    lv_obj_align(expanded_time_label, LV_ALIGN_TOP_MID, -30, 2);
     lv_obj_add_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
 
     expanded_temp_label = lv_label_create(right_card);
@@ -1370,6 +1491,14 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(expanded_temp_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(expanded_temp_label, LV_ALIGN_TOP_MID, 10, 2);
     lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
+
+    // Mini weather condition icon (20x20 canvas, right of temp label)
+    static lv_color_t mini_weather_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(20, 20)];
+    expanded_weather_icon = lv_canvas_create(right_card);
+    lv_canvas_set_buffer(expanded_weather_icon, mini_weather_buf, 20, 20, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(expanded_weather_icon, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_obj_align(expanded_weather_icon, LV_ALIGN_TOP_MID, 42, 0);
+    lv_obj_add_flag(expanded_weather_icon, LV_OBJ_FLAG_HIDDEN);
 
     // Register gesture handler on home screen for swipe expand/collapse
     lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);
