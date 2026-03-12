@@ -15,7 +15,7 @@
 static const char *TAG = "GEOCODING";
 
 #define GEOCODING_API_URL "http://geocoding-api.open-meteo.com/v1/search"
-#define HTTP_RESPONSE_BUFFER_SIZE 8192
+#define HTTP_RESPONSE_BUFFER_SIZE 4096
 
 // HTTP response buffer
 static char http_response_buffer[HTTP_RESPONSE_BUFFER_SIZE];
@@ -101,7 +101,7 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
         .url = url,
         .event_handler = geocoding_http_event_handler,
         .timeout_ms = 10000,
-        .buffer_size = 2048,
+        .buffer_size = 1024,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);

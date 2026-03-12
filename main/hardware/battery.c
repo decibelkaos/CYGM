@@ -619,13 +619,10 @@ void battery_monitor_task(void *arg) {
                      battery_voltage, corrected_percent, battery_percent, charging_anim_base);
         }
 
-        // Periodic SD flush — check largest contiguous block (FAT mount needs ~12KB)
-        size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-        if (largest_block > 15000) {
+        // Periodic SD flush — sd_logger_flush() has its own memory pre-check
+        // and will self-suspend after repeated failures (no need to guard here)
+        if (sd_logger_available()) {
             sd_logger_flush();
-        } else {
-            ESP_LOGW(TAG, "SD flush skipped (largest_block=%u, total=%lu)",
-                     (unsigned)largest_block, esp_get_free_heap_size());
         }
 
         // Fast boot readings, then normal interval with change detection

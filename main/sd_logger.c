@@ -62,6 +62,9 @@ static volatile bool serial_capture_paused = false;
 // SPI/SD state
 static bool spi_initialized = false;
 static bool card_detected = false;
+static bool sd_suspended = false;           // True when SD logging is suspended due to memory pressure
+static int  sd_flush_fail_count = 0;        // Consecutive flush failures (memory or mount)
+#define SD_SUSPEND_AFTER_FAILURES  5        // Suspend after this many consecutive failures
 static sdmmc_host_t host;
 static sdspi_device_config_t slot_config;
 
@@ -187,7 +190,7 @@ esp_err_t sd_logger_init(void)
 
 void sd_log(const char *tag, const char *fmt, ...)
 {
-    if (!spi_initialized || !card_detected || !log_mutex) return;
+    if (!spi_initialized || !card_detected || !log_mutex || sd_suspended) return;
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     int remaining = SD_LOG_BUFFER_SIZE - log_buffer_pos - 2;  // room for \n\0
@@ -236,7 +239,7 @@ void sd_log(const char *tag, const char *fmt, ...)
 
 esp_err_t sd_logger_flush(void)
 {
-    if (!spi_initialized || !card_detected) return ESP_ERR_NOT_FOUND;
+    if (!spi_initialized || !card_detected || sd_suspended) return ESP_ERR_NOT_FOUND;
     if (!log_mutex) return ESP_ERR_INVALID_STATE;
 
     // Pause serial capture to prevent re-entrancy from mount/write ESP_LOG calls
@@ -296,14 +299,38 @@ esp_err_t sd_logger_flush(void)
     // Pre-check: need ~12KB contiguous for FAT structures — skip if fragmented
     size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
     if (largest_block < 15000) {
-        ESP_LOGW(TAG, "SD flush deferred (largest_block=%u, need ~12KB)", (unsigned)largest_block);
-        // Restore serial buffer since we couldn't write it
-        if (serial_flush_len > 0 && serial_mutex) {
-            if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                serial_buffer_pos = serial_flush_len;
+        sd_flush_fail_count++;
+
+        if (sd_flush_fail_count >= SD_SUSPEND_AFTER_FAILURES) {
+            // Persistent memory pressure — suspend SD logging to stop wasting CPU
+            // on serial capture and buffer management that can never flush.
+            // Serial capture vprintf runs on EVERY ESP_LOG call; disabling it
+            // removes that overhead and stops filling a buffer we can't write.
+            sd_suspended = true;
+            serial_capture_enabled = false;
+
+            // Discard buffered data (can't write it anyway)
+            log_buffer_pos = 0;
+            glucose_buffer_pos = 0;
+            if (serial_mutex && xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                serial_buffer_pos = 0;
                 xSemaphoreGive(serial_mutex);
             }
+
+            ESP_LOGW(TAG, "SD logging SUSPENDED after %d consecutive flush failures (largest_block=%u)",
+                     sd_flush_fail_count, (unsigned)largest_block);
+        } else {
+            ESP_LOGW(TAG, "SD flush deferred [%d/%d] (largest_block=%u, need ~12KB)",
+                     sd_flush_fail_count, SD_SUSPEND_AFTER_FAILURES, (unsigned)largest_block);
+            // Restore serial buffer since we couldn't write it
+            if (serial_flush_len > 0 && serial_mutex) {
+                if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                    serial_buffer_pos = serial_flush_len;
+                    xSemaphoreGive(serial_mutex);
+                }
+            }
         }
+
         xSemaphoreGive(log_mutex);
         serial_capture_paused = false;
         return ESP_ERR_NO_MEM;
@@ -386,6 +413,7 @@ esp_err_t sd_logger_flush(void)
 
     // Clear curated buffer regardless of write result
     log_buffer_pos = 0;
+    sd_flush_fail_count = 0;  // Reset on successful flush
 
     xSemaphoreGive(log_mutex);
     serial_capture_paused = false;
@@ -394,7 +422,7 @@ esp_err_t sd_logger_flush(void)
 
 void sd_log_glucose(int mg_dl, const char *trend)
 {
-    if (!spi_initialized || !card_detected || !log_mutex) return;
+    if (!spi_initialized || !card_detected || !log_mutex || sd_suspended) return;
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     time_t now;
@@ -428,7 +456,7 @@ void sd_log_glucose(int mg_dl, const char *trend)
 
 bool sd_logger_available(void)
 {
-    return spi_initialized && card_detected;
+    return spi_initialized && card_detected && !sd_suspended;
 }
 
 esp_err_t sd_card_mount(sdmmc_card_t **out_card)

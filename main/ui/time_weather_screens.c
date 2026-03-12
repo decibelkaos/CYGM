@@ -11,6 +11,7 @@
 #include "features/weather_system.h"
 #include "features/time_system.h"
 #include "features/geocoding_api.h"
+#include "dexcom_api.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -62,7 +63,24 @@ static void apply_selected_location(void);
 
 // ==================== Background Search Task ====================
 static void location_search_task(void *pvParameters) {
+    // Take network mutex and close persistent Dexcom SSL client to free ~30KB.
+    // Without this, esp_http_client_init fails with only ~7KB largest block.
+    // The glucose task will re-establish SSL on its next cycle.
+    bool mutex_held = false;
+    if (network_mutex != NULL &&
+        xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+        mutex_held = true;
+        if (dexcom_persistent_client_is_open()) {
+            ESP_LOGI(TAG, "Closing Dexcom SSL to free memory for geocoding");
+            dexcom_close_persistent_client();
+        }
+    }
+
     esp_err_t err = geocoding_search(pending_search_query, search_results, &search_result_count);
+
+    if (mutex_held) {
+        xSemaphoreGive(network_mutex);
+    }
 
     if (lvgl_port_lock(100)) {
         if (err == ESP_OK && search_result_count > 0) {

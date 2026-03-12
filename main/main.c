@@ -1581,6 +1581,7 @@ void glucose_update_task(void *pvParameters) {
     // Exponential backoff for persistent failures (API outage, signal loss)
     // Normal: 90s.  After 3+ failures: 180s.  After 6+: 300s.  After 10+: 600s.
     int consecutive_task_failures = 0;
+    int consecutive_memory_skips = 0;
     int poll_interval_sec = 90;
 
     // Smart wait: Only wait remaining time if an initial fetch already happened
@@ -1713,11 +1714,14 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
-                // SSL buffer sizes (sdkconfig): IN=8192, OUT=2048, variable length
-                // Total SSL overhead: ~15-20KB (TLS context + buffers + cert chain)
-                // Previous 35KB/30KB thresholds caused infinite skip loops at 29KB
+                // SSL buffer sizes (sdkconfig): IN=8192, OUT=2048, dynamic buffer
+                // Peak SSL handshake: ~15-18KB (TLS context + buffers + cert chain)
+                // Steady state: ~12-15KB.  Threshold must leave ~2-3KB headroom.
+                // Previous 35KB/30KB/25KB/15KB thresholds caused infinite skip loops.
+                // Reusing an open SSL connection only needs HTTP req/resp buffers (~3-5KB).
+                // Creating a new SSL connection needs ~15-18KB for TLS handshake.
                 bool client_open = dexcom_persistent_client_is_open();
-                size_t required_memory = client_open ? 15000 : 25000;
+                size_t required_memory = client_open ? 8000 : 20000;
                 const char *connection_type = client_open ? "REUSING existing SSL connection" : "CREATING new SSL connection";
 
                 // Check largest DRAM block to detect fragmentation (SSL needs byte-addressable memory)
@@ -1763,40 +1767,50 @@ void glucose_update_task(void *pvParameters) {
                 ESP_LOGI(TAG, "Memory requirement: %lu bytes (%s)", required_memory, connection_type);
 
                 if (free_internal < required_memory) {
-                    ESP_LOGE(TAG, "Insufficient INTERNAL memory: %lu bytes (need %lu for %s)",
-                             free_internal, required_memory, connection_type);
-                    ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
-                    sd_log(TAG, "SKIP: insufficient free=%lu need=%lu", free_internal, required_memory);
+                    consecutive_memory_skips++;
 
-                    // Mark fetch as failed due to memory
-                    glucose_fetch_failed = true;
-                    glucose_fetch_in_progress = false;
+                    // After 5 consecutive memory skips, force an attempt rather than
+                    // staying in an infinite skip loop.  The SSL handshake will either
+                    // succeed (thresholds were over-conservative) or fail gracefully.
+                    if (consecutive_memory_skips >= 5) {
+                        ESP_LOGW(TAG, "FORCE: %d consecutive memory skips — attempting SSL anyway (%lu bytes free)",
+                                 consecutive_memory_skips, free_internal);
+                        sd_log(TAG, "FORCE: %d skips, attempting with %lu bytes", consecutive_memory_skips, free_internal);
+                        consecutive_memory_skips = 0;
+                        // Fall through to attempt the connection
+                    } else {
+                        ESP_LOGE(TAG, "Insufficient INTERNAL memory: %lu bytes (need %lu for %s) [skip %d/5]",
+                                 free_internal, required_memory, connection_type, consecutive_memory_skips);
+                        ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
+                        sd_log(TAG, "SKIP: insufficient free=%lu need=%lu skip=%d", free_internal, required_memory, consecutive_memory_skips);
 
-                    // Stop animation and update bar to red
-                    if (lvgl_port_lock(0)) {
-                        if (glucose_fetch_animation_timer != NULL) {
-                            lv_timer_del(glucose_fetch_animation_timer);
-                            glucose_fetch_animation_timer = NULL;
+                        // Mark fetch as failed due to memory
+                        glucose_fetch_failed = true;
+                        glucose_fetch_in_progress = false;
+
+                        // Stop animation and update bar to red
+                        if (lvgl_port_lock(0)) {
+                            if (glucose_fetch_animation_timer != NULL) {
+                                lv_timer_del(glucose_fetch_animation_timer);
+                                glucose_fetch_animation_timer = NULL;
+                            }
+                            if (glucose_fetch_timer_bar != NULL) {
+                                lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+                                lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                                lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+                            }
+                            lvgl_port_unlock();
                         }
-                        if (glucose_fetch_timer_bar != NULL) {
-                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
-                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                            // Keep blue glow even on failure
-                            lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                        }
-                        lvgl_port_unlock();
+
+                        xSemaphoreGive(network_mutex);
+                        ESP_LOGI(TAG, "Network mutex released (insufficient memory)");
+
+                        led_start_error_blink();
+                        vTaskDelay(pdMS_TO_TICKS(5000));
+                        led_stop_error_blink();
+
+                        continue;
                     }
-
-                    // Release mutex before error handling
-                    xSemaphoreGive(network_mutex);
-                    ESP_LOGI(TAG, "Network mutex released (insufficient memory)");
-
-                    // Show error LED
-                    led_start_error_blink();
-                    vTaskDelay(pdMS_TO_TICKS(5000));
-                    led_stop_error_blink();
-
-                    continue;
                 }
 
                 ESP_LOGI(TAG, "Memory check PASSED - %lu bytes available (%s)",
