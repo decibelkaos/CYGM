@@ -158,16 +158,16 @@ static void screenshot_restart_tasks(bool restore_pause_state)
 {
     // Recreate all tasks we deleted, matching the original creation parameters
     // from background_tasks.c. Singleton guards prevent double-creation.
-    if (weather_task_handle == NULL) {
-        xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
-        ESP_LOGI(TAG, "Restarted weather task");
-    }
     if (glucose_task_handle == NULL) {
-        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
         ESP_LOGI(TAG, "Restarted glucose task");
     }
+    if (weather_task_handle == NULL) {
+        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+        ESP_LOGI(TAG, "Restarted weather task");
+    }
     if (time_task_handle == NULL) {
-        xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, &time_task_handle);
+        xTaskCreate(time_update_task, "time_update", 4096, NULL, 3, &time_task_handle);
         ESP_LOGI(TAG, "Restarted time task");
     }
     if (battery_task_handle == NULL) {
@@ -370,8 +370,14 @@ static void screenshot_cmd_task(void *arg)
 
                 if (strcmp(cmd_buf, "ss") == 0 || strcmp(cmd_buf, "screenshot") == 0) {
                     screenshot_take();
+                } else if (strcmp(cmd_buf, "log on") == 0) {
+                    sd_serial_capture_set(true);
+                    ESP_LOGI(TAG, "Serial capture: ON");
+                } else if (strcmp(cmd_buf, "log off") == 0) {
+                    sd_serial_capture_set(false);
+                    ESP_LOGI(TAG, "Serial capture: OFF");
                 } else if (strcmp(cmd_buf, "help") == 0) {
-                    ESP_LOGI(TAG, "Commands: ss | screenshot | help");
+                    ESP_LOGI(TAG, "Commands: ss | screenshot | log on | log off | help");
                 }
 
                 cmd_pos = 0;

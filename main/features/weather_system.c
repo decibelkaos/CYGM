@@ -16,6 +16,7 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/task.h"
 #include "cJSON.h"
 #include "lvgl.h"
@@ -32,6 +33,9 @@ static int http_response_len = 0;
 
 // Geocoded zipcode tracker (to detect when user changes zipcode)
 char geocoded_zipcode[MAX_ZIPCODE_LEN] = {0};
+
+// Track last successful weather fetch (persists across task delete/recreate)
+static int64_t last_weather_fetch_ms = 0;
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
@@ -466,10 +470,23 @@ void update_weather_display(void) {
 void weather_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Weather update task started");
 
-    // Wait for initial WiFi connection and Dexcom auth to complete
-    // Short delay since we're using HTTP (no SSL overhead)
-    ESP_LOGI(TAG, "Waiting 15 seconds before first weather attempt...");
-    vTaskDelay(pdMS_TO_TICKS(15000));  // 15 seconds - gives Dexcom time to authenticate
+    // Check if we were recently recreated (glucose task deletes/recreates us for SSL).
+    // Skip the initial delay and fetch if last fetch was recent enough.
+    int64_t now_ms = esp_timer_get_time() / 1000;
+    int64_t interval_ms = (int64_t)user_weather_interval_min * 60 * 1000;
+    int64_t elapsed_ms = now_ms - last_weather_fetch_ms;
+
+    if (last_weather_fetch_ms > 0 && elapsed_ms < interval_ms) {
+        // Recently fetched — sleep for the remaining interval
+        int64_t remaining_ms = interval_ms - elapsed_ms;
+        ESP_LOGI(TAG, "Recent fetch %ds ago — sleeping %ds until next",
+                 (int)(elapsed_ms / 1000), (int)(remaining_ms / 1000));
+        vTaskDelay(pdMS_TO_TICKS(remaining_ms > 0 ? (uint32_t)remaining_ms : 1000));
+    } else {
+        // First boot or interval elapsed — short delay for network stability
+        ESP_LOGI(TAG, "Waiting 15 seconds before first weather attempt...");
+        vTaskDelay(pdMS_TO_TICKS(15000));
+    }
     ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
 
     while (1) {
@@ -553,6 +570,14 @@ void weather_update_task(void *pvParameters) {
                     }
 
                     ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
+
+                    // Close Dexcom SSL to free ~15KB for weather HTTP + cJSON parsing.
+                    // Glucose task handles reconnection via task-deletion pattern.
+                    if (dexcom_persistent_client_is_open()) {
+                        dexcom_close_persistent_client();
+                        ESP_LOGI(TAG, "Closed Dexcom SSL for weather (heap now: %lu)", esp_get_free_heap_size());
+                    }
+
                     ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
                     ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
 
@@ -563,6 +588,7 @@ void weather_update_task(void *pvParameters) {
                     ESP_LOGI(TAG, "Network mutex released after weather fetch attempt");
 
                     if (fetch_ret == ESP_OK) {
+                        last_weather_fetch_ms = esp_timer_get_time() / 1000;
                         ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
                         update_weather_display();
                         break;

@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "sd_logger.h"
+#include "nvs_config.h"
 
 static const char *TAG = "MENU_SCREEN";
 
@@ -82,6 +83,14 @@ static void dismiss_about_overlay(void) {
 
 static void check_update_btn_cb(lv_event_t *e);  // forward decl
 
+static void sd_log_checkbox_cb(lv_event_t *e) {
+    lv_obj_t *cb = lv_event_get_target(e);
+    bool checked = lv_obj_has_state(cb, LV_STATE_CHECKED);
+    sd_glucose_logging_enabled = checked;
+    nvs_save_sd_glucose_logging(checked);
+    ESP_LOGI(TAG, "SD glucose logging: %s", checked ? "ON" : "OFF");
+}
+
 static void show_about_overlay(void) {
     if (about_overlay != NULL) return;
 
@@ -96,8 +105,9 @@ static void show_about_overlay(void) {
     lv_obj_add_event_cb(about_overlay, about_close_event_cb, LV_EVENT_CLICKED, NULL);
 
     // --- Centered card ---
+    bool sd_available = sd_logger_available();
     lv_obj_t *card = lv_obj_create(about_overlay);
-    lv_obj_set_size(card, 275, 200);
+    lv_obj_set_size(card, 275, sd_available ? 225 : 200);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
@@ -175,7 +185,7 @@ static void show_about_overlay(void) {
 
     // Check for Updates button — ghost outline style
     lv_obj_t *upd_btn = lv_btn_create(card);
-    lv_obj_set_size(upd_btn, 148, 24);
+    lv_obj_set_size(upd_btn, 180, 24);
     lv_obj_align(upd_btn, LV_ALIGN_TOP_LEFT, 16, 138);
     lv_obj_set_style_bg_opa(upd_btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_color(upd_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
@@ -195,6 +205,20 @@ static void show_about_overlay(void) {
     lv_label_set_text(dev_disc, "Not a medical device");
     lv_obj_set_style_text_color(dev_disc, lv_color_hex(0x556677), 0);
     lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 20, 174);
+
+    // SD glucose logging checkbox (only when SD card is present)
+    if (sd_available) {
+        lv_obj_t *sd_cb = lv_checkbox_create(card);
+        lv_checkbox_set_text(sd_cb, "Save CGM data to SD");
+        lv_obj_set_style_text_color(sd_cb, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_set_style_bg_color(sd_cb, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR | LV_STATE_CHECKED);
+        lv_obj_set_style_border_color(sd_cb, lv_color_hex(COLOR_TEXT_DIM), LV_PART_INDICATOR);
+        lv_obj_align(sd_cb, LV_ALIGN_TOP_LEFT, 18, 196);
+        if (sd_glucose_logging_enabled) {
+            lv_obj_add_state(sd_cb, LV_STATE_CHECKED);
+        }
+        lv_obj_add_event_cb(sd_cb, sd_log_checkbox_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    }
 
     // QR code — links to DigitalKaos.tech
     static const char *qr_url = "http://DigitalKaos.tech";

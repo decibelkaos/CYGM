@@ -1,15 +1,16 @@
 /*
- * SD Card Logger — v2.1 (Mount-on-Write + Serial Capture)
+ * SD Card Logger — v3.0 (Persistent Mount + Serial Capture)
  *
- * Key design: SPI bus stays initialized (~0.5KB), log lines buffer in static
- * RAM, flush mounts FAT temporarily (~10KB for ~200ms) then unmounts.
+ * Key design: SD card mounted ONCE at boot, stays mounted permanently.
+ * Flush just opens/writes/closes files — no mount/unmount heap churn.
+ * This prevents heap fragmentation that kills SSL reconnection on ESP32.
  *
  * Three log streams:
  *   C*.LOG — Curated system log (explicit sd_log() calls only)
  *   G*.CSV — Glucose readings (datetime, value, trend)
  *   S*.LOG — Full serial capture (ALL ESP_LOG output, raw)
  *
- * Permanent cost: ~10.5KB (2KB curated + 512B glucose + 8KB serial + mutexes)
+ * Permanent cost: ~12KB (2KB curated + 512B glucose + 8KB serial + ~1.5KB mount)
  */
 
 #include "sd_logger.h"
@@ -60,13 +61,12 @@ static bool serial_capture_enabled = false;
 static volatile bool serial_capture_paused = false;
 
 // SPI/SD state
-static bool spi_initialized = false;
-static bool card_detected = false;
-static bool sd_suspended = false;           // True when SD logging is suspended due to memory pressure
-static int  sd_flush_fail_count = 0;        // Consecutive flush failures (memory or mount)
+static bool sd_suspended = false;           // True when SD logging is suspended due to persistent failures
+static int  sd_flush_fail_count = 0;        // Consecutive flush failures
 #define SD_SUSPEND_AFTER_FAILURES  5        // Suspend after this many consecutive failures
 static sdmmc_host_t host;
 static sdspi_device_config_t slot_config;
+static sdmmc_card_t *mounted_card = NULL;   // Persistent mount — stays mounted for device lifetime
 
 // Custom vprintf handler — captures ALL ESP_LOG output to serial buffer
 static int serial_capture_vprintf(const char *fmt, va_list args)
@@ -113,12 +113,11 @@ esp_err_t sd_logger_init(void)
         .sclk_io_num = SD_PIN_SCK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = 4096,
+        .max_transfer_sz = 512,
     };
 
     esp_err_t ret = spi_bus_initialize(SD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        // SPI bus can't init — no SD logging possible, silently disable
         ESP_LOGI(TAG, "SPI3 unavailable — SD logging disabled");
         vSemaphoreDelete(log_mutex);
         log_mutex = NULL;
@@ -133,7 +132,11 @@ esp_err_t sd_logger_init(void)
     slot_config.gpio_cs = SD_PIN_CS;
     slot_config.host_id = SD_SPI_HOST;
 
-    // Probe: mount briefly to check card presence, then unmount
+    // Mount SD card — stays mounted for the lifetime of the device.
+    // Mounting at boot (before WiFi/SSL) ensures mount allocations don't
+    // interleave with SSL buffers, preventing heap fragmentation.
+    size_t heap_before_mount = esp_get_free_heap_size();
+
     // Temporarily suppress noisy SDMMC/SDSPI errors during probe
     esp_log_level_set("sdspi_transaction", ESP_LOG_NONE);
     esp_log_level_set("sdspi_host", ESP_LOG_NONE);
@@ -160,12 +163,12 @@ esp_err_t sd_logger_init(void)
     esp_log_level_set("vfs_fat_sdmmc", ESP_LOG_WARN);
 
     if (ret == ESP_OK) {
-        card_detected = true;
-        spi_initialized = true;
-        ESP_LOGI(TAG, "SD card: %s, %luMB — logging enabled",
+        mounted_card = card;  // Keep mounted permanently — no unmount!
+        size_t mount_cost = heap_before_mount - esp_get_free_heap_size();
+        ESP_LOGI(TAG, "SD card: %s, %luMB — logging enabled (mount cost: %u bytes)",
                  card->cid.name,
-                 (unsigned long)(((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024)));
-        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+                 (unsigned long)(((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024)),
+                 (unsigned)mount_cost);
 
         // Enable serial capture — intercept ALL ESP_LOG output
         serial_mutex = xSemaphoreCreateMutex();
@@ -176,8 +179,7 @@ esp_err_t sd_logger_init(void)
         }
     } else {
         // No card — free the SPI bus to reclaim memory (~0.5KB + DMA)
-        card_detected = false;
-        spi_initialized = false;
+        mounted_card = NULL;
         spi_bus_free(SD_SPI_HOST);
         vSemaphoreDelete(log_mutex);
         log_mutex = NULL;
@@ -190,7 +192,7 @@ esp_err_t sd_logger_init(void)
 
 void sd_log(const char *tag, const char *fmt, ...)
 {
-    if (!spi_initialized || !card_detected || !log_mutex || sd_suspended) return;
+    if (!mounted_card || !log_mutex || sd_suspended) return;
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     int remaining = SD_LOG_BUFFER_SIZE - log_buffer_pos - 2;  // room for \n\0
@@ -239,10 +241,10 @@ void sd_log(const char *tag, const char *fmt, ...)
 
 esp_err_t sd_logger_flush(void)
 {
-    if (!spi_initialized || !card_detected || sd_suspended) return ESP_ERR_NOT_FOUND;
+    if (!mounted_card || sd_suspended) return ESP_ERR_NOT_FOUND;
     if (!log_mutex) return ESP_ERR_INVALID_STATE;
 
-    // Pause serial capture to prevent re-entrancy from mount/write ESP_LOG calls
+    // Pause serial capture to prevent re-entrancy from file I/O ESP_LOG calls
     serial_capture_paused = true;
 
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
@@ -291,80 +293,15 @@ esp_err_t sd_logger_flush(void)
         return ESP_OK;
     }
 
+    // Card is permanently mounted — no mount needed, no heap guard needed.
+    // fopen only allocates ~512 bytes (FIL.buf with DYN_BUFFERS + SECTOR_512).
+
     char filepath[32];
     snprintf(filepath, sizeof(filepath), MOUNT_POINT "/C%02d%02d%02d.LOG",
              ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
 
-    // Mount SD card (temporary ~10KB allocation)
-    // Pre-check: need ~12KB contiguous for FAT structures — skip if fragmented
-    size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    if (largest_block < 15000) {
-        sd_flush_fail_count++;
-
-        if (sd_flush_fail_count >= SD_SUSPEND_AFTER_FAILURES) {
-            // Persistent memory pressure — suspend SD logging to stop wasting CPU
-            // on serial capture and buffer management that can never flush.
-            // Serial capture vprintf runs on EVERY ESP_LOG call; disabling it
-            // removes that overhead and stops filling a buffer we can't write.
-            sd_suspended = true;
-            serial_capture_enabled = false;
-
-            // Discard buffered data (can't write it anyway)
-            log_buffer_pos = 0;
-            glucose_buffer_pos = 0;
-            if (serial_mutex && xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                serial_buffer_pos = 0;
-                xSemaphoreGive(serial_mutex);
-            }
-
-            ESP_LOGW(TAG, "SD logging SUSPENDED after %d consecutive flush failures (largest_block=%u)",
-                     sd_flush_fail_count, (unsigned)largest_block);
-        } else {
-            ESP_LOGW(TAG, "SD flush deferred [%d/%d] (largest_block=%u, need ~12KB)",
-                     sd_flush_fail_count, SD_SUSPEND_AFTER_FAILURES, (unsigned)largest_block);
-            // Restore serial buffer since we couldn't write it
-            if (serial_flush_len > 0 && serial_mutex) {
-                if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    serial_buffer_pos = serial_flush_len;
-                    xSemaphoreGive(serial_mutex);
-                }
-            }
-        }
-
-        xSemaphoreGive(log_mutex);
-        serial_capture_paused = false;
-        return ESP_ERR_NO_MEM;
-    }
-
-    sdmmc_card_t *card = NULL;
-    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
-        .format_if_mount_failed = false,
-        .max_files = 1,  // Files opened/closed sequentially — 1 at a time
-        .allocation_unit_size = 0,
-    };
-
-    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_cfg, &card);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Mount failed: %s (heap=%lu, largest=%u)", esp_err_to_name(ret),
-                 (unsigned long)esp_get_free_heap_size(),
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-        if (ret == ESP_ERR_NOT_FOUND) {
-            card_detected = false;  // Card physically removed — disable permanently
-            log_buffer_pos = 0;
-        }
-        // ESP_ERR_NO_MEM: keep card_detected=true — heap will free up later.
-        // Don't clear buffers — data will flush on next successful attempt.
-        // Restore serial buffer since we couldn't write it
-        if (serial_flush_len > 0 && serial_mutex) {
-            if (xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                serial_buffer_pos = serial_flush_len;
-                xSemaphoreGive(serial_mutex);
-            }
-        }
-        xSemaphoreGive(log_mutex);
-        serial_capture_paused = false;
-        return ret;
-    }
+    esp_err_t ret = ESP_OK;
+    bool any_write_failed = false;
 
     // Write curated system log if buffered
     if (flush_len > 0) {
@@ -375,10 +312,8 @@ esp_err_t sd_logger_flush(void)
             if ((int)written != flush_len) {
                 ESP_LOGW(TAG, "Partial write: %d/%d bytes", (int)written, flush_len);
             }
-            ret = ESP_OK;
         } else {
-            ESP_LOGE(TAG, "Failed to open %s for append", filepath);
-            ret = ESP_FAIL;
+            any_write_failed = true;
         }
     }
 
@@ -392,6 +327,8 @@ esp_err_t sd_logger_flush(void)
         if (gf) {
             fwrite(glucose_buffer, 1, glucose_buffer_pos, gf);
             fclose(gf);
+        } else {
+            any_write_failed = true;
         }
         glucose_buffer_pos = 0;
     }
@@ -405,15 +342,35 @@ esp_err_t sd_logger_flush(void)
         if (sf) {
             fwrite(serial_buffer, 1, serial_flush_len, sf);
             fclose(sf);
+        } else {
+            any_write_failed = true;
         }
     }
 
-    // Unmount immediately to free ~10KB
-    esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+    // Track consecutive failures (card removal detection)
+    if (any_write_failed) {
+        sd_flush_fail_count++;
+        if (sd_flush_fail_count >= SD_SUSPEND_AFTER_FAILURES) {
+            sd_suspended = true;
+            serial_capture_enabled = false;
+            log_buffer_pos = 0;
+            glucose_buffer_pos = 0;
+            if (serial_mutex && xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                serial_buffer_pos = 0;
+                xSemaphoreGive(serial_mutex);
+            }
+            ESP_LOGW(TAG, "SD logging SUSPENDED after %d consecutive write failures",
+                     sd_flush_fail_count);
+        }
+        ret = ESP_FAIL;
+    } else {
+        sd_flush_fail_count = 0;
+    }
+
+    // No unmount — card stays mounted permanently
 
     // Clear curated buffer regardless of write result
     log_buffer_pos = 0;
-    sd_flush_fail_count = 0;  // Reset on successful flush
 
     xSemaphoreGive(log_mutex);
     serial_capture_paused = false;
@@ -422,7 +379,7 @@ esp_err_t sd_logger_flush(void)
 
 void sd_log_glucose(int mg_dl, const char *trend)
 {
-    if (!spi_initialized || !card_detected || !log_mutex || sd_suspended) return;
+    if (!mounted_card || !log_mutex || sd_suspended) return;
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     time_t now;
@@ -456,46 +413,59 @@ void sd_log_glucose(int mg_dl, const char *trend)
 
 bool sd_logger_available(void)
 {
-    return spi_initialized && card_detected && !sd_suspended;
+    return mounted_card != NULL && !sd_suspended;
+}
+
+void sd_logger_resume(void)
+{
+    if (!mounted_card) return;
+    if (!sd_suspended) return;
+
+    sd_suspended = false;
+    sd_flush_fail_count = 0;
+    serial_capture_enabled = true;
+
+    ESP_LOGI(TAG, "SD logging RESUMED (suspension cleared)");
 }
 
 esp_err_t sd_card_mount(sdmmc_card_t **out_card)
 {
-    if (!spi_initialized || !card_detected) return ESP_ERR_NOT_FOUND;
+    if (!mounted_card) return ESP_ERR_NOT_FOUND;
     if (!log_mutex || !out_card) return ESP_ERR_INVALID_STATE;
 
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) return ESP_ERR_TIMEOUT;
 
     serial_capture_paused = true;
-
-    // No conservative pre-check here — sd_logger_flush() has its own 15KB guard.
-    // Callers like screenshot_take() need to attempt mount with whatever memory
-    // is available; esp_vfs_fat_sdspi_mount() returns ESP_ERR_NO_MEM gracefully.
-
-    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
-        .format_if_mount_failed = false,
-        .max_files = 1,
-        .allocation_unit_size = 0,
-    };
-
-    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_cfg, out_card);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SD mount failed: %s", esp_err_to_name(ret));
-        if (ret == ESP_ERR_NOT_FOUND) card_detected = false;
-        serial_capture_paused = false;
-        xSemaphoreGive(log_mutex);
-    }
-    // On success: caller holds log_mutex until sd_card_unmount()
-    return ret;
+    *out_card = mounted_card;  // Already mounted — just return the handle
+    return ESP_OK;
 }
 
 void sd_card_unmount(sdmmc_card_t *card)
 {
-    if (card) {
-        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
-    }
+    (void)card;  // Don't actually unmount — card stays mounted permanently
     serial_capture_paused = false;
     if (log_mutex) {
         xSemaphoreGive(log_mutex);
+    }
+}
+
+void sd_serial_capture_set(bool enabled)
+{
+    if (!mounted_card || sd_suspended) return;
+    serial_capture_enabled = enabled;
+    ESP_LOGI(TAG, "Serial capture %s", enabled ? "ON" : "OFF");
+}
+
+bool sd_serial_capture_get(void)
+{
+    return serial_capture_enabled;
+}
+
+void sd_logger_shutdown(void)
+{
+    if (mounted_card) {
+        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, mounted_card);
+        mounted_card = NULL;
+        ESP_LOGI(TAG, "SD card unmounted for shutdown");
     }
 }

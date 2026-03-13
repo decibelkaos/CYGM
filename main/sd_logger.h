@@ -1,5 +1,5 @@
 /*
- * SD Card Logger — v2.1 (Mount-on-Write + Serial Capture)
+ * SD Card Logger — v3.0 (Persistent Mount + Serial Capture)
  *
  * Three log streams to SD card:
  *   C*.LOG — Curated system log (explicit sd_log() calls)
@@ -9,8 +9,9 @@
  * Hardware: JC2432W328 microSD slot on SPI3_HOST (VSPI)
  * Pins: CS=GPIO5, MOSI=GPIO23, MISO=GPIO19, SCK=GPIO18
  *
- * Permanent RAM: ~10.5KB (2KB curated + 512B glucose + 8KB serial + mutexes)
- * Temporary RAM: ~11KB during flush (~200ms every 90s)
+ * SD card is mounted once at boot and stays mounted permanently.
+ * Flush just opens/writes/closes files — no mount/unmount heap churn.
+ * Permanent RAM: ~12KB (2KB curated + 512B glucose + 8KB serial + ~1.5KB mount)
  */
 
 #pragma once
@@ -20,10 +21,10 @@
 #include <stdbool.h>
 
 /**
- * Initialize SD card SPI bus and probe for card presence.
+ * Initialize SD card SPI bus and mount card permanently.
  * If card detected, installs serial capture handler (esp_log_set_vprintf).
  * Safe to call even without SD card inserted — returns ESP_OK regardless.
- * Call once during boot after WiFi connects (so RTC is synced for timestamps).
+ * Card stays mounted for the lifetime of the device (no mount/unmount churn).
  */
 esp_err_t sd_logger_init(void);
 
@@ -37,16 +38,15 @@ void sd_log(const char *tag, const char *fmt, ...);
 
 /**
  * Flush all buffered data to SD card.
- * Mounts FAT → writes curated log + glucose CSV + serial log → unmounts.
- * Takes ~200ms, uses ~11KB temporary RAM.
+ * Opens files, writes curated log + glucose CSV + serial log, closes files.
+ * No mount/unmount — card is permanently mounted. Minimal heap impact (~512B).
  *
  * Files written per day:
  *   CYYMMDD.LOG — Curated system log
  *   GYYMMDD.CSV — Glucose readings
  *   SYYMMDD.LOG — Full serial output capture
  *
- * Call AFTER dexcom_close_persistent_client() to ensure headroom.
- * Thread-safe — holds mutex during entire mount-write-unmount cycle.
+ * Thread-safe — holds mutex during file operations.
  */
 esp_err_t sd_logger_flush(void);
 
@@ -58,13 +58,20 @@ esp_err_t sd_logger_flush(void);
 void sd_log_glucose(int mg_dl, const char *trend);
 
 /**
- * Returns true if SD card was detected during init.
+ * Returns true if SD card is mounted and logging is active.
  */
 bool sd_logger_available(void);
 
 /**
- * Mount SD card for external use (e.g., screenshot capture).
- * Acquires log_mutex and pauses serial capture for the duration.
+ * Resume SD logging after suspension.
+ * Resets suspension state, failure counter, and re-enables serial capture.
+ * No-op if SD was never initialized or no card detected.
+ */
+void sd_logger_resume(void);
+
+/**
+ * Acquire SD card for external use (e.g., screenshot capture).
+ * Card is already mounted — just acquires the mutex and returns the handle.
  * Caller MUST call sd_card_unmount() when done.
  *
  * @param out_card  Receives the mounted card handle
@@ -73,10 +80,27 @@ bool sd_logger_available(void);
 esp_err_t sd_card_mount(sdmmc_card_t **out_card);
 
 /**
- * Unmount SD card after external use.
- * Releases log_mutex and resumes serial capture.
+ * Release SD card after external use.
+ * Releases mutex — does NOT unmount (card stays mounted permanently).
  */
 void sd_card_unmount(sdmmc_card_t *card);
+
+/**
+ * Unmount SD card for clean shutdown (e.g., before OTA).
+ * After this call, all SD operations will fail.
+ */
+void sd_logger_shutdown(void);
+
+/**
+ * Enable or disable serial capture to SD card.
+ * Only effective when SD card is mounted and not suspended.
+ */
+void sd_serial_capture_set(bool enabled);
+
+/**
+ * Returns true if serial capture to SD is currently enabled.
+ */
+bool sd_serial_capture_get(void);
 
 /** Mount point path for SD card file operations */
 #define SD_MOUNT_POINT "/sdcard"

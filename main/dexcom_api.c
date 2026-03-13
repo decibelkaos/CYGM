@@ -60,7 +60,7 @@ static char stored_username[64] = {0};
 static char stored_password[64] = {0};
 static bool is_authenticated = false;
 static uint64_t last_login_time = 0;
-static uint64_t last_glucose_fetch_time = 0;
+static uint64_t dexcom_last_fetch_ms = 0;
 
 // HTTP response buffer
 static char http_response[HTTP_BUFFER_SIZE];
@@ -673,8 +673,8 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     }
 
     // Rate limiting (90 seconds) — also use esp_timer
-    if (last_glucose_fetch_time > 0) {
-        uint64_t fetch_elapsed = now_ms - last_glucose_fetch_time;
+    if (dexcom_last_fetch_ms > 0) {
+        uint64_t fetch_elapsed = now_ms - dexcom_last_fetch_ms;
         if (fetch_elapsed < RATE_LIMIT_MS) {
             ESP_LOGW(TAG, "Rate limited - wait %lu seconds", (unsigned long)((RATE_LIMIT_MS - fetch_elapsed) / 1000));
             glucose->status = GLUCOSE_STATUS_OK;
@@ -710,14 +710,9 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     memset(http_response, 0, sizeof(http_response));
     http_response_len = 0;
 
-    // CRITICAL MEMORY FIX: Check if memory is critically low
-    // If under 15KB free, close and reopen SSL connection to prevent read errors
-    size_t free_heap = esp_get_free_heap_size();
-    if (persistent_client != NULL && free_heap < 15000) {
-        ESP_LOGW(TAG, "CRITICAL: Free heap only %lu bytes - reopening SSL connection to prevent errors", free_heap);
-        cleanup_persistent_client();
-        consecutive_failures = 0;  // Reset failure counter
-    }
+    // Memory guard removed — main.c already gates entry at 8KB for reuse.
+    // The old 15KB threshold was closing a working SSL connection and immediately
+    // reopening it, which wastes time and risks OOM during the new handshake.
 
     // Client should already be initialized from authentication (reusing SSL session!)
     // But check anyway (in case session was restored from NVS after reboot)
@@ -752,18 +747,11 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Network error, but still authenticated
 
-        consecutive_failures++;
-        ESP_LOGW(TAG, "Consecutive failures: %d/%d", consecutive_failures, MAX_CONSECUTIVE_FAILURES);
-
-        // CRITICAL FIX: Don't cleanup on transient network errors!
-        // But after many consecutive failures, force a fresh connection
-        if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
-            ESP_LOGW(TAG, "Too many consecutive failures - forcing fresh SSL connection");
-            cleanup_persistent_client();
-            consecutive_failures = 0;  // Reset counter
-        } else {
-            ESP_LOGW(TAG, "Keeping persistent client alive (will retry)");
-        }
+        // Connection errors (write fail, connect fail) mean the TCP socket is dead —
+        // keeping it alive guarantees the next retry also fails.  Close immediately.
+        ESP_LOGW(TAG, "Connection error — closing dead SSL connection for fresh retry");
+        cleanup_persistent_client();
+        consecutive_failures = 0;
         return err;
     }
 
@@ -825,7 +813,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
             sd_log(TAG, "Session error (HTTP %d), re-auth...", status);
             is_authenticated = false;
             cleanup_persistent_client();
-            last_glucose_fetch_time = 0;  // Clear rate limit so retry works immediately
+            dexcom_last_fetch_ms = 0;  // Clear rate limit so retry works immediately
 
             if (strlen(stored_username) > 0 && strlen(stored_password) > 0) {
                 esp_err_t reauth_err = dexcom_authenticate(stored_username, stored_password);
@@ -937,7 +925,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
         glucose->valid = false;
         cJSON_Delete(root);
-        last_glucose_fetch_time = (uint64_t)(esp_timer_get_time() / 1000);
+        dexcom_last_fetch_ms = (uint64_t)(esp_timer_get_time() / 1000);
         consecutive_failures = 0;
         return ESP_OK;  // API worked but data is unusable
     }
@@ -980,7 +968,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         }
     }
 
-    last_glucose_fetch_time = (uint64_t)(esp_timer_get_time() / 1000);
+    dexcom_last_fetch_ms = (uint64_t)(esp_timer_get_time() / 1000);
 
     ESP_LOGI(TAG, "Glucose: %d mg/dL, Trend: %s (Status: %d)",
              glucose->value, dexcom_trend_description(glucose->trend), glucose->status);
@@ -1025,7 +1013,7 @@ void dexcom_logout(void) {
     memset(stored_password, 0, sizeof(stored_password));
     is_authenticated = false;
     last_login_time = 0;
-    last_glucose_fetch_time = 0;
+    dexcom_last_fetch_ms = 0;
     last_reauth_time = 0;
 
     // Clear from NVS

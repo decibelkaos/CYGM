@@ -236,6 +236,7 @@ bool glucose_data_fresh = false;       // True only if last fetch succeeded
 dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
 bool first_glucose_received = false;  // Track if we've received first reading
 bool sensor_change_mode = false;      // User confirmed CGM sensor change in progress
+bool sd_glucose_logging_enabled = true;  // SD card glucose CSV logging (NVS-persisted)
 
 // Entry screen UI elements
 lv_obj_t *dexcom_username_entry_label = NULL;
@@ -1581,7 +1582,6 @@ void glucose_update_task(void *pvParameters) {
     // Exponential backoff for persistent failures (API outage, signal loss)
     // Normal: 90s.  After 3+ failures: 180s.  After 6+: 300s.  After 10+: 600s.
     int consecutive_task_failures = 0;
-    int consecutive_memory_skips = 0;
     int poll_interval_sec = 90;
 
     // Smart wait: Only wait remaining time if an initial fetch already happened
@@ -1714,15 +1714,10 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
-                // SSL buffer sizes (sdkconfig): IN=8192, OUT=2048, dynamic buffer
-                // Peak SSL handshake: ~15-18KB (TLS context + buffers + cert chain)
-                // Steady state: ~12-15KB.  Threshold must leave ~2-3KB headroom.
-                // Previous 35KB/30KB/25KB/15KB thresholds caused infinite skip loops.
-                // Reusing an open SSL connection only needs HTTP req/resp buffers (~3-5KB).
-                // Creating a new SSL connection needs ~15-18KB for TLS handshake.
+                // SSL reuse strategy: After task creation, heap fragments to ~3KB
+                // largest block.  New TLS handshake needs ~16KB contiguous → fails.
+                // Reusing an open connection only needs ~3-5KB for HTTP buffers.
                 bool client_open = dexcom_persistent_client_is_open();
-                size_t required_memory = client_open ? 8000 : 20000;
-                const char *connection_type = client_open ? "REUSING existing SSL connection" : "CREATING new SSL connection";
 
                 // Check largest DRAM block to detect fragmentation (SSL needs byte-addressable memory)
                 size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
@@ -1733,88 +1728,42 @@ void glucose_update_task(void *pvParameters) {
                        heap_info.total_free_bytes, heap_info.largest_free_block,
                        fragmentation, heap_info.allocated_blocks, heap_info.free_blocks);
 
-                // SSL uses DYNAMIC_BUFFER: allocates per-record, not the full IN_CONTENT_LEN.
-                // Dexcom sends small TLS records (~2-4KB), so ~10KB contiguous is enough.
-                // (Apache OTA sends 16KB records, but OTA has its own aggressive memory prep.)
-                if (largest_block < 10000 && !client_open) {
-                    ESP_LOGW(TAG, "Memory fragmented! Largest block: %lu (need ~10KB for SSL alloc)", largest_block);
-                    ESP_LOGW(TAG, "Skipping glucose fetch - will retry in 90 seconds");
-                    sd_log(TAG, "SKIP: fragmented largest=%lu < 10000", largest_block);
+                // MEMORY STRATEGY for SSL reconnection:
+                // When persistent client is closed, we need a fresh TLS handshake.
+                // TLSF can't defragment, so we must delete tasks to free contiguous heap.
+                // This is the same proven pattern used by OTA and screenshot capture.
+                bool tasks_deleted_for_ssl = false;
 
-                    // Mark fetch as failed due to memory
-                    glucose_fetch_failed = true;
-                    glucose_fetch_in_progress = false;
+                if (!client_open) {
+                    ESP_LOGI(TAG, "SSL closed — freeing tasks for fresh handshake");
+                    sd_log(TAG, "SSL reconnect: deleting tasks for heap");
 
-                    // Stop animation and update bar to red
-                    if (lvgl_port_lock(0)) {
-                        if (glucose_fetch_animation_timer != NULL) {
-                            lv_timer_del(glucose_fetch_animation_timer);
-                            glucose_fetch_animation_timer = NULL;
-                        }
-                        if (glucose_fetch_timer_bar != NULL) {
-                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
-                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                        }
-                        lvgl_port_unlock();
+                    if (weather_task_handle != NULL) {
+                        vTaskDelete(weather_task_handle);
+                        weather_task_handle = NULL;
                     }
+                    if (time_task_handle != NULL) {
+                        vTaskDelete(time_task_handle);
+                        time_task_handle = NULL;
+                    }
+                    if (battery_task_handle != NULL) {
+                        vTaskDelete(battery_task_handle);
+                        battery_task_handle = NULL;
+                    }
+                    tasks_deleted_for_ssl = true;
 
-                    xSemaphoreGive(network_mutex);
-                    sd_logger_flush();  // Flush skip event to SD
-                    continue;
+                    // Yield so idle task frees deleted task memory (TLSF coalesces)
+                    vTaskDelay(pdMS_TO_TICKS(500));
+
+                    // Refresh memory stats after cleanup
+                    free_internal = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+                    largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+                    ESP_LOGI(TAG, "After task cleanup: free=%lu largest=%lu", free_internal, largest_block);
+                    sd_log(TAG, "Reconnect: free=%lu largest=%lu", free_internal, largest_block);
                 }
 
-                ESP_LOGI(TAG, "Persistent client status: %s", client_open ? "OPEN" : "CLOSED");
-                ESP_LOGI(TAG, "Memory requirement: %lu bytes (%s)", required_memory, connection_type);
-
-                if (free_internal < required_memory) {
-                    consecutive_memory_skips++;
-
-                    // After 5 consecutive memory skips, force an attempt rather than
-                    // staying in an infinite skip loop.  The SSL handshake will either
-                    // succeed (thresholds were over-conservative) or fail gracefully.
-                    if (consecutive_memory_skips >= 5) {
-                        ESP_LOGW(TAG, "FORCE: %d consecutive memory skips — attempting SSL anyway (%lu bytes free)",
-                                 consecutive_memory_skips, free_internal);
-                        sd_log(TAG, "FORCE: %d skips, attempting with %lu bytes", consecutive_memory_skips, free_internal);
-                        consecutive_memory_skips = 0;
-                        // Fall through to attempt the connection
-                    } else {
-                        ESP_LOGE(TAG, "Insufficient INTERNAL memory: %lu bytes (need %lu for %s) [skip %d/5]",
-                                 free_internal, required_memory, connection_type, consecutive_memory_skips);
-                        ESP_LOGE(TAG, "Skipping glucose fetch - will retry in 90 seconds");
-                        sd_log(TAG, "SKIP: insufficient free=%lu need=%lu skip=%d", free_internal, required_memory, consecutive_memory_skips);
-
-                        // Mark fetch as failed due to memory
-                        glucose_fetch_failed = true;
-                        glucose_fetch_in_progress = false;
-
-                        // Stop animation and update bar to red
-                        if (lvgl_port_lock(0)) {
-                            if (glucose_fetch_animation_timer != NULL) {
-                                lv_timer_del(glucose_fetch_animation_timer);
-                                glucose_fetch_animation_timer = NULL;
-                            }
-                            if (glucose_fetch_timer_bar != NULL) {
-                                lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
-                                lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                                lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                            }
-                            lvgl_port_unlock();
-                        }
-
-                        xSemaphoreGive(network_mutex);
-                        ESP_LOGI(TAG, "Network mutex released (insufficient memory)");
-
-                        led_start_error_blink();
-                        vTaskDelay(pdMS_TO_TICKS(5000));
-                        led_stop_error_blink();
-
-                        continue;
-                    }
-                }
-
-                ESP_LOGI(TAG, "Memory check PASSED - %lu bytes available (%s)",
-                         free_internal, connection_type);
+                ESP_LOGI(TAG, "Proceeding with %s (free=%lu, largest=%lu)",
+                         client_open ? "existing SSL" : "fresh SSL", free_internal, largest_block);
 
                 // Mark fetch as in progress
                 glucose_fetch_in_progress = true;
@@ -1826,6 +1775,35 @@ void glucose_update_task(void *pvParameters) {
                 led_blink_blue();
 
                 esp_err_t ret = dexcom_fetch_glucose(&glucose);
+
+                // Retry on connection death (SSL was open but socket died mid-fetch).
+                // Dexcom API auto-closes the dead client, so retry gets fresh SSL.
+                if (ret != ESP_OK && !glucose.valid && !dexcom_persistent_client_is_open()) {
+                    ESP_LOGW(TAG, "Connection died mid-fetch — retrying with fresh SSL");
+                    sd_log(TAG, "RETRY: connection died, freeing tasks");
+
+                    // Delete tasks if not already deleted by proactive path
+                    if (!tasks_deleted_for_ssl) {
+                        if (weather_task_handle != NULL) { vTaskDelete(weather_task_handle); weather_task_handle = NULL; }
+                        if (time_task_handle != NULL) { vTaskDelete(time_task_handle); time_task_handle = NULL; }
+                        if (battery_task_handle != NULL) { vTaskDelete(battery_task_handle); battery_task_handle = NULL; }
+                        tasks_deleted_for_ssl = true;
+                        vTaskDelay(pdMS_TO_TICKS(500));  // Let idle task coalesce
+                    }
+
+                    ESP_LOGI(TAG, "RETRY: heap=%lu largest=%lu",
+                             (unsigned long)esp_get_free_heap_size(),
+                             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+
+                    memset(&glucose, 0, sizeof(glucose));
+                    ret = dexcom_fetch_glucose(&glucose);
+
+                    if (ret == ESP_OK && glucose.valid) {
+                        ESP_LOGI(TAG, "RETRY: success — %d mg/dL", glucose.value);
+                    } else {
+                        ESP_LOGW(TAG, "RETRY: failed — %s", esp_err_to_name(ret));
+                    }
+                }
 
             if (ret == ESP_OK && glucose.valid) {
                 // Duplicate detection: skip if same timestamp as last stored reading
@@ -1894,7 +1872,9 @@ void glucose_update_task(void *pvParameters) {
                 sd_log(TAG, "OK: %d mg/dL, %s, heap=%lu",
                        glucose.value, dexcom_trend_description(glucose.trend),
                        esp_get_free_heap_size());
-                sd_log_glucose(glucose.value, dexcom_trend_description(glucose.trend));
+                if (sd_glucose_logging_enabled) {
+                    sd_log_glucose(glucose.value, dexcom_trend_description(glucose.trend));
+                }
 
                 // Play success sound on first glucose reading
                 if (!first_glucose_received) {
@@ -1915,17 +1895,84 @@ void glucose_update_task(void *pvParameters) {
                     }
                 }
                 } // end of non-duplicate block
-            } else {
-                // Fetch failed - mark data as stale
-                glucose_data_fresh = false;   // This fetch failed
+            } else if (ret == ESP_OK) {
+                // ── STALE DATA PATH ──
+                // API responded successfully but sensor has no fresh reading.
+                // The SSL connection is healthy — do NOT close it or apply backoff.
+                glucose_data_fresh = false;
                 glucose_status = glucose.status;
 
-                // Clear glucose_data_valid if auth failed OR data is extremely stale
+                // Progress bar: mark that we just talked to the API
+                last_glucose_fetch_time = esp_timer_get_time() / 1000;
+
+                // Connection works — do NOT trigger SSL close or backoff
+                glucose_fetch_failed = false;
+                glucose_fetch_in_progress = false;
+                poll_interval_sec = 90;  // Keep normal cadence
+
+                // Safety net: if data is >30 minutes old, force invalid display
+                if (glucose_data_valid && glucose_timestamp > 0) {
+                    time_t stale_now;
+                    time(&stale_now);
+                    int stale_mins = (int)difftime(stale_now, glucose_timestamp) / 60;
+                    if (stale_mins > 30) {
+                        ESP_LOGW(TAG, "SAFETY: Data is %d mins old - forcing display to ---", stale_mins);
+                        glucose_data_valid = false;
+                        glucose_status = GLUCOSE_STATUS_SIGNAL_LOSS;
+                    }
+                }
+
+                // UI updates: only when on home screen
+                if (home_screen_active) {
+                    // Stop animation and set bar to orange (stale, not failed)
+                    if (lvgl_port_lock(0)) {
+                        if (glucose_fetch_animation_timer != NULL) {
+                            lv_timer_del(glucose_fetch_animation_timer);
+                            glucose_fetch_animation_timer = NULL;
+                        }
+                        if (glucose_fetch_timer_bar != NULL) {
+                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ORANGE), LV_PART_INDICATOR);
+                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                        }
+                        lvgl_port_unlock();
+                    }
+
+                    update_glucose_display();
+
+                    // Show no-data overlay if signal lost
+                    if (!sensor_change_mode && wifi_connected &&
+                        (glucose.status == GLUCOSE_STATUS_NO_DATA ||
+                         glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS)) {
+                        if (lvgl_port_lock(200)) {
+                            show_nodata_overlay();
+                            lvgl_port_unlock();
+                        }
+                    }
+                }
+
+                // Brief amber LED (not error red)
+                led_blink_blue();
+
+                {
+                    const char *sts = (glucose.status == GLUCOSE_STATUS_NO_DATA) ? "NO_DATA" :
+                                      (glucose.status == GLUCOSE_STATUS_WARMUP) ? "WARMUP" :
+                                      (glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS) ? "SIGNAL_LOSS" :
+                                      "STALE";
+                    ESP_LOGW(TAG, "Stale data from API: status=%s, heap=%lu",
+                             sts, esp_get_free_heap_size());
+                    sd_log(TAG, "STALE: status=%s, heap=%lu", sts, esp_get_free_heap_size());
+                }
+            } else {
+                // ── ACTUAL FAILURE PATH ──
+                // Connection error, auth failure, etc. SSL may be broken.
+                glucose_data_fresh = false;
+                glucose_status = glucose.status;
+
+                // Clear glucose_data_valid if auth failed
                 if (glucose.status == GLUCOSE_STATUS_NOT_AUTHENTICATED) {
                     glucose_data_valid = false;
                 }
                 // Safety net: if data is >30 minutes old, force invalid
-                // This ensures "---" is shown instead of dangerously old numbers
                 if (glucose_data_valid && glucose_timestamp > 0) {
                     time_t stale_now;
                     time(&stale_now);
@@ -1959,9 +2006,7 @@ void glucose_update_task(void *pvParameters) {
 
                     update_glucose_display();
 
-                    // Show no-data overlay if signal lost (authenticated but no fresh data)
-                    // Only show sensor-change dialog if WiFi is UP — if WiFi is down,
-                    // the auto-reconnect task shows a separate WiFi overlay instead.
+                    // Show no-data overlay if signal lost
                     if (!sensor_change_mode && wifi_connected &&
                         (glucose.status == GLUCOSE_STATUS_NO_DATA ||
                          glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS)) {
@@ -2015,50 +2060,31 @@ void glucose_update_task(void *pvParameters) {
                 }
             }
 
-                // MEMORY STRATEGY: Keep SSL alive between successful fetches.
-                // A new SSL handshake needs ~50KB peak — more than we have on a
-                // fragmented heap.  Reusing the existing connection avoids this entirely.
-                // Only close on: (a) fetch failure (connection is likely broken),
-                //                (b) update checker needs to run (needs its own SSL).
-                {
-                    bool need_close = false;
-                    static bool update_notified = false;
-                    bool want_update = update_should_check();
+                // MEMORY STRATEGY: Keep SSL alive — NEVER close on success.
+                // Reusing open connection needs only ~3-5KB.
+                // Weather task closes SSL before its fetch; glucose reopens via task-deletion.
+                if (glucose_fetch_failed) {
+                    dexcom_close_persistent_client();
+                    ESP_LOGI(TAG, "SSL closed (fetch failed), heap=%lu", esp_get_free_heap_size());
+                    sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
+                    sd_logger_resume();
+                    sd_logger_flush();
+                } else {
+                    ESP_LOGI(TAG, "SSL alive (heap=%lu)", esp_get_free_heap_size());
+                }
 
-                    if (glucose_fetch_failed) {
-                        need_close = true;  // Connection is likely broken
-                        ESP_LOGI(TAG, "Closing SSL after fetch failure");
-                    } else if (want_update) {
-                        need_close = true;  // Free memory for update checker's SSL
-                        ESP_LOGI(TAG, "Closing SSL for firmware update check");
+                // Recreate tasks that were deleted for SSL reconnection
+                if (tasks_deleted_for_ssl) {
+                    if (weather_task_handle == NULL) {
+                        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                     }
-
-                    if (need_close) {
-                        dexcom_close_persistent_client();
-                        ESP_LOGI(TAG, "Free heap after SSL close: %lu bytes", esp_get_free_heap_size());
-                        sd_log(TAG, "SSL closed, heap=%lu", esp_get_free_heap_size());
-                        sd_logger_flush();
-                    } else {
-                        ESP_LOGI(TAG, "Keeping SSL alive for next fetch (heap=%lu)", esp_get_free_heap_size());
+                    if (time_task_handle == NULL) {
+                        xTaskCreate(time_update_task, "time_update", 4096, NULL, 3, &time_task_handle);
                     }
-
-                    // Check for firmware updates (on boot + every 24h)
-                    if (want_update && need_close) {
-                        size_t update_largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-                        if (update_largest >= 15000) {
-                            ESP_LOGI(TAG, "Periodic firmware update check...");
-                            update_check_now();
-                            if (update_get_info()->available && !update_notified) {
-                                update_notified = true;
-                                if (lvgl_port_lock(200)) {
-                                    show_update_overlay();
-                                    lvgl_port_unlock();
-                                }
-                            }
-                        } else {
-                            ESP_LOGW(TAG, "Update check deferred (largest_block=%u, need 15KB)", (unsigned)update_largest);
-                        }
+                    if (battery_task_handle == NULL) {
+                        xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon", 3072, NULL, 2, &battery_task_handle, 0);
                     }
+                    ESP_LOGI(TAG, "Tasks recreated after SSL reconnect (heap=%lu)", esp_get_free_heap_size());
                 }
 
                 // Release network mutex
@@ -2658,6 +2684,9 @@ void app_main(void) {
     // Load brightness settings from NVS
     nvs_load_brightness(&screen_brightness_percent);
     saved_brightness_percent = screen_brightness_percent;
+
+    // Load SD glucose logging preference from NVS
+    sd_glucose_logging_enabled = nvs_get_sd_glucose_logging();
 
     // Initialize display (before LVGL)
     add_boot_log("Init display");

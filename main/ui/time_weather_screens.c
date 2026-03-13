@@ -63,17 +63,12 @@ static void apply_selected_location(void);
 
 // ==================== Background Search Task ====================
 static void location_search_task(void *pvParameters) {
-    // Take network mutex and close persistent Dexcom SSL client to free ~30KB.
-    // Without this, esp_http_client_init fails with only ~7KB largest block.
-    // The glucose task will re-establish SSL on its next cycle.
+    // Dexcom SSL is already closed before task creation to free heap.
+    // Acquire network mutex for the HTTP request.
     bool mutex_held = false;
     if (network_mutex != NULL &&
         xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
         mutex_held = true;
-        if (dexcom_persistent_client_is_open()) {
-            ESP_LOGI(TAG, "Closing Dexcom SSL to free memory for geocoding");
-            dexcom_close_persistent_client();
-        }
     }
 
     esp_err_t err = geocoding_search(pending_search_query, search_results, &search_result_count);
@@ -311,8 +306,20 @@ static void location_kb_ready_cb(lv_event_t *e) {
         lv_obj_set_style_text_color(hint_label, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     }
 
+    // Free Dexcom SSL BEFORE creating task — task stack needs heap space.
+    // With SSL alive (~15KB), only ~5KB free → can't allocate 4KB task stack.
+    // The search task also needs the mutex for its HTTP request, so release it here.
+    if (network_mutex != NULL &&
+        xSemaphoreTake(network_mutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+        if (dexcom_persistent_client_is_open()) {
+            dexcom_close_persistent_client();
+            ESP_LOGI(TAG, "Closed Dexcom SSL for search (heap: %lu)", esp_get_free_heap_size());
+        }
+        xSemaphoreGive(network_mutex);
+    }
+
     location_search_in_progress = true;
-    if (xTaskCreate(location_search_task, "loc_search", 6144, NULL, 2, NULL) != pdPASS) {
+    if (xTaskCreate(location_search_task, "loc_search", 4096, NULL, 2, NULL) != pdPASS) {
         location_search_in_progress = false;
         ESP_LOGE(TAG, "Failed to create search task");
         if (hint_label) {

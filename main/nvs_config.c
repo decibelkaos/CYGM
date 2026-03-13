@@ -1172,3 +1172,40 @@ bool nvs_get_disclaimer_accepted(void) {
     return (ret == ESP_OK && val != 0);
 }
 
+// ========== SD Card Glucose Logging Toggle ==========
+
+esp_err_t nvs_save_sd_glucose_logging(bool enabled) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for writing SD glucose logging");
+        return ret;
+    }
+
+    ret = nvs_set_u8(nvs_handle, "sd_glu_log", enabled ? 1 : 0);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "SD glucose logging saved to NVS: %s", enabled ? "ON" : "OFF");
+        }
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+bool nvs_get_sd_glucose_logging(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return true;  // Default: enabled (backward compat)
+    }
+
+    uint8_t val = 1;  // Default: enabled
+    ret = nvs_get_u8(nvs_handle, "sd_glu_log", &val);
+    nvs_close(nvs_handle);
+
+    // If key not found, default to enabled (backward compat)
+    return (ret != ESP_OK) ? true : (val != 0);
+}
+

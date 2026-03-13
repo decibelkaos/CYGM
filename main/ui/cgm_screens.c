@@ -40,7 +40,7 @@ static void dexcom_login_task(void *pvParameters) {
 
         if (glucose_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting glucose update task after first-time login...");
-            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
         }
 
         ESP_LOGI(TAG, "Triggering immediate glucose fetch after successful login");
@@ -1165,11 +1165,13 @@ void create_dexcom_status_screen(void) {
     lv_obj_set_style_text_color(initial_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(initial_label);
 
-    // Username
+    // Username (truncate with ellipsis if too long)
     lv_obj_t *name_label = lv_label_create(profile_card);
     lv_label_set_text(name_label, dexcom_username_buf);
     lv_obj_set_style_text_font(name_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(name_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(name_label, 210);
     lv_obj_align(name_label, LV_ALIGN_LEFT_MID, 62, -8);
 
     // Connected status
@@ -1187,6 +1189,7 @@ void create_dexcom_status_screen(void) {
     lv_obj_set_style_bg_opa(info_card, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(info_card, 10, 0);
     lv_obj_set_style_border_width(info_card, 0, 0);
+    lv_obj_set_style_pad_all(info_card, 0, 0);
     lv_obj_clear_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *cgm_title = lv_label_create(info_card);
@@ -1221,6 +1224,8 @@ void create_dexcom_status_screen(void) {
     lv_label_set_text(user_value, dexcom_username_buf);
     lv_obj_set_style_text_font(user_value, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(user_value, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_label_set_long_mode(user_value, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(user_value, 260);
     lv_obj_align(user_value, LV_ALIGN_TOP_LEFT, 14, 60);
 
     // Ghost red logout button

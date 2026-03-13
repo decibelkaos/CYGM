@@ -33,13 +33,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
 #define CYGM_VERSION_MINOR 5
-#define CYGM_VERSION_PATCH 0
+#define CYGM_VERSION_PATCH 1
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-03-11"
+#define CYGM_VERSION_DATE "2026-03-13"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.5.0.2026-03-11.Beta"
+#define CYGM_VERSION_STRING "0.5.1.2026-03-13.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -323,6 +323,10 @@ extern lv_obj_t *left_card;             // Left card (time/weather)
 extern lv_obj_t *right_card;            // Right card (CGM data)
 extern lv_obj_t *expanded_time_label;   // Time label shown in expanded CGM top bar
 extern lv_obj_t *expanded_temp_label;   // Temp label shown in expanded CGM top bar
+
+// ==================== SD Card Logging ====================
+
+extern bool sd_glucose_logging_enabled;  // Toggle glucose CSV logging to SD card
 
 // ==================== Global LVGL Styles ====================
 

@@ -171,4 +171,8 @@ esp_err_t nvs_load_brightness(uint8_t *brightness_percent);
 esp_err_t nvs_set_disclaimer_accepted(void);
 bool nvs_get_disclaimer_accepted(void);
 
+// SD card glucose logging toggle (persisted)
+esp_err_t nvs_save_sd_glucose_logging(bool enabled);
+bool nvs_get_sd_glucose_logging(void);
+
 #endif // NVS_CONFIG_H
