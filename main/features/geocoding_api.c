@@ -15,6 +15,7 @@
 static const char *TAG = "GEOCODING";
 
 #define GEOCODING_API_URL "http://geocoding-api.open-meteo.com/v1/search"
+#define GEOCODE_API_REQUEST_COUNT 10  // Request more than we display so population sort finds big cities
 #define HTTP_RESPONSE_BUFFER_SIZE 4096
 
 // HTTP response buffer
@@ -83,11 +84,12 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
     char encoded_query[256];
     url_encode(search_query, encoded_query, sizeof(encoded_query));
 
-    // Build API URL
+    // Build API URL — request more results than we display so we can
+    // pick the top 5 by population (API ranks by feature_code, not size)
     char url[512];
     snprintf(url, sizeof(url),
              "%s?name=%s&count=%d&language=en&format=json",
-             GEOCODING_API_URL, encoded_query, MAX_GEOCODE_RESULTS);
+             GEOCODING_API_URL, encoded_query, GEOCODE_API_REQUEST_COUNT);
 
     ESP_LOGI(TAG, "Geocoding search for: %s", search_query);
     ESP_LOGI(TAG, "API URL: %s", url);
@@ -127,11 +129,13 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
     }
 
     ESP_LOGI(TAG, "Geocoding response (%d bytes): %s", http_response_len, http_response_buffer);
+    ESP_LOGI(TAG, "Free heap before JSON parse: %lu bytes", esp_get_free_heap_size());
 
     // Parse JSON response
     cJSON *root = cJSON_Parse(http_response_buffer);
     if (!root) {
-        ESP_LOGE(TAG, "Failed to parse JSON response");
+        ESP_LOGE(TAG, "Failed to parse JSON response (heap: %lu, response: %d bytes)",
+                 esp_get_free_heap_size(), http_response_len);
         return ESP_FAIL;
     }
 
@@ -142,63 +146,82 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
         return ESP_OK;  // No results is not an error
     }
 
-    // Parse each result
+    // Parse results with streaming top-K selection by population.
+    // We request GEOCODE_API_REQUEST_COUNT (10) from the API but only keep
+    // the top MAX_GEOCODE_RESULTS (5) by population. This avoids allocating
+    // a larger array — we parse each result into a single temp struct and
+    // either add it directly or swap it with the smallest in our output.
     int result_idx = 0;
+    int min_pop_idx = 0;
+    uint32_t min_pop = 0;
     cJSON *item = NULL;
+
     cJSON_ArrayForEach(item, results_array) {
-        if (result_idx >= MAX_GEOCODE_RESULTS) break;
+        // Parse into temp struct (224 bytes on stack)
+        geocode_result_t temp = {0};
 
-        geocode_result_t *result = &results[result_idx];
-
-        // Extract name
         cJSON *name = cJSON_GetObjectItem(item, "name");
-        if (name && cJSON_IsString(name)) {
-            snprintf(result->name, sizeof(result->name), "%s", name->valuestring);
-        }
+        if (name && cJSON_IsString(name))
+            snprintf(temp.name, sizeof(temp.name), "%s", name->valuestring);
 
-        // Extract country
         cJSON *country = cJSON_GetObjectItem(item, "country");
-        if (country && cJSON_IsString(country)) {
-            snprintf(result->country, sizeof(result->country), "%s", country->valuestring);
-        }
+        if (country && cJSON_IsString(country))
+            snprintf(temp.country, sizeof(temp.country), "%s", country->valuestring);
 
-        // Extract admin1 (state/province)
         cJSON *admin1 = cJSON_GetObjectItem(item, "admin1");
-        if (admin1 && cJSON_IsString(admin1)) {
-            snprintf(result->admin1, sizeof(result->admin1), "%s", admin1->valuestring);
-        } else {
-            result->admin1[0] = '\0';
-        }
+        if (admin1 && cJSON_IsString(admin1))
+            snprintf(temp.admin1, sizeof(temp.admin1), "%s", admin1->valuestring);
 
-        // Extract timezone
-        cJSON *timezone = cJSON_GetObjectItem(item, "timezone");
-        if (timezone && cJSON_IsString(timezone)) {
-            snprintf(result->timezone, sizeof(result->timezone), "%s", timezone->valuestring);
-        } else {
-            result->timezone[0] = '\0';
-        }
+        cJSON *tz = cJSON_GetObjectItem(item, "timezone");
+        if (tz && cJSON_IsString(tz))
+            snprintf(temp.timezone, sizeof(temp.timezone), "%s", tz->valuestring);
 
-        // Extract coordinates
         cJSON *lat = cJSON_GetObjectItem(item, "latitude");
         cJSON *lon = cJSON_GetObjectItem(item, "longitude");
         if (lat && lon && cJSON_IsNumber(lat) && cJSON_IsNumber(lon)) {
-            result->latitude = (float)lat->valuedouble;
-            result->longitude = (float)lon->valuedouble;
+            temp.latitude = (float)lat->valuedouble;
+            temp.longitude = (float)lon->valuedouble;
         }
 
-        // Extract population (optional)
         cJSON *population = cJSON_GetObjectItem(item, "population");
-        if (population && cJSON_IsNumber(population)) {
-            result->population = (uint32_t)population->valueint;
-        } else {
-            result->population = 0;
-        }
+        if (population && cJSON_IsNumber(population))
+            temp.population = (uint32_t)population->valueint;
 
-        result->valid = true;
-        result_idx++;
+        temp.valid = true;
+
+        if (result_idx < MAX_GEOCODE_RESULTS) {
+            // Still filling slots — add directly
+            results[result_idx] = temp;
+            result_idx++;
+
+            // Once full, find the entry with smallest population
+            if (result_idx == MAX_GEOCODE_RESULTS) {
+                min_pop = results[0].population;
+                min_pop_idx = 0;
+                for (int i = 1; i < MAX_GEOCODE_RESULTS; i++) {
+                    if (results[i].population < min_pop) {
+                        min_pop = results[i].population;
+                        min_pop_idx = i;
+                    }
+                }
+            }
+        } else if (temp.population > min_pop) {
+            // Replace the smallest entry with this larger-population city
+            results[min_pop_idx] = temp;
+
+            // Re-find the new minimum
+            min_pop = results[0].population;
+            min_pop_idx = 0;
+            for (int i = 1; i < MAX_GEOCODE_RESULTS; i++) {
+                if (results[i].population < min_pop) {
+                    min_pop = results[i].population;
+                    min_pop_idx = i;
+                }
+            }
+        }
     }
 
-    *result_count = result_idx;
+    *result_count = result_idx < MAX_GEOCODE_RESULTS ? result_idx : MAX_GEOCODE_RESULTS;
     cJSON_Delete(root);
 
     // Sort results by population descending — larger cities first.
