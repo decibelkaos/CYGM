@@ -2432,6 +2432,73 @@
             background: rgba(0, 212, 255, 0.1);
             color: var(--accent);
         }
+
+        /* ── Floating Guide Button (FAB) ── */
+        .guide-fab {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            background: linear-gradient(135deg, #00d4ff, #00a8cc);
+            color: #0a0e17;
+            border: none;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            box-shadow: 0 4px 24px rgba(0, 212, 255, 0.3), 0 0 0 1px rgba(0, 212, 255, 0.15);
+            transition: all 0.3s var(--ease-out);
+            text-decoration: none;
+        }
+        .guide-fab:hover {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 32px rgba(0, 212, 255, 0.45), 0 0 0 1px rgba(0, 212, 255, 0.25);
+        }
+        .guide-fab:active {
+            transform: translateY(0) scale(0.98);
+        }
+        .guide-fab svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .guide-fab .fab-pulse {
+            position: absolute;
+            inset: -3px;
+            border-radius: 100px;
+            border: 2px solid rgba(0, 212, 255, 0.4);
+            animation: fabPulse 2.5s ease-out infinite;
+        }
+        @keyframes fabPulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            70% { transform: scale(1.15); opacity: 0; }
+            100% { transform: scale(1.15); opacity: 0; }
+        }
+        /* Hide FAB when guide is open */
+        .guide-overlay.active ~ .guide-fab,
+        .guide-fab.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+        }
+        @media (max-width: 768px) {
+            .guide-fab {
+                bottom: 1rem;
+                right: 1rem;
+                padding: 0.65rem 1rem;
+                font-size: 0.75rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -3589,6 +3656,13 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
         </div>
     </div><!-- /guide-overlay -->
 
+    <!-- Floating Guide Button -->
+    <button class="guide-fab" id="guideFab" onclick="openGuide()">
+        <span class="fab-pulse"></span>
+        <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Device Guide
+    </button>
+
     <!-- ============ FOOTER ============ -->
     <footer class="footer">
         <div class="container footer-inner">
@@ -3891,12 +3965,16 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
         const guideMobileNav = document.getElementById('guideMobileNav');
 
         // Open/close
+        const guideFab = document.getElementById('guideFab');
+
         window.openGuide = function() {
             guideOverlay.classList.add('active');
+            guideFab.classList.add('hidden');
             document.body.style.overflow = 'hidden';
         };
         window.closeGuide = function() {
             guideOverlay.classList.remove('active');
+            guideFab.classList.remove('hidden');
             document.body.style.overflow = '';
         };
 
@@ -3958,6 +4036,17 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
         });
 
         guideSections.forEach(section => guideObserver.observe(section));
+
+        // Auto-open guide if URL contains #guide (for QR code direct link)
+        if (window.location.hash === '#guide') {
+            openGuide();
+        }
+        // Also listen for hash changes (e.g., user clicks a #guide link)
+        window.addEventListener('hashchange', function() {
+            if (window.location.hash === '#guide') {
+                openGuide();
+            }
+        });
 
     })();
     </script>
