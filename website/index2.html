@@ -265,18 +265,19 @@
             .nav-links {
                 position: fixed;
                 inset: 0;
+                z-index: 200;
                 flex-direction: column;
                 justify-content: center;
+                align-items: center;
                 gap: 2.5rem;
-                background: rgba(10, 14, 23, 0.97);
-                backdrop-filter: blur(30px);
-                -webkit-backdrop-filter: blur(30px);
+                background: var(--bg-primary);
                 opacity: 0;
                 pointer-events: none;
                 transition: opacity 0.4s;
             }
             .nav-links.open { opacity: 1; pointer-events: all; }
             .nav-links a { font-size: 1.25rem; }
+            .nav-toggle { z-index: 210; }
         }
 
         /* ============================================
