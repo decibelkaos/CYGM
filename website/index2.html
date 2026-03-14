@@ -1194,6 +1194,62 @@
             border-radius: var(--radius-sm);
             box-shadow: 0 0 40px rgba(0, 212, 255, 0.04);
         }
+        /* Hide flasher tools on mobile, show desktop-only message */
+        .flasher-desktop-only { display: none; }
+        @media (max-width: 768px) {
+            .flasher-inline-card #flasherSupported,
+            .flasher-inline-card #flasherUnsupported,
+            .flasher-inline-card #flasherTerminal,
+            .flasher-inline-card .flasher-browser-badge { display: none !important; }
+            .flasher-desktop-only {
+                display: block;
+                text-align: center;
+                padding: 1.5rem 1rem;
+            }
+            .flasher-desktop-only p {
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+                line-height: 1.7;
+                margin-bottom: 1rem;
+            }
+            .flasher-desktop-only strong { color: var(--text-primary); }
+            .flasher-desktop-icon {
+                width: 48px;
+                height: 48px;
+                margin: 0 auto 1rem;
+                stroke: var(--text-muted);
+                fill: none;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .flasher-desktop-reqs {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+                margin-top: 1rem;
+            }
+            .flasher-desktop-reqs span {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+                padding: 0.5rem 0.75rem;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border-subtle);
+                border-radius: var(--radius-xs);
+                font-size: 0.75rem;
+                color: var(--text-secondary);
+            }
+            .flasher-desktop-reqs span svg {
+                width: 14px;
+                height: 14px;
+                stroke: var(--accent);
+                fill: none;
+                stroke-width: 2;
+                flex-shrink: 0;
+            }
+        }
         .flasher-inline-header {
             display: flex;
             align-items: center;
@@ -2749,6 +2805,17 @@
                         Flash Firmware
                     </h3>
                     <span class="flasher-browser-badge" id="flasherBrowserBadge">Checking browser&hellip;</span>
+                </div>
+
+                <!-- Mobile: desktop-only message -->
+                <div class="flasher-desktop-only">
+                    <svg class="flasher-desktop-icon" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <p>Flashing firmware requires a <strong>desktop or laptop computer</strong>. Visit this page on your computer to flash your device.</p>
+                    <div class="flasher-desktop-reqs">
+                        <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg> Google Chrome or Microsoft Edge</span>
+                        <span><svg viewBox="0 0 24 24"><path d="M12 2v6m0 8v6M4.93 4.93l4.24 4.24m5.66 5.66l4.24 4.24M2 12h6m8 0h6M4.93 19.07l4.24-4.24m5.66-5.66l4.24-4.24"/></svg> USB data cable (not charge-only)</span>
+                        <span><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg> Device connected via USB</span>
+                    </div>
                 </div>
 
                 <!-- Supported browser content -->
