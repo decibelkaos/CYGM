@@ -11,6 +11,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 
+    <!-- ESP Web Tools — web-serial flasher -->
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+
     <style>
         /* ============================================
            CSS CUSTOM PROPERTIES
@@ -923,8 +926,10 @@
             gap: 0.5rem;
             padding: 0.75rem 1.5rem;
             border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
             font-size: 0.875rem;
             font-weight: 600;
+            background: none;
             border: 1px solid var(--border-subtle);
             color: var(--text-primary);
             transition: all 0.3s var(--ease-spring);
@@ -1179,6 +1184,412 @@
         }
 
         /* ============================================
+           FIRMWARE FLASHER — INLINE CARD
+           ============================================ */
+        .flasher-inline-card {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius-sm);
+            box-shadow: 0 0 40px rgba(0, 212, 255, 0.04);
+        }
+        .flasher-inline-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-subtle);
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+        .flasher-inline-header h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .flasher-inline-header h3 svg {
+            width: 20px;
+            height: 20px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .flasher-inline-intro {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin: 0 0 1rem;
+            line-height: 1.6;
+        }
+        .flasher-inline-intro strong {
+            color: var(--text-primary);
+        }
+
+        .flasher-browser-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 100px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 600;
+        }
+        .flasher-browser-badge.supported {
+            background: rgba(34, 197, 94, 0.12);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+            color: var(--glucose-green);
+        }
+        .flasher-browser-badge.unsupported {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            color: var(--glucose-red);
+        }
+
+        .flasher-btn-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        .flasher-btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1.5rem;
+            border: none;
+            border-radius: 100px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s var(--ease-spring), box-shadow 0.3s;
+        }
+        .flasher-btn-primary:hover {
+            transform: scale(1.03);
+            box-shadow: 0 0 20px var(--accent-glow-strong);
+        }
+        .flasher-btn-primary svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .flasher-btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1.5rem;
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.3s, color 0.3s;
+        }
+        .flasher-btn-secondary:hover {
+            border-color: var(--border-accent);
+            color: var(--text-primary);
+        }
+
+        /* Flash info (step 2) */
+        .flasher-fw-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.85rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+            margin-bottom: 1rem;
+        }
+        .flasher-fw-info .fw-version {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .flasher-fw-info .fw-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .flasher-fw-info .fw-stage {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(234, 179, 8, 0.15);
+            color: var(--glucose-yellow);
+        }
+
+        .flasher-driver-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.75rem;
+            transition: color 0.2s;
+        }
+        .flasher-driver-link:hover { color: var(--accent); }
+
+        /* Boot instructions */
+        .flasher-boot-steps {
+            margin: 1rem 0;
+            padding: 1rem 1.25rem;
+            background: rgba(234, 179, 8, 0.06);
+            border: 1px solid rgba(234, 179, 8, 0.18);
+            border-radius: var(--radius-xs);
+        }
+        .flasher-boot-steps-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--glucose-yellow);
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .flasher-boot-steps ol {
+            margin: 0;
+            padding-left: 1.25rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.8;
+        }
+        .flasher-boot-steps ol strong {
+            color: var(--text-primary);
+        }
+        .flasher-boot-steps .flasher-boot-note {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+
+        /* NVS warning */
+        .flasher-nvs-warning {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            padding: 0.6rem 0.85rem;
+            background: rgba(239, 68, 68, 0.06);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            border-radius: var(--radius-xs);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .flasher-nvs-warning svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--glucose-red);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        /* Terminal */
+        .flasher-terminal {
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-xs);
+            margin-top: 1rem;
+            overflow: hidden;
+            display: none;
+        }
+        .flasher-terminal.visible { display: block; }
+        .flasher-terminal-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0.6rem 0.85rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .flasher-terminal-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .flasher-terminal-dot:nth-child(1) { background: #ff5f57; }
+        .flasher-terminal-dot:nth-child(2) { background: #febc2e; }
+        .flasher-terminal-dot:nth-child(3) { background: #28c840; }
+        .flasher-terminal-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.625rem;
+            color: rgba(255, 255, 255, 0.3);
+            margin-left: 0.5rem;
+        }
+        .flasher-terminal-output {
+            padding: 0.75rem 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .flasher-terminal-output::-webkit-scrollbar { width: 4px; }
+        .flasher-terminal-output::-webkit-scrollbar-track { background: transparent; }
+        .flasher-terminal-output::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        .flasher-log-info { color: var(--accent); }
+        .flasher-log-success { color: var(--glucose-green); }
+        .flasher-log-error { color: var(--glucose-red); }
+        .flasher-log-warn { color: var(--glucose-yellow); }
+
+        /* Result banners (inline) */
+        .flasher-result-banner {
+            display: none;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-xs);
+            font-size: 0.8125rem;
+            line-height: 1.5;
+            margin-top: 1rem;
+        }
+        .flasher-result-banner.visible { display: flex; }
+        .flasher-result-banner svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            margin-top: 1px;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+        .flasher-result-success {
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            color: var(--text-secondary);
+        }
+        .flasher-result-success svg { stroke: var(--glucose-green); }
+        .flasher-result-success strong { color: var(--glucose-green); }
+        .flasher-result-error {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--text-secondary);
+        }
+        .flasher-result-error svg { stroke: var(--glucose-red); }
+        .flasher-retry-btn {
+            background: none;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 100px;
+            cursor: pointer;
+            margin-left: auto;
+            flex-shrink: 0;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .flasher-retry-btn:hover {
+            border-color: var(--border-accent);
+            color: var(--text-primary);
+        }
+
+        /* Unsupported browser fallback */
+        .flasher-unsupported {
+            display: none;
+            padding: 1rem 0;
+        }
+        .flasher-unsupported.visible { display: block; }
+        .flasher-unsupported-msg {
+            padding: 1rem 1.25rem;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--radius-xs);
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+        .flasher-unsupported-msg strong {
+            color: var(--glucose-red);
+        }
+        .flasher-cli-steps {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-xs);
+            padding: 1rem 1.25rem;
+            color: rgba(255, 255, 255, 0.6);
+            line-height: 2;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        /* Firmware strip flash button */
+        .firmware-flash-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 1rem;
+            border: 1px solid var(--border-accent);
+            border-radius: 100px;
+            background: rgba(0, 212, 255, 0.06);
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-spring);
+        }
+        .firmware-flash-btn:hover {
+            background: rgba(0, 212, 255, 0.12);
+            box-shadow: 0 0 16px var(--accent-glow);
+            transform: scale(1.03);
+        }
+        .firmware-flash-btn svg {
+            width: 12px;
+            height: 12px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* esp-web-install-button wraps the slotted button inline */
+        #flasherEspButton {
+            display: inline-flex;
+        }
+
+        @media (max-width: 600px) {
+            .flasher-inline-card { padding: 1.25rem; }
+            .flasher-terminal-output { max-height: 140px; font-size: 0.625rem; }
+            .flasher-btn-row { flex-direction: column; }
+        }
+
+        /* ============================================
            DISCLAIMER
            ============================================ */
         .disclaimer {
@@ -1294,7 +1705,7 @@
             <div class="hero-content">
                 <div class="hero-badge">
                     <span class="status-dot"></span>
-                    <span id="heroBadgeText">v0.5.0 Beta — First Public Release</span>
+                    <span id="heroBadgeText">v0.5.0 Beta</span>
                 </div>
                 <h1>Your glucose data, on <span class="accent">your terms</span></h1>
                 <p class="hero-desc">A pocket-sized, open-source CGM display you build yourself. Real-time readings, smart alarms, and weather — no subscriptions, no apps, ~$40.</p>
@@ -1488,11 +1899,10 @@
             </div>
 
             <div class="diy-extras reveal">
-                <a href="#" class="diy-extra-link" onclick="return false;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                    Build Instructions
-                    <span class="coming-soon-tip">Coming soon</span>
-                </a>
+                <button class="diy-extra-link" onclick="document.getElementById('flasher').scrollIntoView({behavior:'smooth'})">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    Flash Firmware
+                </button>
                 <a href="#" class="diy-extra-link" onclick="return false;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     3D Print Files
@@ -1503,6 +1913,110 @@
                     GitHub Repo
                     <span class="coming-soon-tip">Coming soon</span>
                 </a>
+            </div>
+
+            <!-- Inline Firmware Flasher -->
+            <div class="flasher-inline-card reveal" id="flasher">
+                <div class="flasher-inline-header">
+                    <h3>
+                        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Flash Firmware
+                    </h3>
+                    <span class="flasher-browser-badge" id="flasherBrowserBadge">Checking browser&hellip;</span>
+                </div>
+
+                <!-- Supported browser content -->
+                <div id="flasherSupported">
+                    <p class="flasher-inline-intro">
+                        Flash CYGM firmware directly from your browser. Requires <strong>Google Chrome</strong> or Edge, a <strong>USB data cable</strong> (not charge-only), and your device plugged in via USB.
+                    </p>
+
+                    <div class="flasher-fw-info">
+                        <div>
+                            <span class="fw-version" id="flasherFwVersion">v0.5.0</span>
+                            <span class="fw-stage" id="flasherFwStage">Beta</span>
+                        </div>
+                        <span class="fw-meta" id="flasherFwDate"></span>
+                    </div>
+
+                    <!-- Boot mode instructions -->
+                    <div class="flasher-boot-steps">
+                        <div class="flasher-boot-steps-title">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            Enter Boot Mode First
+                        </div>
+                        <ol>
+                            <li>Press and <strong>hold both BOOT and RESET</strong> buttons at the same time</li>
+                            <li><strong>Release RESET</strong> while continuing to hold BOOT</li>
+                            <li>Click <strong>&ldquo;Install Firmware&rdquo;</strong> below and select your COM port</li>
+                            <li>Keep holding BOOT until the <strong>progress reaches ~5%</strong>, then release</li>
+                            <li>Wait for the flash to complete (~60 seconds)</li>
+                        </ol>
+                        <div class="flasher-boot-note">If you don't see a COM port, install the CH340 driver linked below.</div>
+                    </div>
+
+                    <div class="flasher-nvs-warning">
+                        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <span>Flashing will <strong style="color:var(--glucose-red)">erase all saved settings</strong> (WiFi credentials, alarms, preferences). You will need to re-enter them after flashing.</span>
+                    </div>
+
+                    <a class="flasher-driver-link" href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener">
+                        Need CH340 USB driver? &rarr;
+                    </a>
+
+                    <div class="flasher-btn-row">
+                        <esp-web-install-button id="flasherEspButton">
+                            <button slot="activate" class="flasher-btn-primary" id="flasherFlashBtn">
+                                <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                Install Firmware
+                            </button>
+                        </esp-web-install-button>
+                    </div>
+
+                    <!-- Result banners -->
+                    <div class="flasher-result-banner flasher-result-success" id="flasherSuccess">
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span><strong>Flash complete!</strong> Unplug USB and power on your device &mdash; it will boot into the setup wizard.</span>
+                    </div>
+                    <div class="flasher-result-banner flasher-result-error" id="flasherError">
+                        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        <span id="flasherErrorMsg">An error occurred. Check your USB cable, enter boot mode, and try again.</span>
+                        <button class="flasher-retry-btn" onclick="flasherRetry()">Retry</button>
+                    </div>
+                </div>
+
+                <!-- Unsupported browser fallback -->
+                <div class="flasher-unsupported" id="flasherUnsupported">
+                    <div class="flasher-unsupported-msg">
+                        <strong>Your browser doesn't support Web Serial.</strong><br>
+                        Use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop to flash directly from the browser, or download the firmware and flash manually:
+                    </div>
+                    <div class="flasher-btn-row">
+                        <a class="flasher-btn-primary" id="flasherDownloadLink" href="#" download>
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download Firmware
+                        </a>
+                    </div>
+                    <div class="flasher-cli-steps">
+# Install esptool
+pip install esptool
+
+# Flash merged binary (erase + write at offset 0)
+esptool.py --chip esp32 --baud 460800 erase_flash
+esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
+                </div>
+
+                <!-- Terminal -->
+                <div class="flasher-terminal" id="flasherTerminal">
+                    <div class="flasher-terminal-header">
+                        <div class="flasher-terminal-dot"></div>
+                        <div class="flasher-terminal-dot"></div>
+                        <div class="flasher-terminal-dot"></div>
+                        <span class="flasher-terminal-title">Flash Output</span>
+                    </div>
+                    <div class="flasher-terminal-output" id="flasherTerminalOutput"></div>
+                </div>
+
             </div>
         </div>
     </section>
@@ -1550,6 +2064,10 @@
                     Release notes
                     <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 </span>
+                <button class="firmware-flash-btn" onclick="document.getElementById('flasher').scrollIntoView({behavior:'smooth'})">
+                    <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    Flash
+                </button>
             </div>
             <div class="firmware-notes-panel" id="firmwareNotesPanel">
                 <div class="firmware-notes-content" id="firmwareNotesContent"></div>
@@ -1580,6 +2098,7 @@
             <ul class="footer-links">
                 <li><a href="#capabilities">Features</a></li>
                 <li><a href="#diy">Build</a></li>
+                <li><a href="#flasher">Flash</a></li>
                 <li><a href="#developer">Developer</a></li>
                 <li><a href="#story">About</a></li>
             </ul>
@@ -1639,8 +2158,6 @@
             { src: 'photos/screenshot-time-weather-settings.jpg', label: 'Time & weather settings' },
             { src: 'photos/screenshot-wifi-scanning.jpg', label: 'WiFi network scanner' },
             { src: 'photos/screenshot-brightness-slider.jpg', label: 'Brightness control' },
-            { src: 'photos/screenshot-about-overlay.jpg', label: 'About & version info' },
-            { src: 'photos/screenshot-ota-update.jpg', label: 'OTA update notification' },
         ];
 
         const galleryGrid = document.getElementById('galleryGrid');
@@ -1675,10 +2192,14 @@
             }
         });
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') lightbox.classList.remove('active');
+            if (e.key === 'Escape') {
+                lightbox.classList.remove('active');
+            }
         });
 
         // ---- FIRMWARE VERSION ----
+        let releasesData = null; // cached for flasher
+
         async function loadFirmwareInfo() {
             try {
                 const cacheBust = `cb=${Date.now()}`;
@@ -1688,6 +2209,9 @@
                 });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
+                releasesData = data; // cache for flasher
+                buildFlasherManifest();
+
                 const latest = data.versions.find(v => v.latest) || data.versions[0];
 
                 if (!latest) return;
@@ -1711,6 +2235,18 @@
                 if (fwDate) fwDate.textContent = latest.date;
                 if (fwNotes && latest.notes) fwNotes.textContent = latest.notes;
 
+                // Populate inline flasher info
+                const flasherVer = document.getElementById('flasherFwVersion');
+                const flasherStage = document.getElementById('flasherFwStage');
+                const flasherDate = document.getElementById('flasherFwDate');
+                const flasherDl = document.getElementById('flasherDownloadLink');
+                if (flasherVer) flasherVer.textContent = `v${latest.version}`;
+                if (flasherStage) flasherStage.textContent = latest.stage;
+                if (flasherDate) flasherDate.textContent = latest.date;
+                if (flasherDl && latest.files && latest.files.merged) {
+                    flasherDl.href = latest.files.merged;
+                }
+
             } catch (err) {
                 console.error('Failed to load firmware info:', err);
                 const heroBadgeText = document.getElementById('heroBadgeText');
@@ -1728,6 +2264,124 @@
                 fwNotesPanel.classList.toggle('open');
             });
         }
+
+        // ---- FIRMWARE FLASHER (INLINE) ----
+        const flasherTerminal = document.getElementById('flasherTerminal');
+        const flasherTerminalOutput = document.getElementById('flasherTerminalOutput');
+        const flasherEspBtn = document.getElementById('flasherEspButton');
+        let flasherManifestUrl = null;
+
+        function checkBrowserSupport() {
+            const badge = document.getElementById('flasherBrowserBadge');
+            const supported = 'serial' in navigator;
+            const supportedContent = document.getElementById('flasherSupported');
+            const unsupported = document.getElementById('flasherUnsupported');
+
+            if (supported) {
+                badge.className = 'flasher-browser-badge supported';
+                badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Browser supported';
+                supportedContent.style.display = '';
+                unsupported.classList.remove('visible');
+            } else {
+                badge.className = 'flasher-browser-badge unsupported';
+                badge.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Not supported';
+                supportedContent.style.display = 'none';
+                unsupported.classList.add('visible');
+            }
+        }
+        checkBrowserSupport();
+
+        function buildFlasherManifest() {
+            if (!releasesData) return;
+            const latest = releasesData.versions.find(v => v.latest) || releasesData.versions[0];
+            if (!latest || !latest.files || !latest.files.merged) return;
+
+            const baseUrl = window.location.href.replace(/\/[^/]*$/, '/');
+            const mergedUrl = baseUrl + latest.files.merged;
+
+            const manifest = {
+                name: 'CYGM Glucose Monitor',
+                version: latest.version,
+                builds: [{
+                    chipFamily: 'ESP32',
+                    parts: [{ path: mergedUrl, offset: 0 }]
+                }]
+            };
+
+            if (flasherManifestUrl) URL.revokeObjectURL(flasherManifestUrl);
+
+            const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+            flasherManifestUrl = URL.createObjectURL(blob);
+            flasherEspBtn.setAttribute('manifest', flasherManifestUrl);
+        }
+
+        function flasherLog(msg, type) {
+            if (!flasherTerminalOutput) return;
+            const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const cls = type ? ` class="flasher-log-${type}"` : '';
+            const line = document.createElement('div');
+            line.innerHTML = `<span style="opacity:0.4">[${ts}]</span> <span${cls}>${msg}</span>`;
+            flasherTerminalOutput.appendChild(line);
+            flasherTerminalOutput.scrollTop = flasherTerminalOutput.scrollHeight;
+        }
+
+        function getLatestVersion() {
+            if (!releasesData) return '?.?.?';
+            const latest = releasesData.versions.find(v => v.latest) || releasesData.versions[0];
+            return latest ? latest.version : '?.?.?';
+        }
+
+        // Flash button click: log to terminal, ESP Web Tools takes over via slot="activate"
+        const flasherFlashBtn = document.getElementById('flasherFlashBtn');
+        flasherFlashBtn.addEventListener('click', () => {
+            if (!flasherManifestUrl) buildFlasherManifest();
+            document.getElementById('flasherSuccess').classList.remove('visible');
+            document.getElementById('flasherError').classList.remove('visible');
+            flasherTerminal.classList.add('visible');
+            flasherLog('Initiating flash sequence\u2026', 'info');
+            flasherLog(`Firmware: v${getLatestVersion()}`, 'info');
+            flasherLog('ESP Web Tools dialog will open \u2014 select your COM port.', 'info');
+        });
+
+        // Detect ESP Web Tools dialog lifecycle via MutationObserver
+        const ewtObserver = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                for (const node of m.addedNodes) {
+                    if (node.tagName && node.tagName.toLowerCase() === 'ewt-install-dialog') {
+                        flasherLog('Connected to device.', 'success');
+                        const removeObserver = new MutationObserver((rMutations) => {
+                            for (const rm of rMutations) {
+                                for (const removed of rm.removedNodes) {
+                                    if (removed === node) {
+                                        removeObserver.disconnect();
+                                        onEwtDialogClosed();
+                                    }
+                                }
+                            }
+                        });
+                        removeObserver.observe(node.parentNode || document.body, { childList: true });
+                    }
+                }
+            }
+        });
+        ewtObserver.observe(document.body, { childList: true });
+
+        function onEwtDialogClosed() {
+            flasherLog('ESP Web Tools dialog closed.', 'info');
+            document.getElementById('flasherSuccess').classList.add('visible');
+            document.getElementById('flasherError').classList.remove('visible');
+            flasherLog('If your device is rebooting, the flash was successful!', 'success');
+        }
+
+        function flasherRetry() {
+            flasherTerminalOutput.innerHTML = '';
+            document.getElementById('flasherSuccess').classList.remove('visible');
+            document.getElementById('flasherError').classList.remove('visible');
+            flasherTerminal.classList.add('visible');
+            buildFlasherManifest();
+            flasherLog('Ready to retry. Follow the boot mode steps above.', 'info');
+        }
+        window.flasherRetry = flasherRetry;
 
     })();
     </script>
