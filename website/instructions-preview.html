@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYGM — Getting Started Guide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ── Theme (matches site) ── */
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #0f1420;
+            --bg-tertiary: #151b2b;
+            --bg-card: #141a2a;
+            --bg-card-hover: #1a2236;
+            --text-primary: #e8ecf4;
+            --text-secondary: #8b95a8;
+            --text-muted: #505c72;
+            --accent: #00d4ff;
+            --accent-dim: #00a8cc;
+            --accent-glow: rgba(0, 212, 255, 0.15);
+            --glucose-green: #22c55e;
+            --glucose-yellow: #eab308;
+            --glucose-orange: #f59e0b;
+            --glucose-red: #ef4444;
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(0, 212, 255, 0.2);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+            --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ── Trigger button (for preview only) ── */
+        .preview-trigger {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+        .preview-trigger button {
+            padding: 1rem 2.5rem;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s var(--ease-spring), box-shadow 0.3s;
+        }
+        .preview-trigger button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        /* ============================================
+           INSTRUCTIONS MODAL
+           ============================================ */
+        .guide-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .guide-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .guide-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* ── Sidebar Navigation ── */
+        .guide-sidebar {
+            width: 260px;
+            flex-shrink: 0;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .guide-sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .guide-sidebar-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .guide-sidebar-header h2 svg {
+            width: 20px;
+            height: 20px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .guide-sidebar-header p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+        }
+
+        .guide-nav {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.75rem 0;
+        }
+        .guide-nav::-webkit-scrollbar { width: 3px; }
+        .guide-nav::-webkit-scrollbar-track { background: transparent; }
+        .guide-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+        .guide-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.55rem 1.5rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 2px solid transparent;
+            text-decoration: none;
+        }
+        .guide-nav-item:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .guide-nav-item.active {
+            color: var(--accent);
+            background: rgba(0, 212, 255, 0.05);
+            border-left-color: var(--accent);
+        }
+        .guide-nav-item .nav-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            opacity: 0.6;
+        }
+        .guide-nav-item .nav-icon svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .guide-nav-item.active .nav-icon { opacity: 1; }
+
+        /* Inline icon in text */
+        .icon-inline {
+            display: inline-flex;
+            width: 18px;
+            height: 18px;
+            vertical-align: -3px;
+            margin-right: 0.2rem;
+        }
+        .icon-inline svg {
+            width: 18px;
+            height: 18px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .guide-nav-divider {
+            height: 1px;
+            background: var(--border-subtle);
+            margin: 0.5rem 1.5rem;
+        }
+
+        .guide-sidebar-close {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .guide-sidebar-close button {
+            width: 100%;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+            color: var(--text-secondary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .guide-sidebar-close button:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+        }
+
+        /* ── Main Content ── */
+        .guide-content {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-primary);
+            scroll-behavior: smooth;
+        }
+        .guide-content::-webkit-scrollbar { width: 6px; }
+        .guide-content::-webkit-scrollbar-track { background: transparent; }
+        .guide-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+        /* Mobile close button (top-right, shown only on mobile) */
+        .guide-mobile-header {
+            display: none;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0.75rem 1.25rem;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .guide-mobile-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .guide-mobile-header h2 svg {
+            width: 18px;
+            height: 18px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+        }
+        .guide-mobile-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+        }
+
+        /* ── Section Styles ── */
+        .guide-section {
+            padding: 2.5rem 3rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .guide-section:last-child { border-bottom: none; }
+
+        .guide-section-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.625rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        .guide-section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        .guide-section-desc {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            max-width: 640px;
+            margin-bottom: 1.5rem;
+        }
+
+        /* ── Device Mockup ── */
+        .device-mockup {
+            width: 200px;
+            height: 270px;
+            background: #1a1a2e;
+            border-radius: 20px;
+            border: 2px solid #2a2a40;
+            padding: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            position: relative;
+            flex-shrink: 0;
+        }
+        .device-screen {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        /* Screenshot placeholder */
+        .screenshot-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.6rem;
+            text-align: center;
+            padding: 0.5rem;
+            background: linear-gradient(135deg, #0a0e17, #141a2a);
+        }
+        .screenshot-placeholder svg {
+            width: 28px;
+            height: 28px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 1.5;
+            opacity: 0.5;
+        }
+        .screenshot-placeholder .placeholder-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.5rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.6;
+        }
+
+        /* ── Instruction Blocks ── */
+        .guide-content-row {
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+        }
+        .guide-content-row.reverse {
+            flex-direction: row-reverse;
+        }
+        .guide-text {
+            flex: 1;
+            min-width: 0;
+        }
+        .guide-text h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .guide-text p {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Step list */
+        .guide-steps {
+            list-style: none;
+            padding: 0;
+            margin: 0.75rem 0;
+        }
+        .guide-steps li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            padding: 0.4rem 0;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .guide-steps li .step-num {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.625rem;
+            font-weight: 600;
+            color: var(--accent);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .guide-steps li strong {
+            color: var(--text-primary);
+        }
+
+        /* Tip callout */
+        .guide-tip {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.65rem 0.85rem;
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.12);
+            border-radius: var(--radius-xs);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-top: 0.75rem;
+        }
+        .guide-tip .tip-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .guide-tip .tip-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+        .guide-tip .tip-icon .tip-circle {
+            fill: var(--accent);
+        }
+        .guide-tip .tip-icon .tip-letter {
+            fill: var(--bg-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+        .guide-tip strong { color: var(--accent); }
+
+        .guide-warning {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.65rem 0.85rem;
+            background: rgba(234, 179, 8, 0.05);
+            border: 1px solid rgba(234, 179, 8, 0.15);
+            border-radius: var(--radius-xs);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-top: 0.75rem;
+        }
+        .guide-warning .warn-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .guide-warning .warn-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+        .guide-warning .warn-icon .warn-tri {
+            fill: var(--glucose-yellow);
+            stroke: none;
+        }
+        .guide-warning .warn-icon .warn-bang {
+            fill: #1a1a2e;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 800;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+
+        /* Feature grid */
+        .guide-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin: 1.25rem 0;
+        }
+        .guide-feature-card {
+            padding: 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+        }
+        .guide-feature-card h4 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .guide-feature-card p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Gesture illustration */
+        .gesture-demo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+            margin: 0.25rem 0;
+        }
+        .gesture-demo svg {
+            width: 20px;
+            height: 20px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+        }
+        .gesture-demo span {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .gesture-demo strong {
+            color: var(--text-primary);
+        }
+
+        /* Inline keyboard shortcut / button reference */
+        .key-ref {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.5rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--text-primary);
+        }
+
+        /* Color indicator dot */
+        .color-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.3rem;
+            vertical-align: middle;
+        }
+
+        /* Alarm color table */
+        .alarm-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.8125rem;
+        }
+        .alarm-table th {
+            text-align: left;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .alarm-table td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            color: var(--text-secondary);
+        }
+
+        /* Tone list */
+        .tone-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 0.5rem;
+            margin: 0.75rem 0;
+        }
+        .tone-item {
+            padding: 0.4rem 0.75rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .tone-item strong { color: var(--text-primary); }
+
+        /* Trend arrow reference */
+        .trend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.5rem;
+            margin: 0.75rem 0;
+        }
+        .trend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+        }
+        .trend-arrow {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+            width: 24px;
+            text-align: center;
+        }
+        .trend-item .trend-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* Coming-soon badge */
+        .badge-coming-soon {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.55rem;
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.25);
+            border-radius: 100px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.5625rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--glucose-yellow);
+            margin-left: 0.4rem;
+            vertical-align: middle;
+        }
+
+        /* Welcome hero */
+        .welcome-hero {
+            text-align: center;
+            padding: 3rem 2rem 1.5rem;
+        }
+        .welcome-hero h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .welcome-hero .welcome-subtitle {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            max-width: 500px;
+            margin: 0 auto 1.5rem;
+            line-height: 1.7;
+        }
+        .welcome-steps-preview {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+        }
+        .welcome-step-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 1rem 1.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            min-width: 120px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .welcome-step-card:hover {
+            border-color: var(--border-accent);
+            background: var(--bg-card-hover);
+        }
+        .welcome-step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .welcome-step-card span:last-child {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .welcome-step-card, .welcome-step-card:link, .welcome-step-card:visited, .welcome-step-card:hover, .welcome-step-card:active {
+            text-decoration: none;
+        }
+
+        /* CGM provider cards */
+        .provider-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .provider-card {
+            padding: 1.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            text-align: center;
+            position: relative;
+        }
+        .provider-card.available {
+            border-color: rgba(0, 212, 255, 0.25);
+        }
+        .provider-card h4 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+        }
+        .provider-card p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .provider-card .provider-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            margin-top: 0.5rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+        }
+        .provider-card .provider-status.ready {
+            color: var(--glucose-green);
+        }
+        .provider-card .provider-status.soon {
+            color: var(--glucose-yellow);
+        }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+            .guide-sidebar { display: none; }
+            .guide-mobile-header { display: flex; }
+            .guide-container { flex-direction: column; }
+            .guide-section { padding: 1.5rem 1.25rem; }
+            .guide-section-title { font-size: 1.25rem; }
+            .guide-content-row { flex-direction: column !important; gap: 1.25rem; }
+            .device-mockup { width: 160px; height: 216px; align-self: center; }
+            .guide-feature-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── Mobile Bottom Nav (shown on mobile only) ── */
+        .guide-mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 310;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-subtle);
+            padding: 0.5rem 0.75rem;
+            overflow-x: auto;
+            white-space: nowrap;
+            gap: 0.25rem;
+        }
+        .guide-mobile-nav::-webkit-scrollbar { display: none; }
+        @media (max-width: 768px) {
+            .guide-mobile-nav { display: flex; }
+            .guide-content { padding-bottom: 3.5rem; }
+        }
+        .guide-mobile-nav-item {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.4rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            border: none;
+            background: none;
+            font-family: 'DM Sans', sans-serif;
+            flex-shrink: 0;
+        }
+        .guide-mobile-nav-item.active {
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+
+<!-- Preview trigger -->
+<div class="preview-trigger">
+    <button onclick="openGuide()">Open Device Guide</button>
+</div>
+
+<!-- ============ INSTRUCTIONS MODAL ============ -->
+<div class="guide-overlay" id="guideOverlay">
+    <div class="guide-container">
+        <!-- Sidebar (desktop) -->
+        <div class="guide-sidebar">
+            <div class="guide-sidebar-header">
+                <h2>
+                    <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    Getting Started
+                </h2>
+                <p>Your step-by-step setup guide</p>
+            </div>
+            <nav class="guide-nav" id="guideNav">
+                <a class="guide-nav-item active" href="#guide-welcome" data-section="guide-welcome">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span> Welcome
+                </a>
+                <div class="guide-nav-divider"></div>
+                <a class="guide-nav-item" href="#guide-wifi" data-section="guide-wifi">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg></span> Step 1: WiFi
+                </a>
+                <a class="guide-nav-item" href="#guide-dexcom" data-section="guide-dexcom">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span> Step 2: CGM Login
+                </a>
+                <a class="guide-nav-item" href="#guide-timeweather" data-section="guide-timeweather">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Step 3: Location
+                </a>
+                <div class="guide-nav-divider"></div>
+                <a class="guide-nav-item" href="#guide-overview" data-section="guide-overview">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span> Home Screen
+                </a>
+                <a class="guide-nav-item" href="#guide-gestures" data-section="guide-gestures">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M14 15l3-3 3 3"/><path d="M17 12v9"/></svg></span> Gestures
+                </a>
+                <a class="guide-nav-item" href="#guide-cgm" data-section="guide-cgm">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> CGM Display
+                </a>
+                <a class="guide-nav-item" href="#guide-chart" data-section="guide-chart">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Glucose Chart
+                </a>
+                <a class="guide-nav-item" href="#guide-alarms" data-section="guide-alarms">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> Alarms
+                </a>
+                <div class="guide-nav-divider"></div>
+                <a class="guide-nav-item" href="#guide-brightness" data-section="guide-brightness">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span> Brightness
+                </a>
+                <a class="guide-nav-item" href="#guide-battery" data-section="guide-battery">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="1" y="6" width="18" height="12" rx="2" ry="2"/><line x1="23" y1="13" x2="23" y2="11"/></svg></span> Battery & Power
+                </a>
+                <a class="guide-nav-item" href="#guide-updates" data-section="guide-updates">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span> Updates
+                </a>
+                <a class="guide-nav-item" href="#guide-about" data-section="guide-about">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span> About & Logging
+                </a>
+            </nav>
+            <div class="guide-sidebar-close">
+                <button onclick="closeGuide()">Close Guide</button>
+            </div>
+        </div>
+
+        <!-- Main content -->
+        <div class="guide-content" id="guideContent">
+            <!-- Mobile header -->
+            <div class="guide-mobile-header">
+                <h2>
+                    <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    Getting Started
+                </h2>
+                <button class="guide-mobile-close" onclick="closeGuide()">&times;</button>
+            </div>
+
+            <!-- ──────── SECTION: Welcome ──────── -->
+            <section class="guide-section" id="guide-welcome" style="border-bottom: 1px solid var(--border-subtle);">
+                <div class="welcome-hero">
+                    <h1>Welcome to CYGM</h1>
+                    <p class="welcome-subtitle">
+                        Your new continuous glucose monitor display is ready to set up. This guide will walk you through everything &mdash; from connecting to WiFi to customizing alarms. It only takes a few minutes.
+                    </p>
+
+                    <div class="welcome-steps-preview">
+                        <a class="welcome-step-card" href="#guide-wifi" onclick="document.getElementById('guide-wifi').scrollIntoView({behavior:'smooth'}); return false;">
+                            <span class="welcome-step-num">1</span>
+                            <span>Connect WiFi</span>
+                        </a>
+                        <a class="welcome-step-card" href="#guide-dexcom" onclick="document.getElementById('guide-dexcom').scrollIntoView({behavior:'smooth'}); return false;">
+                            <span class="welcome-step-num">2</span>
+                            <span>CGM Login</span>
+                        </a>
+                        <a class="welcome-step-card" href="#guide-timeweather" onclick="document.getElementById('guide-timeweather').scrollIntoView({behavior:'smooth'}); return false;">
+                            <span class="welcome-step-num">3</span>
+                            <span>Set Location</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div style="max-width: 540px; margin: 1.5rem auto 0;">
+                    <h3 style="font-family:'Outfit',sans-serif; font-size:1rem; font-weight:600; color:var(--text-primary); margin-bottom:0.75rem; text-align:center;">Supported CGM Platforms</h3>
+                    <div class="provider-grid">
+                        <div class="provider-card available">
+                            <h4>Dexcom</h4>
+                            <p>G6, G7, and ONE via Dexcom Share</p>
+                            <div class="provider-status ready">
+                                <span class="color-dot" style="background:var(--glucose-green)"></span> Ready to use
+                            </div>
+                        </div>
+                        <div class="provider-card">
+                            <h4>FreeStyle Libre <span class="badge-coming-soon">Coming Soon</span></h4>
+                            <p>Libre 2, Libre 3 via LibreLinkUp</p>
+                            <div class="provider-status soon">
+                                <span class="color-dot" style="background:var(--glucose-yellow)"></span> In development
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="guide-tip" style="margin-top: 1rem;">
+                        <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                        <span><strong>First boot?</strong> If you scanned the QR code on your device's screen, you're in the right place. Follow the 3 steps above to get your device showing glucose data in minutes.</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Step 1 — WiFi Setup ──────── -->
+            <section class="guide-section" id="guide-wifi">
+                <div class="guide-section-label">Step 1 of 3</div>
+                <h2 class="guide-section-title">Connect to WiFi</h2>
+                <p class="guide-section-desc">
+                    CYGM needs WiFi to fetch glucose data and weather updates. This is the first thing to do after powering on your device.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                                <span>WiFi Networks</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>Connecting to WiFi</h3>
+                        <ol class="guide-steps">
+                            <li><span class="step-num">1</span> <span>Tap the <strong>WiFi icon</strong> on the home screen, or go to <strong>Settings &rarr; WiFi Setup</strong></span></li>
+                            <li><span class="step-num">2</span> <span>Available networks will scan automatically. Tap <strong>Refresh</strong> (top-right) to re-scan.</span></li>
+                            <li><span class="step-num">3</span> <span>Tap your network name. Enter your WiFi password using the on-screen keyboard.</span></li>
+                            <li><span class="step-num">4</span> <span>Tap <strong>Connect</strong>. A progress overlay shows connection status.</span></li>
+                            <li><span class="step-num">5</span> <span>Once connected, you'll see your IP address and a green checkmark.</span></li>
+                        </ol>
+
+                        <h3 style="margin-top: 1rem;">Managing Saved Networks</h3>
+                        <p>Previously connected networks appear with a <strong style="color:var(--glucose-green)">green dot</strong>. Tap the <strong>&times;</strong> button next to any saved network to forget it.</p>
+
+                        <div class="guide-tip">
+                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                            <span><strong>Tip:</strong> Tap the eye icon in the password field to toggle password visibility. The keyboard supports shift (tap once for next character) and caps lock (tap twice).</span>
+                        </div>
+
+                        <div class="guide-warning">
+                            <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                            <span>If WiFi disconnects during use, an orange overlay will appear. CYGM automatically reconnects in the background &mdash; no action needed.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Step 2 — CGM Login ──────── -->
+            <section class="guide-section" id="guide-dexcom">
+                <div class="guide-section-label">Step 2 of 3</div>
+                <h2 class="guide-section-title">CGM Login</h2>
+                <p class="guide-section-desc">
+                    Link your CGM account to start receiving glucose data. Your credentials are stored locally on the device &mdash; never sent anywhere except your CGM provider's servers.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <span>CGM Login</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>Dexcom Share</h3>
+                        <ol class="guide-steps">
+                            <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; CGM Settings</strong></span></li>
+                            <li><span class="step-num">2</span> <span>Tap the <strong>Username</strong> field. The on-screen keyboard will appear.</span></li>
+                            <li><span class="step-num">3</span> <span>Type your <strong>Dexcom Share username</strong> (the one you use in the Dexcom app).</span></li>
+                            <li><span class="step-num">4</span> <span>Tap the <strong>Password</strong> field and enter your password. Tap the <strong>eye icon</strong> to verify what you typed.</span></li>
+                            <li><span class="step-num">5</span> <span>Tap <strong>Submit Login</strong>. You'll see a progress indicator while CYGM authenticates.</span></li>
+                            <li><span class="step-num">6</span> <span>On success, a green <strong>"Login Successful"</strong> banner appears and glucose data begins flowing automatically.</span></li>
+                        </ol>
+
+                        <div class="guide-tip">
+                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                            <span><strong>Important:</strong> You need <strong>Dexcom Share</strong> enabled in your Dexcom app (Settings &rarr; Share &rarr; Invite Follower). CYGM acts as a follower to receive your data.</span>
+                        </div>
+
+                        <h3 style="margin-top: 1.25rem;">FreeStyle Libre <span class="badge-coming-soon">Coming Soon</span></h3>
+                        <p>Support for <strong>FreeStyle Libre 2 &amp; Libre 3</strong> via LibreLinkUp is currently in development. Once available, you'll be able to select your CGM provider in Settings and log in with your LibreLinkUp credentials the same way.</p>
+
+                        <h3 style="margin-top: 1.25rem;">Sensor Changes</h3>
+                        <p>If CYGM stops receiving data for an extended period, a <strong>"No Data Received"</strong> overlay will ask if you're changing your CGM sensor. Tap <strong>Yes</strong> if you are (this adjusts data validation), or <strong>No</strong> to continue normally. The overlay auto-dismisses after 30 seconds.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Step 3 — Location & Weather ──────── -->
+            <section class="guide-section" id="guide-timeweather">
+                <div class="guide-section-label">Step 3 of 3</div>
+                <h2 class="guide-section-title">Set Your Location</h2>
+                <p class="guide-section-desc">
+                    Set your timezone and location to get accurate local time, weather conditions, and sunrise/sunset times on the home screen.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+                                <span>Location Search</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>Setting Your Location</h3>
+                        <ol class="guide-steps">
+                            <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; Time / Weather</strong></span></li>
+                            <li><span class="step-num">2</span> <span>Tap <strong>Location Search</strong></span></li>
+                            <li><span class="step-num">3</span> <span>Type your <strong>city name</strong> or <strong>postal code</strong> using the on-screen keyboard</span></li>
+                            <li><span class="step-num">4</span> <span>Results appear automatically as you type. Use <strong>Previous / Next</strong> to browse matches.</span></li>
+                            <li><span class="step-num">5</span> <span>Tap <strong>Confirm</strong> to apply the location. Weather data and sunrise/sunset times update immediately.</span></li>
+                        </ol>
+
+                        <h3 style="margin-top: 1rem;">Other Settings</h3>
+                        <div class="guide-feature-grid">
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Timezone</h4>
+                                <p>Select your timezone from a dropdown list (e.g., "America/New_York"). Time syncs automatically via SNTP.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> 24-Hour Format</h4>
+                                <p>Tap the <strong>toggle switch</strong> to switch between 12-hour (2:30 PM) and 24-hour (14:30) clock display. The change applies immediately.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></span> Temperature Unit</h4>
+                                <p>Tap the <strong>toggle switch</strong> to switch between Fahrenheit and Celsius. All temperature displays update instantly.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M23 12a11.05 11.05 0 0 0-22 0zm0 0a11.05 11.05 0 0 1-22 0"/><polyline points="16 16 12 12 8 8"/><line x1="12" y1="2" x2="12" y2="12"/></svg></span> Weather Update Interval</h4>
+                                <p>Choose how often weather data refreshes (e.g., every 15, 30, or 60 minutes). Select your preferred interval from the dropdown.</p>
+                            </div>
+                        </div>
+
+                        <div class="guide-tip">
+                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                            <span><strong>Tip:</strong> Selecting your weather update interval is the final step &mdash; it saves your settings and returns you to the home screen automatically.</span>
+                        </div>
+
+                        <div class="guide-tip">
+                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                            <span><strong>You're all set!</strong> After completing these 3 steps, your CYGM device will show live glucose data, local weather, and time. Scroll down to learn about all the features.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Home Screen Overview ──────── -->
+            <section class="guide-section" id="guide-overview">
+                <div class="guide-section-label">Getting Started</div>
+                <h2 class="guide-section-title">Home Screen Overview</h2>
+                <p class="guide-section-desc">
+                    The home screen is your at-a-glance dashboard. It shows your current glucose reading, weather, time, and device status &mdash; all on one screen.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                                <span>Home Screen</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>What you'll see</h3>
+                        <p>The home screen is split into two cards:</p>
+                        <div class="guide-feature-grid">
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Time & Weather Card</h4>
+                                <p>Current time (with AM/PM), temperature, weather condition icon, today's high/low, and sunrise/sunset times.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> CGM Card</h4>
+                                <p>Your current glucose value, trend arrow, time since last reading, battery level, and a progress bar showing time until next data fetch.</p>
+                            </div>
+                        </div>
+
+                        <h3 style="margin-top: 1rem;">Status Indicators</h3>
+                        <div class="guide-feature-grid">
+                            <div class="guide-feature-card">
+                                <h4><span class="color-dot" style="background:var(--glucose-green)"></span> WiFi Icon (green)</h4>
+                                <p>Connected to WiFi. Tap to open WiFi settings.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="color-dot" style="background:var(--glucose-red)"></span> WiFi Icon (gray + red)</h4>
+                                <p>Disconnected. Auto-reconnect is in progress.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span> Brightness Icon</h4>
+                                <p>Tap the lightbulb to open the brightness slider.</p>
+                            </div>
+                            <div class="guide-feature-card">
+                                <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Settings Gear</h4>
+                                <p>Tap to open the main settings menu.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Gestures ──────── -->
+            <section class="guide-section" id="guide-gestures">
+                <div class="guide-section-label">Navigation</div>
+                <h2 class="guide-section-title">Gestures & Touch</h2>
+                <p class="guide-section-desc">
+                    CYGM uses simple swipe and tap gestures. There are no complicated menus to memorize.
+                </p>
+
+                <div class="guide-feature-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+                    <div class="guide-feature-card">
+                        <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></span> Swipe Left</h4>
+                        <p>Expand the CGM card to full screen. The time/weather card slides away, and your glucose value gets much larger &mdash; perfect for reading across the room.</p>
+                    </div>
+                    <div class="guide-feature-card">
+                        <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Swipe Right</h4>
+                        <p>Collapse back to the normal two-card layout. Restores the time & weather card alongside the CGM card.</p>
+                    </div>
+                    <div class="guide-feature-card">
+                        <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><rect x="1" y="6" width="18" height="12" rx="2" ry="2"/><line x1="23" y1="13" x2="23" y2="11"/></svg></span> Tap Battery Icon</h4>
+                        <p>Toggles the battery percentage display on or off. Your preference is saved automatically.</p>
+                    </div>
+                    <div class="guide-feature-card">
+                        <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg></span> Tap WiFi Icon</h4>
+                        <p>Opens WiFi settings so you can connect to a new network or check your connection status.</p>
+                    </div>
+                    <div class="guide-feature-card">
+                        <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Tap the Time</h4>
+                        <p>Toggles between 12-hour and 24-hour clock format. Your preference is saved automatically.</p>
+                    </div>
+                    <div class="guide-feature-card">
+                        <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></span> Tap the Temperature</h4>
+                        <p>Switches between Fahrenheit and Celsius. The change applies instantly across all displays.</p>
+                    </div>
+                </div>
+
+                <div class="guide-tip">
+                    <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                    <span><strong>Pro tip:</strong> The expanded CGM view is great for nightstand use &mdash; the glucose value is large enough to read from several feet away.</span>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: CGM Display ──────── -->
+            <section class="guide-section" id="guide-cgm">
+                <div class="guide-section-label">Core Feature</div>
+                <h2 class="guide-section-title">CGM Display & Trend Arrows</h2>
+                <p class="guide-section-desc">
+                    Your glucose value updates every 90 seconds from your CGM provider. The trend arrow shows which direction your glucose is heading.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                                <span>Full-Screen CGM</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>Expanded CGM View</h3>
+                        <p>Swipe left (or tap the glucose value) to expand to a full-screen view with:</p>
+                        <ul class="guide-steps">
+                            <li><span class="step-num">1</span> <span>Extra-large glucose digits (120pt) &mdash; readable from across the room</span></li>
+                            <li><span class="step-num">2</span> <span>Large trend arrow (80x80px) showing direction</span></li>
+                            <li><span class="step-num">3</span> <span>Time since last reading ("5 min ago")</span></li>
+                            <li><span class="step-num">4</span> <span>Mini battery, time, and weather info in the top bar</span></li>
+                        </ul>
+
+                        <h3 style="margin-top: 1.25rem;">Trend Arrows</h3>
+                        <p>The trend arrow tells you how fast your glucose is changing:</p>
+                        <div class="trend-grid">
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-red)">&#8679;&#8679;</span>
+                                <span class="trend-label">Rising rapidly<br>(>3 mg/dL per min)</span>
+                            </div>
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-orange)">&#8599;</span>
+                                <span class="trend-label">Rising<br>(2-3 mg/dL per min)</span>
+                            </div>
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-yellow)">&#8599;</span>
+                                <span class="trend-label">Rising slightly<br>(1-2 mg/dL per min)</span>
+                            </div>
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-green)">&#8594;</span>
+                                <span class="trend-label">Stable<br>(<1 mg/dL per min)</span>
+                            </div>
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-yellow)">&#8600;</span>
+                                <span class="trend-label">Falling slightly<br>(1-2 mg/dL per min)</span>
+                            </div>
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-orange)">&#8600;</span>
+                                <span class="trend-label">Falling<br>(2-3 mg/dL per min)</span>
+                            </div>
+                            <div class="trend-item">
+                                <span class="trend-arrow" style="color:var(--glucose-red)">&#8681;&#8681;</span>
+                                <span class="trend-label">Falling rapidly<br>(>3 mg/dL per min)</span>
+                            </div>
+                        </div>
+
+                        <h3 style="margin-top: 1.25rem;">Glucose Colors</h3>
+                        <p>The glucose value changes color based on <strong>your alarm thresholds</strong> &mdash; the ranges below adjust automatically when you change your alarm settings:</p>
+                        <div class="guide-feature-grid" style="grid-template-columns: repeat(3, 1fr);">
+                            <div class="guide-feature-card" style="text-align:center;">
+                                <h4 style="justify-content:center;"><span class="color-dot" style="background:var(--glucose-green)"></span> In Range</h4>
+                                <p>Between your low and high warning thresholds</p>
+                            </div>
+                            <div class="guide-feature-card" style="text-align:center;">
+                                <h4 style="justify-content:center;"><span class="color-dot" style="background:var(--glucose-yellow)"></span> Warning</h4>
+                                <p>Between your warning and alarm thresholds</p>
+                            </div>
+                            <div class="guide-feature-card" style="text-align:center;">
+                                <h4 style="justify-content:center;"><span class="color-dot" style="background:var(--glucose-red)"></span> Critical</h4>
+                                <p>Beyond your high or low alarm thresholds</p>
+                            </div>
+                        </div>
+                        <div class="guide-tip">
+                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                            <span><strong>Tip:</strong> These colors are tied directly to your <strong>Alarm settings</strong>. Adjust your alarm thresholds and the display colors update to match.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Glucose Chart ──────── -->
+            <section class="guide-section" id="guide-chart">
+                <div class="guide-section-label">Trends</div>
+                <h2 class="guide-section-title">Glucose History Chart</h2>
+                <p class="guide-section-desc">
+                    View your glucose trends over time with an interactive chart. Great for spotting patterns and understanding how your glucose responds throughout the day.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                                <span>Glucose Chart</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>How to open</h3>
+                        <p>Tap the <strong>trend arrow</strong> or the <strong>"X min ago"</strong> text on the home screen. The chart opens as a full-screen overlay.</p>
+
+                        <h3 style="margin-top: 1rem;">Time Ranges</h3>
+                        <p>Use the tabs at the top to switch between time windows:</p>
+                        <div style="display: flex; gap: 0.4rem; margin: 0.5rem 0;">
+                            <span class="key-ref">1h</span>
+                            <span class="key-ref">3h</span>
+                            <span class="key-ref" style="background:rgba(0,212,255,0.15); border-color:rgba(0,212,255,0.3); color:var(--accent);">6h</span>
+                            <span class="key-ref">12h</span>
+                            <span class="key-ref">24h</span>
+                        </div>
+                        <p style="margin-top: 0.5rem;">The default view is <strong>6 hours</strong>. You can also swipe left/right on the chart to change the time range.</p>
+
+                        <h3 style="margin-top: 1rem;">Reading the chart</h3>
+                        <ul class="guide-steps">
+                            <li><span class="step-num">1</span> <span>The <strong style="color:var(--glucose-green)">green shaded band</strong> shows your target range, based on the thresholds you set in Alarms</span></li>
+                            <li><span class="step-num">2</span> <span>The glucose line changes color based on value (green, yellow, red)</span></li>
+                            <li><span class="step-num">3</span> <span>Dashed lines bridge gaps where data was missing (>10 min)</span></li>
+                            <li><span class="step-num">4</span> <span><strong>Tap any point</strong> on the line to see the exact value and timestamp</span></li>
+                        </ul>
+
+                        <p style="margin-top: 0.75rem;">Tap the <strong>&times;</strong> button to close the chart and return to the home screen.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Alarms ──────── -->
+            <section class="guide-section" id="guide-alarms">
+                <div class="guide-section-label">Alerts</div>
+                <h2 class="guide-section-title">Alarms & Notifications</h2>
+                <p class="guide-section-desc">
+                    Set up audio and visual alarms for high, low, and critical glucose thresholds. Each alarm is independently configurable with its own sound, volume, and behavior.
+                </p>
+
+                <div class="guide-content-row">
+                    <div class="device-mockup">
+                        <div class="device-screen">
+                            <div class="screenshot-placeholder">
+                                <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                <span>Alarm Settings</span>
+                                <span class="placeholder-label">Screenshot coming soon</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="guide-text">
+                        <h3>Alarm Types</h3>
+                        <table class="alarm-table">
+                            <thead>
+                                <tr><th>Alarm</th><th>Default</th><th>Purpose</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="color-dot" style="background:var(--glucose-red)"></span> <strong>High Alarm</strong></td>
+                                    <td>240 mg/dL</td>
+                                    <td>Urgent high glucose alert</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="color-dot" style="background:var(--glucose-orange)"></span> <strong>High Warning</strong></td>
+                                    <td>180 mg/dL</td>
+                                    <td>Early high glucose notice</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="color-dot" style="background:var(--glucose-yellow)"></span> <strong>Low Warning</strong></td>
+                                    <td>80 mg/dL</td>
+                                    <td>Early low glucose notice</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="color-dot" style="background:var(--glucose-red)"></span> <strong>Low Alarm</strong></td>
+                                    <td>55 mg/dL</td>
+                                    <td>Urgent low glucose alert</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h3 style="margin-top: 1rem;">Configuring an Alarm</h3>
+                        <ol class="guide-steps">
+                            <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; Alarms</strong></span></li>
+                            <li><span class="step-num">2</span> <span>Toggle the alarm <strong>ON</strong> with the switch</span></li>
+                            <li><span class="step-num">3</span> <span>Drag the <strong>threshold slider</strong> to set your trigger value (50&ndash;500 mg/dL)</span></li>
+                            <li><span class="step-num">4</span> <span>Toggle <strong>Audio</strong> (buzzer beep) and <strong>Visual</strong> (flashing border) independently</span></li>
+                            <li><span class="step-num">5</span> <span>Enable <strong>Repeat</strong> to loop the alarm sound until dismissed</span></li>
+                            <li><span class="step-num">6</span> <span>Tap <strong>Tone</strong> to choose from 12 built-in sounds. Tap the play button to preview each one. (More sounds coming in future updates!)</span></li>
+                        </ol>
+
+                        <h3 style="margin-top: 1rem;">Available Alarm Tones</h3>
+                        <div class="tone-grid">
+                            <div class="tone-item"><strong>1.</strong> Beep (Single)</div>
+                            <div class="tone-item"><strong>2.</strong> Beep (Double)</div>
+                            <div class="tone-item"><strong>3.</strong> Beep (Triple)</div>
+                            <div class="tone-item"><strong>4.</strong> Chime (Gentle)</div>
+                            <div class="tone-item"><strong>5.</strong> Twinkle Twinkle</div>
+                            <div class="tone-item"><strong>6.</strong> F&uuml;r Elise</div>
+                            <div class="tone-item"><strong>7.</strong> Dixie Horn</div>
+                            <div class="tone-item"><strong>8.</strong> When the Saints</div>
+                            <div class="tone-item"><strong>9.</strong> Siren (Urgent)</div>
+                            <div class="tone-item"><strong>10.</strong> Ascending Scale</div>
+                            <div class="tone-item"><strong>11.</strong> Doorbell</div>
+                            <div class="tone-item"><strong>12.</strong> Big Ben</div>
+                        </div>
+
+                        <h3 style="margin-top: 1rem;">When an Alarm Triggers</h3>
+                        <p>A full-screen alarm overlay appears with your current glucose value and quick-snooze options:</p>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0;">
+                            <span class="key-ref">5 min</span>
+                            <span class="key-ref">10 min</span>
+                            <span class="key-ref">15 min</span>
+                            <span class="key-ref">30 min</span>
+                            <span class="key-ref" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.3); color:var(--glucose-red);">Dismiss (3 Hours)</span>
+                        </div>
+                        <p>Snoozing temporarily silences the alarm. It will re-trigger if your glucose is still in the alarm range when the snooze expires.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Brightness ──────── -->
+            <section class="guide-section" id="guide-brightness">
+                <div class="guide-section-label">Display</div>
+                <h2 class="guide-section-title">Brightness Control</h2>
+                <p class="guide-section-desc">
+                    Adjust the screen brightness to match your environment. Lower brightness saves battery and is easier on the eyes at night.
+                </p>
+
+                <div class="guide-text">
+                    <ol class="guide-steps">
+                        <li><span class="step-num">1</span> <span>Tap the <strong>brightness icon</strong> on the home screen or in the expanded CGM view</span></li>
+                        <li><span class="step-num">2</span> <span>A brightness slider overlay appears, showing the current percentage (0&ndash;100%)</span></li>
+                        <li><span class="step-num">3</span> <span><strong>Drag the slider</strong> to adjust &mdash; brightness changes in real-time as you drag</span></li>
+                        <li><span class="step-num">4</span> <span>Tap <strong>OK</strong> to save your preference. It persists across reboots.</span></li>
+                    </ol>
+
+                    <div class="guide-warning">
+                        <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                        <span>Tapping outside the overlay closes it without saving. Your brightness will revert to the previously saved value on next power-on.</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: Battery & Power ──────── -->
+            <section class="guide-section" id="guide-battery">
+                <div class="guide-section-label">Hardware</div>
+                <h2 class="guide-section-title">Battery & Power</h2>
+                <p class="guide-section-desc">
+                    CYGM runs on a rechargeable LiPo battery. Charge via the USB-C port on the device.
+                </p>
+
+                <div class="guide-text">
+                    <h3>Battery Display</h3>
+                    <p>The battery icon and percentage appear in the top-right corner of the CGM card. <strong>Tap the battery icon</strong> to toggle the percentage on/off. Your preference is saved.</p>
+
+                    <h3 style="margin-top: 1rem;">Charging</h3>
+                    <p>Plug in a USB cable to charge. You'll see a pulsing green animation on the battery icon while charging.</p>
+
+                    <h3 style="margin-top: 1rem;">Powering Off</h3>
+                    <ol class="guide-steps">
+                        <li><span class="step-num">1</span> <span>Open the <strong>Settings menu</strong> (tap the gear icon)</span></li>
+                        <li><span class="step-num">2</span> <span>Tap the <strong style="color:var(--glucose-red)">red power button</strong> in the top-right corner</span></li>
+                        <li><span class="step-num">3</span> <span><strong>Hold the "Hold to Power Off" button</strong> for 2 full seconds (a red progress bar fills as you hold)</span></li>
+                        <li><span class="step-num">4</span> <span>The device enters deep sleep. Press the <strong>BOOT button</strong> on the board to wake it up.</span></li>
+                    </ol>
+
+                    <div class="guide-warning">
+                        <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                        <span>The battery may slowly drain while powered off (deep sleep, not full shutdown). If you won't use the device for extended periods, charge it before storing.</span>
+                    </div>
+
+                    <h3 style="margin-top: 1rem;">Low Battery</h3>
+                    <p>When battery drops below <strong>10%</strong>, a low-battery warning overlay appears. Plug in to charge as soon as possible to avoid data interruption.</p>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: OTA Updates ──────── -->
+            <section class="guide-section" id="guide-updates">
+                <div class="guide-section-label">Maintenance</div>
+                <h2 class="guide-section-title">Software Updates (OTA)</h2>
+                <p class="guide-section-desc">
+                    CYGM can update its firmware over WiFi &mdash; no computer or cables needed. Updates are checked automatically once per day.
+                </p>
+
+                <div class="guide-text">
+                    <h3>Checking for Updates</h3>
+                    <ol class="guide-steps">
+                        <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; ? (About)</strong></span></li>
+                        <li><span class="step-num">2</span> <span>Tap <strong>"Check for Updates"</strong></span></li>
+                        <li><span class="step-num">3</span> <span>If an update is available, you'll see the new version number and an <strong>Install</strong> button</span></li>
+                    </ol>
+
+                    <h3 style="margin-top: 1rem;">Installing an Update</h3>
+                    <ol class="guide-steps">
+                        <li><span class="step-num">1</span> <span>Tap <strong>Install</strong>. The device will stop background tasks to free memory.</span></li>
+                        <li><span class="step-num">2</span> <span>A progress bar shows download and installation status (~60 seconds)</span></li>
+                        <li><span class="step-num">3</span> <span>The device <strong>automatically reboots</strong> into the new firmware version</span></li>
+                    </ol>
+
+                    <div class="guide-warning">
+                        <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                        <span><strong>Do not unplug or power off</strong> during an OTA update. If the update fails, the device will reboot safely &mdash; your previous firmware remains intact. Just try again.</span>
+                    </div>
+
+                    <div class="guide-tip">
+                        <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                        <span><strong>Tip:</strong> OTA updates preserve your WiFi credentials and alarm settings &mdash; they only replace the firmware, not your saved preferences.</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ──────── SECTION: About & SD Logging ──────── -->
+            <section class="guide-section" id="guide-about">
+                <div class="guide-section-label">System</div>
+                <h2 class="guide-section-title">About & SD Logging</h2>
+                <p class="guide-section-desc">
+                    View device info, firmware version, and toggle glucose data logging to an SD card.
+                </p>
+
+                <div class="guide-text">
+                    <h3>About Screen</h3>
+                    <p>Go to <strong>Settings &rarr; ? (Info button)</strong> to see:</p>
+                    <div class="guide-feature-grid">
+                        <div class="guide-feature-card">
+                            <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span> Firmware Version</h4>
+                            <p>Current version number, build date, and developer info.</p>
+                        </div>
+                        <div class="guide-feature-card">
+                            <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span> Check for Updates</h4>
+                            <p>Manual trigger for OTA firmware update check.</p>
+                        </div>
+                        <div class="guide-feature-card">
+                            <h4><span class="icon-inline"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><path d="M16 2v6H8V2"/><path d="M8 18h8"/><path d="M8 14h8"/></svg></span> SD Card Logging</h4>
+                            <p>If an SD card is inserted, toggle "Save CGM data to SD" to log all glucose readings to a CSV file.</p>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 1rem;">SD Card Data Logging</h3>
+                    <p>When enabled, every glucose reading is saved as a CSV row with timestamp, value, and trend direction. You can remove the SD card and read the CSV on any computer.</p>
+
+                    <div class="guide-tip">
+                        <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                        <span><strong>Tip:</strong> The SD logging checkbox only appears in the About overlay when an SD card is physically inserted and detected.</span>
+                    </div>
+
+                    <div class="guide-warning">
+                        <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                        <span>If you remove and re-insert the SD card while the device is running, you <strong>must press the reset button</strong> on the device to reboot. The SD card will not be detected again until after a restart.</span>
+                    </div>
+
+                    <h3 style="margin-top: 1rem;">First-Launch Disclaimer</h3>
+                    <p>On first power-on (or after a factory reset), a medical disclaimer overlay appears. Check <strong>"Don't show again"</strong> and tap <strong>"I Agree"</strong> to dismiss permanently.</p>
+                </div>
+            </section>
+
+        </div><!-- /guide-content -->
+    </div><!-- /guide-container -->
+
+    <!-- Mobile bottom nav -->
+    <div class="guide-mobile-nav" id="guideMobileNav">
+        <button class="guide-mobile-nav-item active" data-section="guide-welcome">Welcome</button>
+        <button class="guide-mobile-nav-item" data-section="guide-wifi">1. WiFi</button>
+        <button class="guide-mobile-nav-item" data-section="guide-dexcom">2. CGM</button>
+        <button class="guide-mobile-nav-item" data-section="guide-timeweather">3. Location</button>
+        <button class="guide-mobile-nav-item" data-section="guide-overview">Home</button>
+        <button class="guide-mobile-nav-item" data-section="guide-gestures">Gestures</button>
+        <button class="guide-mobile-nav-item" data-section="guide-cgm">Display</button>
+        <button class="guide-mobile-nav-item" data-section="guide-chart">Chart</button>
+        <button class="guide-mobile-nav-item" data-section="guide-alarms">Alarms</button>
+        <button class="guide-mobile-nav-item" data-section="guide-brightness">Bright</button>
+        <button class="guide-mobile-nav-item" data-section="guide-battery">Battery</button>
+        <button class="guide-mobile-nav-item" data-section="guide-updates">Updates</button>
+        <button class="guide-mobile-nav-item" data-section="guide-about">About</button>
+    </div>
+</div><!-- /guide-overlay -->
+
+<script>
+(function() {
+    'use strict';
+
+    const overlay = document.getElementById('guideOverlay');
+    const content = document.getElementById('guideContent');
+    const sidebarNav = document.getElementById('guideNav');
+    const mobileNav = document.getElementById('guideMobileNav');
+
+    // Open/close
+    window.openGuide = function() {
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    };
+    window.closeGuide = function() {
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    };
+
+    // ESC to close
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeGuide();
+    });
+
+    // Sidebar nav click
+    sidebarNav.querySelectorAll('.guide-nav-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetId = item.getAttribute('data-section');
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+    // Mobile nav click
+    mobileNav.querySelectorAll('.guide-mobile-nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const targetId = item.getAttribute('data-section');
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+    // Active section tracking (IntersectionObserver)
+    const sections = content.querySelectorAll('.guide-section');
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const id = entry.target.id;
+
+                // Update sidebar
+                sidebarNav.querySelectorAll('.guide-nav-item').forEach(item => {
+                    item.classList.toggle('active', item.getAttribute('data-section') === id);
+                });
+
+                // Update mobile nav
+                mobileNav.querySelectorAll('.guide-mobile-nav-item').forEach(item => {
+                    item.classList.toggle('active', item.getAttribute('data-section') === id);
+                });
+
+                // Scroll mobile nav item into view
+                const activeBtn = mobileNav.querySelector('.guide-mobile-nav-item.active');
+                if (activeBtn) {
+                    activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            }
+        });
+    }, {
+        root: content,
+        threshold: 0.3
+    });
+
+    sections.forEach(section => observer.observe(section));
+
+    // Auto-open for preview
+    openGuide();
+})();
+</script>
+
+</body>
+</html>
