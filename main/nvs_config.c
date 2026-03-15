@@ -13,7 +13,6 @@ static const char *NVS_24HR_KEY = "format_24hr";
 static const char *NVS_ZIPCODE_KEY = "zipcode";
 static const char *NVS_TEMP_UNIT_KEY = "temp_celsius";
 static const char *NVS_WEATHER_INTERVAL_KEY = "weather_int";
-static const char *NVS_POSTAL_ENTRY_KEY = "postal_entry";
 static const char *NVS_CGM_TYPE_KEY = "cgm_type";
 static const char *NVS_ACCESS_TOKEN_KEY = "access_token";
 static const char *NVS_REFRESH_TOKEN_KEY = "refresh_token";
@@ -558,23 +557,13 @@ esp_err_t nvs_save_weather_settings(const char *zipcode, bool temp_celsius, uint
         return ret;
     }
 
-    // Save location entry method preference
-    extern bool use_postal_code_entry;
-    ret = nvs_set_u8(nvs_handle, NVS_POSTAL_ENTRY_KEY, use_postal_code_entry ? 1 : 0);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save postal entry preference: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
     // Commit changes
     ret = nvs_commit(nvs_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
     } else {
-        ESP_LOGI(TAG, "Weather settings saved to NVS (Zipcode: %s, Unit: %s, Interval: %d min, Entry: %s)",
-                 zipcode, temp_celsius ? "C" : "F", update_interval_min,
-                 use_postal_code_entry ? "Postal" : "Dropdown");
+        ESP_LOGI(TAG, "Weather settings saved to NVS (Zipcode: %s, Unit: %s, Interval: %d min)",
+                 zipcode, temp_celsius ? "C" : "F", update_interval_min);
     }
 
     nvs_close(nvs_handle);
@@ -678,11 +667,6 @@ esp_err_t nvs_load_weather_settings(weather_settings_t *settings) {
     if (interval_val < 5) interval_val = 5;
     if (interval_val > 90) interval_val = 90;
     settings->update_interval_min = interval_val;
-
-    // Load location entry method preference (default to postal code if not found)
-    uint8_t entry_method = 1;  // Default to postal code
-    ret = nvs_get_u8(nvs_handle, NVS_POSTAL_ENTRY_KEY, &entry_method);
-    settings->use_postal_code_entry = (entry_method != 0);
 
     // Load cached coordinates and location (if available)
     int32_t lat_i32 = 0, lon_i32 = 0;

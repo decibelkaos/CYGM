@@ -66,7 +66,6 @@ void load_weather_settings(void) {
         user_zipcode[sizeof(user_zipcode) - 1] = '\0';
         user_temp_celsius = settings.temp_celsius;
         user_weather_interval_min = settings.update_interval_min;
-        use_postal_code_entry = settings.use_postal_code_entry;
 
         // Load cached coordinates and location if available
         if (settings.coords_valid) {

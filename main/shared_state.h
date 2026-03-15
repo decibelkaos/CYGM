@@ -82,9 +82,6 @@ extern "C" {
 #define BATTERY_LOW_VOLTAGE 3.2
 #define BATTERY_CRITICAL_PERCENT 10
 
-// Feature flags
-#define ENABLE_WEB_SERVER 0  // Disabled (insufficient RAM for screenshots)
-
 // ==================== Color Palette ====================
 #define COLOR_BG            0x000000  // Pure black background
 #define COLOR_CARD_BG       0x1a2332  // Dark blue-grey cards
@@ -287,8 +284,6 @@ extern char geocoded_zipcode[11];  // Geocoded zipcode tracker
 extern bool user_temp_celsius;
 extern uint8_t user_weather_interval_min;
 extern char user_location[64];
-extern bool use_postal_code_entry;  // true = postal code, false = city dropdown
-
 // ==================== Weather Data ====================
 
 extern int current_temp_f;

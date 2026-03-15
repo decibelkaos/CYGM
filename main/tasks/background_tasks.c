@@ -18,7 +18,6 @@
 #include "ui/wifi_screens.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
-#include "web_server.h"
 #include "sd_logger.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
@@ -244,17 +243,6 @@ void wifi_task_core0(void *pvParameters) {
 
             // SD card logger will be initialized after time sync (needs correct timestamp for filename)
 
-#if ENABLE_WEB_SERVER
-            // Start web server (DISABLED by default to save ~30KB heap for SSL)
-            ESP_LOGI(TAG, "Starting web server...");
-            if (start_webserver() == ESP_OK) {
-                ESP_LOGI(TAG, "Web server started successfully");
-                add_boot_log("Web server started");
-            } else {
-                ESP_LOGE(TAG, "Failed to start web server");
-            }
-#endif
-
             // Initialize SNTP for time sync
             initialize_sntp();
 
@@ -295,14 +283,14 @@ void wifi_task_core0(void *pvParameters) {
                         ESP_LOGE(TAG, "System time is still: %04d-%02d-%02d (needs to be >= 2020)",
                                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
 
-                        // Still start tasks - glucose task will retry auth once time syncs
-                        if (weather_task_handle == NULL) {
-                            ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
-                            xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
-                        }
+                        // Still start tasks - glucose first (critical), then weather
                         if (glucose_task_handle == NULL) {
                             ESP_LOGI(TAG, "Starting glucose task (will auto-retry after time syncs)...");
-                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                        }
+                        if (weather_task_handle == NULL) {
+                            ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
+                            xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                         }
                     } else {
                         // Time is synced, now safe to authenticate
@@ -322,15 +310,20 @@ void wifi_task_core0(void *pvParameters) {
 
                                 // Fetch initial glucose reading
                                 dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
-                                if (dexcom_fetch_glucose(&glucose) == ESP_OK && glucose.valid) {
+                                esp_err_t fetch_ret = dexcom_fetch_glucose(&glucose);
+
+                                // Always update fetch time on successful API contact (even if data is stale).
+                                // This keeps the SSL connection warm and the progress bar ticking.
+                                if (fetch_ret == ESP_OK) {
+                                    last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
+                                }
+
+                                if (fetch_ret == ESP_OK && glucose.valid) {
                                     current_glucose = glucose.value;
                                     current_trend = glucose.trend;
                                     glucose_timestamp = glucose.timestamp;
                                     glucose_data_valid = true;
                                     glucose_status = glucose.status;
-
-                                    // Update timer for progress bar
-                                    last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
 
                                     sd_log(TAG, "Initial glucose: %d mg/dL, trend: %s",
                                            glucose.value, dexcom_trend_description(glucose.trend));
@@ -349,39 +342,35 @@ void wifi_task_core0(void *pvParameters) {
 
                                     update_glucose_display();
                                 } else {
-                                    // No data yet - update status
+                                    // No data yet or stale - update status
                                     glucose_data_valid = false;
                                     glucose_status = glucose.status;
                                     update_glucose_display();
                                 }
 
-                                // Keep SSL connection alive — glucose task will reuse it
-                                // Closing here forces a new ~50KB handshake on a ~24KB heap = guaranteed failure
                                 ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial Dexcom fetch =====");
-                                ESP_LOGI(TAG, "Free heap: %lu bytes (SSL kept alive for glucose task)", esp_get_free_heap_size());
+                                ESP_LOGI(TAG, "Free heap: %lu bytes (SSL alive)", esp_get_free_heap_size());
                                 ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
 
                                 // Flush SD logs after initial fetch
                                 sd_logger_flush();
 
-                                // Start weather task (uses HTTP - no SSL overhead!)
-                                if (weather_task_handle == NULL) {
-                                    ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
-                                    xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
-                                }
-
-                                // Wait for weather to complete first fetch before starting glucose task
-                                // This prevents both tasks from running simultaneously and competing for memory
-                                ESP_LOGI(TAG, "Waiting 30 seconds for weather to complete first fetch...");
-                                vTaskDelay(pdMS_TO_TICKS(30000));  // 30 seconds (weather waits 15s + fetch time)
-
-                                // Start glucose update task (90 second periodic fetches)
+                                // Start glucose task FIRST — it's critical and needs 4KB
+                                // contiguous stack.  Must create before weather (8KB) which
+                                // fragments heap during its HTTP fetch.
                                 if (glucose_task_handle == NULL) {
                                     ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: Before starting glucose task =====");
-                                    ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
-                                    ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
+                                    ESP_LOGI(TAG, "Free heap: %lu bytes, largest: %lu",
+                                             (unsigned long)esp_get_free_heap_size(),
+                                             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
                                     ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
-                                    xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+                                    xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                                }
+
+                                // Start weather task (uses HTTP — no SSL overhead)
+                                if (weather_task_handle == NULL) {
+                                    ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
+                                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                                 }
 
                                 break;  // Success - exit retry loop
@@ -401,23 +390,23 @@ void wifi_task_core0(void *pvParameters) {
                             }
                         }
 
-                        // Ensure weather and glucose tasks start even if auth failed
-                        // The glucose task has auto-re-auth logic and will keep trying
-                        if (weather_task_handle == NULL) {
-                            ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
-                            xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
-                        }
+                        // Ensure glucose and weather tasks start even if auth failed
+                        // Glucose first (critical, 4KB stack), weather second (8KB)
                         if (glucose_task_handle == NULL) {
                             ESP_LOGI(TAG, "Starting glucose task (will auto-reconnect to Dexcom)...");
-                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                        }
+                        if (weather_task_handle == NULL) {
+                            ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
+                            xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                         }
                     }
                 }
             } else {
-                // No Dexcom credentials - start weather task immediately
+                // No Dexcom credentials - start weather task
                 ESP_LOGI(TAG, "No Dexcom credentials found, starting weather task (HTTP mode)...");
                 if (weather_task_handle == NULL) {
-                    xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
+                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                 }
             }
         } else {
