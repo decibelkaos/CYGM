@@ -35,15 +35,6 @@ void load_weather_settings(void);
 esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon);
 
 /**
- * Reverse geocode coordinates to city/state name
- * Uses Nominatim reverse geocoding API
- * @param lat Latitude
- * @param lon Longitude
- * @return ESP_OK on success (sets user_location global)
- */
-esp_err_t reverse_geocode(float lat, float lon);
-
-/**
  * Fetch current weather and forecast from Open-Meteo API
  * @param lat Latitude
  * @param lon Longitude
@@ -87,14 +78,6 @@ void weather_update_task(void *pvParameters);
  * @return true if between sunset and sunrise
  */
 bool is_night_time(void);
-
-/**
- * Auto-detect timezone from US state name (legacy fallback)
- * Note: New geocoding API provides timezone directly, so this is rarely used
- * @param state US state name (e.g., "Washington", "California")
- * @return IANA timezone string (e.g., "America/Los_Angeles")
- */
-const char* state_to_timezone(const char *state);
 
 #ifdef __cplusplus
 }

@@ -85,35 +85,12 @@ esp_err_t nvs_load_weather_settings(weather_settings_t *settings);
 // Check if weather settings exist in NVS
 bool nvs_has_weather_settings(void);
 
-// CGM settings structure (OAuth2 tokens for Dexcom API)
-#define MAX_ACCESS_TOKEN_LEN 512
-#define MAX_REFRESH_TOKEN_LEN 512
+// CGM type (for future multi-CGM support: "dexcom", "libre", "nightscout")
 #define MAX_CGM_TYPE_LEN 16
 
-typedef struct {
-    char cgm_type[MAX_CGM_TYPE_LEN];           // "dexcom", "libre", "none"
-    char access_token[MAX_ACCESS_TOKEN_LEN];   // OAuth2 access token
-    char refresh_token[MAX_REFRESH_TOKEN_LEN]; // OAuth2 refresh token
-    int64_t token_expiry;                      // Unix timestamp when token expires
-} cgm_settings_t;
-
-// Save CGM type to NVS
+// Save/load CGM type to NVS
 esp_err_t nvs_save_cgm_type(const char *cgm_type);
-
-// Load CGM type from NVS
 esp_err_t nvs_load_cgm_type(char *cgm_type, size_t len);
-
-// Save Dexcom OAuth tokens to NVS
-esp_err_t nvs_save_dexcom_tokens(const char *access_token, const char *refresh_token, int64_t expiry);
-
-// Load Dexcom OAuth tokens from NVS
-esp_err_t nvs_load_dexcom_tokens(cgm_settings_t *settings);
-
-// Check if Dexcom tokens exist in NVS
-bool nvs_has_dexcom_tokens(void);
-
-// Clear all CGM settings from NVS
-esp_err_t nvs_clear_cgm_settings(void);
 
 // Dexcom Share API credentials (username/password based)
 esp_err_t nvs_set_dexcom_credentials(const char *username, const char *password);

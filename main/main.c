@@ -44,7 +44,6 @@
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
-#include "ui_config.h"
 #include "hardware/led.h"
 #include "hardware/buzzer.h"
 #include "hardware/battery.h"
@@ -106,12 +105,6 @@ static const char *TAG = "CYGM";
 #define BATTERY_NOMINAL_VOLTAGE 3.7         // Nominal voltage (50%)
 #define BATTERY_LOW_VOLTAGE 3.2             // Safe shutdown threshold (prevents damage)
 #define BATTERY_CRITICAL_PERCENT 10         // Warning threshold (10%)
-
-// Clear WiFi credentials flag
-#define CLEAR_WIFI_CREDENTIALS 0
-
-// Web server flag moved to shared_state.h
-// Enabled for screenshot functionality
 
 // SD Card Logging v2: Mount-on-write pattern (~2.5KB permanent vs old 13KB)
 // Only mounts FAT during flush (~200ms), then unmounts immediately
@@ -189,8 +182,8 @@ static uint32_t visual_alarm_flash_color = COLOR_RED;  // Current alarm flash co
 int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
 
 // Audio alarm repeat
-lv_timer_t *audio_alarm_timer = NULL;       // Timer for repeating audio
-alarm_config_t *active_alarm_config = NULL; // Current alarm being played
+static lv_timer_t *audio_alarm_timer = NULL;       // Timer for repeating audio
+static alarm_config_t *active_alarm_config = NULL; // Current alarm being played
 
 // Battery monitoring
 adc_oneshot_unit_handle_t adc_handle = NULL;
@@ -2677,15 +2670,6 @@ void app_main(void) {
     } else {
         ESP_LOGI(TAG, "Network mutex created for memory management");
     }
-
-    // Initialize UI configuration system
-    add_boot_log("Init UI config");
-    ESP_ERROR_CHECK(ui_config_init());
-
-#if CLEAR_WIFI_CREDENTIALS
-    nvs_clear_wifi_credentials();
-    ESP_LOGI(TAG, "WiFi credentials cleared");
-#endif
 
     // Load time settings from NVS
     add_boot_log("Load settings");

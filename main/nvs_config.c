@@ -14,9 +14,6 @@ static const char *NVS_ZIPCODE_KEY = "zipcode";
 static const char *NVS_TEMP_UNIT_KEY = "temp_celsius";
 static const char *NVS_WEATHER_INTERVAL_KEY = "weather_int";
 static const char *NVS_CGM_TYPE_KEY = "cgm_type";
-static const char *NVS_ACCESS_TOKEN_KEY = "access_token";
-static const char *NVS_REFRESH_TOKEN_KEY = "refresh_token";
-static const char *NVS_TOKEN_EXPIRY_KEY = "token_expiry";
 static const char *NVS_BRIGHTNESS_KEY = "brightness";
 
 esp_err_t nvs_config_init(void) {
@@ -753,119 +750,6 @@ esp_err_t nvs_load_cgm_type(char *cgm_type, size_t len) {
     return ret;
 }
 
-esp_err_t nvs_save_dexcom_tokens(const char *access_token, const char *refresh_token, int64_t expiry) {
-    nvs_handle_t nvs_handle;
-    esp_err_t ret;
-
-    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    // Save access token
-    ret = nvs_set_str(nvs_handle, NVS_ACCESS_TOKEN_KEY, access_token);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save access token: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Save refresh token
-    ret = nvs_set_str(nvs_handle, NVS_REFRESH_TOKEN_KEY, refresh_token);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save refresh token: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Save token expiry
-    ret = nvs_set_i64(nvs_handle, NVS_TOKEN_EXPIRY_KEY, expiry);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save token expiry: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    ret = nvs_commit(nvs_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "Dexcom OAuth tokens saved to NVS");
-    }
-
-    nvs_close(nvs_handle);
-    return ret;
-}
-
-esp_err_t nvs_load_dexcom_tokens(cgm_settings_t *settings) {
-    nvs_handle_t nvs_handle;
-    esp_err_t ret;
-    size_t access_len = MAX_ACCESS_TOKEN_LEN;
-    size_t refresh_len = MAX_REFRESH_TOKEN_LEN;
-
-    if (settings == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    // Load access token
-    ret = nvs_get_str(nvs_handle, NVS_ACCESS_TOKEN_KEY, settings->access_token, &access_len);
-    if (ret != ESP_OK) {
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Load refresh token
-    ret = nvs_get_str(nvs_handle, NVS_REFRESH_TOKEN_KEY, settings->refresh_token, &refresh_len);
-    if (ret != ESP_OK) {
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    // Load token expiry
-    ret = nvs_get_i64(nvs_handle, NVS_TOKEN_EXPIRY_KEY, &settings->token_expiry);
-    if (ret != ESP_OK) {
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
-    ESP_LOGI(TAG, "Dexcom OAuth tokens loaded from NVS");
-    nvs_close(nvs_handle);
-    return ESP_OK;
-}
-
-bool nvs_has_dexcom_tokens(void) {
-    cgm_settings_t settings;
-    return (nvs_load_dexcom_tokens(&settings) == ESP_OK);
-}
-
-esp_err_t nvs_clear_cgm_settings(void) {
-    nvs_handle_t nvs_handle;
-    esp_err_t ret;
-
-    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    nvs_erase_key(nvs_handle, NVS_CGM_TYPE_KEY);
-    nvs_erase_key(nvs_handle, NVS_ACCESS_TOKEN_KEY);
-    nvs_erase_key(nvs_handle, NVS_REFRESH_TOKEN_KEY);
-    nvs_erase_key(nvs_handle, NVS_TOKEN_EXPIRY_KEY);
-    ret = nvs_commit(nvs_handle);
-
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "CGM settings cleared from NVS");
-    }
-
-    nvs_close(nvs_handle);
-    return ret;
-}
 
 // ==================== Dexcom Share Credentials ====================
 

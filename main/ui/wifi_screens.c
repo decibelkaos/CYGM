@@ -1307,16 +1307,15 @@ static void wifi_connect_task(void *pvParameters) {
             ESP_LOGI(TAG, "time_update task already running");
         }
 
-        // Start weather task if not already running (HTTP mode, no SSL)
-        if (weather_task_handle == NULL) {
-            ESP_LOGI(TAG, "Starting weather task (HTTP mode)...");
-            xTaskCreate(weather_update_task, "weather_update", 8192, NULL, 1, &weather_task_handle);
+        // Start glucose task first (critical, 4KB) then weather (8KB)
+        if (glucose_task_handle == NULL && nvs_has_dexcom_credentials()) {
+            ESP_LOGI(TAG, "Dexcom credentials found - starting glucose update task...");
+            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
         }
 
-        // Start glucose task if not already running and Dexcom tokens exist
-        if (glucose_task_handle == NULL && nvs_has_dexcom_tokens()) {
-            ESP_LOGI(TAG, "Dexcom credentials found - starting glucose update task...");
-            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+        if (weather_task_handle == NULL) {
+            ESP_LOGI(TAG, "Starting weather task (HTTP mode)...");
+            xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
         }
 
         // Don't auto-close - wait for user to press OK button

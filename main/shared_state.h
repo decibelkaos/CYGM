@@ -155,7 +155,6 @@ extern lv_obj_t *screen_dexcom_password_entry;
 extern lv_obj_t *screen_dexcom_status;
 extern lv_obj_t *screen_alarm_settings;
 extern lv_obj_t *screen_time_weather_settings;
-extern lv_obj_t *screen_zipcode_entry;
 extern lv_obj_t *screen_tone_picker;
 extern lv_obj_t *screen_alarm_preview;
 extern lv_obj_t *screen_alarm_detail_editor;
@@ -180,10 +179,6 @@ extern lv_timer_t *visual_alarm_timer;
 extern bool visual_alarm_active;
 extern uint8_t visual_alarm_pulse_state;
 extern int64_t alarm_snooze_until;
-
-// Audio alarm
-extern lv_timer_t *audio_alarm_timer;
-extern alarm_config_t *active_alarm_config;
 
 // ==================== Battery Monitoring ====================
 
