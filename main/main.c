@@ -44,7 +44,6 @@
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
-#include "web_server.h"
 #include "ui_config.h"
 #include "hardware/led.h"
 #include "hardware/buzzer.h"
@@ -287,7 +286,6 @@ char user_zipcode[11] = "";  // US zipcode (5 or 9 digits)
 bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
 uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
 char user_location[64] = "";  // City, State from geocoding
-bool use_postal_code_entry = true;  // true = postal code, false = city dropdown
 
 // Weather display data
 int current_temp_f = 72;  // Current temperature in Fahrenheit
@@ -1575,6 +1573,54 @@ void update_glucose_display(void) {
     }
 }
 
+// Helper: Delete background tasks to free contiguous heap for TLS handshake.
+// Returns true if any tasks were deleted.
+static bool delete_background_tasks_for_ssl(const char *reason) {
+    bool deleted_any = false;
+
+    if (weather_task_handle != NULL) {
+        vTaskDelete(weather_task_handle);
+        weather_task_handle = NULL;
+        deleted_any = true;
+    }
+    if (time_task_handle != NULL) {
+        vTaskDelete(time_task_handle);
+        time_task_handle = NULL;
+        deleted_any = true;
+    }
+    if (battery_task_handle != NULL) {
+        vTaskDelete(battery_task_handle);
+        battery_task_handle = NULL;
+        deleted_any = true;
+    }
+
+    if (deleted_any) {
+        // Yield so idle task frees deleted task memory (TLSF coalesces adjacent blocks)
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+        size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        ESP_LOGI(TAG, "Tasks deleted: %s (free=%lu largest=%lu)", reason, free_heap, largest);
+        sd_log(TAG, "Tasks deleted: %s free=%lu largest=%lu", reason, free_heap, largest);
+    }
+
+    return deleted_any;
+}
+
+// Helper: Recreate background tasks after TLS operation completes.
+static void recreate_background_tasks(void) {
+    if (weather_task_handle == NULL) {
+        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+    }
+    if (time_task_handle == NULL) {
+        xTaskCreate(time_update_task, "time_update", 4096, NULL, 3, &time_task_handle);
+    }
+    if (battery_task_handle == NULL) {
+        xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon", 3072, NULL, 2, &battery_task_handle, 0);
+    }
+    ESP_LOGI(TAG, "Tasks recreated (heap=%lu)", esp_get_free_heap_size());
+}
+
 // Glucose update task - fetches glucose periodically (every 90 seconds)
 void glucose_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Glucose update task started (90 second interval)");
@@ -1643,7 +1689,8 @@ void glucose_update_task(void *pvParameters) {
 
         // Auto-re-auth: if authentication was lost (WiFi drop, session expiry,
         // failed re-auth during API outage), try again using stored credentials.
-        // This is the fix for "device never gets new data after WiFi reconnect".
+        // CRITICAL: Must delete background tasks first — TLS handshake needs ~16KB
+        // contiguous heap, but running tasks fragment it to ~3KB largest block.
         bool is_auth = dexcom_is_authenticated();
         if (!is_auth) {
             char reauth_user[64], reauth_pass[64];
@@ -1652,6 +1699,10 @@ void glucose_update_task(void *pvParameters) {
                 ESP_LOGW(TAG, "[Glucose Task] Not authenticated — attempting re-auth (backoff=%ds)",
                          poll_interval_sec);
                 if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+                    // Free heap for TLS handshake — same pattern as glucose fetch path
+                    bool tasks_deleted = delete_background_tasks_for_ssl("re-auth");
+                    dexcom_close_persistent_client();  // Clean slate for fresh handshake
+
                     esp_err_t auth_ret = dexcom_authenticate(reauth_user, reauth_pass);
                     if (auth_ret == ESP_OK) {
                         ESP_LOGI(TAG, "[Glucose Task] Re-auth succeeded — resuming glucose fetch");
@@ -1664,7 +1715,6 @@ void glucose_update_task(void *pvParameters) {
                     } else {
                         ESP_LOGW(TAG, "[Glucose Task] Re-auth failed — will retry in %ds", poll_interval_sec);
                         sd_log(TAG, "Auto re-auth failed, retry in %ds", poll_interval_sec);
-                        // Apply backoff to re-auth attempts too
                         consecutive_task_failures++;
                         if (consecutive_task_failures >= 10) {
                             poll_interval_sec = 600;
@@ -1673,6 +1723,10 @@ void glucose_update_task(void *pvParameters) {
                         } else if (consecutive_task_failures >= 3) {
                             poll_interval_sec = 180;
                         }
+                    }
+                    // Always recreate tasks — whether auth succeeded or failed
+                    if (tasks_deleted) {
+                        recreate_background_tasks();
                     }
                     xSemaphoreGive(network_mutex);
                 }
@@ -1684,6 +1738,42 @@ void glucose_update_task(void *pvParameters) {
         }
 
         ESP_LOGI(TAG, "[Glucose Task] Auth OK, Free heap: %lu bytes", esp_get_free_heap_size());
+
+        // Proactive session refresh: handle BEFORE entering fetch path so the
+        // inline refresh inside dexcom_fetch_glucose() never triggers under
+        // low-memory conditions. We control task deletion here.
+        if (is_auth && dexcom_session_needs_refresh()) {
+            ESP_LOGI(TAG, "Proactive session refresh — handling at task level");
+            sd_log(TAG, "Proactive session refresh");
+
+            if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+                bool tasks_deleted = delete_background_tasks_for_ssl("session-refresh");
+                dexcom_close_persistent_client();
+
+                char refresh_user[64], refresh_pass[64];
+                if (nvs_get_dexcom_credentials(refresh_user, sizeof(refresh_user),
+                                                refresh_pass, sizeof(refresh_pass)) == ESP_OK) {
+                    esp_err_t ref_ret = dexcom_authenticate(refresh_user, refresh_pass);
+                    if (ref_ret == ESP_OK) {
+                        ESP_LOGI(TAG, "Proactive refresh OK");
+                        sd_log(TAG, "Proactive refresh OK");
+                        // Close auth SSL — fetch will reopen with its own connection
+                        dexcom_close_persistent_client();
+                    } else {
+                        ESP_LOGW(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
+                        sd_log(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
+                        is_auth = dexcom_is_authenticated();
+                    }
+                }
+
+                if (tasks_deleted) {
+                    recreate_background_tasks();
+                }
+                xSemaphoreGive(network_mutex);
+            }
+
+            if (!is_auth) continue;  // Auth lost during refresh — retry next cycle
+        }
 
         if (is_auth) {
             // CRITICAL: Take network mutex to ensure exclusive access
@@ -1731,35 +1821,10 @@ void glucose_update_task(void *pvParameters) {
                 // MEMORY STRATEGY for SSL reconnection:
                 // When persistent client is closed, we need a fresh TLS handshake.
                 // TLSF can't defragment, so we must delete tasks to free contiguous heap.
-                // This is the same proven pattern used by OTA and screenshot capture.
                 bool tasks_deleted_for_ssl = false;
 
                 if (!client_open) {
-                    ESP_LOGI(TAG, "SSL closed — freeing tasks for fresh handshake");
-                    sd_log(TAG, "SSL reconnect: deleting tasks for heap");
-
-                    if (weather_task_handle != NULL) {
-                        vTaskDelete(weather_task_handle);
-                        weather_task_handle = NULL;
-                    }
-                    if (time_task_handle != NULL) {
-                        vTaskDelete(time_task_handle);
-                        time_task_handle = NULL;
-                    }
-                    if (battery_task_handle != NULL) {
-                        vTaskDelete(battery_task_handle);
-                        battery_task_handle = NULL;
-                    }
-                    tasks_deleted_for_ssl = true;
-
-                    // Yield so idle task frees deleted task memory (TLSF coalesces)
-                    vTaskDelay(pdMS_TO_TICKS(500));
-
-                    // Refresh memory stats after cleanup
-                    free_internal = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
-                    largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-                    ESP_LOGI(TAG, "After task cleanup: free=%lu largest=%lu", free_internal, largest_block);
-                    sd_log(TAG, "Reconnect: free=%lu largest=%lu", free_internal, largest_block);
+                    tasks_deleted_for_ssl = delete_background_tasks_for_ssl("ssl-reconnect");
                 }
 
                 ESP_LOGI(TAG, "Proceeding with %s (free=%lu, largest=%lu)",
@@ -1784,11 +1849,7 @@ void glucose_update_task(void *pvParameters) {
 
                     // Delete tasks if not already deleted by proactive path
                     if (!tasks_deleted_for_ssl) {
-                        if (weather_task_handle != NULL) { vTaskDelete(weather_task_handle); weather_task_handle = NULL; }
-                        if (time_task_handle != NULL) { vTaskDelete(time_task_handle); time_task_handle = NULL; }
-                        if (battery_task_handle != NULL) { vTaskDelete(battery_task_handle); battery_task_handle = NULL; }
-                        tasks_deleted_for_ssl = true;
-                        vTaskDelay(pdMS_TO_TICKS(500));  // Let idle task coalesce
+                        tasks_deleted_for_ssl = delete_background_tasks_for_ssl("retry-reconnect");
                     }
 
                     ESP_LOGI(TAG, "RETRY: heap=%lu largest=%lu",
@@ -2075,16 +2136,7 @@ void glucose_update_task(void *pvParameters) {
 
                 // Recreate tasks that were deleted for SSL reconnection
                 if (tasks_deleted_for_ssl) {
-                    if (weather_task_handle == NULL) {
-                        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
-                    }
-                    if (time_task_handle == NULL) {
-                        xTaskCreate(time_update_task, "time_update", 4096, NULL, 3, &time_task_handle);
-                    }
-                    if (battery_task_handle == NULL) {
-                        xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon", 3072, NULL, 2, &battery_task_handle, 0);
-                    }
-                    ESP_LOGI(TAG, "Tasks recreated after SSL reconnect (heap=%lu)", esp_get_free_heap_size());
+                    recreate_background_tasks();
                 }
 
                 // Release network mutex

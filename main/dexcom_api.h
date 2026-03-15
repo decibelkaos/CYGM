@@ -72,6 +72,10 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose);
 // Check if we have a valid session
 bool dexcom_is_authenticated(void);
 
+// Check if session is old enough to need proactive refresh (>2 hours)
+// Read-only query — does not modify state or trigger re-auth
+bool dexcom_session_needs_refresh(void);
+
 // Clear stored credentials and session
 void dexcom_logout(void);
 

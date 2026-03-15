@@ -1006,6 +1006,15 @@ bool dexcom_is_authenticated(void) {
     return true;
 }
 
+bool dexcom_session_needs_refresh(void) {
+    if (!is_authenticated || last_login_time == 0) {
+        return false;
+    }
+    uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    uint64_t session_age = now_ms - last_login_time;
+    return (session_age > SESSION_REFRESH_MS);
+}
+
 void dexcom_logout(void) {
     memset(account_id, 0, sizeof(account_id));
     memset(session_id, 0, sizeof(session_id));
