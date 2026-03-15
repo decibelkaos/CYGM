@@ -65,6 +65,9 @@ esp_err_t glucose_history_save_to_nvs(void);
 // Load history from NVS
 esp_err_t glucose_history_load_from_nvs(void);
 
+// Register shutdown handler to save history on esp_restart()
+void glucose_history_register_shutdown_handler(void);
+
 #ifdef __cplusplus
 }
 #endif

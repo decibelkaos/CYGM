@@ -2732,6 +2732,7 @@ void app_main(void) {
     // Initialize glucose history system (loads from NVS if exists)
     add_boot_log("Load glucose history");
     ESP_ERROR_CHECK(glucose_history_init());
+    glucose_history_register_shutdown_handler();
 
     // Load brightness settings from NVS
     nvs_load_brightness(&screen_brightness_percent);
