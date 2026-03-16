@@ -40,15 +40,14 @@ void dismiss_update_overlay(void);
 
 /**
  * Free heap memory for update operations.
- * Pauses background tasks and closes Dexcom SSL to free a large contiguous
- * block (~15-20KB). Does NOT kill tasks — preserves heap layout to avoid
- * fragmentation. Call before SSL-heavy operations (version check, OTA).
+ * Pauses and deletes background tasks (weather/time/battery), closes Dexcom
+ * SSL to maximize contiguous heap for TLS handshake.
+ * Call update_restore_tasks() afterward to recreate tasks.
  */
 void update_prepare_memory(void);
 
 /**
- * Unpause background tasks after update_prepare_memory().
- * Tasks are still alive (just paused) — this resumes them.
+ * Recreate background tasks and unpause after update_prepare_memory().
  */
 void update_restore_tasks(void);
 

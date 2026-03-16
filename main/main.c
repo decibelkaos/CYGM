@@ -1596,7 +1596,7 @@ void update_glucose_display(void) {
 
 // Helper: Delete background tasks to free contiguous heap for TLS handshake.
 // Returns true if any tasks were deleted.
-static bool delete_background_tasks_for_ssl(const char *reason) {
+bool delete_background_tasks_for_ssl(const char *reason) {
     bool deleted_any = false;
 
     if (weather_task_handle != NULL) {
@@ -1629,7 +1629,7 @@ static bool delete_background_tasks_for_ssl(const char *reason) {
 }
 
 // Helper: Recreate background tasks after TLS operation completes.
-static void recreate_background_tasks(void) {
+void recreate_background_tasks(void) {
     if (weather_task_handle == NULL) {
         xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
     }

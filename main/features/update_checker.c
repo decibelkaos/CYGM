@@ -7,6 +7,7 @@
  */
 
 #include "update_checker.h"
+#include "main.h"
 #include "shared_state.h"
 #include "sd_logger.h"
 #include "dexcom_api.h"
@@ -355,13 +356,10 @@ void update_prepare_memory(void) {
     ESP_LOGI(TAG, "Freeing memory for update operation...");
     size_t before = esp_get_free_heap_size();
 
-    // 1. Pause background tasks (they stay alive but skip network operations)
-    //    CRITICAL: Do NOT delete tasks — their scattered stack allocations fragment
-    //    the heap, reducing the largest contiguous block. Keeping them alive preserves
-    //    the large contiguous block freed by closing Dexcom SSL.
+    // 1. Pause background tasks (skip network ops on next loop)
     pause_background_tasks = true;
 
-    // 2. Close Dexcom persistent SSL connection — frees ~15-20KB as one contiguous block
+    // 2. Close Dexcom persistent SSL connection (~15-20KB freed)
     dexcom_close_persistent_client();
 
     // 3. Wait for network mutex — ensures no task is mid-SSL-operation
@@ -371,7 +369,9 @@ void update_prepare_memory(void) {
         ESP_LOGW(TAG, "Could not acquire network mutex (10s timeout)");
     }
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // 4. Delete weather/time/battery tasks — frees 11KB of scattered stacks
+    //    so TLSF can coalesce with the Dexcom-freed block, growing largest_block.
+    delete_background_tasks_for_ssl("version-check");
 
     size_t after = esp_get_free_heap_size();
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
@@ -381,10 +381,10 @@ void update_prepare_memory(void) {
 }
 
 void update_restore_tasks(void) {
-    // Tasks are still alive (just paused) — unpause them
+    recreate_background_tasks();
     pause_background_tasks = false;
     home_screen_active = true;
-    ESP_LOGI(TAG, "Background tasks unpaused (heap=%lu)", (unsigned long)esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Background tasks restored (heap=%lu)", (unsigned long)esp_get_free_heap_size());
 }
 
 void update_stop_all_tasks(void) {

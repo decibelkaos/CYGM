@@ -99,6 +99,14 @@ void update_glucose_display(void);
  */
 void glucose_update_task(void *pvParameters);
 
+// ==================== Task Lifecycle Helpers ====================
+
+/** Delete weather/time/battery tasks to free heap for TLS. Yields 500ms for IDLE reclaim. */
+bool delete_background_tasks_for_ssl(const char *reason);
+
+/** Recreate weather/time/battery tasks after TLS operation. */
+void recreate_background_tasks(void);
+
 // ==================== Event Callbacks ====================
 
 /**
