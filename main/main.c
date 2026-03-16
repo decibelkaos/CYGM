@@ -179,6 +179,7 @@ lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
 bool visual_alarm_active = false;
 uint8_t visual_alarm_pulse_state = 0;       // 0 = dim, 1 = bright flash
 static uint32_t visual_alarm_flash_color = COLOR_RED;  // Current alarm flash color
+static lv_obj_t *visual_alarm_glucose_label = NULL;    // Glucose value label in alarm card (for live updates)
 int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
 
 // Audio alarm repeat
@@ -1107,6 +1108,21 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
         return;
     }
 
+    // Auto-clear if glucose data has gone stale (e.g., Dexcom session expired overnight)
+    if (glucose_data_valid && glucose_timestamp > 0) {
+        time_t now;
+        time(&now);
+        int data_age_min = (int)difftime(now, glucose_timestamp) / 60;
+        if (data_age_min > 15) {
+            ESP_LOGI(TAG, "Alarm auto-clear: data stale (%d min old)", data_age_min);
+            sd_log(TAG, "ALARM: auto-clear, data stale %d min", data_age_min);
+            stop_visual_alarm();
+            stop_audio_alarm();
+            current_alarm_state = ALARM_STATE_NONE;
+            return;
+        }
+    }
+
     if (lvgl_port_lock(0)) {
         if (visual_alarm_pulse_state == 0) {
             // Flash ON — thick alarm-color border at screen edges
@@ -1336,20 +1352,20 @@ static void start_visual_alarm(void) {
         lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
 
         // ---- Glucose value (centered, large) ----
-        lv_obj_t *glucose_label = lv_label_create(visual_alarm_container);
+        visual_alarm_glucose_label = lv_label_create(visual_alarm_container);
         char glucose_text[16];
         snprintf(glucose_text, sizeof(glucose_text), "%d", current_glucose);
-        lv_label_set_text(glucose_label, glucose_text);
-        lv_obj_set_style_text_font(glucose_label, &lv_font_montserrat_48, 0);
-        lv_obj_set_style_text_color(glucose_label, lv_color_hex(alarm_color), 0);
-        lv_obj_align(glucose_label, LV_ALIGN_CENTER, 0, -24);
+        lv_label_set_text(visual_alarm_glucose_label, glucose_text);
+        lv_obj_set_style_text_font(visual_alarm_glucose_label, &lv_font_montserrat_48, 0);
+        lv_obj_set_style_text_color(visual_alarm_glucose_label, lv_color_hex(alarm_color), 0);
+        lv_obj_align(visual_alarm_glucose_label, LV_ALIGN_CENTER, 0, -24);
 
         // ---- Unit label ----
         lv_obj_t *unit_label = lv_label_create(visual_alarm_container);
         lv_label_set_text(unit_label, "mg/dL");
         lv_obj_set_style_text_font(unit_label, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(unit_label, lv_color_hex(COLOR_TEXT_DIM), 0);
-        lv_obj_align_to(unit_label, glucose_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+        lv_obj_align_to(unit_label, visual_alarm_glucose_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
 
         // ---- Hold-to-disarm button (hold 1.5s to dismiss) ----
         visual_alarm_disarm_btn = lv_obj_create(visual_alarm_container);
@@ -1431,7 +1447,19 @@ static void stop_visual_alarm(void) {
             visual_alarm_disarm_btn = NULL;
             visual_alarm_disarm_progress = NULL;
             visual_alarm_disarm_label = NULL;
+            visual_alarm_glucose_label = NULL;
         }
+        lvgl_port_unlock();
+    }
+}
+
+// Update glucose value shown on the visual alarm card (keeps it current between fetches)
+static void update_visual_alarm_glucose(int glucose_mg_dl) {
+    if (!visual_alarm_active || visual_alarm_glucose_label == NULL) return;
+    if (lvgl_port_lock(0)) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", glucose_mg_dl);
+        lv_label_set_text(visual_alarm_glucose_label, buf);
         lvgl_port_unlock();
     }
 }
@@ -1944,6 +1972,7 @@ void glucose_update_task(void *pvParameters) {
                     int data_age_mins = (int)difftime(alarm_now, glucose_timestamp) / 60;
                     if (data_age_mins <= 10) {
                         check_glucose_alarms(current_glucose);
+                        update_visual_alarm_glucose(current_glucose);
                     } else {
                         ESP_LOGW(TAG, "Skipping alarm check - data is %d mins old", data_age_mins);
                     }

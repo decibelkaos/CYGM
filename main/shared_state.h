@@ -33,13 +33,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
 #define CYGM_VERSION_MINOR 5
-#define CYGM_VERSION_PATCH 1
+#define CYGM_VERSION_PATCH 11
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-03-13"
+#define CYGM_VERSION_DATE "2026-03-15"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.5.1.2026-03-13.Beta"
+#define CYGM_VERSION_STRING "0.5.11.2026-03-15.Beta"
 
 // ==================== Hardware Configuration ====================
 
