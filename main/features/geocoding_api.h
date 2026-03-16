@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define MAX_GEOCODE_RESULTS 20
+#define MAX_GEOCODE_RESULTS 5
 #define MAX_LOCATION_NAME_LEN 64
 #define MAX_COUNTRY_NAME_LEN 32
 #define MAX_TIMEZONE_NAME_LEN 64

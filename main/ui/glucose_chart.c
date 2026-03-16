@@ -685,38 +685,26 @@ static void show_reading_popup(int glucose, int64_t timestamp,
     hide_reading_popup();
 
     info_popup = lv_obj_create(chart_overlay);
-    lv_obj_set_size(info_popup, 110, 50);
-
-    // Position above touch point with boundary clamping
-    lv_coord_t popup_x = x - lv_obj_get_x(chart_overlay) - 55;
-    lv_coord_t popup_y = y - lv_obj_get_y(chart_overlay) - 65;
-    if (popup_x < 4) popup_x = 4;
-    if (popup_x > OVERLAY_W - 118) popup_x = OVERLAY_W - 118;
-    if (popup_y < 4) popup_y = CHART_TOP + 4;
-
-    lv_obj_set_pos(info_popup, popup_x, popup_y);
-
-    // Glass tooltip style
     lv_obj_remove_style_all(info_popup);
     lv_obj_set_style_bg_color(info_popup, lv_color_hex(0x1a2332), 0);
     lv_obj_set_style_bg_opa(info_popup, LV_OPA_90, 0);
-    lv_obj_set_style_radius(info_popup, 10, 0);
-    lv_obj_set_style_pad_all(info_popup, 6, 0);
-    lv_obj_set_style_shadow_width(info_popup, 12, 0);
+    lv_obj_set_style_radius(info_popup, 6, 0);
+    lv_obj_set_style_pad_all(info_popup, 3, 0);
+    lv_obj_set_style_shadow_width(info_popup, 8, 0);
     lv_obj_set_style_shadow_color(info_popup, lv_color_black(), 0);
     lv_obj_set_style_shadow_opa(info_popup, LV_OPA_60, 0);
+    lv_obj_set_size(info_popup, 88, 34);
     lv_obj_clear_flag(info_popup, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Colored left accent bar
-    uint32_t gcolor = get_color_for_glucose(glucose);
+    // Position above touch point with boundary clamping
+    lv_coord_t popup_x = x - lv_obj_get_x(chart_overlay) - 44;
+    lv_coord_t popup_y = y - lv_obj_get_y(chart_overlay) - 48;
+    if (popup_x < 4) popup_x = 4;
+    if (popup_x > OVERLAY_W - 96) popup_x = OVERLAY_W - 96;
+    if (popup_y < 4) popup_y = CHART_TOP + 4;
+    lv_obj_set_pos(info_popup, popup_x, popup_y);
 
-    lv_obj_t *accent = lv_obj_create(info_popup);
-    lv_obj_remove_style_all(accent);
-    lv_obj_set_size(accent, 3, 36);
-    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(gcolor), 0);
-    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(accent, 1, 0);
+    uint32_t gcolor = get_color_for_glucose(glucose);
 
     // Glucose value
     lv_obj_t *g_label = lv_label_create(info_popup);
@@ -725,7 +713,7 @@ static void show_reading_popup(int glucose, int64_t timestamp,
     lv_label_set_text(g_label, g_text);
     lv_obj_set_style_text_font(g_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(g_label, lv_color_hex(gcolor), 0);
-    lv_obj_align(g_label, LV_ALIGN_TOP_LEFT, 10, 2);
+    lv_obj_align(g_label, LV_ALIGN_TOP_LEFT, 2, 0);
 
     // Timestamp
     lv_obj_t *t_label = lv_label_create(info_popup);
@@ -738,7 +726,7 @@ static void show_reading_popup(int glucose, int64_t timestamp,
     lv_label_set_text(t_label, t_text);
     lv_obj_set_style_text_font(t_label, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(t_label, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_align(t_label, LV_ALIGN_BOTTOM_LEFT, 10, -2);
+    lv_obj_align(t_label, LV_ALIGN_BOTTOM_LEFT, 2, -2);
 }
 
 static void hide_reading_popup(void) {

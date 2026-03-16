@@ -627,7 +627,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     if (glucose_task_handle != NULL && eTaskGetState(glucose_task_handle) == eDeleted) {
         ESP_LOGE("WATCHDOG", "CRITICAL: Glucose task died! Restarting...");
         glucose_task_handle = NULL;
-        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 1, &glucose_task_handle);
+        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
     }
 }
 
@@ -1363,6 +1363,7 @@ void create_home_screen(void) {
     draw_battery_icon(battery_canvas, COLOR_GREEN, 100);  // Start full
     lv_obj_align(battery_canvas, LV_ALIGN_TOP_LEFT, 2, 0);
     lv_obj_add_flag(battery_canvas, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(battery_canvas, 10);
     lv_obj_add_event_cb(battery_canvas, battery_tap_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Battery percentage label (next to icon, visible by default - tap battery to toggle)

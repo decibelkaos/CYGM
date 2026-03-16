@@ -619,9 +619,10 @@ void battery_monitor_task(void *arg) {
                      battery_voltage, corrected_percent, battery_percent, charging_anim_base);
         }
 
-        // Periodic SD flush — sd_logger_flush() has its own memory pre-check
-        // and will self-suspend after repeated failures (no need to guard here)
-        if (sd_logger_available()) {
+        // Periodic SD flush — skip only during the brief glucose fetch (~0.5s).
+        // With DYN_BUFFERS, SD mount uses small allocations (<1KB each), so no
+        // contention for large contiguous blocks.  Only the active fetch competes.
+        if (sd_logger_available() && !glucose_fetch_in_progress) {
             sd_logger_flush();
         }
 

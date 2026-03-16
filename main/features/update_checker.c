@@ -77,7 +77,7 @@ void update_set_manual_polling(bool polling) {
 // ==================== Check Logic ====================
 
 bool update_should_check(void) {
-    if (last_check_ms == 0) return true;
+    if (last_check_ms == 0) return true;  // Never checked
     int64_t now_ms = esp_timer_get_time() / 1000;
     return (now_ms - last_check_ms) >= UPDATE_INTERVAL_MS;
 }
@@ -444,10 +444,13 @@ void update_stop_all_tasks(void) {
         ESP_LOGI(TAG, "Deleted ui task (8KB stack freed)");
     }
 
-    // 6. Yield to IDLE task so it frees the deleted tasks' memory
+    // 6. Unmount SD card (persistent mount) — frees ~1.5KB, helps coalesce heap
+    sd_logger_shutdown();
+
+    // 7. Yield to IDLE task so it frees the deleted tasks' memory
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // 7. Disable WiFi power save for reliable OTA download
+    // 8. Disable WiFi power save for reliable OTA download
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     size_t after = esp_get_free_heap_size();

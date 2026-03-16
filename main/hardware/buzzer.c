@@ -4,15 +4,16 @@
  * Buzzer/speaker control implementation.
  *
  * IMPORTANT — EMI noise prevention:
- * The 8002A class-D amplifier shares the power supply with the ESP32.
- * WiFi TX bursts (~300mA) create Vcc ripple that the amp can pick up.
- * Additionally, if the LEDC timer continues oscillating after a tone ends,
- * the internal switching adds supply noise that compounds with WiFi EMI.
+ * The 8002A class-D amplifier's SD (shutdown) pin is hardwired to VCC on
+ * this board — no software mute possible.  WiFi TX bursts (~300mA) create
+ * EMI that capacitively couples into the amplifier input.
  *
  * The SILENCE path therefore:
  *   1. Sets LEDC duty to 0 and pauses the timer (stops all switching)
  *   2. Detaches the GPIO from LEDC via the GPIO matrix
- *   3. Drives the GPIO LOW via the output register
+ *   3. Switches GPIO to OUTPUT LOW — the NMOS pull-down transistor provides
+ *      ~30Ω impedance to ground, clamping any coupled noise to GND.
+ *      (INPUT mode with pull-down only gives ~45kΩ — 1500x weaker.)
  *
  * This briefly acquires the shared LEDC spinlock, but only during
  * transitions (not in a hot loop), so contention risk is negligible.
@@ -53,38 +54,33 @@ void buzzer_init(void) {
     };
     ESP_ERROR_CHECK(ledc_channel_config(&channel));
 
-    // Fully silence: stop channel, pause timer, disconnect GPIO, disable output driver.
-    // The 8002A amp's SD pin is hardwired to VCC on this board (no software shutdown).
-    // WiFi TX bursts (~300mA) create Vcc ripple that conducts through the active
-    // GPIO output driver to the amp input.  Switching the GPIO to input mode with
-    // internal pull-down disables the output transistors entirely, cutting this path.
+    // Fully silence: stop channel, pause timer, then clamp GPIO to ground.
+    // OUTPUT LOW activates the NMOS transistor (~30Ω to GND), rejecting
+    // capacitively-coupled EMI from WiFi TX bursts far better than a
+    // high-impedance input with pull-down (~45kΩ).
     ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, 0);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
     ledc_timer_pause(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
-    gpio_set_level(BUZZER_GPIO, 0);
     esp_rom_gpio_connect_out_signal(BUZZER_GPIO, SIG_GPIO_OUT_IDX, false, false);
-    gpio_set_pull_mode(BUZZER_GPIO, GPIO_PULLDOWN_ONLY);
-    gpio_set_direction(BUZZER_GPIO, GPIO_MODE_INPUT);
+    gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_level(BUZZER_GPIO, 0);
 
-    ESP_LOGI(TAG, "Buzzer PWM initialized (GPIO %d, silenced, output driver disabled)", BUZZER_GPIO);
+    ESP_LOGI(TAG, "Buzzer PWM initialized (GPIO %d, silenced, output LOW ground clamp)", BUZZER_GPIO);
 }
 
 void buzzer_tone(uint32_t frequency, uint8_t volume) {
     if (frequency == 0 || volume == 0) {
         if (!buzzer_active) return;  // Already silent, skip
 
-        // SILENCE — stop LEDC, disconnect GPIO, disable output driver.
-        // The active output driver conducts Vcc ripple from WiFi TX bursts
-        // to the 8002A input.  Switching to input mode with pull-down removes
-        // the output transistors from the circuit while keeping the pin at 0V.
+        // SILENCE — stop LEDC, then clamp GPIO to ground via OUTPUT LOW.
+        // The NMOS transistor (~30Ω) shorts coupled EMI to GND.
         ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, 0);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL);
         ledc_timer_pause(LEDC_LOW_SPEED_MODE, BUZZER_TIMER);
 
-        gpio_set_level(BUZZER_GPIO, 0);
         esp_rom_gpio_connect_out_signal(BUZZER_GPIO, SIG_GPIO_OUT_IDX, false, false);
-        gpio_set_pull_mode(BUZZER_GPIO, GPIO_PULLDOWN_ONLY);
-        gpio_set_direction(BUZZER_GPIO, GPIO_MODE_INPUT);
+        gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
+        gpio_set_level(BUZZER_GPIO, 0);
         buzzer_active = false;
         return;
     }
@@ -92,11 +88,8 @@ void buzzer_tone(uint32_t frequency, uint8_t volume) {
     // Clamp volume to 0-100
     if (volume > 100) volume = 100;
 
-    // Re-enable output driver if transitioning from silent (was in input mode)
-    if (!buzzer_active) {
-        gpio_set_pull_mode(BUZZER_GPIO, GPIO_FLOATING);
-        gpio_set_direction(BUZZER_GPIO, GPIO_MODE_OUTPUT);
-    }
+    // GPIO is already OUTPUT from the silence path — no direction change needed.
+    // Just reconnect to LEDC below after configuring frequency/duty.
 
     // Configure LEDC frequency and duty BEFORE connecting the GPIO,
     // so the very first PWM cycle the amplifier sees is already correct.
