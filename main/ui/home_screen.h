@@ -42,6 +42,9 @@ void show_login_success_overlay_ui(void);
 // Legal disclaimer overlay (shown on boot until user accepts)
 void show_disclaimer_overlay(void);
 
+// Welcome overlay (shown once after first ToS acceptance)
+void show_welcome_overlay(void);
+
 #ifdef __cplusplus
 }
 #endif

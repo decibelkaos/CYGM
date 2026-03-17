@@ -471,6 +471,12 @@ static void disclaimer_agree_cb(lv_event_t *e) {
         disclaimer_overlay = NULL;
         disclaimer_checkbox = NULL;
     }
+
+    // Show welcome overlay on very first acceptance
+    if (!nvs_get_welcome_shown()) {
+        nvs_set_welcome_shown();
+        show_welcome_overlay();
+    }
 }
 
 void show_disclaimer_overlay(void) {
@@ -564,6 +570,110 @@ void show_disclaimer_overlay(void) {
     lv_obj_add_event_cb(btn_agree, disclaimer_agree_cb, LV_EVENT_CLICKED, NULL);
 
     ESP_LOGI(TAG, "Legal disclaimer overlay shown");
+}
+
+// ==================== Welcome Overlay (first-time setup guide) ====================
+
+static lv_obj_t *welcome_overlay = NULL;
+
+static void welcome_close_cb(lv_event_t *e) {
+    (void)e;
+    if (welcome_overlay) {
+        lv_obj_del(welcome_overlay);
+        welcome_overlay = NULL;
+    }
+}
+
+void show_welcome_overlay(void) {
+    if (welcome_overlay != NULL) return;
+
+    // Full-screen dark backdrop (dismiss only via button)
+    welcome_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(welcome_overlay);
+    lv_obj_set_size(welcome_overlay, 320, 240);
+    lv_obj_set_style_bg_color(welcome_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(welcome_overlay, LV_OPA_80, 0);
+    lv_obj_clear_flag(welcome_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(welcome_overlay);
+
+    // Glass card — blue accent (same style as disclaimer)
+    lv_obj_t *card = lv_obj_create(welcome_overlay);
+    lv_obj_set_size(card, 300, 220);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 25, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Checkmark icon — signals successful setup acknowledgment
+    lv_obj_t *icon = lv_label_create(card);
+    lv_label_set_text(icon, LV_SYMBOL_OK);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+
+    // Title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "Welcome to CYGM");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 32);
+
+    // Divider
+    lv_obj_t *div = lv_obj_create(card);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 270, 1);
+    lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 54);
+
+    // Instructions
+    lv_obj_t *msg = lv_label_create(card);
+    lv_label_set_text(msg,
+        "Scan the QR code below or visit\n"
+        "digitalkaos.tech?guide\n"
+        "to set up your device.");
+    lv_obj_set_style_text_font(msg, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(msg, 280);
+    lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 62);
+
+    // QR code — links to setup guide
+    static const char *guide_url = "http://digitalkaos.tech?guide";
+    lv_obj_t *qr = lv_qrcode_create(card, 80,
+                                     lv_color_hex(COLOR_TEXT_WHITE),
+                                     lv_color_hex(0x0d1520));
+    lv_qrcode_update(qr, guide_url, strlen(guide_url));
+    lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 104);
+    lv_obj_set_style_border_color(qr, lv_color_hex(0x263040), 0);
+    lv_obj_set_style_border_width(qr, 2, 0);
+
+    // "Get Started" button — ghost-green
+    lv_obj_t *btn = lv_btn_create(card);
+    lv_obj_set_size(btn, 268, 28);
+    lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -6);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x1a3a2a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_border_width(btn, 1, 0);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_t *btn_lbl = lv_label_create(btn);
+    lv_label_set_text(btn_lbl, LV_SYMBOL_OK "  Get Started");
+    lv_obj_set_style_text_color(btn_lbl, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_center(btn_lbl);
+    lv_obj_add_event_cb(btn, welcome_close_cb, LV_EVENT_CLICKED, NULL);
+
+    ESP_LOGI(TAG, "Welcome overlay shown (first-time setup)");
 }
 
 // Expand/collapse layout constants

@@ -65,7 +65,7 @@ All global task handles declared in `shared_state.h`, defined in `main.c`.
 | wifi_task | 8KB | 0 | 4 | `wifi_task_handle` | WiFi connect, SNTP, Dexcom auth, starts other tasks |
 | ui_task | 8KB | 1 | 5 | `ui_task_handle` | Boot sequence, inactivity watchdog |
 | glucose_update | 4KB | 0 | 5 | `glucose_task_handle` | 90s periodic glucose fetch + update check |
-| weather_task | 8KB | 0 | 3 | `weather_task_handle` | Periodic weather API fetch |
+| weather_task | 4KB | 0 | 3 | `weather_task_handle` | Periodic weather API fetch (HTTP only) |
 | time_update | 4KB | 0 | 3 | `time_task_handle` | Clock/date UI updates |
 | battery_mon | 3KB | 0 | 2 | `battery_task_handle` | ADC battery voltage monitoring |
 | led_task | 2KB | 0 | 5 | local in led.c | LED breathing animation |

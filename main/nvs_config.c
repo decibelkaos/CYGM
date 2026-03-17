@@ -1077,3 +1077,36 @@ bool nvs_get_sd_glucose_logging(void) {
     return (ret != ESP_OK) ? true : (val != 0);
 }
 
+// ========== Factory Reset ==========
+esp_err_t nvs_factory_reset(void) {
+    ESP_LOGW(TAG, "FACTORY RESET: Erasing all NVS data");
+    esp_err_t ret = nvs_flash_erase();
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "NVS erased successfully — rebooting");
+    } else {
+        ESP_LOGE(TAG, "NVS erase failed: %s", esp_err_to_name(ret));
+    }
+    return ret;
+}
+
+// ========== Welcome Screen Shown Flag ==========
+esp_err_t nvs_set_welcome_shown(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) return ret;
+    ret = nvs_set_u8(nvs_handle, "welcome_done", 1);
+    if (ret == ESP_OK) ret = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+bool nvs_get_welcome_shown(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) return false;
+    uint8_t val = 0;
+    ret = nvs_get_u8(nvs_handle, "welcome_done", &val);
+    nvs_close(nvs_handle);
+    return (ret == ESP_OK && val != 0);
+}
+

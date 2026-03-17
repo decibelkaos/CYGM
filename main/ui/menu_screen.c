@@ -19,6 +19,7 @@
 #include <string.h>
 #include "sd_logger.h"
 #include "nvs_config.h"
+#include "esp_system.h"
 
 static const char *TAG = "MENU_SCREEN";
 
@@ -62,6 +63,7 @@ static void prepare_for_sleep(void) {
 // ==================== About Overlay ====================
 
 static lv_obj_t *about_overlay = NULL;
+static lv_obj_t *erase_overlay = NULL;
 
 static void about_close_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -91,6 +93,125 @@ static void sd_log_checkbox_cb(lv_event_t *e) {
     ESP_LOGI(TAG, "SD glucose logging: %s", checked ? "ON" : "OFF");
 }
 
+// ==================== Erase Device Confirmation Overlay ====================
+
+static void dismiss_erase_overlay(void) {
+    if (erase_overlay != NULL) {
+        lv_obj_t *ov = erase_overlay;
+        erase_overlay = NULL;
+        lv_obj_del_async(ov);
+    }
+}
+
+static void erase_close_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        dismiss_erase_overlay();
+    }
+}
+
+static void erase_confirm_cb(lv_event_t *e) {
+    (void)e;
+    dismiss_erase_overlay();
+    nvs_factory_reset();
+    esp_restart();
+}
+
+static void show_erase_overlay(void);  // forward decl
+
+static void erase_device_btn_cb(lv_event_t *e) {
+    (void)e;
+    dismiss_about_overlay();
+    show_erase_overlay();
+}
+
+static void show_erase_overlay(void) {
+    if (erase_overlay != NULL) return;
+
+    // Full-screen dimmed backdrop
+    erase_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(erase_overlay);
+    lv_obj_set_size(erase_overlay, 320, 240);
+    lv_obj_set_style_bg_color(erase_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(erase_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(erase_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(erase_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(erase_overlay, erase_close_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Red-accented card
+    lv_obj_t *card = lv_obj_create(erase_overlay);
+    lv_obj_set_size(card, 280, 185);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Warning icon
+    lv_obj_t *icon = lv_label_create(card);
+    lv_label_set_text(icon, LV_SYMBOL_WARNING);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_RED), 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+
+    // Title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "Erase Device?");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_RED), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 32);
+
+    // Warning message
+    lv_obj_t *msg = lv_label_create(card);
+    lv_label_set_text(msg,
+        "All settings, WiFi networks,\n"
+        "Dexcom credentials, and alarms\n"
+        "will be permanently deleted.\n\n"
+        "Device will restart.");
+    lv_obj_set_style_text_font(msg, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(msg, 260);
+    lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 56);
+
+    // Cancel button — ghost outline, blue text, left side
+    lv_obj_t *cancel_btn = lv_btn_create(card);
+    lv_obj_set_size(cancel_btn, 120, 28);
+    lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_LEFT, 12, -8);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(cancel_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(cancel_btn, 1, 0);
+    lv_obj_set_style_border_opa(cancel_btn, LV_OPA_60, 0);
+    lv_obj_set_style_radius(cancel_btn, 6, 0);
+    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+    lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_set_style_text_color(cancel_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(cancel_lbl);
+    lv_obj_add_event_cb(cancel_btn, erase_close_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Erase & Reset button — solid red, white text, right side
+    lv_obj_t *confirm_btn = lv_btn_create(card);
+    lv_obj_set_size(confirm_btn, 120, 28);
+    lv_obj_align(confirm_btn, LV_ALIGN_BOTTOM_RIGHT, -12, -8);
+    lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_bg_opa(confirm_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(0xDC2626), LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(confirm_btn, 0, 0);
+    lv_obj_set_style_radius(confirm_btn, 6, 0);
+    lv_obj_set_style_shadow_width(confirm_btn, 0, 0);
+    lv_obj_t *confirm_lbl = lv_label_create(confirm_btn);
+    lv_label_set_text(confirm_lbl, "Erase & Reset");
+    lv_obj_set_style_text_color(confirm_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(confirm_lbl);
+    lv_obj_add_event_cb(confirm_btn, erase_confirm_cb, LV_EVENT_CLICKED, NULL);
+}
+
 static void show_about_overlay(void) {
     if (about_overlay != NULL) return;
 
@@ -107,7 +228,7 @@ static void show_about_overlay(void) {
     // --- Centered card ---
     bool sd_available = sd_logger_available();
     lv_obj_t *card = lv_obj_create(about_overlay);
-    lv_obj_set_size(card, 275, sd_available ? 225 : 200);
+    lv_obj_set_size(card, 290, 235);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
@@ -159,7 +280,7 @@ static void show_about_overlay(void) {
     // Divider
     lv_obj_t *divider = lv_obj_create(card);
     lv_obj_remove_style_all(divider);
-    lv_obj_set_size(divider, 235, 1);
+    lv_obj_set_size(divider, 255, 1);
     lv_obj_set_style_bg_color(divider, lv_color_hex(0x263040), 0);
     lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
     lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 76);
@@ -185,7 +306,7 @@ static void show_about_overlay(void) {
 
     // Check for Updates button — ghost outline style
     lv_obj_t *upd_btn = lv_btn_create(card);
-    lv_obj_set_size(upd_btn, 180, 24);
+    lv_obj_set_size(upd_btn, 160, 24);
     lv_obj_align(upd_btn, LV_ALIGN_TOP_LEFT, 16, 138);
     lv_obj_set_style_bg_opa(upd_btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_color(upd_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
@@ -219,6 +340,24 @@ static void show_about_overlay(void) {
         }
         lv_obj_add_event_cb(sd_cb, sd_log_checkbox_cb, LV_EVENT_VALUE_CHANGED, NULL);
     }
+
+    // Erase Device button — red ghost outline, bottom of card
+    lv_obj_t *erase_btn = lv_btn_create(card);
+    lv_obj_set_size(erase_btn, 120, 22);
+    lv_obj_align(erase_btn, LV_ALIGN_BOTTOM_LEFT, 14, -6);
+    lv_obj_set_style_bg_opa(erase_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(erase_btn, lv_color_hex(0x3a1a1a), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(erase_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(erase_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_border_width(erase_btn, 1, 0);
+    lv_obj_set_style_border_opa(erase_btn, LV_OPA_50, 0);
+    lv_obj_set_style_radius(erase_btn, 6, 0);
+    lv_obj_set_style_shadow_width(erase_btn, 0, 0);
+    lv_obj_t *erase_lbl = lv_label_create(erase_btn);
+    lv_label_set_text(erase_lbl, LV_SYMBOL_TRASH " Erase Device");
+    lv_obj_set_style_text_color(erase_lbl, lv_color_hex(COLOR_RED), 0);
+    lv_obj_center(erase_lbl);
+    lv_obj_add_event_cb(erase_btn, erase_device_btn_cb, LV_EVENT_CLICKED, NULL);
 
     // QR code — links to DigitalKaos.tech
     static const char *qr_url = "http://DigitalKaos.tech";
@@ -509,6 +648,7 @@ static void power_btn_event_cb(lv_event_t *e) {
 static void menu_unload_event_cb(lv_event_t *e) {
     dismiss_power_overlay();
     dismiss_about_overlay();
+    dismiss_erase_overlay();
 }
 
 // ==================== Menu Screen ====================

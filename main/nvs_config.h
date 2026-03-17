@@ -151,4 +151,11 @@ bool nvs_get_disclaimer_accepted(void);
 esp_err_t nvs_save_sd_glucose_logging(bool enabled);
 bool nvs_get_sd_glucose_logging(void);
 
+// Factory reset — erases entire NVS partition
+esp_err_t nvs_factory_reset(void);
+
+// Welcome screen shown flag (one-time after first ToS accept)
+bool nvs_get_welcome_shown(void);
+esp_err_t nvs_set_welcome_shown(void);
+
 #endif // NVS_CONFIG_H

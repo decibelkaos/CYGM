@@ -639,40 +639,6 @@ void create_zipcode_entry_screen(void) {
 
 // ==================== Settings Screen Handlers ====================
 
-static void time_weather_back_event_cb(lv_event_t *e) {
-    (void)e;
-    ESP_LOGI(TAG, "Saving time & weather settings to NVS...");
-
-    // Save time settings
-    esp_err_t time_ret = nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
-    if (time_ret == ESP_OK) {
-        const char *posix_tz = get_posix_timezone(user_timezone);
-        setenv("TZ", posix_tz, 1);
-        tzset();
-        update_time_display();
-        ESP_LOGI(TAG, "Time settings saved: %s -> %s", user_timezone, posix_tz);
-    }
-
-    // Save weather settings
-    esp_err_t weather_ret = nvs_save_weather_settings(user_zipcode, user_temp_celsius,
-                                                       user_weather_interval_min);
-    if (weather_ret == ESP_OK) {
-        if (weather_task_handle != NULL) {
-            xTaskNotifyGive(weather_task_handle);
-        }
-        ESP_LOGI(TAG, "Weather settings saved");
-    }
-
-    // Recreate menu (was deleted when entering time/weather settings)
-    create_menu_screen();
-    lv_scr_load(screen_menu);
-
-    if (screen_time_weather_settings != NULL) {
-        lv_obj_del(screen_time_weather_settings);
-        screen_time_weather_settings = NULL;
-    }
-}
-
 static void location_search_event_cb(lv_event_t *e) {
     (void)e;
     ESP_LOGI(TAG, "Opening location search");
@@ -884,23 +850,7 @@ void create_time_weather_settings_screen(void) {
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
-    // Ghost back button
-    lv_obj_t *back_btn = lv_btn_create(screen_time_weather_settings);
-    lv_obj_set_size(back_btn, 36, 36);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 5, 5);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(CARD_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(back_btn, 0, 0);
-    lv_obj_set_style_shadow_width(back_btn, 0, 0);
-    lv_obj_set_style_radius(back_btn, 8, 0);
-
-    lv_obj_t *back_lbl = lv_label_create(back_btn);
-    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
-    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_center(back_lbl);
-    lv_obj_add_event_cb(back_btn, time_weather_back_event_cb, LV_EVENT_CLICKED, NULL);
+    // No back button — user must select a weather interval to save & exit
 
     // ============ Location Card ============
     lv_obj_t *loc_card = lv_obj_create(screen_time_weather_settings);
@@ -1022,6 +972,13 @@ void create_time_weather_settings_screen(void) {
     lv_obj_set_style_text_font(interval_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(interval_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(interval_label, LV_ALIGN_TOP_LEFT, 16, 4);
+
+    // Hint: user must select an interval to exit
+    lv_obj_t *exit_hint = lv_label_create(interval_card);
+    lv_label_set_text(exit_hint, LV_SYMBOL_LEFT " select to save & exit");
+    lv_obj_set_style_text_font(exit_hint, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(exit_hint, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_align(exit_hint, LV_ALIGN_TOP_RIGHT, -10, 6);
 
     // Three interval buttons: 15min, 30min, 1hr
     static const uint8_t intervals[] = {15, 30, 60};
