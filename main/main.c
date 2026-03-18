@@ -2625,7 +2625,7 @@ void create_splash_screen(void) {
 
     // Website URL
     lv_obj_t *website = lv_label_create(screen_splash);
-    lv_label_set_text(website, "DigitalKaos.tech");
+    lv_label_set_text(website, "CYGM.me");
     lv_obj_set_style_text_font(website, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(website, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_align(website, LV_ALIGN_TOP_MID, 0, 112);

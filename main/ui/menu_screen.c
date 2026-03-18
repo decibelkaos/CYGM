@@ -20,6 +20,7 @@
 #include "sd_logger.h"
 #include "nvs_config.h"
 #include "esp_system.h"
+#include "ui/home_screen.h"
 
 static const char *TAG = "MENU_SCREEN";
 
@@ -84,6 +85,12 @@ static void dismiss_about_overlay(void) {
 }
 
 static void check_update_btn_cb(lv_event_t *e);  // forward decl
+
+static void device_guide_btn_cb(lv_event_t *e) {
+    (void)e;
+    dismiss_about_overlay();
+    show_welcome_overlay();
+}
 
 static void sd_log_checkbox_cb(lv_event_t *e) {
     lv_obj_t *cb = lv_event_get_target(e);
@@ -300,32 +307,32 @@ static void show_about_overlay(void) {
     lv_obj_align(dev_name, LV_ALIGN_TOP_LEFT, 20, 100);
 
     lv_obj_t *dev_url = lv_label_create(card);
-    lv_label_set_text(dev_url, "DigitalKaos.tech");
+    lv_label_set_text(dev_url, "CYGM.me");
     lv_obj_set_style_text_color(dev_url, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_align(dev_url, LV_ALIGN_TOP_LEFT, 20, 118);
 
-    // Check for Updates button — ghost outline style
-    lv_obj_t *upd_btn = lv_btn_create(card);
-    lv_obj_set_size(upd_btn, 160, 24);
-    lv_obj_align(upd_btn, LV_ALIGN_TOP_LEFT, 16, 138);
-    lv_obj_set_style_bg_opa(upd_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(upd_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(upd_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(upd_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_border_width(upd_btn, 1, 0);
-    lv_obj_set_style_border_opa(upd_btn, LV_OPA_60, 0);
-    lv_obj_set_style_radius(upd_btn, 6, 0);
-    lv_obj_set_style_shadow_width(upd_btn, 0, 0);
-    lv_obj_t *upd_lbl = lv_label_create(upd_btn);
-    lv_label_set_text(upd_lbl, LV_SYMBOL_REFRESH " Check for Updates");
-    lv_obj_set_style_text_color(upd_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_center(upd_lbl);
-    lv_obj_add_event_cb(upd_btn, check_update_btn_cb, LV_EVENT_CLICKED, NULL);
+    // Device Guide button — ghost outline, opens welcome/QR overlay
+    lv_obj_t *guide_btn = lv_btn_create(card);
+    lv_obj_set_size(guide_btn, 160, 24);
+    lv_obj_align(guide_btn, LV_ALIGN_TOP_LEFT, 16, 138);
+    lv_obj_set_style_bg_opa(guide_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(guide_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(guide_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(guide_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(guide_btn, 1, 0);
+    lv_obj_set_style_border_opa(guide_btn, LV_OPA_60, 0);
+    lv_obj_set_style_radius(guide_btn, 6, 0);
+    lv_obj_set_style_shadow_width(guide_btn, 0, 0);
+    lv_obj_t *guide_lbl = lv_label_create(guide_btn);
+    lv_label_set_text(guide_lbl, LV_SYMBOL_LIST " Device Guide");
+    lv_obj_set_style_text_color(guide_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(guide_lbl);
+    lv_obj_add_event_cb(guide_btn, device_guide_btn_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *dev_disc = lv_label_create(card);
     lv_label_set_text(dev_disc, "Not a medical device");
     lv_obj_set_style_text_color(dev_disc, lv_color_hex(0x556677), 0);
-    lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 20, 174);
+    lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 20, 166);
 
     // SD glucose logging checkbox (only when SD card is present)
     if (sd_available) {
@@ -334,17 +341,34 @@ static void show_about_overlay(void) {
         lv_obj_set_style_text_color(sd_cb, lv_color_hex(COLOR_TEXT_DIM), 0);
         lv_obj_set_style_bg_color(sd_cb, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR | LV_STATE_CHECKED);
         lv_obj_set_style_border_color(sd_cb, lv_color_hex(COLOR_TEXT_DIM), LV_PART_INDICATOR);
-        lv_obj_align(sd_cb, LV_ALIGN_TOP_LEFT, 18, 196);
+        lv_obj_align(sd_cb, LV_ALIGN_TOP_LEFT, 18, 182);
         if (sd_glucose_logging_enabled) {
             lv_obj_add_state(sd_cb, LV_STATE_CHECKED);
         }
         lv_obj_add_event_cb(sd_cb, sd_log_checkbox_cb, LV_EVENT_VALUE_CHANGED, NULL);
     }
 
-    // Erase Device button — red ghost outline, bottom of card
+    // Bottom row: Check for Updates (left) + Erase Device (right)
+    lv_obj_t *upd_btn = lv_btn_create(card);
+    lv_obj_set_size(upd_btn, 128, 22);
+    lv_obj_align(upd_btn, LV_ALIGN_BOTTOM_LEFT, 8, -6);
+    lv_obj_set_style_bg_opa(upd_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(upd_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(upd_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(upd_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(upd_btn, 1, 0);
+    lv_obj_set_style_border_opa(upd_btn, LV_OPA_50, 0);
+    lv_obj_set_style_radius(upd_btn, 6, 0);
+    lv_obj_set_style_shadow_width(upd_btn, 0, 0);
+    lv_obj_t *upd_lbl = lv_label_create(upd_btn);
+    lv_label_set_text(upd_lbl, LV_SYMBOL_REFRESH " Updates");
+    lv_obj_set_style_text_color(upd_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_center(upd_lbl);
+    lv_obj_add_event_cb(upd_btn, check_update_btn_cb, LV_EVENT_CLICKED, NULL);
+
     lv_obj_t *erase_btn = lv_btn_create(card);
-    lv_obj_set_size(erase_btn, 120, 22);
-    lv_obj_align(erase_btn, LV_ALIGN_BOTTOM_LEFT, 14, -6);
+    lv_obj_set_size(erase_btn, 128, 22);
+    lv_obj_align(erase_btn, LV_ALIGN_BOTTOM_RIGHT, -8, -6);
     lv_obj_set_style_bg_opa(erase_btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_color(erase_btn, lv_color_hex(0x3a1a1a), LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(erase_btn, LV_OPA_COVER, LV_STATE_PRESSED);
@@ -359,8 +383,8 @@ static void show_about_overlay(void) {
     lv_obj_center(erase_lbl);
     lv_obj_add_event_cb(erase_btn, erase_device_btn_cb, LV_EVENT_CLICKED, NULL);
 
-    // QR code — links to DigitalKaos.tech
-    static const char *qr_url = "http://DigitalKaos.tech";
+    // QR code — links to CYGM.me
+    static const char *qr_url = "http://cygm.me";
     lv_obj_t *qr = lv_qrcode_create(card, 75,
                                      lv_color_hex(COLOR_TEXT_WHITE),
                                      lv_color_hex(0x0d1520));

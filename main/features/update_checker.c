@@ -27,7 +27,7 @@
 
 static const char *TAG = "UPDATE";
 
-#define UPDATE_CHECK_URL "https://digitalkaos.tech/version.json"
+#define UPDATE_CHECK_URL "https://cygm.me/version.json"
 #define UPDATE_INTERVAL_MS (24LL * 60 * 60 * 1000)  // 24 hours
 #define HTTP_BUF_SIZE 384
 
@@ -94,7 +94,7 @@ esp_err_t update_check_now(void) {
         .event_handler = http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 512,
-        // Skip cert bundle — digitalkaos.tech uses a CA not in ESP-IDF's bundle.
+        // Skip cert bundle — cygm.me uses a CA not in ESP-IDF's bundle.
         // CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y handles TLS without verification.
         // This is fine for a non-sensitive version check.
     };
@@ -924,7 +924,7 @@ void show_update_overlay(void) {
         } else {
             // No OTA URL — show web flasher instructions
             lv_obj_t *instr = lv_label_create(card);
-            lv_label_set_text(instr, "Visit DigitalKaos.tech on a\ncomputer to update via\nthe web flasher.");
+            lv_label_set_text(instr, "Visit CYGM.me on a\ncomputer to update via\nthe web flasher.");
             lv_obj_set_style_text_color(instr, lv_color_hex(COLOR_TEXT_GRAY), 0);
             lv_obj_set_style_text_align(instr, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_align(instr, LV_ALIGN_TOP_MID, 0, 92);

@@ -1,28 +1,80 @@
-{
-    "versions": [
-        {
-            "version": "0.5.0",
-            "date": "2026-03-11",
-            "stage": "Beta",
-            "notes": "Initial public beta. Real-time Dexcom glucose display, weather, alarms, OTA updates, screenshot capture, SD card logging.",
-            "files": {
-                "merged": "firmware/v0.5.0/cygm-merged.bin",
-                "app": "firmware/v0.5.0/cygm.bin",
-                "bootloader": "firmware/v0.5.0/bootloader.bin",
-                "partitions": "firmware/v0.5.0/partition-table.bin",
-                "ota_data": "firmware/v0.5.0/ota_data_initial.bin"
-            },
-            "latest": true
-        }
-    ],
-    "chip": "ESP32",
-    "flash_mode": "dio",
-    "flash_freq": "40m",
-    "flash_size": "4MB",
-    "offsets": {
-        "bootloader": "0x1000",
-        "partitions": "0x8000",
-        "ota_data": "0xd000",
-        "app": "0x10000"
-    }
+﻿{
+    "versions":  [
+                     {
+                         "version":  "0.5.13",
+                         "date":  "2026-03-16",
+                         "stage":  "Beta",
+                         "notes":  "v0.5.13 Beta — 2026-03-16\r\n- Added \"Erase Device\" factory reset option in About overlay with confirmation dialog\r\n- Added first-time Welcome overlay with QR code to setup guide (cygm.me?guide)\r\n- Added \"Device Guide\" button in About overlay to re-open the setup guide\r\n- Removed back button from Time/Weather screen; weather interval selection now saves \u0026 exits\r\n- About overlay layout polish: enlarged card, reorganized bottom row buttons",
+                         "files":  {
+                                       "merged":  "firmware/v0.5.13/cygm-merged.bin",
+                                       "app":  "firmware/v0.5.13/cygm.bin",
+                                       "bootloader":  "firmware/v0.5.13/bootloader.bin",
+                                       "partitions":  "firmware/v0.5.13/partition-table.bin",
+                                       "ota_data":  "firmware/v0.5.13/ota_data_initial.bin"
+                                   },
+                         "latest":  true
+                     },
+                     {
+                         "version":  "0.5.12",
+                         "date":  "2026-03-15",
+                         "stage":  "Beta",
+                         "notes":  "Version check TLS handshake fails on fragmented heap for OTA",
+                         "files":  {
+                                       "merged":  "firmware/v0.5.12/cygm-merged.bin",
+                                       "app":  "firmware/v0.5.12/cygm.bin",
+                                       "bootloader":  "firmware/v0.5.12/bootloader.bin",
+                                       "partitions":  "firmware/v0.5.12/partition-table.bin",
+                                       "ota_data":  "firmware/v0.5.12/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.5.11",
+                         "date":  "2026-03-15",
+                         "stage":  "Beta",
+                         "notes":  "Alarm card now updates glucose value live and auto-clears when data goes stale (\u003e15 min). No more waking up to a frozen alarm showing last night\u0027s number.",
+                         "files":  {
+                                       "merged":  "firmware/v0.5.11/cygm-merged.bin",
+                                       "app":  "firmware/v0.5.11/cygm.bin",
+                                       "bootloader":  "firmware/v0.5.11/bootloader.bin",
+                                       "partitions":  "firmware/v0.5.11/partition-table.bin",
+                                       "ota_data":  "firmware/v0.5.11/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.5.1",
+                         "date":  "2026-03-13",
+                         "stage":  "Beta",
+                         "notes":  "Memory task hadling updated and fixed\r\nSmall UI tweaks\r\nLocation Search fixed for more locations when typing city name, lists by population up to 5",
+                         "files":  {
+                                       "merged":  "firmware/v0.5.1/cygm-merged.bin",
+                                       "app":  "firmware/v0.5.1/cygm.bin",
+                                       "bootloader":  "firmware/v0.5.1/bootloader.bin",
+                                       "partitions":  "firmware/v0.5.1/partition-table.bin",
+                                       "ota_data":  "firmware/v0.5.1/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.5.0",
+                         "date":  "2026-03-11",
+                         "stage":  "Beta",
+                         "notes":  "First initial release.",
+                         "files":  {
+                                       "merged":  "firmware/v0.5.0/cygm-merged.bin",
+                                       "app":  "firmware/v0.5.0/cygm.bin",
+                                       "bootloader":  "firmware/v0.5.0/bootloader.bin",
+                                       "partitions":  "firmware/v0.5.0/partition-table.bin",
+                                       "ota_data":  "firmware/v0.5.0/ota_data_initial.bin"
+                                   }
+                     }
+                 ],
+    "chip":  "ESP32",
+    "flash_mode":  "dio",
+    "flash_freq":  "40m",
+    "flash_size":  "4MB",
+    "offsets":  {
+                    "bootloader":  "0x1000",
+                    "partitions":  "0x8000",
+                    "ota_data":  "0xd000",
+                    "app":  "0x10000"
+                }
 }

@@ -95,7 +95,7 @@ CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y    # Server CA not in ESP-IDF bundle
 
 **NEVER enable `CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH`** — it aggressively resizes buffers post-handshake, causing `-0x7100` read errors on streaming connections. This is a known ESP-IDF bug (issues #17816, #11833). Use `DYNAMIC_BUFFER` instead.
 
-**Server info**: digitalkaos.tech runs Apache on IONOS, 4-cert Sectigo chain, TLS 1.2. Sends 16384-byte TLS application data records for firmware binaries.
+**Server info**: cygm.me runs Apache on IONOS, 4-cert Sectigo chain, TLS 1.2. Sends 16384-byte TLS application data records for firmware binaries.
 
 ## Critical: OTA Memory Management
 OTA over HTTPS requires ~17KB contiguous heap for the TLS IN buffer. The ESP32's TLSF allocator cannot defragment. Before OTA download:

@@ -3,7 +3,7 @@
     CYGM Release Manager — GUI tool for packaging and uploading firmware
 .DESCRIPTION
     Packages the current ESP32 build, updates website manifests, and uploads
-    everything to digitalkaos.tech via FTP. Credentials are saved locally
+    everything to cygm.me via FTP. Credentials are saved locally
     with DPAPI encryption (Windows user-bound).
 .NOTES
     Run AFTER 'idf.py build' completes successfully.
@@ -43,7 +43,7 @@ function Read-FirmwareVersion {
 # ==================== Credential Storage ====================
 function Load-FtpConfig {
     if (!(Test-Path $script:ConfigFile)) {
-        return @{ Host = "digitalkaos.tech"; Username = ""; Password = "";
+        return @{ Host = "cygm.me"; Username = ""; Password = "";
                   RemotePath = "/public_html/"; UseSsl = $false }
     }
     $json = Get-Content $script:ConfigFile -Raw | ConvertFrom-Json
@@ -55,7 +55,7 @@ function Load-FtpConfig {
         } catch { $pass = "" }
     }
     return @{
-        Host       = if ($json.Host) { $json.Host } else { "digitalkaos.tech" }
+        Host       = if ($json.Host) { $json.Host } else { "cygm.me" }
         Username   = if ($json.Username) { $json.Username } else { "" }
         Password   = $pass
         RemotePath = if ($json.RemotePath) { $json.RemotePath } else { "/public_html/" }
@@ -128,7 +128,7 @@ function New-MergedBinary($ver) {
 
 function Update-WebsiteManifests($ver, $notes) {
     # --- version.json (includes firmware_url for OTA) ---
-    $fwUrl = "https://digitalkaos.tech/firmware/$($ver.Tag)/cygm.bin"
+    $fwUrl = "https://cygm.me/firmware/$($ver.Tag)/cygm.bin"
     @{ version = $ver.Version; stage = $ver.Stage; date = $ver.Date; firmware_url = $fwUrl } |
         ConvertTo-Json | Set-Content "$script:Root\website\version.json" -Encoding UTF8
 

@@ -598,7 +598,7 @@ void show_welcome_overlay(void) {
 
     // Glass card — blue accent (same style as disclaimer)
     lv_obj_t *card = lv_obj_create(welcome_overlay);
-    lv_obj_set_size(card, 300, 220);
+    lv_obj_set_size(card, 300, 232);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
@@ -617,14 +617,14 @@ void show_welcome_overlay(void) {
     lv_label_set_text(icon, LV_SYMBOL_OK);
     lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 6);
 
     // Title
     lv_obj_t *title = lv_label_create(card);
     lv_label_set_text(title, "Welcome to CYGM");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 32);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
 
     // Divider
     lv_obj_t *div = lv_obj_create(card);
@@ -632,27 +632,27 @@ void show_welcome_overlay(void) {
     lv_obj_set_size(div, 270, 1);
     lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
     lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
-    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 54);
+    lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 48);
 
     // Instructions
     lv_obj_t *msg = lv_label_create(card);
     lv_label_set_text(msg,
         "Scan the QR code below or visit\n"
-        "digitalkaos.tech?guide\n"
+        "cygm.me?guide\n"
         "to set up your device.");
     lv_obj_set_style_text_font(msg, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(msg, 280);
-    lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 62);
+    lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 56);
 
     // QR code — links to setup guide
-    static const char *guide_url = "http://digitalkaos.tech?guide";
-    lv_obj_t *qr = lv_qrcode_create(card, 80,
+    static const char *guide_url = "http://cygm.me?guide";
+    lv_obj_t *qr = lv_qrcode_create(card, 90,
                                      lv_color_hex(COLOR_TEXT_WHITE),
                                      lv_color_hex(0x0d1520));
     lv_qrcode_update(qr, guide_url, strlen(guide_url));
-    lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 104);
+    lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 100);
     lv_obj_set_style_border_color(qr, lv_color_hex(0x263040), 0);
     lv_obj_set_style_border_width(qr, 2, 0);
 

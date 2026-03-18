@@ -43,7 +43,7 @@ CONFIG_LV_USE_QRCODE=y
 CONFIG_ESP_TLS_INSECURE=y
 CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
 
-# ESP HTTPS OTA - Allow without cert verification (digitalkaos.tech CA not in bundle)
+# ESP HTTPS OTA - Allow without cert verification (cygm.me CA not in bundle)
 CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
 
 # mbedTLS - TLS buffer sizes (tuned for ESP32 memory constraints)
@@ -111,6 +111,14 @@ CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
 
 # [H] mbedTLS — Common cert bundle only (~40 CAs vs 200+, saves ~25KB flash)
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# FATFS — Dynamic buffers for SD card (saves ~7KB during mount)
+# Without this, FATFS.win[] and FIL.buf[] are 4096 bytes each (FF_MAX_SS),
+# SD cards use 512-byte sectors.  Default FF_MAX_SS=4096 (for wear-levelling
+# on internal flash) wastes heap: win[] is 4096 even though disk reports 512.
+# Force 512 so win[] = 512 bytes, and DYN_BUFFERS allocates it separately.
+CONFIG_FATFS_SECTOR_512=y
+CONFIG_FATFS_USE_DYN_BUFFERS=y
 
 # [L] Nano printf (saves ~50KB flash — lighter printf/sprintf implementation)
 CONFIG_NEWLIB_NANO_FORMAT=y
