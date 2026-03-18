@@ -2566,6 +2566,22 @@
                 </div>
                 <h1>Your glucose data, on <span class="accent">your terms</span></h1>
                 <p class="hero-desc">A pocket-sized, open-source CGM display you build yourself. Real-time readings, smart alarms, and weather — no subscriptions, no apps, ~$40.</p>
+                <div class="provider-grid" style="max-width: 400px; margin: 1.25rem 0;">
+                    <div class="provider-card available">
+                        <h4>Dexcom</h4>
+                        <p>G6, G7, ONE via Dexcom Share</p>
+                        <div class="provider-status ready">
+                            <span class="color-dot" style="background:var(--glucose-green)"></span> Ready
+                        </div>
+                    </div>
+                    <div class="provider-card available">
+                        <h4>FreeStyle Libre</h4>
+                        <p>Libre 2, Libre 3 via LibreLinkUp</p>
+                        <div class="provider-status soon">
+                            <span class="color-dot" style="background:var(--glucose-yellow)"></span> Live Testing
+                        </div>
+                    </div>
+                </div>
                 <div class="hero-actions">
                     <a href="#diy" class="btn btn-primary">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -2611,7 +2627,7 @@
                         <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                     </div>
                     <h3>Live Glucose Readings</h3>
-                    <p>Real-time data from your Dexcom CGM, refreshed every 90 seconds. Always current, always visible.</p>
+                    <p>Real-time data from your Dexcom or FreeStyle Libre CGM, refreshed every 90 seconds. Always current, always visible.</p>
                 </div>
                 <div class="capability-card reveal reveal-delay-2">
                     <div class="capability-icon">
@@ -3063,11 +3079,11 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                                     <span class="color-dot" style="background:var(--glucose-green)"></span> Ready to use
                                 </div>
                             </div>
-                            <div class="provider-card">
-                                <h4>FreeStyle Libre <span class="badge-coming-soon">Coming Soon</span></h4>
+                            <div class="provider-card available">
+                                <h4>FreeStyle Libre</h4>
                                 <p>Libre 2, Libre 3 via LibreLinkUp</p>
                                 <div class="provider-status soon">
-                                    <span class="color-dot" style="background:var(--glucose-yellow)"></span> In development
+                                    <span class="color-dot" style="background:var(--glucose-yellow)"></span> Live Testing
                                 </div>
                             </div>
                         </div>
@@ -3139,8 +3155,18 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                                 <span><strong>Important:</strong> You need <strong>Dexcom Share</strong> enabled in your Dexcom app (Settings &rarr; Share &rarr; Invite Follower). CYGM acts as a follower to receive your data.</span>
                             </div>
 
-                            <h3 style="margin-top: 1.25rem;">FreeStyle Libre <span class="badge-coming-soon">Coming Soon</span></h3>
-                            <p>Support for <strong>FreeStyle Libre 2 &amp; Libre 3</strong> via LibreLinkUp is currently in development. Once available, you'll be able to select your CGM provider in Settings and log in with your LibreLinkUp credentials the same way.</p>
+                            <h3 style="margin-top: 1.25rem;">FreeStyle Libre (LibreLinkUp)</h3>
+                            <ol class="guide-steps">
+                                <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; CGM Settings</strong></span></li>
+                                <li><span class="step-num">2</span> <span>Tap <strong>LibreLinkUp</strong></span></li>
+                                <li><span class="step-num">3</span> <span>Tap <strong>Sign In</strong>, then enter the <strong>email</strong> and <strong>password</strong> for your LibreLinkUp follower account.</span></li>
+                                <li><span class="step-num">4</span> <span>On success, a green <strong>"Login Successful"</strong> banner appears and glucose data begins flowing automatically.</span></li>
+                            </ol>
+
+                            <div class="guide-tip">
+                                <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                                <span><strong>Important:</strong> You need a <strong>LibreLinkUp follower account</strong> &mdash; the Libre wearer must invite you from their FreeStyle LibreLink app (Connected Apps &rarr; LibreLinkUp &rarr; Invite). CYGM uses the follower API to receive glucose data.</span>
+                            </div>
 
                             <h3 style="margin-top: 1.25rem;">Sensor Changes</h3>
                             <p>If CYGM stops receiving data for an extended period, a <strong>"No Data Received"</strong> overlay will ask if you're changing your CGM sensor. Tap <strong>Yes</strong> if you are (this adjusts data validation), or <strong>No</strong> to continue normally. The overlay auto-dismisses after 30 seconds.</p>
