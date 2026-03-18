@@ -32,14 +32,14 @@ extern "C" {
 // ==================== Version Information ====================
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
-#define CYGM_VERSION_MINOR 5
-#define CYGM_VERSION_PATCH 14
+#define CYGM_VERSION_MINOR 6
+#define CYGM_VERSION_PATCH 0
 #define CYGM_VERSION_BUILD 0
 #define CYGM_VERSION_DATE "2026-03-17"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.5.13.2026-03-16.Beta"
+#define CYGM_VERSION_STRING "0.6.0.2026-03-17.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -222,6 +222,17 @@ extern lv_obj_t *dexcom_username_entry_keyboard;
 extern lv_obj_t *dexcom_password_entry_label;
 extern lv_obj_t *dexcom_password_entry_ta;
 extern lv_obj_t *dexcom_password_entry_keyboard;
+
+// ==================== Libre Login UI ====================
+
+extern lv_obj_t *screen_libre_auth;
+extern lv_obj_t *screen_libre_login;
+extern lv_obj_t *screen_libre_email_entry;
+extern lv_obj_t *screen_libre_password_entry;
+extern lv_obj_t *screen_libre_status;
+
+extern char libre_email_buf[64];
+extern char libre_password_buf[64];
 
 // ==================== Glucose Data ====================
 

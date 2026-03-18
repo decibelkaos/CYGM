@@ -44,6 +44,8 @@
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
+#include "cgm_types.h"
 #include "hardware/led.h"
 #include "hardware/buzzer.h"
 #include "hardware/battery.h"
@@ -217,6 +219,15 @@ lv_obj_t *dexcom_username_label = NULL;
 lv_obj_t *dexcom_password_label = NULL;
 char dexcom_username_buf[64] = {0};
 char dexcom_password_buf[64] = {0};
+
+// Libre UI screens and credential buffers
+lv_obj_t *screen_libre_auth = NULL;
+lv_obj_t *screen_libre_login = NULL;
+lv_obj_t *screen_libre_email_entry = NULL;
+lv_obj_t *screen_libre_password_entry = NULL;
+lv_obj_t *screen_libre_status = NULL;
+char libre_email_buf[64] = {0};
+char libre_password_buf[64] = {0};
 
 // Glucose data - "Last Known Good" approach
 // We ALWAYS display the last valid glucose reading, even if current fetch fails
@@ -1642,9 +1653,53 @@ void recreate_background_tasks(void) {
     ESP_LOGI(TAG, "Tasks recreated (heap=%lu)", esp_get_free_heap_size());
 }
 
+// ============================================================================
+// CGM Provider Dispatch Helpers
+// ============================================================================
+
+static inline bool cgm_is_authenticated(bool use_libre) {
+    return use_libre ? libre_is_authenticated() : dexcom_is_authenticated();
+}
+
+static inline bool cgm_session_needs_refresh(bool use_libre) {
+    return use_libre ? libre_session_needs_refresh() : dexcom_session_needs_refresh();
+}
+
+static inline void cgm_close_client(bool use_libre) {
+    if (use_libre) libre_close_persistent_client();
+    else           dexcom_close_persistent_client();
+}
+
+static inline bool cgm_client_is_open(bool use_libre) {
+    return use_libre ? libre_persistent_client_is_open() : dexcom_persistent_client_is_open();
+}
+
+static inline esp_err_t cgm_authenticate(bool use_libre) {
+    if (use_libre) {
+        char email[64], pass[64];
+        if (nvs_get_libre_credentials(email, sizeof(email), pass, sizeof(pass)) != ESP_OK)
+            return ESP_ERR_NOT_FOUND;
+        return libre_authenticate(email, pass);
+    } else {
+        char user[64], pass[64];
+        if (nvs_get_dexcom_credentials(user, sizeof(user), pass, sizeof(pass)) != ESP_OK)
+            return ESP_ERR_NOT_FOUND;
+        return dexcom_authenticate(user, pass);
+    }
+}
+
+static inline esp_err_t cgm_fetch(bool use_libre, cgm_glucose_t *g) {
+    return use_libre ? libre_fetch_glucose(g) : dexcom_fetch_glucose(g);
+}
+
 // Glucose update task - fetches glucose periodically (every 90 seconds)
 void glucose_update_task(void *pvParameters) {
-    ESP_LOGI(TAG, "Glucose update task started (90 second interval)");
+    // Determine active CGM provider once at task start
+    char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
+    nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
+    bool use_libre = (strcmp(cgm_type, "libre") == 0);
+
+    ESP_LOGI(TAG, "Glucose update task started (90s interval, provider=%s)", cgm_type);
 
     // Exponential backoff for persistent failures (API outage, signal loss)
     // Normal: 90s.  After 3+ failures: 180s.  After 6+: 300s.  After 10+: 600s.
@@ -1712,47 +1767,43 @@ void glucose_update_task(void *pvParameters) {
         // failed re-auth during API outage), try again using stored credentials.
         // CRITICAL: Must delete background tasks first — TLS handshake needs ~16KB
         // contiguous heap, but running tasks fragment it to ~3KB largest block.
-        bool is_auth = dexcom_is_authenticated();
+        bool is_auth = cgm_is_authenticated(use_libre);
         if (!is_auth) {
-            char reauth_user[64], reauth_pass[64];
-            if (nvs_get_dexcom_credentials(reauth_user, sizeof(reauth_user),
-                                            reauth_pass, sizeof(reauth_pass)) == ESP_OK) {
-                ESP_LOGW(TAG, "[Glucose Task] Not authenticated — attempting re-auth (backoff=%ds)",
-                         poll_interval_sec);
-                if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-                    // Free heap for TLS handshake — same pattern as glucose fetch path
-                    bool tasks_deleted = delete_background_tasks_for_ssl("re-auth");
-                    dexcom_close_persistent_client();  // Clean slate for fresh handshake
+            ESP_LOGW(TAG, "[Glucose Task] Not authenticated — attempting re-auth (backoff=%ds)",
+                     poll_interval_sec);
+            if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+                // Free heap for TLS handshake — same pattern as glucose fetch path
+                bool tasks_deleted = delete_background_tasks_for_ssl("re-auth");
+                cgm_close_client(use_libre);  // Clean slate for fresh handshake
 
-                    esp_err_t auth_ret = dexcom_authenticate(reauth_user, reauth_pass);
-                    if (auth_ret == ESP_OK) {
-                        ESP_LOGI(TAG, "[Glucose Task] Re-auth succeeded — resuming glucose fetch");
-                        sd_log(TAG, "Auto re-auth OK after WiFi recovery");
-                        is_auth = true;
-                        consecutive_task_failures = 0;
-                        poll_interval_sec = 90;
-                        // Close SSL from auth — glucose fetch will reopen
-                        dexcom_close_persistent_client();
-                    } else {
-                        ESP_LOGW(TAG, "[Glucose Task] Re-auth failed — will retry in %ds", poll_interval_sec);
-                        sd_log(TAG, "Auto re-auth failed, retry in %ds", poll_interval_sec);
-                        consecutive_task_failures++;
-                        if (consecutive_task_failures >= 10) {
-                            poll_interval_sec = 600;
-                        } else if (consecutive_task_failures >= 6) {
-                            poll_interval_sec = 300;
-                        } else if (consecutive_task_failures >= 3) {
-                            poll_interval_sec = 180;
-                        }
+                esp_err_t auth_ret = cgm_authenticate(use_libre);
+                if (auth_ret == ESP_OK) {
+                    ESP_LOGI(TAG, "[Glucose Task] Re-auth succeeded — resuming glucose fetch");
+                    sd_log(TAG, "Auto re-auth OK after WiFi recovery");
+                    is_auth = true;
+                    consecutive_task_failures = 0;
+                    poll_interval_sec = 90;
+                    // Close SSL from auth — glucose fetch will reopen
+                    cgm_close_client(use_libre);
+                } else if (auth_ret == ESP_ERR_NOT_FOUND) {
+                    ESP_LOGW(TAG, "[Glucose Task] No stored credentials for %s", cgm_type);
+                } else {
+                    ESP_LOGW(TAG, "[Glucose Task] Re-auth failed — will retry in %ds", poll_interval_sec);
+                    sd_log(TAG, "Auto re-auth failed, retry in %ds", poll_interval_sec);
+                    consecutive_task_failures++;
+                    if (consecutive_task_failures >= 10) {
+                        poll_interval_sec = 600;
+                    } else if (consecutive_task_failures >= 6) {
+                        poll_interval_sec = 300;
+                    } else if (consecutive_task_failures >= 3) {
+                        poll_interval_sec = 180;
                     }
-                    // Always recreate tasks — whether auth succeeded or failed
-                    if (tasks_deleted) {
-                        recreate_background_tasks();
-                    }
-                    xSemaphoreGive(network_mutex);
                 }
-            } else {
-                ESP_LOGW(TAG, "[Glucose Task] Not authenticated and no stored credentials");
+                // Always recreate tasks — whether auth succeeded or failed
+                if (tasks_deleted) {
+                    recreate_background_tasks();
+                }
+                xSemaphoreGive(network_mutex);
             }
 
             if (!is_auth) continue;  // Try again next cycle
@@ -1763,28 +1814,23 @@ void glucose_update_task(void *pvParameters) {
         // Proactive session refresh: handle BEFORE entering fetch path so the
         // inline refresh inside dexcom_fetch_glucose() never triggers under
         // low-memory conditions. We control task deletion here.
-        if (is_auth && dexcom_session_needs_refresh()) {
+        if (is_auth && cgm_session_needs_refresh(use_libre)) {
             ESP_LOGI(TAG, "Proactive session refresh — handling at task level");
             sd_log(TAG, "Proactive session refresh");
 
             if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
                 bool tasks_deleted = delete_background_tasks_for_ssl("session-refresh");
-                dexcom_close_persistent_client();
+                cgm_close_client(use_libre);
 
-                char refresh_user[64], refresh_pass[64];
-                if (nvs_get_dexcom_credentials(refresh_user, sizeof(refresh_user),
-                                                refresh_pass, sizeof(refresh_pass)) == ESP_OK) {
-                    esp_err_t ref_ret = dexcom_authenticate(refresh_user, refresh_pass);
-                    if (ref_ret == ESP_OK) {
-                        ESP_LOGI(TAG, "Proactive refresh OK");
-                        sd_log(TAG, "Proactive refresh OK");
-                        // Close auth SSL — fetch will reopen with its own connection
-                        dexcom_close_persistent_client();
-                    } else {
-                        ESP_LOGW(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
-                        sd_log(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
-                        is_auth = dexcom_is_authenticated();
-                    }
+                esp_err_t ref_ret = cgm_authenticate(use_libre);
+                if (ref_ret == ESP_OK) {
+                    ESP_LOGI(TAG, "Proactive refresh OK");
+                    sd_log(TAG, "Proactive refresh OK");
+                    cgm_close_client(use_libre);
+                } else {
+                    ESP_LOGW(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
+                    sd_log(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
+                    is_auth = cgm_is_authenticated(use_libre);
                 }
 
                 if (tasks_deleted) {
@@ -1828,7 +1874,7 @@ void glucose_update_task(void *pvParameters) {
                 // SSL reuse strategy: After task creation, heap fragments to ~3KB
                 // largest block.  New TLS handshake needs ~16KB contiguous → fails.
                 // Reusing an open connection only needs ~3-5KB for HTTP buffers.
-                bool client_open = dexcom_persistent_client_is_open();
+                bool client_open = cgm_client_is_open(use_libre);
 
                 // Check largest DRAM block to detect fragmentation (SSL needs byte-addressable memory)
                 size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
@@ -1854,17 +1900,17 @@ void glucose_update_task(void *pvParameters) {
                 // Mark fetch as in progress
                 glucose_fetch_in_progress = true;
 
-                dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
+                cgm_glucose_t glucose = {0};  // Initialize to prevent garbage data
                 ESP_LOGI(TAG, "Fetching periodic glucose reading...");
 
-                // Blink blue to indicate Dexcom poll starting
+                // Blink blue to indicate CGM poll starting
                 led_blink_blue();
 
-                esp_err_t ret = dexcom_fetch_glucose(&glucose);
+                esp_err_t ret = cgm_fetch(use_libre, &glucose);
 
                 // Retry on connection death (SSL was open but socket died mid-fetch).
-                // Dexcom API auto-closes the dead client, so retry gets fresh SSL.
-                if (ret != ESP_OK && !glucose.valid && !dexcom_persistent_client_is_open()) {
+                // API auto-closes the dead client, so retry gets fresh SSL.
+                if (ret != ESP_OK && !glucose.valid && !cgm_client_is_open(use_libre)) {
                     ESP_LOGW(TAG, "Connection died mid-fetch — retrying with fresh SSL");
                     sd_log(TAG, "RETRY: connection died, freeing tasks");
 
@@ -1878,7 +1924,7 @@ void glucose_update_task(void *pvParameters) {
                              (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
                     memset(&glucose, 0, sizeof(glucose));
-                    ret = dexcom_fetch_glucose(&glucose);
+                    ret = cgm_fetch(use_libre, &glucose);
 
                     if (ret == ESP_OK && glucose.valid) {
                         ESP_LOGI(TAG, "RETRY: success — %d mg/dL", glucose.value);
@@ -1915,7 +1961,7 @@ void glucose_update_task(void *pvParameters) {
                 last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
 
                 ESP_LOGI(TAG, "Glucose updated: %d mg/dL, trend: %s",
-                         glucose.value, dexcom_trend_description(glucose.trend));
+                         glucose.value, cgm_trend_description(glucose.trend));
 
                 // Add to history for trend chart (convert seconds to milliseconds)
                 glucose_history_add(glucose.value, (int64_t)glucose.timestamp * 1000);
@@ -1952,10 +1998,10 @@ void glucose_update_task(void *pvParameters) {
                 led_show_success();
 
                 sd_log(TAG, "OK: %d mg/dL, %s, heap=%lu",
-                       glucose.value, dexcom_trend_description(glucose.trend),
+                       glucose.value, cgm_trend_description(glucose.trend),
                        esp_get_free_heap_size());
                 if (sd_glucose_logging_enabled) {
-                    sd_log_glucose(glucose.value, dexcom_trend_description(glucose.trend));
+                    sd_log_glucose(glucose.value, cgm_trend_description(glucose.trend));
                 }
 
                 // Play success sound on first glucose reading
@@ -2147,7 +2193,7 @@ void glucose_update_task(void *pvParameters) {
                 // Reusing open connection needs only ~3-5KB.
                 // Weather task closes SSL before its fetch; glucose reopens via task-deletion.
                 if (glucose_fetch_failed) {
-                    dexcom_close_persistent_client();
+                    cgm_close_client(use_libre);
                     ESP_LOGI(TAG, "SSL closed (fetch failed), heap=%lu", esp_get_free_heap_size());
                     sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
                     sd_logger_resume();
@@ -2278,10 +2324,11 @@ void wifi_icon_event_cb(lv_event_t *e) {
         dismiss_wifi_disconnected_overlay();
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
-        // Close Dexcom persistent client to free ~30KB memory for WiFi scan/UI
-        ESP_LOGI(TAG, "Closing Dexcom persistent client before WiFi scan");
+        // Close CGM persistent client to free ~30KB memory for WiFi scan/UI
+        ESP_LOGI(TAG, "Closing CGM persistent client before WiFi scan");
         dexcom_close_persistent_client();
-        ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes (internal: %lu)",
+        libre_close_persistent_client();
+        ESP_LOGI(TAG, "Free heap after closing CGM client: %lu bytes (internal: %lu)",
                  esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
         // Recreate WiFi list screen fresh (delete old one if exists)
@@ -2393,10 +2440,11 @@ void menu_item_event_cb(lv_event_t *e) {
             case 1:  // WiFi Setup
                 ESP_LOGI(TAG, "Launching WiFi setup...");
 
-                // Close Dexcom persistent client to free ~30KB memory for WiFi scan/UI
-                ESP_LOGI(TAG, "Closing Dexcom persistent client before WiFi scan");
+                // Close CGM persistent client to free ~30KB memory for WiFi scan/UI
+                ESP_LOGI(TAG, "Closing CGM persistent client before WiFi scan");
                 dexcom_close_persistent_client();
-                ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes (internal: %lu)",
+                libre_close_persistent_client();
+                ESP_LOGI(TAG, "Free heap after closing CGM client: %lu bytes (internal: %lu)",
                          esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
                 // Load WiFi list screen (create if needed)

@@ -11,6 +11,7 @@
 #include "nvs_config.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
 #include "geocoding_api.h"
 #include "sd_logger.h"
 #include "esp_http_client.h"
@@ -505,11 +506,15 @@ void weather_update_task(void *pvParameters) {
 
                     ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
 
-                    // Close Dexcom SSL to free ~15KB for weather HTTP + cJSON parsing.
+                    // Close Dexcom/Libre SSL to free ~15KB for weather HTTP + cJSON parsing.
                     // Glucose task handles reconnection via task-deletion pattern.
                     if (dexcom_persistent_client_is_open()) {
                         dexcom_close_persistent_client();
                         ESP_LOGI(TAG, "Closed Dexcom SSL for weather (heap now: %lu)", esp_get_free_heap_size());
+                    }
+                    if (libre_persistent_client_is_open()) {
+                        libre_close_persistent_client();
+                        ESP_LOGI(TAG, "Closed Libre SSL for weather (heap now: %lu)", esp_get_free_heap_size());
                     }
 
                     ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);

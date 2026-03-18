@@ -18,6 +18,8 @@
 #include "ui/wifi_screens.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
+#include "cgm_types.h"
 #include "sd_logger.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
@@ -253,158 +255,161 @@ void wifi_task_core0(void *pvParameters) {
                 ESP_LOGI(TAG, "time_update task already running");
             }
 
-            // Delay weather task until after Dexcom connects (SSL memory priority)
-            // Will be started after Dexcom auth completes
+            // Delay weather task until after CGM connects (SSL memory priority)
+            // Will be started after CGM auth completes
 
-            // Auto-login to Dexcom if credentials saved (CRITICAL: Wait for time sync first!)
-            if (nvs_has_dexcom_credentials()) {
-                ESP_LOGI(TAG, "Found saved Dexcom credentials, will attempt auto-login after time sync");
-                char username[64], password[64];
-                if (nvs_get_dexcom_credentials(username, sizeof(username), password, sizeof(password)) == ESP_OK) {
-                    // Copy to buffers
-                    strncpy(dexcom_username_buf, username, sizeof(dexcom_username_buf) - 1);
-                    strncpy(dexcom_password_buf, password, sizeof(dexcom_password_buf) - 1);
+            // Determine active CGM provider
+            char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
+            nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
+            bool boot_use_libre = (strcmp(cgm_type, "libre") == 0);
 
-                    // CRITICAL: Wait for SNTP time sync (SSL certificates require accurate time!)
-                    ESP_LOGI(TAG, "Waiting for SNTP time sync before Dexcom auth (required for SSL)...");
+            // Check for saved credentials (dispatch by provider)
+            bool has_cgm_creds = boot_use_libre ? nvs_has_libre_credentials() : nvs_has_dexcom_credentials();
 
-                    // Check current time before waiting
-                    time_t now;
-                    struct tm timeinfo;
-                    time(&now);
-                    localtime_r(&now, &timeinfo);
-                    ESP_LOGI(TAG, "Current system time: %04d-%02d-%02d %02d:%02d:%02d",
-                             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+            if (has_cgm_creds) {
+                ESP_LOGI(TAG, "Found saved %s credentials, will attempt auto-login after time sync",
+                         boot_use_libre ? "Libre" : "Dexcom");
 
-                    if (!wait_for_time_sync(60000)) {  // Increased to 60 seconds
-                        sd_log(TAG, "Time sync failed after 60s - cannot auth Dexcom");
-                        ESP_LOGE(TAG, "Time sync failed after 60s - CANNOT attempt Dexcom auth (SSL will fail)");
-                        ESP_LOGE(TAG, "System time is still: %04d-%02d-%02d (needs to be >= 2020)",
-                                 timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+                // Load credentials into UI buffers
+                if (boot_use_libre) {
+                    nvs_get_libre_credentials(libre_email_buf, sizeof(libre_email_buf),
+                                               libre_password_buf, sizeof(libre_password_buf));
+                } else {
+                    char username[64], password[64];
+                    if (nvs_get_dexcom_credentials(username, sizeof(username), password, sizeof(password)) == ESP_OK) {
+                        strncpy(dexcom_username_buf, username, sizeof(dexcom_username_buf) - 1);
+                        strncpy(dexcom_password_buf, password, sizeof(dexcom_password_buf) - 1);
+                    }
+                }
 
-                        // Still start tasks - glucose first (critical), then weather
-                        if (glucose_task_handle == NULL) {
-                            ESP_LOGI(TAG, "Starting glucose task (will auto-retry after time syncs)...");
-                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                // CRITICAL: Wait for SNTP time sync (SSL certificates require accurate time!)
+                ESP_LOGI(TAG, "Waiting for SNTP time sync before %s auth (required for SSL)...",
+                         boot_use_libre ? "Libre" : "Dexcom");
+
+                time_t now;
+                struct tm timeinfo;
+                time(&now);
+                localtime_r(&now, &timeinfo);
+                ESP_LOGI(TAG, "Current system time: %04d-%02d-%02d %02d:%02d:%02d",
+                         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
+                if (!wait_for_time_sync(60000)) {
+                    sd_log(TAG, "Time sync failed after 60s - cannot auth %s", cgm_type);
+                    ESP_LOGE(TAG, "Time sync failed after 60s - CANNOT attempt %s auth (SSL will fail)", cgm_type);
+
+                    if (glucose_task_handle == NULL) {
+                        ESP_LOGI(TAG, "Starting glucose task (will auto-retry after time syncs)...");
+                        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                    }
+                    if (weather_task_handle == NULL) {
+                        ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
+                        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+                    }
+                } else {
+                    ESP_LOGI(TAG, "Time synced successfully, proceeding with %s auto-login", cgm_type);
+
+                    int max_retries = 5;
+                    int retry_delay_ms = 2000;
+
+                    for (int attempt = 1; attempt <= max_retries; attempt++) {
+                        ESP_LOGI(TAG, "%s auth attempt %d/%d...", cgm_type, attempt, max_retries);
+
+                        esp_err_t ret;
+                        if (boot_use_libre) {
+                            ret = libre_authenticate(libre_email_buf, libre_password_buf);
+                        } else {
+                            ret = dexcom_authenticate(dexcom_username_buf, dexcom_password_buf);
                         }
-                        if (weather_task_handle == NULL) {
-                            ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
-                            xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
-                        }
-                    } else {
-                        // Time is synced, now safe to authenticate
-                        ESP_LOGI(TAG, "Time synced successfully, proceeding with Dexcom auto-login");
 
-                        // Retry logic with exponential backoff (life-critical - never give up!)
-                        int max_retries = 5;
-                        int retry_delay_ms = 2000;  // Start with 2 seconds
+                        if (ret == ESP_OK) {
+                            sd_log(TAG, "%s auto-login OK (attempt %d)", cgm_type, attempt);
+                            ESP_LOGI(TAG, "%s auto-login successful on attempt %d!", cgm_type, attempt);
 
-                        for (int attempt = 1; attempt <= max_retries; attempt++) {
-                            ESP_LOGI(TAG, "Dexcom auth attempt %d/%d...", attempt, max_retries);
-
-                            esp_err_t ret = dexcom_authenticate(username, password);
-                            if (ret == ESP_OK) {
-                                sd_log(TAG, "Dexcom auto-login OK (attempt %d)", attempt);
-                            ESP_LOGI(TAG, "Dexcom auto-login successful on attempt %d!", attempt);
-
-                                // Fetch initial glucose reading
-                                dexcom_glucose_t glucose = {0};  // Initialize to prevent garbage data
-                                esp_err_t fetch_ret = dexcom_fetch_glucose(&glucose);
-
-                                // Always update fetch time on successful API contact (even if data is stale).
-                                // This keeps the SSL connection warm and the progress bar ticking.
-                                if (fetch_ret == ESP_OK) {
-                                    last_glucose_fetch_time = esp_timer_get_time() / 1000;  // milliseconds
-                                }
-
-                                if (fetch_ret == ESP_OK && glucose.valid) {
-                                    current_glucose = glucose.value;
-                                    current_trend = glucose.trend;
-                                    glucose_timestamp = glucose.timestamp;
-                                    glucose_data_valid = true;
-                                    glucose_status = glucose.status;
-
-                                    sd_log(TAG, "Initial glucose: %d mg/dL, trend: %s",
-                                           glucose.value, dexcom_trend_description(glucose.trend));
-                                    ESP_LOGI(TAG, "Initial glucose: %d mg/dL, trend: %s",
-                                             glucose.value, dexcom_trend_description(glucose.trend));
-
-                                    // Play success sound on first glucose reading
-                                    if (!first_glucose_received) {
-                                        first_glucose_received = true;
-                                        ESP_LOGI(TAG, "First glucose reading received - playing success sound");
-                                        play_success_sound();
-                                    }
-
-                                    // Check alarms
-                                    check_glucose_alarms(current_glucose);
-
-                                    update_glucose_display();
-                                } else {
-                                    // No data yet or stale - update status
-                                    glucose_data_valid = false;
-                                    glucose_status = glucose.status;
-                                    update_glucose_display();
-                                }
-
-                                ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial Dexcom fetch =====");
-                                ESP_LOGI(TAG, "Free heap: %lu bytes (SSL alive)", esp_get_free_heap_size());
-                                ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
-
-                                // Flush SD logs after initial fetch
-                                sd_logger_flush();
-
-                                // Start glucose task FIRST — it's critical and needs 4KB
-                                // contiguous stack.  Must create before weather (8KB) which
-                                // fragments heap during its HTTP fetch.
-                                if (glucose_task_handle == NULL) {
-                                    ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: Before starting glucose task =====");
-                                    ESP_LOGI(TAG, "Free heap: %lu bytes, largest: %lu",
-                                             (unsigned long)esp_get_free_heap_size(),
-                                             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-                                    ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
-                                    xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
-                                }
-
-                                // Start weather task (uses HTTP — no SSL overhead)
-                                if (weather_task_handle == NULL) {
-                                    ESP_LOGI(TAG, "Starting weather task (after Dexcom, HTTP mode)...");
-                                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
-                                }
-
-                                break;  // Success - exit retry loop
+                            // Fetch initial glucose reading
+                            cgm_glucose_t glucose = {0};
+                            esp_err_t fetch_ret;
+                            if (boot_use_libre) {
+                                fetch_ret = libre_fetch_glucose(&glucose);
                             } else {
-                                sd_log(TAG, "Dexcom auth attempt %d failed: %s", attempt, esp_err_to_name(ret));
-                                ESP_LOGW(TAG, "Dexcom auth attempt %d failed: %s", attempt, esp_err_to_name(ret));
+                                fetch_ret = dexcom_fetch_glucose(&glucose);
+                            }
 
-                                if (attempt < max_retries) {
-                                    ESP_LOGI(TAG, "Retrying in %d ms...", retry_delay_ms);
-                                    vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
-                                    retry_delay_ms *= 2;  // Exponential backoff: 2s, 4s, 8s, 16s
-                                } else {
-                                    sd_log(TAG, "CRITICAL: Dexcom login failed after %d attempts", max_retries);
-                                    ESP_LOGE(TAG, "Dexcom auto-login failed after %d attempts", max_retries);
-                                    ESP_LOGE(TAG, "CRITICAL: Starting tasks anyway - glucose task will auto-retry");
+                            if (fetch_ret == ESP_OK) {
+                                last_glucose_fetch_time = esp_timer_get_time() / 1000;
+                            }
+
+                            if (fetch_ret == ESP_OK && glucose.valid) {
+                                current_glucose = glucose.value;
+                                current_trend = glucose.trend;
+                                glucose_timestamp = glucose.timestamp;
+                                glucose_data_valid = true;
+                                glucose_status = glucose.status;
+
+                                sd_log(TAG, "Initial glucose: %d mg/dL, trend: %s",
+                                       glucose.value, cgm_trend_description(glucose.trend));
+                                ESP_LOGI(TAG, "Initial glucose: %d mg/dL, trend: %s",
+                                         glucose.value, cgm_trend_description(glucose.trend));
+
+                                if (!first_glucose_received) {
+                                    first_glucose_received = true;
+                                    ESP_LOGI(TAG, "First glucose reading received - playing success sound");
+                                    play_success_sound();
                                 }
+
+                                check_glucose_alarms(current_glucose);
+                                update_glucose_display();
+                            } else {
+                                glucose_data_valid = false;
+                                glucose_status = glucose.status;
+                                update_glucose_display();
+                            }
+
+                            ESP_LOGI(TAG, "===== MEMORY CHECKPOINT: After initial %s fetch =====", cgm_type);
+                            ESP_LOGI(TAG, "Free heap: %lu bytes (SSL alive)", esp_get_free_heap_size());
+                            ESP_LOGI(TAG, "Minimum free heap ever: %lu bytes", esp_get_minimum_free_heap_size());
+
+                            sd_logger_flush();
+
+                            if (glucose_task_handle == NULL) {
+                                ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
+                                xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                            }
+                            if (weather_task_handle == NULL) {
+                                ESP_LOGI(TAG, "Starting weather task (after %s, HTTP mode)...", cgm_type);
+                                xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+                            }
+
+                            break;  // Success - exit retry loop
+                        } else {
+                            sd_log(TAG, "%s auth attempt %d failed: %s", cgm_type, attempt, esp_err_to_name(ret));
+                            ESP_LOGW(TAG, "%s auth attempt %d failed: %s", cgm_type, attempt, esp_err_to_name(ret));
+
+                            if (attempt < max_retries) {
+                                ESP_LOGI(TAG, "Retrying in %d ms...", retry_delay_ms);
+                                vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
+                                retry_delay_ms *= 2;
+                            } else {
+                                sd_log(TAG, "CRITICAL: %s login failed after %d attempts", cgm_type, max_retries);
+                                ESP_LOGE(TAG, "%s auto-login failed after %d attempts", cgm_type, max_retries);
+                                ESP_LOGE(TAG, "CRITICAL: Starting tasks anyway - glucose task will auto-retry");
                             }
                         }
+                    }
 
-                        // Ensure glucose and weather tasks start even if auth failed
-                        // Glucose first (critical, 4KB stack), weather second (8KB)
-                        if (glucose_task_handle == NULL) {
-                            ESP_LOGI(TAG, "Starting glucose task (will auto-reconnect to Dexcom)...");
-                            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
-                        }
-                        if (weather_task_handle == NULL) {
-                            ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
-                            xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
-                        }
+                    // Ensure glucose and weather tasks start even if auth failed
+                    if (glucose_task_handle == NULL) {
+                        ESP_LOGI(TAG, "Starting glucose task (will auto-reconnect to %s)...", cgm_type);
+                        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                    }
+                    if (weather_task_handle == NULL) {
+                        ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
+                        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                     }
                 }
             } else {
-                // No Dexcom credentials - start weather task
-                ESP_LOGI(TAG, "No Dexcom credentials found, starting weather task (HTTP mode)...");
+                // No CGM credentials - start weather task
+                ESP_LOGI(TAG, "No %s credentials found, starting weather task (HTTP mode)...", cgm_type);
                 if (weather_task_handle == NULL) {
                     xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
                 }

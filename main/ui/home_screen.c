@@ -15,6 +15,7 @@
 #include "ui/glucose_chart.h"
 #include "ui/wifi_screens.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
 #include "sd_logger.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
@@ -249,6 +250,7 @@ static void wifi_disc_settings_cb(lv_event_t *e) {
 
     // Free memory for WiFi scan (same flow as menu WiFi Setup)
     dexcom_close_persistent_client();
+    libre_close_persistent_client();
 
     // Navigate to WiFi list screen (already in LVGL context — no lock needed)
     if (screen_wifi_list != NULL) {

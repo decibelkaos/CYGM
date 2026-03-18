@@ -11,6 +11,7 @@
 #include "shared_state.h"
 #include "sd_logger.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
 #include "esp_http_client.h"
 #include "esp_ota_ops.h"
 #include "esp_log.h"
@@ -359,8 +360,9 @@ void update_prepare_memory(void) {
     // 1. Pause background tasks (skip network ops on next loop)
     pause_background_tasks = true;
 
-    // 2. Close Dexcom persistent SSL connection (~15-20KB freed)
+    // 2. Close Dexcom/Libre persistent SSL connection (~15-20KB freed)
     dexcom_close_persistent_client();
+    libre_close_persistent_client();
 
     // 3. Wait for network mutex — ensures no task is mid-SSL-operation
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) == pdTRUE) {
@@ -394,8 +396,9 @@ void update_stop_all_tasks(void) {
     // 1. Pause first so tasks skip network ops on their next loop iteration
     pause_background_tasks = true;
 
-    // 2. Close Dexcom persistent SSL (may already be closed — that's fine)
+    // 2. Close Dexcom/Libre persistent SSL (may already be closed — that's fine)
     dexcom_close_persistent_client();
+    libre_close_persistent_client();
 
     // 3. Acquire + release network mutex to ensure no task is mid-operation
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) == pdTRUE) {

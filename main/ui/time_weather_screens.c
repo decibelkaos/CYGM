@@ -12,6 +12,7 @@
 #include "features/time_system.h"
 #include "features/geocoding_api.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -314,6 +315,10 @@ static void location_kb_ready_cb(lv_event_t *e) {
         if (dexcom_persistent_client_is_open()) {
             dexcom_close_persistent_client();
             ESP_LOGI(TAG, "Closed Dexcom SSL for search (heap: %lu)", esp_get_free_heap_size());
+        }
+        if (libre_persistent_client_is_open()) {
+            libre_close_persistent_client();
+            ESP_LOGI(TAG, "Closed Libre SSL for search (heap: %lu)", esp_get_free_heap_size());
         }
         xSemaphoreGive(network_mutex);
     }

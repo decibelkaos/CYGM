@@ -98,6 +98,21 @@ esp_err_t nvs_get_dexcom_credentials(char *username, size_t user_len, char *pass
 bool nvs_has_dexcom_credentials(void);
 esp_err_t nvs_clear_dexcom_credentials(void);
 
+// LibreLinkUp credentials (email/password)
+esp_err_t nvs_set_libre_credentials(const char *email, const char *password);
+esp_err_t nvs_get_libre_credentials(char *email, size_t email_len, char *password, size_t pass_len);
+bool nvs_has_libre_credentials(void);
+esp_err_t nvs_clear_libre_credentials(void);
+
+// LibreLinkUp session (JWT token, patient ID, region URL, token expiry)
+esp_err_t nvs_save_libre_session(const char *token, const char *patient_id,
+                                  const char *region_url, int32_t token_expires);
+esp_err_t nvs_load_libre_session(char *token, size_t token_max,
+                                  char *patient_id, size_t pid_max,
+                                  char *region_url, size_t region_max,
+                                  int32_t *token_expires);
+esp_err_t nvs_clear_libre_session(void);
+
 // Alarm settings structures
 typedef enum {
     ALARM_TONE_BEEP_1 = 0,

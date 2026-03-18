@@ -838,6 +838,195 @@ esp_err_t nvs_clear_dexcom_credentials(void) {
     return ret;
 }
 
+// ==================== LibreLinkUp Credentials ====================
+
+#define NVS_LIBRE_EMAIL_KEY "libre_email"
+#define NVS_LIBRE_PASS_KEY  "libre_pass"
+#define NVS_LIBRE_TOKEN_KEY "libre_token"
+#define NVS_LIBRE_PAT_KEY   "libre_pat_id"
+#define NVS_LIBRE_REGION_KEY "libre_region"
+#define NVS_LIBRE_EXP_KEY   "libre_tk_exp"
+
+esp_err_t nvs_set_libre_credentials(const char *email, const char *password) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_LIBRE_EMAIL_KEY, email);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_LIBRE_PASS_KEY, password);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Libre credentials saved to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_get_libre_credentials(char *email, size_t email_len, char *password, size_t pass_len) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_LIBRE_EMAIL_KEY, email, &email_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_LIBRE_PASS_KEY, password, &pass_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_libre_credentials(void) {
+    char email[64], pass[64];
+    return (nvs_get_libre_credentials(email, sizeof(email), pass, sizeof(pass)) == ESP_OK);
+}
+
+esp_err_t nvs_clear_libre_credentials(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    nvs_erase_key(nvs_handle, NVS_LIBRE_EMAIL_KEY);
+    nvs_erase_key(nvs_handle, NVS_LIBRE_PASS_KEY);
+    ret = nvs_commit(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Libre credentials cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_save_libre_session(const char *token, const char *patient_id,
+                                  const char *region_url, int32_t token_expires) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    if (token != NULL) {
+        ret = nvs_set_str(nvs_handle, NVS_LIBRE_TOKEN_KEY, token);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    if (patient_id != NULL) {
+        ret = nvs_set_str(nvs_handle, NVS_LIBRE_PAT_KEY, patient_id);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    if (region_url != NULL) {
+        ret = nvs_set_str(nvs_handle, NVS_LIBRE_REGION_KEY, region_url);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    ret = nvs_set_i32(nvs_handle, NVS_LIBRE_EXP_KEY, token_expires);
+    if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Libre session saved to NVS (expires=%ld)", (long)token_expires);
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_libre_session(char *token, size_t token_max,
+                                  char *patient_id, size_t pid_max,
+                                  char *region_url, size_t region_max,
+                                  int32_t *token_expires) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    if (token != NULL) {
+        ret = nvs_get_str(nvs_handle, NVS_LIBRE_TOKEN_KEY, token, &token_max);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    if (patient_id != NULL) {
+        ret = nvs_get_str(nvs_handle, NVS_LIBRE_PAT_KEY, patient_id, &pid_max);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    if (region_url != NULL) {
+        ret = nvs_get_str(nvs_handle, NVS_LIBRE_REGION_KEY, region_url, &region_max);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    if (token_expires != NULL) {
+        ret = nvs_get_i32(nvs_handle, NVS_LIBRE_EXP_KEY, token_expires);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
+    ESP_LOGI(TAG, "Libre session loaded from NVS");
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+esp_err_t nvs_clear_libre_session(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    nvs_erase_key(nvs_handle, NVS_LIBRE_TOKEN_KEY);
+    nvs_erase_key(nvs_handle, NVS_LIBRE_PAT_KEY);
+    nvs_erase_key(nvs_handle, NVS_LIBRE_REGION_KEY);
+    nvs_erase_key(nvs_handle, NVS_LIBRE_EXP_KEY);
+    ret = nvs_commit(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Libre session cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
 // ============================================================================
 // CGM Alarm Settings
 // ============================================================================

@@ -15,6 +15,7 @@
 #include "shared_state.h"
 #include "sd_logger.h"
 #include "dexcom_api.h"
+#include "libre_api.h"
 #include "main.h"
 #include "features/time_system.h"
 #include "features/weather_system.h"
@@ -204,6 +205,7 @@ esp_err_t screenshot_take(void)
     pause_background_tasks = true;
 
     dexcom_close_persistent_client();
+    libre_close_persistent_client();
 
     // Fence: ensure no task is mid-SSL-operation
     if (network_mutex) {

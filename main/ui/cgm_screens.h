@@ -18,6 +18,13 @@ void create_dexcom_username_entry_screen(void);
 void create_dexcom_password_entry_screen(void);
 void create_dexcom_status_screen(void);
 
+// LibreLinkUp screens
+void create_libre_auth_screen(void);
+void create_libre_login_screen(void);
+void create_libre_email_entry_screen(void);
+void create_libre_password_entry_screen(void);
+void create_libre_status_screen(void);
+
 #ifdef __cplusplus
 }
 #endif
