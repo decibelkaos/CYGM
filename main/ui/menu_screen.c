@@ -20,6 +20,9 @@
 #include "sd_logger.h"
 #include "nvs_config.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"
+#include "dexcom_api.h"
+#include "libre_api.h"
 #include "ui/home_screen.h"
 
 static const char *TAG = "MENU_SCREEN";
@@ -394,90 +397,103 @@ static void show_about_overlay(void) {
     lv_obj_set_style_border_width(qr, 2, 0);
 }
 
-// Background task: check for updates, wait for user decision, optionally do OTA.
-// OTA runs in THIS task to avoid wasting ~4.6KB heap on a separate task stack.
-static void check_update_task_fn(void *param) {
-    // Wait for home screen transition to complete
-    vTaskDelay(pdMS_TO_TICKS(200));
+// OTA download task (8KB stack) — needs large stack for HTTPS/TLS operations.
+// Created only after update_stop_all_tasks() frees ~35KB, so 8KB is easily available.
+static void ota_download_task_fn(void *param) {
+    update_do_ota_download();
+    // On success: reboots inside. On failure: also reboots (tasks were deleted).
+    vTaskDelete(NULL);
+}
 
-    // Delete menu screen to reclaim LVGL pool
-    if (lvgl_port_lock(200)) {
-        if (screen_menu != NULL) {
-            lv_obj_del(screen_menu);
-            screen_menu = NULL;
-        }
-        lvgl_port_unlock();
-    }
+// Small polling task (3KB stack) — waits for user to tap Install or Dismiss.
+// Does NOT do TLS, so small stack is fine. Only created when OTA is available.
+static void update_ota_wait_task_fn(void *param) {
+    update_set_manual_polling(true);
+    update_clear_ota_request();
 
-    // Free heap: pause background tasks + close Dexcom SSL
-    update_prepare_memory();
-
-    // Version check
-    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) == pdTRUE) {
-        update_check_now();
-        xSemaphoreGive(network_mutex);
-    }
-
-    if (lvgl_port_lock(200)) {
-        show_update_overlay();
-        lvgl_port_unlock();
-    }
-
-    // If update is available with OTA URL, wait for user to tap Install or Dismiss
     const update_info_t *info = update_get_info();
-    if (info->available && info->firmware_url[0] != '\0') {
-        update_set_manual_polling(true);  // Prevent fallback task creation
+    for (int i = 0; i < 1200; i++) {  // 120s timeout
+        if (update_ota_install_requested()) break;
+        if (!info->available) break;  // Overlay was dismissed
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    update_set_manual_polling(false);
+
+    if (update_ota_install_requested()) {
         update_clear_ota_request();
 
-        // Poll for user decision (Install button sets ota_install_requested)
-        // Timeout after 120 seconds
-        for (int i = 0; i < 1200; i++) {
-            if (update_ota_install_requested()) break;
-            if (!info->available) break;  // Overlay was dismissed
-            vTaskDelay(pdMS_TO_TICKS(100));
+        if (lvgl_port_lock(200)) {
+            dismiss_update_overlay();
+            show_ota_overlay("Stopping tasks...");
+            lvgl_port_unlock();
         }
 
-        update_set_manual_polling(false);
+        // Delete ALL tasks to maximize heap for OTA TLS (~35KB freed)
+        update_stop_all_tasks();
 
-        if (update_ota_install_requested()) {
-            update_clear_ota_request();
-
-            // Show OTA progress overlay
-            if (lvgl_port_lock(200)) {
-                dismiss_update_overlay();
-                show_ota_overlay("Stopping tasks...");
-                lvgl_port_unlock();
-            }
-
-            // AGGRESSIVE cleanup: delete all tasks to maximize heap for OTA TLS.
-            // update_prepare_memory() was already called for the version check,
-            // but that only paused tasks. Now we DELETE them to free stack memory.
-            update_stop_all_tasks();
-
-            // Run OTA download in THIS task.
-            // On success: reboots. On failure: also reboots (tasks were deleted).
-            update_do_ota_download();
-            // If we get here, update_do_ota_download already handles reboot
+        // Create OTA download task with proper 8KB stack (heap now has ~40KB+ free)
+        BaseType_t ret = xTaskCreatePinnedToCore(
+            ota_download_task_fn, "ota_dl", 8192, NULL, 5, NULL, 0);
+        if (ret != pdPASS) {
+            ESP_LOGE("MENU", "Failed to create OTA task — rebooting");
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            esp_restart();
         }
+        vTaskDelete(NULL);  // OTA task handles reboot
     }
 
-    // Restore background tasks
+    // User dismissed or timeout — restore background tasks
     update_restore_tasks();
-
     vTaskDelete(NULL);
 }
 
 static void check_update_btn_cb(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
 
-    // Dismiss about overlay and navigate back to home screen first.
-    // Update overlay shows on lv_layer_top() so it's visible on home screen.
+    // Navigate to home screen — update overlay shows on lv_layer_top()
     dismiss_about_overlay();
     lv_scr_load(screen_home);
     home_screen_active = true;
-    pause_background_tasks = true;  // Prevent background tasks during check
+    pause_background_tasks = true;
 
-    xTaskCreatePinnedToCore(check_update_task_fn, "upd_chk", 8192, NULL, 5, NULL, 0);
+    // Delete menu screen — reclaims LVGL memory
+    lv_obj_del(screen_menu);
+    screen_menu = NULL;
+
+    // Free CGM SSL clients (~15-20KB freed)
+    dexcom_close_persistent_client();
+    libre_close_persistent_client();
+
+    // Delete background tasks to coalesce heap (~11KB stacks freed)
+    delete_background_tasks_for_ssl("update-check");
+
+    // Run version check synchronously — no task stack needed, so the full
+    // contiguous block (~10752 bytes) is available for TLS (needs ~6.7KB).
+    // Blocks LVGL for ~3s (acceptable for user-initiated action on static screen).
+    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    ESP_LOGI("MENU", "Update check: largest_block=%lu (synchronous)", (unsigned long)largest);
+
+    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) == pdTRUE) {
+        update_check_now();
+        xSemaphoreGive(network_mutex);
+    }
+
+    show_update_overlay();
+
+    const update_info_t *info = update_get_info();
+    if (info->available && info->firmware_url[0] != '\0') {
+        // OTA available — create small 3KB task for Install/Dismiss polling
+        BaseType_t ret = xTaskCreatePinnedToCore(
+            update_ota_wait_task_fn, "upd_ota", 3072, NULL, 5, NULL, 0);
+        if (ret != pdPASS) {
+            ESP_LOGE("MENU", "Failed to create OTA wait task");
+            update_restore_tasks();
+        }
+    } else {
+        // No OTA available — restore background tasks immediately
+        update_restore_tasks();
+    }
 }
 
 static void about_btn_event_cb(lv_event_t *e) {

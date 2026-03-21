@@ -93,13 +93,15 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 }
 
 // Map LibreLinkUp TrendArrow (1-5) to cgm_trend_t
+// Libre has 5 trend levels (no "double" equivalent). Steepest arrow (>2 mg/dL/min)
+// maps to Dexcom's "Single" tier. Confirmed by PyLibreLinkUp & Nightscout bridge.
 static cgm_trend_t map_libre_trend(int trend_arrow) {
     switch (trend_arrow) {
-        case 1: return TREND_DOUBLE_DOWN;      // Falling quickly
-        case 2: return TREND_FORTY_FIVE_DOWN;  // Falling
+        case 1: return TREND_SINGLE_DOWN;      // Falling
+        case 2: return TREND_FORTY_FIVE_DOWN;  // Falling slowly
         case 3: return TREND_FLAT;             // Stable
-        case 4: return TREND_FORTY_FIVE_UP;    // Rising
-        case 5: return TREND_DOUBLE_UP;        // Rising quickly
+        case 4: return TREND_FORTY_FIVE_UP;    // Rising slowly
+        case 5: return TREND_SINGLE_UP;        // Rising
         default: return TREND_NONE;
     }
 }
@@ -153,7 +155,7 @@ static time_t parse_libre_timestamp(const char *ts_str) {
 
     // Sanity check
     time_t now = time(NULL);
-    if (result <= 0 || result > now + 300) {
+    if (result <= 0 || result > now + 86400) {
         ESP_LOGW(TAG, "Parsed timestamp %ld seems invalid (now=%ld)", (long)result, (long)now);
         return 0;
     }
@@ -343,6 +345,10 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
 
                 if (cJSON_IsString(ts) && ts->valuestring != NULL) {
                     glucose_out->timestamp = parse_libre_timestamp(ts->valuestring);
+                    if (glucose_out->timestamp == 0) {
+                        ESP_LOGW(TAG, "Timestamp parse failed — using current time as fallback");
+                        glucose_out->timestamp = time(NULL);
+                    }
                 } else {
                     glucose_out->timestamp = time(NULL);
                 }
@@ -354,6 +360,97 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
     }
 
     cJSON_Delete(root);
+    return ESP_OK;
+}
+
+// ============================================================================
+// Session Restore from NVS
+// ============================================================================
+
+esp_err_t libre_restore_session(void) {
+    ESP_LOGI(TAG, "Attempting to restore Libre session from NVS...");
+
+    // Load saved session
+    char saved_token[1500] = {0};
+    char saved_pid[40] = {0};
+    char saved_region[64] = {0};
+    int32_t saved_expires = 0;
+    char saved_acct[65] = {0};
+
+    esp_err_t ret = nvs_load_libre_session(saved_token, sizeof(saved_token),
+                                            saved_pid, sizeof(saved_pid),
+                                            saved_region, sizeof(saved_region),
+                                            &saved_expires,
+                                            saved_acct, sizeof(saved_acct));
+    if (ret != ESP_OK) {
+        ESP_LOGI(TAG, "No saved Libre session in NVS");
+        return ESP_FAIL;
+    }
+
+    // Validate token isn't empty
+    if (saved_token[0] == '\0') {
+        ESP_LOGW(TAG, "Saved token is empty");
+        return ESP_FAIL;
+    }
+
+    // Check expiry
+    time_t now = time(NULL);
+    if (saved_expires > 0 && (int32_t)now >= saved_expires) {
+        ESP_LOGW(TAG, "Saved token expired (%ld >= %ld)", (long)now, (long)saved_expires);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Restoring Libre session from NVS (expires in %ld hours)",
+             (long)(saved_expires - (int32_t)now) / 3600);
+
+    // Restore internal state
+    strncpy(auth_token, saved_token, sizeof(auth_token) - 1);
+    auth_token[sizeof(auth_token) - 1] = '\0';
+    strncpy(patient_id, saved_pid, sizeof(patient_id) - 1);
+    patient_id[sizeof(patient_id) - 1] = '\0';
+    strncpy(region_base_url, saved_region, sizeof(region_base_url) - 1);
+    region_base_url[sizeof(region_base_url) - 1] = '\0';
+    if (saved_acct[0] != '\0') {
+        strncpy(account_id_hash, saved_acct, sizeof(account_id_hash) - 1);
+        account_id_hash[sizeof(account_id_hash) - 1] = '\0';
+    }
+    token_expires = saved_expires;
+    is_authenticated = true;
+    consecutive_failures = 0;
+
+    // account_id_hash is required for the connections endpoint (account-id header).
+    // If missing (e.g., first boot after OTA from older firmware), force re-login
+    // rather than getting stuck in a 400-error loop (HTTP 400 never triggers re-auth).
+    if (account_id_hash[0] == '\0') {
+        ESP_LOGW(TAG, "No account_id_hash in NVS — forcing re-login");
+        is_authenticated = false;
+        memset(auth_token, 0, sizeof(auth_token));
+        return ESP_FAIL;
+    }
+
+    // Verify token with a test fetch (also gets initial glucose)
+    ESP_LOGI(TAG, "Verifying restored session with test fetch...");
+    esp_err_t fetch_ret = libre_fetch_connections(NULL);
+
+    if (fetch_ret == ESP_ERR_INVALID_STATE) {
+        // 401 — token rejected by server
+        ESP_LOGW(TAG, "Restored token rejected (401) — need full re-auth");
+        is_authenticated = false;
+        memset(auth_token, 0, sizeof(auth_token));
+        libre_close_persistent_client();
+        return ESP_FAIL;
+    }
+
+    if (fetch_ret != ESP_OK) {
+        // Network error or other failure — don't invalidate token, might be transient
+        ESP_LOGW(TAG, "Test fetch failed (%s) — session restored but unverified",
+                 esp_err_to_name(fetch_ret));
+        // Keep is_authenticated = true; glucose_update_task will retry
+    } else {
+        ESP_LOGI(TAG, "Session restored and verified successfully");
+        sd_log(TAG, "Session restored from NVS (skip login)");
+    }
+
     return ESP_OK;
 }
 
@@ -483,10 +580,20 @@ auth_attempt:
         }
     }
 
-    // Extract auth ticket
+    // Check for Terms of Use acceptance requirement
+    // LibreLinkUp can return HTTP 200 with no authTicket if TOU needs acceptance.
+    // We cannot auto-accept (legal reasons) — user must open the LibreLinkUp app.
     cJSON *auth_ticket = cJSON_GetObjectItem(data, "authTicket");
-    if (auth_ticket == NULL) {
-        ESP_LOGE(TAG, "No authTicket in login response");
+    if (auth_ticket == NULL || !cJSON_IsObject(auth_ticket)) {
+        cJSON *step = cJSON_GetObjectItem(data, "step");
+        if (step != NULL && cJSON_IsNumber(step)) {
+            ESP_LOGE(TAG, "Terms of Use acceptance required (step=%d)", step->valueint);
+            ESP_LOGE(TAG, "Open the LibreLinkUp app and accept any pending terms, then retry");
+            sd_log(TAG, "Auth blocked: TOU acceptance required (step=%d)", step->valueint);
+        } else {
+            ESP_LOGE(TAG, "No authTicket in login response — Terms of Use may need acceptance");
+            ESP_LOGE(TAG, "Open the LibreLinkUp app and accept any pending terms, then retry");
+        }
         cJSON_Delete(root);
         return ESP_FAIL;
     }
@@ -536,16 +643,11 @@ auth_attempt:
     is_authenticated = true;
     consecutive_failures = 0;
 
-    // Fetch patient connections (also gets initial glucose)
-    esp_err_t conn_ret = libre_fetch_connections(NULL);
-    if (conn_ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to fetch connections: %s", esp_err_to_name(conn_ret));
-        // Auth succeeded but connections failed — still consider authenticated
-        // Glucose fetch will retry connections
-    }
+    // Connections fetch deferred to glucose task — heap too fragmented here
+    // for a second TLS handshake. libre_fetch_glucose() handles missing patient_id.
 
     // Save session to NVS for persistence across reboots
-    nvs_save_libre_session(auth_token, patient_id, region_base_url, token_expires);
+    nvs_save_libre_session(auth_token, patient_id, region_base_url, token_expires, account_id_hash);
 
     sd_log(TAG, "Auth OK email=%s region=%s patient=%s",
            stored_email, region_base_url, patient_id);

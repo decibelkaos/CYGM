@@ -16,6 +16,11 @@
 // Handles regional redirect and patient connection discovery.
 esp_err_t libre_authenticate(const char *email, const char *password);
 
+// Restore a previously saved session from NVS.
+// Returns ESP_OK if session was restored and verified with a test fetch.
+// Falls through silently on failure — caller should proceed to libre_authenticate().
+esp_err_t libre_restore_session(void);
+
 // Fetch latest glucose reading from LibreLinkUp.
 // Returns ESP_OK on success, fills glucose struct.
 esp_err_t libre_fetch_glucose(cgm_glucose_t *glucose);

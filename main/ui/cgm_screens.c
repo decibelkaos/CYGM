@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "freertos/task.h"
 #include <string.h>
+#include "esp_heap_caps.h"
 #include "sd_logger.h"
 #include "ui/menu_screen.h"
 #include "ui/home_screen.h"
@@ -23,9 +24,80 @@
 static const char *TAG = "CGM_SCREENS";
 static volatile bool dexcom_login_in_progress = false;
 
+// Connecting overlay (shown while TLS handshake + auth runs)
+static lv_obj_t *connecting_overlay = NULL;
+
 // Password visibility toggle
 static bool dexcom_pwd_visible = false;
 static lv_obj_t *dexcom_pwd_eye_label = NULL;
+
+// ---------------------------------------------------------------------------
+// Connecting overlay — shown immediately when user taps Sign In
+// ---------------------------------------------------------------------------
+static void show_connecting_overlay(const char *provider_name) {
+    if (connecting_overlay != NULL) return;
+
+    // Dimmed backdrop
+    connecting_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(connecting_overlay);
+    lv_obj_set_size(connecting_overlay, 320, 240);
+    lv_obj_set_style_bg_color(connecting_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(connecting_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(connecting_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(connecting_overlay);
+
+    // Glass card — blue accent for connecting
+    lv_obj_t *card = lv_obj_create(connecting_overlay);
+    lv_obj_set_size(card, 220, 130);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x0F1419), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 25, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Spinner
+    lv_obj_t *spinner = lv_spinner_create(card, 1000, 60);
+    lv_obj_set_size(spinner, 40, 40);
+    lv_obj_align(spinner, LV_ALIGN_TOP_MID, 0, 12);
+    lv_obj_set_style_arc_color(spinner, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(spinner, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(spinner, lv_color_hex(0x1A2332), 0);
+    lv_obj_set_style_arc_width(spinner, 4, 0);
+
+    // Title
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "Connecting...");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 60);
+
+    // Subtitle
+    char sub_text[48];
+    snprintf(sub_text, sizeof(sub_text), "Signing in to %s", provider_name);
+    lv_obj_t *sub = lv_label_create(card);
+    lv_label_set_text(sub, sub_text);
+    lv_obj_set_style_text_font(sub, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(sub, 200);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 90);
+
+    ESP_LOGI(TAG, "Connecting overlay shown for %s", provider_name);
+}
+
+static void hide_connecting_overlay(void) {
+    if (connecting_overlay != NULL) {
+        lv_obj_del(connecting_overlay);
+        connecting_overlay = NULL;
+    }
+}
 
 static void dexcom_login_task(void *pvParameters) {
     char username[64] = {0};
@@ -35,11 +107,36 @@ static void dexcom_login_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "Dexcom login task started for user: %s", username);
 
+    // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
+    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Dexcom login: network mutex timeout");
+        if (lvgl_port_lock(100)) {
+            hide_connecting_overlay();
+            lvgl_port_unlock();
+        }
+        dexcom_login_in_progress = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    bool tasks_deleted = delete_background_tasks_for_ssl("dexcom-login");
+
+    ESP_LOGI(TAG, "Dexcom login: heap free=%lu largest=%lu",
+             (unsigned long)esp_get_free_heap_size(),
+             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+
     if (dexcom_authenticate(username, password) == ESP_OK) {
         ESP_LOGI(TAG, "Dexcom login successful");
         sd_log(TAG, "Dexcom: login OK for %s", username);
         nvs_set_dexcom_credentials(username, password);
         nvs_save_cgm_type("dexcom");
+
+        dexcom_close_persistent_client();  // Close auth connection; glucose task opens fresh
+
+        if (tasks_deleted) {
+            recreate_background_tasks();
+        }
+        xSemaphoreGive(network_mutex);
 
         if (glucose_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting glucose update task after Dexcom login...");
@@ -50,6 +147,7 @@ static void dexcom_login_task(void *pvParameters) {
         glucose_force_fetch_requested = true;
 
         if (lvgl_port_lock(100)) {
+            hide_connecting_overlay();
             lv_scr_load(screen_home);
             // Clean up all CGM screens
             if (screen_dexcom_login != NULL) { lv_obj_del(screen_dexcom_login); screen_dexcom_login = NULL; }
@@ -68,6 +166,16 @@ static void dexcom_login_task(void *pvParameters) {
     } else {
         ESP_LOGE(TAG, "Dexcom login failed");
         sd_log(TAG, "Dexcom: login FAILED for %s", username);
+
+        if (tasks_deleted) {
+            recreate_background_tasks();
+        }
+        xSemaphoreGive(network_mutex);
+
+        if (lvgl_port_lock(100)) {
+            hide_connecting_overlay();
+            lvgl_port_unlock();
+        }
     }
 
     dexcom_login_in_progress = false;
@@ -294,6 +402,7 @@ static void dexcom_login_btn_event_cb(lv_event_t *e) {
         }
 
         dexcom_login_in_progress = true;
+        show_connecting_overlay("Dexcom");
 
         // Stop existing glucose task — it reads provider type at start,
         // so it must be deleted and recreated after provider switch.
@@ -312,6 +421,7 @@ static void dexcom_login_btn_event_cb(lv_event_t *e) {
 
         if (xTaskCreate(dexcom_login_task, "dexcom_login", 6144, NULL, 2, NULL) != pdPASS) {
             dexcom_login_in_progress = false;
+            hide_connecting_overlay();
             ESP_LOGE(TAG, "Failed to create Dexcom login task");
         }
     }
@@ -678,7 +788,7 @@ void create_dexcom_auth_screen(void) {
         lv_obj_t *hero = lv_obj_create(screen_dexcom_auth);
         lv_obj_remove_style_all(hero);
         lv_obj_set_size(hero, 56, 56);
-        lv_obj_align(hero, LV_ALIGN_TOP_MID, 0, 42);
+        lv_obj_align(hero, LV_ALIGN_TOP_MID, 0, 24);
         lv_obj_set_style_bg_color(hero, lv_color_hex(COLOR_ACCENT_BLUE), 0);
         lv_obj_set_style_bg_opa(hero, LV_OPA_20, 0);
         lv_obj_set_style_radius(hero, LV_RADIUS_CIRCLE, 0);
@@ -694,7 +804,7 @@ void create_dexcom_auth_screen(void) {
         lv_label_set_text(title, "Dexcom Share");
         lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
         lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 106);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 88);
 
         // Subtitle
         lv_obj_t *subtitle = lv_label_create(screen_dexcom_auth);
@@ -702,12 +812,12 @@ void create_dexcom_auth_screen(void) {
         lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(subtitle, lv_color_hex(COLOR_TEXT_GRAY), 0);
         lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 130);
+        lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 112);
 
         // Sign In button
         lv_obj_t *login_btn = lv_btn_create(screen_dexcom_auth);
         lv_obj_set_size(login_btn, 290, 46);
-        lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 174);
+        lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 156);
         lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
         lv_obj_set_style_radius(login_btn, 10, 0);
         lv_obj_set_style_shadow_width(login_btn, 0, 0);
@@ -1329,11 +1439,36 @@ static void libre_login_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "Libre login task started for email: %s", email);
 
+    // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
+    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Libre login: network mutex timeout");
+        if (lvgl_port_lock(100)) {
+            hide_connecting_overlay();
+            lvgl_port_unlock();
+        }
+        libre_login_in_progress = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    bool tasks_deleted = delete_background_tasks_for_ssl("libre-login");
+
+    ESP_LOGI(TAG, "Libre login: heap free=%lu largest=%lu",
+             (unsigned long)esp_get_free_heap_size(),
+             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+
     if (libre_authenticate(email, password) == ESP_OK) {
         ESP_LOGI(TAG, "Libre login successful");
         sd_log(TAG, "Libre: login OK for %s", email);
         nvs_set_libre_credentials(email, password);
         nvs_save_cgm_type("libre");
+
+        libre_close_persistent_client();  // Close auth connection; glucose task opens fresh
+
+        if (tasks_deleted) {
+            recreate_background_tasks();
+        }
+        xSemaphoreGive(network_mutex);
 
         if (glucose_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting glucose update task after Libre login...");
@@ -1343,6 +1478,7 @@ static void libre_login_task(void *pvParameters) {
         glucose_force_fetch_requested = true;
 
         if (lvgl_port_lock(100)) {
+            hide_connecting_overlay();
             lv_scr_load(screen_home);
             libre_cleanup_screens();
             if (screen_cgm_menu != NULL) { lv_obj_del(screen_cgm_menu); screen_cgm_menu = NULL; }
@@ -1354,6 +1490,16 @@ static void libre_login_task(void *pvParameters) {
     } else {
         ESP_LOGE(TAG, "Libre login failed");
         sd_log(TAG, "Libre: login FAILED for %s", email);
+
+        if (tasks_deleted) {
+            recreate_background_tasks();
+        }
+        xSemaphoreGive(network_mutex);
+
+        if (lvgl_port_lock(100)) {
+            hide_connecting_overlay();
+            lvgl_port_unlock();
+        }
     }
 
     libre_login_in_progress = false;
@@ -1445,6 +1591,7 @@ static void libre_login_btn_event_cb(lv_event_t *e) {
             return;
         }
         libre_login_in_progress = true;
+        show_connecting_overlay("LibreLinkUp");
 
         // Stop existing glucose task — it reads provider type at start,
         // so it must be deleted and recreated after provider switch.
@@ -1461,7 +1608,11 @@ static void libre_login_btn_event_cb(lv_event_t *e) {
             dexcom_logout();
         }
 
-        xTaskCreate(libre_login_task, "libre_login", 6144, NULL, 5, NULL);
+        if (xTaskCreate(libre_login_task, "libre_login", 6144, NULL, 5, NULL) != pdPASS) {
+            libre_login_in_progress = false;
+            hide_connecting_overlay();
+            ESP_LOGE(TAG, "Failed to create Libre login task");
+        }
     }
 }
 
@@ -1520,25 +1671,68 @@ static void libre_password_entry_keyboard_event_cb(lv_event_t *e) {
     }
 }
 
-// Password entry field value changed (masked display)
+// Password entry field value changed (shows last character, masks rest)
 static void libre_password_entry_field_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t *ta = lv_event_get_target(e);
         lv_obj_t *display_label = (lv_obj_t *)lv_event_get_user_data(e);
-        const char *text = lv_textarea_get_text(libre_password_entry_ta);
-        int len = strlen(text);
+
+        if (ta != NULL) {
+            const char *text = lv_textarea_get_text(ta);
+            if (text != NULL) {
+                // Update buffer
+                strncpy(libre_password_buf, text, sizeof(libre_password_buf) - 1);
+                libre_password_buf[sizeof(libre_password_buf) - 1] = '\0';
+
+                // Update display label based on visibility state
+                if (display_label != NULL) {
+                    int len = strlen(text);
+                    if (len > 0) {
+                        if (libre_pwd_visible) {
+                            // Show all characters when visible
+                            lv_label_set_text(display_label, text);
+                        } else {
+                            char display[65];
+                            // Mask all characters except the last one
+                            for (int i = 0; i < len - 1; i++) {
+                                display[i] = '*';
+                            }
+                            // Show the last character
+                            display[len - 1] = text[len - 1];
+                            display[len] = '\0';
+                            lv_label_set_text(display_label, display);
+                        }
+                        lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+                    } else {
+                        lv_label_set_text(display_label, "Password");
+                        lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Eye toggle callback for Libre password screen
+static void libre_eye_btn_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    libre_pwd_visible = !libre_pwd_visible;
+    if (libre_pwd_eye_label) {
+        lv_label_set_text(libre_pwd_eye_label,
+                          libre_pwd_visible ? LV_SYMBOL_EYE_OPEN : LV_SYMBOL_EYE_CLOSE);
+    }
+    if (libre_password_entry_label) {
+        int len = strlen(libre_password_buf);
         if (len > 0) {
             if (libre_pwd_visible) {
-                lv_label_set_text(display_label, text);
+                lv_label_set_text(libre_password_entry_label, libre_password_buf);
             } else {
-                char masked[65];
-                for (int i = 0; i < len && i < 64; i++) masked[i] = '*';
-                masked[len < 64 ? len : 64] = '\0';
-                lv_label_set_text(display_label, masked);
+                char display[65];
+                for (int i = 0; i < len; i++) display[i] = '*';
+                display[len] = '\0';
+                lv_label_set_text(libre_password_entry_label, display);
             }
-            lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        } else {
-            lv_label_set_text(display_label, "Password");
-            lv_obj_set_style_text_color(display_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+            lv_obj_set_style_text_color(libre_password_entry_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
         }
     }
 }
@@ -1663,7 +1857,7 @@ void create_libre_auth_screen(void) {
         lv_obj_t *hero = lv_obj_create(screen_libre_auth);
         lv_obj_remove_style_all(hero);
         lv_obj_set_size(hero, 56, 56);
-        lv_obj_align(hero, LV_ALIGN_TOP_MID, 0, 42);
+        lv_obj_align(hero, LV_ALIGN_TOP_MID, 0, 24);
         lv_obj_set_style_bg_color(hero, lv_color_hex(COLOR_ACCENT_BLUE), 0);
         lv_obj_set_style_bg_opa(hero, LV_OPA_20, 0);
         lv_obj_set_style_radius(hero, LV_RADIUS_CIRCLE, 0);
@@ -1679,7 +1873,7 @@ void create_libre_auth_screen(void) {
         lv_label_set_text(title, "LibreLinkUp");
         lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
         lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 106);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 88);
 
         // Subtitle
         lv_obj_t *subtitle = lv_label_create(screen_libre_auth);
@@ -1687,12 +1881,12 @@ void create_libre_auth_screen(void) {
         lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(subtitle, lv_color_hex(COLOR_TEXT_GRAY), 0);
         lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 130);
+        lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 112);
 
         // Sign In button
         lv_obj_t *login_btn = lv_btn_create(screen_libre_auth);
         lv_obj_set_size(login_btn, 290, 46);
-        lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 174);
+        lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 156);
         lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
         lv_obj_set_style_radius(login_btn, 10, 0);
         lv_obj_set_style_shadow_width(login_btn, 0, 0);
@@ -2004,6 +2198,23 @@ void create_libre_password_entry_screen(void) {
     lv_obj_set_style_text_color(cancel_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_center(cancel_label);
     lv_obj_add_event_cb(cancel_btn, libre_password_entry_keyboard_event_cb, LV_EVENT_CLICKED, (void*)LV_EVENT_CANCEL);
+
+    // Eye toggle button (next to OK)
+    lv_obj_t *eye_btn = lv_btn_create(screen_libre_password_entry);
+    lv_obj_set_size(eye_btn, 36, 36);
+    lv_obj_align(eye_btn, LV_ALIGN_TOP_RIGHT, -45, 19);
+    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(eye_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(eye_btn, 0, 0);
+    lv_obj_set_style_shadow_width(eye_btn, 0, 0);
+    lv_obj_set_style_radius(eye_btn, 8, 0);
+
+    libre_pwd_eye_label = lv_label_create(eye_btn);
+    lv_label_set_text(libre_pwd_eye_label, LV_SYMBOL_EYE_CLOSE);
+    lv_obj_set_style_text_color(libre_pwd_eye_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(libre_pwd_eye_label);
+    lv_obj_add_event_cb(eye_btn, libre_eye_btn_cb, LV_EVENT_CLICKED, NULL);
 
     // OK button
     lv_obj_t *ok_btn = lv_btn_create(screen_libre_password_entry);

@@ -846,6 +846,7 @@ esp_err_t nvs_clear_dexcom_credentials(void) {
 #define NVS_LIBRE_PAT_KEY   "libre_pat_id"
 #define NVS_LIBRE_REGION_KEY "libre_region"
 #define NVS_LIBRE_EXP_KEY   "libre_tk_exp"
+#define NVS_LIBRE_ACCT_KEY  "libre_acct_id"
 
 esp_err_t nvs_set_libre_credentials(const char *email, const char *password) {
     nvs_handle_t nvs_handle;
@@ -930,7 +931,8 @@ esp_err_t nvs_clear_libre_credentials(void) {
 }
 
 esp_err_t nvs_save_libre_session(const char *token, const char *patient_id,
-                                  const char *region_url, int32_t token_expires) {
+                                  const char *region_url, int32_t token_expires,
+                                  const char *account_id) {
     nvs_handle_t nvs_handle;
     esp_err_t ret;
 
@@ -958,6 +960,11 @@ esp_err_t nvs_save_libre_session(const char *token, const char *patient_id,
     ret = nvs_set_i32(nvs_handle, NVS_LIBRE_EXP_KEY, token_expires);
     if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
 
+    if (account_id != NULL && account_id[0] != '\0') {
+        ret = nvs_set_str(nvs_handle, NVS_LIBRE_ACCT_KEY, account_id);
+        if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
+    }
+
     ret = nvs_commit(nvs_handle);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "Libre session saved to NVS (expires=%ld)", (long)token_expires);
@@ -970,7 +977,8 @@ esp_err_t nvs_save_libre_session(const char *token, const char *patient_id,
 esp_err_t nvs_load_libre_session(char *token, size_t token_max,
                                   char *patient_id, size_t pid_max,
                                   char *region_url, size_t region_max,
-                                  int32_t *token_expires) {
+                                  int32_t *token_expires,
+                                  char *account_id, size_t acct_max) {
     nvs_handle_t nvs_handle;
     esp_err_t ret;
 
@@ -999,6 +1007,14 @@ esp_err_t nvs_load_libre_session(char *token, size_t token_max,
         if (ret != ESP_OK) { nvs_close(nvs_handle); return ret; }
     }
 
+    if (account_id != NULL) {
+        ret = nvs_get_str(nvs_handle, NVS_LIBRE_ACCT_KEY, account_id, &acct_max);
+        if (ret != ESP_OK) {
+            // account_id is optional — older sessions won't have it
+            account_id[0] = '\0';
+        }
+    }
+
     ESP_LOGI(TAG, "Libre session loaded from NVS");
     nvs_close(nvs_handle);
     return ESP_OK;
@@ -1017,6 +1033,7 @@ esp_err_t nvs_clear_libre_session(void) {
     nvs_erase_key(nvs_handle, NVS_LIBRE_PAT_KEY);
     nvs_erase_key(nvs_handle, NVS_LIBRE_REGION_KEY);
     nvs_erase_key(nvs_handle, NVS_LIBRE_EXP_KEY);
+    nvs_erase_key(nvs_handle, NVS_LIBRE_ACCT_KEY);
     ret = nvs_commit(nvs_handle);
 
     if (ret == ESP_OK) {

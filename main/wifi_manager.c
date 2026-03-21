@@ -214,11 +214,19 @@ esp_err_t wifi_manager_try_reconnect(void) {
         return ESP_ERR_NOT_FOUND;
     }
 
+    // Force clean state before scanning — the event handler may still be
+    // retrying esp_wifi_connect() to the old (dead) network. Cancel that
+    // and suppress further retries so the scan can run cleanly.
+    retry_count = MAX_RETRY;  // Suppress event handler retries
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(300));
+    retry_count = 0;
+
     // Scan for available networks
     wifi_ap_record_t scan_results[10];
     int found = wifi_manager_scan_networks(scan_results, 10);
     if (found == 0) {
-        ESP_LOGD(TAG, "No networks visible for auto-reconnect");
+        ESP_LOGI(TAG, "No networks visible for auto-reconnect");
         return ESP_ERR_NOT_FOUND;
     }
 

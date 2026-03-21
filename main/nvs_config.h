@@ -104,13 +104,15 @@ esp_err_t nvs_get_libre_credentials(char *email, size_t email_len, char *passwor
 bool nvs_has_libre_credentials(void);
 esp_err_t nvs_clear_libre_credentials(void);
 
-// LibreLinkUp session (JWT token, patient ID, region URL, token expiry)
+// LibreLinkUp session (JWT token, patient ID, region URL, token expiry, account ID hash)
 esp_err_t nvs_save_libre_session(const char *token, const char *patient_id,
-                                  const char *region_url, int32_t token_expires);
+                                  const char *region_url, int32_t token_expires,
+                                  const char *account_id);
 esp_err_t nvs_load_libre_session(char *token, size_t token_max,
                                   char *patient_id, size_t pid_max,
                                   char *region_url, size_t region_max,
-                                  int32_t *token_expires);
+                                  int32_t *token_expires,
+                                  char *account_id, size_t acct_max);
 esp_err_t nvs_clear_libre_session(void);
 
 // Alarm settings structures

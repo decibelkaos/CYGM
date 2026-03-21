@@ -312,7 +312,50 @@ void wifi_task_core0(void *pvParameters) {
                     int max_retries = 5;
                     int retry_delay_ms = 2000;
 
-                    for (int attempt = 1; attempt <= max_retries; attempt++) {
+                    // Libre: try restoring saved session before full login
+                    bool session_restored = false;
+                    if (boot_use_libre) {
+                        if (libre_restore_session() == ESP_OK) {
+                            ESP_LOGI(TAG, "Libre session restored from NVS — skipping login");
+                            sd_log(TAG, "Libre session restored (skip login)");
+                            session_restored = true;
+
+                            // Fetch initial glucose with restored session
+                            cgm_glucose_t glucose = {0};
+                            esp_err_t fetch_ret = libre_fetch_glucose(&glucose);
+
+                            if (fetch_ret == ESP_OK) {
+                                last_glucose_fetch_time = esp_timer_get_time() / 1000;
+                            }
+
+                            if (fetch_ret == ESP_OK && glucose.valid) {
+                                current_glucose = glucose.value;
+                                current_trend = glucose.trend;
+                                glucose_timestamp = glucose.timestamp;
+                                glucose_data_valid = true;
+                                glucose_status = glucose.status;
+
+                                sd_log(TAG, "Initial glucose: %d mg/dL, trend: %s",
+                                       glucose.value, cgm_trend_description(glucose.trend));
+
+                                if (!first_glucose_received) {
+                                    first_glucose_received = true;
+                                    play_success_sound();
+                                }
+
+                                check_glucose_alarms(current_glucose);
+                                update_glucose_display();
+                            } else {
+                                glucose_data_valid = false;
+                                glucose_status = glucose.status;
+                                update_glucose_display();
+                            }
+                        } else {
+                            ESP_LOGI(TAG, "Libre session restore failed — will do full login");
+                        }
+                    }
+
+                    for (int attempt = 1; attempt <= max_retries && !session_restored; attempt++) {
                         ESP_LOGI(TAG, "%s auth attempt %d/%d...", cgm_type, attempt, max_retries);
 
                         esp_err_t ret;

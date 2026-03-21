@@ -1842,6 +1842,11 @@ void glucose_update_task(void *pvParameters) {
             if (!is_auth) continue;  // Auth lost during refresh — retry next cycle
         }
 
+        // Hoist flag so it's visible in both the glucose fetch block and auto-check section.
+        // Tasks deleted inside the fetch block must NOT be recreated until AFTER the
+        // auto-check, otherwise the recreated stacks fragment the heap and TLS fails.
+        bool tasks_deleted_for_ssl = false;
+
         if (is_auth) {
             // CRITICAL: Take network mutex to ensure exclusive access
             ESP_LOGI(TAG, "Waiting for network mutex...");
@@ -1888,7 +1893,6 @@ void glucose_update_task(void *pvParameters) {
                 // MEMORY STRATEGY for SSL reconnection:
                 // When persistent client is closed, we need a fresh TLS handshake.
                 // TLSF can't defragment, so we must delete tasks to free contiguous heap.
-                bool tasks_deleted_for_ssl = false;
 
                 if (!client_open) {
                     tasks_deleted_for_ssl = delete_background_tasks_for_ssl("ssl-reconnect");
@@ -2189,23 +2193,23 @@ void glucose_update_task(void *pvParameters) {
                 }
             }
 
-                // MEMORY STRATEGY: Keep SSL alive — NEVER close on success.
-                // Reusing open connection needs only ~3-5KB.
-                // Weather task closes SSL before its fetch; glucose reopens via task-deletion.
+                // Always close SSL — server closes idle connections after ~60s, but we
+                // poll every 90s, so reuse NEVER works. Closing proactively:
+                // - Eliminates 30s dead-write timeout every cycle
+                // - Frees ~9.5KB heap between cycles
+                cgm_close_client(use_libre);
                 if (glucose_fetch_failed) {
-                    cgm_close_client(use_libre);
                     ESP_LOGI(TAG, "SSL closed (fetch failed), heap=%lu", esp_get_free_heap_size());
                     sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
                     sd_logger_resume();
                     sd_logger_flush();
                 } else {
-                    ESP_LOGI(TAG, "SSL alive (heap=%lu)", esp_get_free_heap_size());
+                    ESP_LOGI(TAG, "SSL closed (proactive), heap=%lu", esp_get_free_heap_size());
                 }
 
-                // Recreate tasks that were deleted for SSL reconnection
-                if (tasks_deleted_for_ssl) {
-                    recreate_background_tasks();
-                }
+                // DON'T recreate tasks here — defer until after the auto-check section.
+                // Recreating ~11KB of task stacks fragments the heap, causing TLS to fail
+                // with -0x7F00 (ALLOC_FAILED) when the auto update check runs immediately after.
 
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
@@ -2215,6 +2219,40 @@ void glucose_update_task(void *pvParameters) {
             }
         } else {
             ESP_LOGW(TAG, "Not authenticated - skipping glucose fetch");
+        }
+
+        // ── Automatic firmware update check (first boot + every 24h) ──
+        // Only after we've successfully received glucose at least once,
+        // and only when on the home screen (overlay needs LVGL).
+        // Runs BEFORE task recreation so TLS can use the full contiguous block
+        // (tasks_deleted_for_ssl means ~11KB of stacks are still freed).
+        if (first_glucose_received && home_screen_active && update_should_check()) {
+            ESP_LOGI(TAG, "Automatic firmware update check...");
+            if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+                // Close CGM SSL to free heap for the HTTPS check
+                cgm_close_client(use_libre);
+
+                esp_err_t chk = update_check_now();
+                xSemaphoreGive(network_mutex);
+
+                if (chk == ESP_OK) {
+                    const update_info_t *info = update_get_info();
+                    if (info->available) {
+                        ESP_LOGI(TAG, "Update available: v%s — showing overlay", info->version);
+                        if (lvgl_port_lock(200)) {
+                            show_update_overlay();
+                            lvgl_port_unlock();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recreate tasks that were deleted for SSL reconnection.
+        // Deferred to here (after the auto-check) so the update check TLS handshake
+        // can use the full contiguous heap block before task stacks fragment it.
+        if (tasks_deleted_for_ssl) {
+            recreate_background_tasks();
         }
 
         // Wait loop is at the beginning of while(1) - checks every second for force-fetch
