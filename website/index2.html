@@ -56,6 +56,11 @@
            ============================================ */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+        html, body {
+            overflow-x: hidden;
+            max-width: 100vw;
+        }
+
         html {
             scroll-behavior: smooth;
             -webkit-font-smoothing: antialiased;
@@ -67,7 +72,6 @@
             background: var(--bg-primary);
             color: var(--text-primary);
             line-height: 1.6;
-            overflow-x: hidden;
         }
 
         img { max-width: 100%; display: block; }
@@ -278,6 +282,9 @@
             .nav-links.open { opacity: 1; pointer-events: all; }
             .nav-links a { font-size: 1.25rem; }
             .nav-toggle { z-index: 210; }
+            .nav.scrolled {
+                background: rgba(10, 14, 23, 0.97);
+            }
         }
 
         /* ============================================
@@ -1688,7 +1695,7 @@
            FOOTER
            ============================================ */
         .footer {
-            padding: 2.5rem 0;
+            padding: 2.5rem 0 6rem;
             border-top: 1px solid var(--border-subtle);
         }
         .footer-inner {
@@ -1967,58 +1974,6 @@
             margin-bottom: 1.5rem;
         }
 
-        /* ── Device Mockup ── */
-        .device-mockup {
-            width: 200px;
-            height: 270px;
-            background: #1a1a2e;
-            border-radius: 20px;
-            border: 2px solid #2a2a40;
-            padding: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            position: relative;
-            flex-shrink: 0;
-        }
-        .device-screen {
-            width: 100%;
-            height: 100%;
-            background: #000;
-            border-radius: 14px;
-            overflow: hidden;
-            position: relative;
-            font-family: 'DM Sans', sans-serif;
-        }
-
-        /* Screenshot placeholder */
-        .screenshot-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 0.5rem;
-            color: var(--text-muted);
-            font-size: 0.6rem;
-            text-align: center;
-            padding: 0.5rem;
-            background: linear-gradient(135deg, #0a0e17, #141a2a);
-        }
-        .screenshot-placeholder svg {
-            width: 28px;
-            height: 28px;
-            stroke: var(--text-muted);
-            fill: none;
-            stroke-width: 1.5;
-            opacity: 0.5;
-        }
-        .screenshot-placeholder .placeholder-label {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.5rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            opacity: 0.6;
-        }
 
         /* ── Instruction Blocks ── */
         .guide-content-row {
@@ -2122,6 +2077,89 @@
             dominant-baseline: central;
         }
         .guide-tip strong { color: var(--accent); }
+
+        /* Collapsible prerequisite block */
+        .guide-prereq {
+            margin-top: 1rem;
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: var(--radius-xs);
+            overflow: hidden;
+        }
+        .guide-prereq-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            background: rgba(0, 212, 255, 0.04);
+            border: none;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--accent);
+            text-align: left;
+            transition: background 0.2s ease;
+        }
+        .guide-prereq-toggle:hover { background: rgba(0, 212, 255, 0.08); }
+        .guide-prereq-toggle .prereq-chevron {
+            width: 14px; height: 14px;
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+        .guide-prereq-toggle .prereq-chevron path {
+            fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .guide-prereq.open .prereq-chevron { transform: rotate(180deg); }
+        .guide-prereq-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s var(--ease-out);
+        }
+        .guide-prereq.open .guide-prereq-body { max-height: 1200px; }
+        .guide-prereq-inner {
+            padding: 0.75rem 0.85rem 0.85rem;
+            border-top: 1px solid rgba(0, 212, 255, 0.1);
+        }
+        .guide-prereq-inner h4 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0.75rem 0 0.35rem;
+        }
+        .guide-prereq-inner h4:first-child { margin-top: 0; }
+        .guide-prereq-inner p,
+        .guide-prereq-inner li {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+        .guide-prereq-inner ol {
+            padding-left: 0;
+            list-style: none;
+            margin: 0.25rem 0 0;
+        }
+        .guide-prereq-inner ol li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            margin-bottom: 0.35rem;
+        }
+        .prereq-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+            font-size: 0.6875rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
 
         .guide-warning {
             display: flex;
@@ -2445,7 +2483,6 @@
             .guide-section { padding: 1.5rem 1.25rem; }
             .guide-section-title { font-size: 1.25rem; }
             .guide-content-row { flex-direction: column !important; gap: 1.25rem; }
-            .device-mockup { width: 160px; height: 216px; align-self: center; }
             .guide-feature-grid { grid-template-columns: 1fr; }
         }
 
@@ -2535,7 +2572,9 @@
             border-radius: 100px;
             border: 2px solid rgba(0, 212, 255, 0.4);
             animation: fabPulse 2.5s ease-out infinite;
+            pointer-events: none;
         }
+        .guide-fab { overflow: visible; }
         @keyframes fabPulse {
             0% { transform: scale(1); opacity: 0.6; }
             70% { transform: scale(1.15); opacity: 0; }
@@ -2550,13 +2589,1028 @@
         }
         @media (max-width: 768px) {
             .guide-fab {
-                bottom: 1rem;
-                right: 1rem;
-                padding: 0.65rem 1rem;
-                font-size: 0.75rem;
+                bottom: 0.75rem;
+                right: 0.75rem;
+                padding: 0.5rem 0.85rem;
+                font-size: 0.6875rem;
+                gap: 0.35rem;
+            }
+            .guide-fab svg {
+                width: 15px;
+                height: 15px;
             }
         }
+        /* ── Guide-Only Mode (QR code direct link) ── */
+        body.guide-only > .nav,
+        body.guide-only > .hero,
+        body.guide-only > section,
+        body.guide-only > .lightbox,
+        body.guide-only > .guide-fab,
+        body.guide-only > footer {
+            display: none !important;
+        }
+        body.guide-only > .guide-overlay {
+            position: relative;
+            background: var(--bg-primary);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            opacity: 1;
+            pointer-events: all;
+        }
+        body.guide-only > .guide-overlay .guide-container {
+            height: 100vh;
+        }
+        body.guide-only .guide-sidebar-close button,
+        body.guide-only .guide-mobile-close {
+            color: var(--accent);
+        }
+
+        /* ============================================
+           STORE OVERLAY
+           ============================================ */
+        :root {
+            --store-accent: #22c55e;
+            --store-accent-dim: #16a34a;
+            --store-accent-glow: rgba(34, 197, 94, 0.15);
+            --store-accent-glow-strong: rgba(34, 197, 94, 0.3);
+            --store-price: #f0fdf4;
+        }
+
+        .store-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .store-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .store-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* ── Store Sidebar ── */
+        .store-sidebar {
+            width: 260px;
+            flex-shrink: 0;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .store-sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .store-sidebar-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.125rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .store-sidebar-header h2 svg {
+            width: 20px;
+            height: 20px;
+            stroke: var(--store-accent);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .store-sidebar-header p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+        }
+
+        .store-nav {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.75rem 0;
+        }
+        .store-nav::-webkit-scrollbar { width: 3px; }
+        .store-nav::-webkit-scrollbar-track { background: transparent; }
+        .store-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+        .store-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.55rem 1.5rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 2px solid transparent;
+            text-decoration: none;
+        }
+        .store-nav-item:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .store-nav-item.active {
+            color: var(--store-accent);
+            background: rgba(34, 197, 94, 0.05);
+            border-left-color: var(--store-accent);
+        }
+        .store-nav-item .nav-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            opacity: 0.6;
+        }
+        .store-nav-item .nav-icon svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .store-nav-item.active .nav-icon { opacity: 1; }
+
+        .store-nav-divider {
+            height: 1px;
+            background: var(--border-subtle);
+            margin: 0.5rem 1.5rem;
+        }
+
+        .store-sidebar-close {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .store-sidebar-close button {
+            width: 100%;
+            padding: 0.6rem;
+            background: none;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .store-sidebar-close button:hover {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }
+
+        /* ── Store Content ── */
+        .store-content {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-primary);
+        }
+        .store-content::-webkit-scrollbar { width: 6px; }
+        .store-content::-webkit-scrollbar-track { background: transparent; }
+        .store-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+        /* ── Store Mobile Header ── */
+        .store-mobile-header {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        .store-mobile-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .store-mobile-header h2 svg {
+            width: 18px;
+            height: 18px;
+            stroke: var(--store-accent);
+            fill: none;
+            stroke-width: 2;
+        }
+        .store-mobile-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+        }
+
+        /* ── Store Sections ── */
+        .store-section {
+            padding: 2.5rem clamp(1.5rem, 4vw, 3rem);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .store-section:last-child { border-bottom: none; }
+
+        .store-section-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--store-accent);
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .store-section-label::before {
+            content: '';
+            width: 16px;
+            height: 1px;
+            background: var(--store-accent);
+        }
+
+        .store-section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .store-section-desc {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            max-width: 600px;
+        }
+
+        /* ── Store Welcome ── */
+        .store-welcome {
+            text-align: center;
+            padding: 3rem clamp(1.5rem, 4vw, 3rem) 2rem;
+        }
+        .store-welcome h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: clamp(1.75rem, 4vw, 2.25rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.75rem;
+        }
+        .store-welcome h1 .store-accent { color: var(--store-accent); }
+        .store-welcome p {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            max-width: 520px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+        .store-welcome-badges {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .store-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.18);
+            color: var(--store-accent);
+        }
+        .store-badge svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        /* ── Product Card ── */
+        .store-product-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            padding: 2rem;
+            margin-top: 1.5rem;
+            transition: border-color 0.3s;
+        }
+        .store-product-card:hover {
+            border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .store-product-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .store-product-image {
+            position: relative;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            background: var(--bg-tertiary);
+            aspect-ratio: 4/3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .store-product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .store-product-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-muted);
+            padding: 2rem;
+            text-align: center;
+        }
+        .store-product-placeholder svg {
+            width: 48px;
+            height: 48px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 1.5;
+            opacity: 0.5;
+        }
+        .store-product-placeholder span {
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .store-product-details h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .store-product-details .product-tagline {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 1.25rem;
+            line-height: 1.6;
+        }
+
+        /* Feature list */
+        .store-feature-list {
+            list-style: none;
+            display: grid;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .store-feature-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .store-feature-list li svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--store-accent);
+            fill: none;
+            stroke-width: 2.5;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        /* Color Selector */
+        .store-color-selector {
+            margin-bottom: 1.5rem;
+        }
+        .store-color-selector label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.6rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .store-color-options {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .store-color-swatch {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            outline: none;
+        }
+        .store-color-swatch:hover {
+            transform: scale(1.1);
+        }
+        .store-color-swatch.selected {
+            border-color: var(--store-accent);
+            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+        }
+        .store-color-swatch::after {
+            content: '';
+            position: absolute;
+            inset: 3px;
+            border-radius: 50%;
+            background: inherit;
+        }
+        .store-color-swatch[data-color="black"] { background: #1a1a2e; }
+        .store-color-swatch[data-color="white"] { background: #e8e8e8; }
+        .store-color-swatch[data-color="purple"] { background: #7c3aed; }
+        .store-color-swatch[data-color="blue"] { background: #2563eb; }
+        .store-color-swatch[data-color="green"] { background: #16a34a; }
+        .store-color-swatch[data-color="orange"] { background: #ea580c; }
+        .store-color-name {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        /* Price + Buy */
+        .store-price-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .store-price {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--store-price);
+            letter-spacing: -0.02em;
+        }
+        .store-price .currency {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            vertical-align: super;
+            margin-right: 2px;
+        }
+        .store-price .price-note {
+            display: block;
+            font-size: 0.6875rem;
+            font-weight: 400;
+            color: var(--text-muted);
+            letter-spacing: 0;
+            margin-top: 0.15rem;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .store-buy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.875rem 2rem;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #fff;
+            border: none;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+            box-shadow: 0 4px 20px rgba(34, 197, 94, 0.3);
+        }
+        .store-buy-btn:hover {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 28px rgba(34, 197, 94, 0.4);
+        }
+        .store-buy-btn:active {
+            transform: translateY(0) scale(0.98);
+        }
+        .store-buy-btn svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        /* ── Component List (DIY Kit) ── */
+        .store-component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 0.75rem;
+            margin: 1.25rem 0 1.5rem;
+        }
+        .store-component-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.65rem 0.85rem;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-xs);
+            border: 1px solid var(--border-subtle);
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+        .store-component-item .comp-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: rgba(34, 197, 94, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .store-component-item .comp-icon svg {
+            width: 14px;
+            height: 14px;
+            stroke: var(--store-accent);
+            fill: none;
+            stroke-width: 2;
+        }
+
+        /* ── Shipping & FAQ ── */
+        .store-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+        .store-info-card {
+            padding: 1.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+        }
+        .store-info-card h4 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .store-info-card h4 svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--store-accent);
+            fill: none;
+            stroke-width: 2;
+        }
+        .store-info-card p, .store-info-card li {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        .store-info-card ul {
+            list-style: none;
+            margin-top: 0.5rem;
+        }
+        .store-info-card ul li {
+            padding: 0.25rem 0;
+            padding-left: 1rem;
+            position: relative;
+        }
+        .store-info-card ul li::before {
+            content: '\2022';
+            position: absolute;
+            left: 0;
+            color: var(--store-accent);
+        }
+
+        /* FAQ Accordion */
+        .store-faq {
+            margin-top: 1.5rem;
+        }
+        .store-faq-item {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            margin-bottom: 0.5rem;
+            overflow: hidden;
+            background: var(--bg-card);
+        }
+        .store-faq-question {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            transition: background 0.2s;
+        }
+        .store-faq-question:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .store-faq-chevron {
+            width: 16px;
+            height: 16px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 2;
+            transition: transform 0.3s var(--ease-out);
+            flex-shrink: 0;
+        }
+        .store-faq-item.open .store-faq-chevron {
+            transform: rotate(180deg);
+        }
+        .store-faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s var(--ease-out);
+        }
+        .store-faq-answer-inner {
+            padding: 0 1.25rem 1rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        .store-faq-item.open .store-faq-answer {
+            max-height: 300px;
+        }
+
+        /* ── Store Mobile Responsive ── */
+        @media (max-width: 768px) {
+            .store-sidebar { display: none; }
+            .store-mobile-header { display: flex; }
+            .store-container { flex-direction: column; }
+            .store-section { padding: 1.5rem 1.25rem; }
+            .store-section-title { font-size: 1.25rem; }
+            .store-product-layout { grid-template-columns: 1fr; }
+            .store-info-grid { grid-template-columns: 1fr; }
+            .store-component-grid { grid-template-columns: 1fr 1fr; }
+            .store-welcome { padding: 2rem 1.25rem 1.5rem; }
+        }
+
+        /* ── Store Mobile Bottom Nav ── */
+        .store-mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 310;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-subtle);
+            padding: 0.5rem 0.75rem;
+            overflow-x: auto;
+            white-space: nowrap;
+            gap: 0.25rem;
+        }
+        .store-mobile-nav::-webkit-scrollbar { display: none; }
+        @media (max-width: 768px) {
+            .store-mobile-nav { display: flex; }
+            .store-content { padding-bottom: 3.5rem; }
+        }
+        .store-mobile-nav-item {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.4rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            border: none;
+            background: none;
+            font-family: 'DM Sans', sans-serif;
+            flex-shrink: 0;
+        }
+        .store-mobile-nav-item.active {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--store-accent);
+        }
+
+        /* ── Donation Amount Selector ── */
+        .store-donate-amounts {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .donate-amount-btn {
+            padding: 0.6rem 1.25rem;
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .donate-amount-btn:hover {
+            border-color: rgba(34, 197, 94, 0.3);
+            color: var(--text-primary);
+        }
+        .donate-amount-btn.selected {
+            background: rgba(34, 197, 94, 0.12);
+            border-color: var(--store-accent);
+            color: var(--store-accent);
+        }
+        .donate-custom-wrap {
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--border-subtle);
+            border-radius: 100px;
+            background: var(--bg-tertiary);
+            padding: 0 0.85rem;
+            transition: border-color 0.2s;
+        }
+        .donate-custom-wrap:focus-within {
+            border-color: var(--store-accent);
+        }
+        .donate-custom-currency {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        .donate-custom-input {
+            width: 70px;
+            padding: 0.6rem 0.25rem;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            outline: none;
+            -moz-appearance: textfield;
+        }
+        .donate-custom-input::placeholder { color: var(--text-muted); }
+        .donate-custom-input::-webkit-outer-spin-button,
+        .donate-custom-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        /* ── Store FAB ── */
+        .store-fab {
+            position: fixed;
+            bottom: calc(1.5rem + 48px + 0.75rem);
+            right: 1.5rem;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #fff;
+            border: none;
+            border-radius: 100px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            box-shadow: 0 4px 24px rgba(34, 197, 94, 0.3), 0 0 0 1px rgba(34, 197, 94, 0.15);
+            transition: all 0.3s var(--ease-out);
+            text-decoration: none;
+        }
+        .store-fab:hover {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 32px rgba(34, 197, 94, 0.45), 0 0 0 1px rgba(34, 197, 94, 0.25);
+        }
+        .store-fab:active {
+            transform: translateY(0) scale(0.98);
+        }
+        .store-fab svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .store-fab .fab-pulse {
+            position: absolute;
+            inset: -3px;
+            border-radius: 100px;
+            border: 2px solid rgba(34, 197, 94, 0.4);
+            animation: storeFabPulse 2.5s ease-out infinite;
+            pointer-events: none;
+        }
+        @keyframes storeFabPulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            70% { transform: scale(1.15); opacity: 0; }
+            100% { transform: scale(1.15); opacity: 0; }
+        }
+        /* Hide FABs when store overlay is open */
+        .store-overlay.active ~ .store-fab,
+        .store-overlay.active ~ .guide-fab,
+        .store-fab.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+        }
+        @media (max-width: 768px) {
+            .store-fab {
+                bottom: calc(0.75rem + 38px + 0.5rem);
+                right: 0.75rem;
+                padding: 0.5rem 0.85rem;
+                font-size: 0.6875rem;
+                gap: 0.35rem;
+            }
+            .store-fab svg {
+                width: 15px;
+                height: 15px;
+            }
+        }
+
+        /* ============================================
+           CHECKOUT OVERLAY
+           ============================================ */
+        .checkout-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 350;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .checkout-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .checkout-container {
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            margin: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .checkout-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .checkout-header h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .checkout-header h3 svg {
+            width: 18px;
+            height: 18px;
+            stroke: var(--store-accent);
+            fill: none;
+            stroke-width: 2;
+        }
+        .checkout-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        .checkout-close:hover { color: var(--text-primary); }
+
+        .checkout-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            min-height: 400px;
+        }
+
+        .checkout-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            padding: 3rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        .checkout-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border-subtle);
+            border-top-color: var(--store-accent);
+            border-radius: 50%;
+            animation: checkoutSpin 0.8s linear infinite;
+        }
+        @keyframes checkoutSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        .checkout-error {
+            text-align: center;
+            padding: 2rem;
+            color: var(--glucose-red);
+        }
+        .checkout-error p {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Checkout success/failure return page */
+        .checkout-result {
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+        .checkout-result-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .checkout-result-icon.success {
+            background: rgba(34, 197, 94, 0.12);
+        }
+        .checkout-result-icon.failure {
+            background: rgba(239, 68, 68, 0.12);
+        }
+        .checkout-result-icon svg {
+            width: 32px;
+            height: 32px;
+            stroke-width: 2;
+            fill: none;
+        }
+        .checkout-result-icon.success svg { stroke: var(--store-accent); }
+        .checkout-result-icon.failure svg { stroke: var(--glucose-red); }
+        .checkout-result h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .checkout-result p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .checkout-result .result-email {
+            color: var(--store-accent);
+            font-weight: 500;
+        }
     </style>
+
+    <!-- Stripe.js for embedded checkout -->
+    <script src="https://js.stripe.com/v3/"></script>
 </head>
 <body>
 
@@ -2575,6 +3629,7 @@
                 <li><a href="#gallery">Gallery</a></li>
                 <li><a href="#diy">Build</a></li>
                 <li><a href="#" onclick="openGuide(); return false;">Guide</a></li>
+                <li><a href="#" onclick="openStore(); return false;">Shop</a></li>
                 <li><a href="#story">About</a></li>
                 <li><span class="nav-version" id="navVersion">v0.5.0 Beta</span></li>
                 <li><a href="#diy" class="nav-cta">Get Started</a></li>
@@ -2592,6 +3647,22 @@
                 </div>
                 <h1>Your glucose data, on <span class="accent">your terms</span></h1>
                 <p class="hero-desc">A pocket-sized, open-source CGM display you build yourself. Real-time readings, smart alarms, and weather — no subscriptions, no apps, ~$40.</p>
+                <div class="provider-grid" style="max-width: 400px; margin: 1.25rem 0;">
+                    <div class="provider-card available">
+                        <h4>Dexcom</h4>
+                        <p>G6, G7, ONE via Dexcom Share</p>
+                        <div class="provider-status ready">
+                            <span class="color-dot" style="background:var(--glucose-green)"></span> Ready
+                        </div>
+                    </div>
+                    <div class="provider-card available">
+                        <h4>FreeStyle Libre</h4>
+                        <p>Libre 2, Libre 3 via LibreLinkUp</p>
+                        <div class="provider-status soon">
+                            <span class="color-dot" style="background:var(--glucose-yellow)"></span> Live Testing
+                        </div>
+                    </div>
+                </div>
                 <div class="hero-actions">
                     <a href="#diy" class="btn btn-primary">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -2637,7 +3708,7 @@
                         <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                     </div>
                     <h3>Live Glucose Readings</h3>
-                    <p>Real-time data from your Dexcom CGM, refreshed every 90 seconds. Always current, always visible.</p>
+                    <p>Real-time data from your Dexcom or FreeStyle Libre CGM, refreshed every 90 seconds. Always current, always visible.</p>
                 </div>
                 <div class="capability-card reveal reveal-delay-2">
                     <div class="capability-icon">
@@ -2786,10 +3857,9 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                     Flash Firmware
                 </button>
-                <a href="#" class="diy-extra-link" onclick="return false;">
+                <a href="https://makerworld.com/en/models/2542672-cygm-case" target="_blank" rel="noopener" class="diy-extra-link">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     3D Print Files
-                    <span class="coming-soon-tip">Coming soon</span>
                 </a>
                 <a href="#" class="diy-extra-link" onclick="return false;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
@@ -3089,11 +4159,11 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                                     <span class="color-dot" style="background:var(--glucose-green)"></span> Ready to use
                                 </div>
                             </div>
-                            <div class="provider-card">
-                                <h4>FreeStyle Libre <span class="badge-coming-soon">Coming Soon</span></h4>
+                            <div class="provider-card available">
+                                <h4>FreeStyle Libre</h4>
                                 <p>Libre 2, Libre 3 via LibreLinkUp</p>
                                 <div class="provider-status soon">
-                                    <span class="color-dot" style="background:var(--glucose-yellow)"></span> In development
+                                    <span class="color-dot" style="background:var(--glucose-yellow)"></span> Live Testing
                                 </div>
                             </div>
                         </div>
@@ -3114,15 +4184,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
-                                    <span>WiFi Networks</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>Connecting to WiFi</h3>
                             <ol class="guide-steps">
@@ -3158,15 +4219,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                    <span>CGM Login</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>Dexcom Share</h3>
                             <ol class="guide-steps">
@@ -3183,8 +4235,71 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                                 <span><strong>Important:</strong> You need <strong>Dexcom Share</strong> enabled in your Dexcom app (Settings &rarr; Share &rarr; Invite Follower). CYGM acts as a follower to receive your data.</span>
                             </div>
 
-                            <h3 style="margin-top: 1.25rem;">FreeStyle Libre <span class="badge-coming-soon">Coming Soon</span></h3>
-                            <p>Support for <strong>FreeStyle Libre 2 &amp; Libre 3</strong> via LibreLinkUp is currently in development. Once available, you'll be able to select your CGM provider in Settings and log in with your LibreLinkUp credentials the same way.</p>
+                            <h3 style="margin-top: 1.25rem;">FreeStyle Libre (LibreLinkUp)</h3>
+
+                            <div class="guide-warning" style="margin-top: 0.35rem; margin-bottom: 0.75rem;">
+                                <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                                <span><strong>Before you start:</strong> CYGM connects through <strong>LibreLinkUp</strong>, Abbott's follower app. You must have a LibreLinkUp account set up <em>before</em> entering your credentials on the device. If you don't have one yet, expand the setup guide below.</span>
+                            </div>
+
+                            <div class="guide-prereq" id="libre-prereq">
+                                <button class="guide-prereq-toggle" onclick="document.getElementById('libre-prereq').classList.toggle('open')">
+                                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                                    LibreLinkUp Account Setup (do this on your phone first)
+                                    <svg class="prereq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                                </button>
+                                <div class="guide-prereq-body">
+                                    <div class="guide-prereq-inner">
+                                        <h4>What you need</h4>
+                                        <p>CYGM reads glucose data through <strong>LibreLinkUp</strong> &mdash; Abbott's companion app that lets caregivers and family members follow a sensor wearer's readings remotely. You'll need:</p>
+                                        <ol style="margin-top: 0.5rem;">
+                                            <li><span class="prereq-num">&bull;</span> <span>A <strong>FreeStyle Libre sensor</strong> (Libre 14-day, Libre 2, Libre 3, or Libre 3 Plus)</span></li>
+                                            <li><span class="prereq-num">&bull;</span> <span>The <strong>FreeStyle Libre app</strong> (or compatible app) on the sensor wearer's phone</span></li>
+                                            <li><span class="prereq-num">&bull;</span> <span>The <strong>LibreLinkUp app</strong> installed on a phone (yours or the wearer's)</span></li>
+                                        </ol>
+
+                                        <h4>Step A &mdash; Sensor wearer sends an invitation</h4>
+                                        <p>On the phone that's paired with the Libre sensor:</p>
+                                        <ol>
+                                            <li><span class="prereq-num">1</span> <span>Open the <strong>FreeStyle Libre app</strong></span></li>
+                                            <li><span class="prereq-num">2</span> <span>Tap the <strong>&#9776; menu</strong> (top-left) &rarr; <strong>Connected Apps</strong> (or <strong>Share</strong>)</span></li>
+                                            <li><span class="prereq-num">3</span> <span>Under <strong>LibreLinkUp</strong>, tap <strong>Manage</strong> or <strong>Connect</strong></span></li>
+                                            <li><span class="prereq-num">4</span> <span>Tap <strong>Add Connection</strong></span></li>
+                                            <li><span class="prereq-num">5</span> <span>Enter the <strong>name and email address</strong> of the person who will log into CYGM</span></li>
+                                            <li><span class="prereq-num">6</span> <span>Tap <strong>Add</strong> &mdash; an invitation email is sent</span></li>
+                                        </ol>
+
+                                        <h4>Step B &mdash; Accept the invitation &amp; create a LibreLinkUp account</h4>
+                                        <ol>
+                                            <li><span class="prereq-num">1</span> <span>Check your email for the <strong>LibreLinkUp invitation</strong></span></li>
+                                            <li><span class="prereq-num">2</span> <span>Tap the link to <strong>download LibreLinkUp</strong> (iOS or Android) if you don't have it</span></li>
+                                            <li><span class="prereq-num">3</span> <span>Open the app, tap <strong>Get Started</strong>, and accept the license agreement</span></li>
+                                            <li><span class="prereq-num">4</span> <span><strong>Create your account</strong> &mdash; choose your country, enter your name, email, and a password</span></li>
+                                            <li><span class="prereq-num">5</span> <span>Check your email again to <strong>verify your account</strong></span></li>
+                                            <li><span class="prereq-num">6</span> <span>Log into the app and <strong>accept the sharing invitation</strong></span></li>
+                                        </ol>
+                                        <p style="margin-top: 0.5rem;">Once you see glucose readings in the LibreLinkUp app, your account is ready. Use the <strong>same email and password</strong> to sign into CYGM below.</p>
+
+                                        <div class="guide-tip" style="margin-top: 0.65rem;">
+                                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                                            <span><strong>Monitoring yourself?</strong> You can invite yourself &mdash; just use your own email address in Step A. You'll get a LibreLinkUp account that follows your own sensor.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h4 style="font-family:'Outfit',sans-serif; font-size:0.875rem; font-weight:600; color:var(--text-primary); margin: 1rem 0 0.35rem;">On your CYGM device</h4>
+                            <ol class="guide-steps">
+                                <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; CGM Settings</strong></span></li>
+                                <li><span class="step-num">2</span> <span>Tap <strong>LibreLinkUp</strong></span></li>
+                                <li><span class="step-num">3</span> <span>Tap <strong>Sign In</strong>, then enter the <strong>email</strong> and <strong>password</strong> from your LibreLinkUp account.</span></li>
+                                <li><span class="step-num">4</span> <span>On success, a green <strong>"Login Successful"</strong> banner appears and glucose data begins flowing automatically.</span></li>
+                            </ol>
+
+                            <div class="guide-tip">
+                                <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                                <span><strong>Region matters:</strong> LibreLinkUp accounts are region-locked. Your LibreLinkUp account must be in the <strong>same country/region</strong> as the sensor wearer's LibreView account, or sharing won't work.</span>
+                            </div>
 
                             <h3 style="margin-top: 1.25rem;">Sensor Changes</h3>
                             <p>If CYGM stops receiving data for an extended period, a <strong>"No Data Received"</strong> overlay will ask if you're changing your CGM sensor. Tap <strong>Yes</strong> if you are (this adjusts data validation), or <strong>No</strong> to continue normally. The overlay auto-dismisses after 30 seconds.</p>
@@ -3201,15 +4316,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
-                                    <span>Location Search</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>Setting Your Location</h3>
                             <ol class="guide-steps">
@@ -3262,15 +4368,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-                                    <span>Home Screen</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>What you'll see</h3>
                             <p>The home screen is split into two cards:</p>
@@ -3358,15 +4455,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-                                    <span>Full-Screen CGM</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>Expanded CGM View</h3>
                             <p>Swipe left (or tap the glucose value) to expand to a full-screen view with:</p>
@@ -3443,15 +4531,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                                    <span>Glucose Chart</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>How to open</h3>
                             <p>Tap the <strong>trend arrow</strong> or the <strong>"X min ago"</strong> text on the home screen. The chart opens as a full-screen overlay.</p>
@@ -3489,15 +4568,6 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                     </p>
 
                     <div class="guide-content-row">
-                        <div class="device-mockup">
-                            <div class="device-screen">
-                                <div class="screenshot-placeholder">
-                                    <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                                    <span>Alarm Settings</span>
-                                    <span class="placeholder-label">Screenshot coming soon</span>
-                                </div>
-                            </div>
-                        </div>
                         <div class="guide-text">
                             <h3>Alarm Types</h3>
                             <table class="alarm-table">
@@ -3724,6 +4794,376 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
         </div>
     </div><!-- /guide-overlay -->
 
+    <!-- ============ STORE OVERLAY ============ -->
+    <div class="store-overlay" id="storeOverlay">
+        <div class="store-container">
+            <!-- Sidebar (desktop) -->
+            <div class="store-sidebar">
+                <div class="store-sidebar-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                        Shop
+                    </h2>
+                    <p>Get your CYGM device</p>
+                </div>
+                <nav class="store-nav" id="storeNav">
+                    <a class="store-nav-item active" href="#store-welcome" data-section="store-welcome">
+                        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span> Welcome
+                    </a>
+                    <div class="store-nav-divider"></div>
+                    <a class="store-nav-item" href="#store-complete" data-section="store-complete">
+                        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span> Complete Device
+                    </a>
+                    <a class="store-nav-item" href="#store-diy" data-section="store-diy">
+                        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span> DIY Kit
+                    </a>
+                    <a class="store-nav-item" href="#store-donate" data-section="store-donate">
+                        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span> Donate
+                    </a>
+                    <div class="store-nav-divider"></div>
+                    <a class="store-nav-item" href="#store-shipping" data-section="store-shipping">
+                        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Shipping & FAQ
+                    </a>
+                </nav>
+                <div class="store-sidebar-close">
+                    <button onclick="closeStore()">Close Shop</button>
+                </div>
+            </div>
+
+            <!-- Main content -->
+            <div class="store-content" id="storeContent">
+                <!-- Mobile header -->
+                <div class="store-mobile-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                        Shop
+                    </h2>
+                    <button class="store-mobile-close" onclick="closeStore()">&times;</button>
+                </div>
+
+                <!-- Welcome -->
+                <section class="store-section store-welcome" id="store-welcome" style="border-bottom: 1px solid var(--border-subtle);">
+                    <h1>The <span class="store-accent">CYGM</span> Store</h1>
+                    <p>Get a pocket-sized CGM display &mdash; assembled and ready to go, or as a kit you build yourself. Open-source firmware, no subscriptions, yours forever.</p>
+                    <div class="store-welcome-badges">
+                        <span class="store-badge">
+                            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Secure Checkout
+                        </span>
+                        <span class="store-badge">
+                            <svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                            US Shipping
+                        </span>
+                        <span class="store-badge">
+                            <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            Open Source
+                        </span>
+                    </div>
+                </section>
+
+                <!-- Complete Device -->
+                <section class="store-section" id="store-complete" style="border-bottom: 1px solid var(--border-subtle);">
+                    <div class="store-section-label">Product</div>
+                    <div class="store-section-title">Complete Device</div>
+                    <div class="store-section-desc">Assembled, tested, and firmware-flashed. Plug in and go.</div>
+
+                    <div class="store-product-card">
+                        <div class="store-product-layout">
+                            <div class="store-product-image">
+                                <img src="photos/cygm-purple-home-dashboard-shelf-wide.jpeg" alt="CYGM assembled device showing glucose dashboard">
+                            </div>
+                            <div class="store-product-details">
+                                <h3>CYGM Complete</h3>
+                                <p class="product-tagline">Everything you need in one box. Hand-assembled with care, fully tested, firmware pre-loaded. Just connect to WiFi and enter your CGM credentials.</p>
+
+                                <ul class="store-feature-list">
+                                    <li>
+                                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                                        JC2432W328 ESP32 touchscreen module
+                                    </li>
+                                    <li>
+                                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                                        3D-printed case in your chosen color
+                                    </li>
+                                    <li>
+                                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Latest CYGM firmware pre-installed
+                                    </li>
+                                    <li>
+                                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                                        USB-C cable + quick-start card
+                                    </li>
+                                    <li>
+                                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                                        OTA firmware updates forever
+                                    </li>
+                                </ul>
+
+                                <div class="store-color-selector">
+                                    <label>Case Color</label>
+                                    <div class="store-color-options" id="deviceColorOptions">
+                                        <button class="store-color-swatch selected" data-color="black" title="Black"></button>
+                                        <button class="store-color-swatch" data-color="white" title="White"></button>
+                                        <button class="store-color-swatch" data-color="purple" title="Purple"></button>
+                                        <button class="store-color-swatch" data-color="blue" title="Blue"></button>
+                                        <button class="store-color-swatch" data-color="green" title="Green"></button>
+                                        <button class="store-color-swatch" data-color="orange" title="Orange"></button>
+                                    </div>
+                                    <div class="store-color-name" id="deviceColorName">Black</div>
+                                </div>
+
+                                <div class="store-price-row">
+                                    <div class="store-price">
+                                        <span class="currency">$</span>50
+                                        <span class="price-note">+ $4.95 flat rate shipping</span>
+                                    </div>
+                                    <button class="store-buy-btn" onclick="buyProduct('complete_device')">
+                                        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                                        Buy Now
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- DIY Kit -->
+                <section class="store-section" id="store-diy" style="border-bottom: 1px solid var(--border-subtle);">
+                    <div class="store-section-label">Product</div>
+                    <div class="store-section-title">DIY Kit</div>
+                    <div class="store-section-desc">All the electronics &mdash; you print the case and assemble it yourself.</div>
+
+                    <div class="store-product-card">
+                        <div class="store-product-layout">
+                            <div class="store-product-image">
+                                <img src="photos/DIY_Kit_1.png" alt="CYGM DIY kit components">
+                            </div>
+                            <div class="store-product-details">
+                                <h3>CYGM DIY Kit</h3>
+                                <p class="product-tagline">For makers and tinkerers. All electronic components included &mdash; just 3D-print a case (STL files provided) and put it together. Flash firmware via the web flasher on this site.</p>
+
+                                <div class="store-section-label" style="margin-top: 1rem;">What's Included</div>
+                                <div class="store-component-grid">
+                                    <div class="store-component-item">
+                                        <div class="comp-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+                                        JC2432W328 Board
+                                    </div>
+                                    <div class="store-component-item">
+                                        <div class="comp-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+                                        Piezo Buzzer
+                                    </div>
+                                    <div class="store-component-item">
+                                        <div class="comp-icon"><svg viewBox="0 0 24 24"><rect x="1" y="6" width="18" height="12" rx="2" ry="2"/><line x1="23" y1="13" x2="23" y2="11"/></svg></div>
+                                        Li-Po Battery
+                                    </div>
+                                    <div class="store-component-item">
+                                        <div class="comp-icon"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+                                        USB-C Cable
+                                    </div>
+                                    <div class="store-component-item">
+                                        <div class="comp-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></div>
+                                        4x M3x10 Screws
+                                    </div>
+                                    <div class="store-component-item">
+                                        <div class="comp-icon"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+                                        2mm Allen Key (required)
+                                    </div>
+                                </div>
+
+                                <div class="store-price-row">
+                                    <div class="store-price">
+                                        <span class="currency">$</span>40
+                                        <span class="price-note">+ $4.95 flat rate shipping</span>
+                                    </div>
+                                    <button class="store-buy-btn" onclick="buyProduct('diy_kit')">
+                                        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                                        Buy Now
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Donate -->
+                <section class="store-section" id="store-donate" style="border-bottom: 1px solid var(--border-subtle);">
+                    <div class="store-section-label">Support</div>
+                    <div class="store-section-title">Support the Project</div>
+                    <div class="store-section-desc">CYGM is open-source and built by a family. Donations help fund components, hosting, and development time. Every dollar makes a difference.</div>
+
+                    <div class="store-product-card">
+                        <div class="store-product-layout">
+                            <div class="store-product-image">
+                                <img src="photos/cygm-purple-home-dashboard-front-center.jpeg" alt="CYGM device close-up">
+                            </div>
+                            <div class="store-product-details">
+                                <h3>Donate to CYGM</h3>
+                                <p class="product-tagline">Your support keeps this project alive. No amount is too small &mdash; it all goes directly toward building and improving CYGM devices for the diabetes community.</p>
+
+                                <div class="store-color-selector">
+                                    <label>Choose Amount</label>
+                                    <div class="store-donate-amounts">
+                                        <button class="donate-amount-btn" data-amount="5">$5</button>
+                                        <button class="donate-amount-btn" data-amount="10">$10</button>
+                                        <button class="donate-amount-btn selected" data-amount="25">$25</button>
+                                        <button class="donate-amount-btn" data-amount="50">$50</button>
+                                        <div class="donate-custom-wrap">
+                                            <span class="donate-custom-currency">$</span>
+                                            <input type="number" class="donate-custom-input" id="donateCustomAmount" placeholder="Other" min="1" max="999">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="store-price-row">
+                                    <div class="store-price">
+                                        <span class="currency">$</span><span id="donateTotalDisplay">25</span>
+                                        <span class="price-note">One-time donation</span>
+                                    </div>
+                                    <button class="store-buy-btn" onclick="buyDonation()">
+                                        <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                                        Donate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Shipping & FAQ -->
+                <section class="store-section" id="store-shipping">
+                    <div class="store-section-label">Info</div>
+                    <div class="store-section-title">Shipping & FAQ</div>
+
+                    <div class="store-info-grid">
+                        <div class="store-info-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                                Shipping
+                            </h4>
+                            <p>Every CYGM is hand-assembled and tested by our family. Most orders ship within 7 business days, though occasionally we may need a bit longer if we're waiting on components. We'll keep you updated via email with tracking once your device is on its way.</p>
+                        </div>
+                        <div class="store-info-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                Returns
+                            </h4>
+                            <p>30-day return policy for unopened items. Defective devices replaced at no cost. Contact us at support@cygm.me for any issues.</p>
+                        </div>
+                        <div class="store-info-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                Warranty
+                            </h4>
+                            <p>6-month hardware warranty. Firmware updates are free forever via OTA. Open-source means you can always fix, modify, or improve it yourself.</p>
+                        </div>
+                        <div class="store-info-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                Support
+                            </h4>
+                            <p>Setup help via the Device Guide on this site. Community support via GitHub Discussions. Direct email: support@cygm.me.</p>
+                        </div>
+                    </div>
+
+                    <div class="store-faq">
+                        <div class="store-faq-item">
+                            <button class="store-faq-question" onclick="toggleFaq(this)">
+                                Which CGM systems are supported?
+                                <svg class="store-faq-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="store-faq-answer">
+                                <div class="store-faq-answer-inner">
+                                    CYGM currently supports <strong>Dexcom</strong> (G6, G7, ONE via Dexcom Share) and <strong>FreeStyle Libre</strong> (Libre 2, Libre 3 via LibreLinkUp). Both are included in the firmware &mdash; you choose your provider during setup.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="store-faq-item">
+                            <button class="store-faq-question" onclick="toggleFaq(this)">
+                                Do I need a subscription?
+                                <svg class="store-faq-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="store-faq-answer">
+                                <div class="store-faq-answer-inner">
+                                    No. CYGM is a one-time purchase. Firmware updates are delivered free over-the-air (OTA). The device pulls data directly from your existing CGM provider account &mdash; no additional services or fees.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="store-faq-item">
+                            <button class="store-faq-question" onclick="toggleFaq(this)">
+                                What's the difference between Complete and DIY?
+                                <svg class="store-faq-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="store-faq-answer">
+                                <div class="store-faq-answer-inner">
+                                    The <strong>Complete Device</strong> arrives fully assembled with a 3D-printed case and firmware pre-installed &mdash; plug in and go. The <strong>DIY Kit</strong> includes all electronic components; you 3D-print the case yourself (STL files provided) and flash firmware using the web flasher on this site.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="store-faq-item">
+                            <button class="store-faq-question" onclick="toggleFaq(this)">
+                                Do you ship internationally?
+                                <svg class="store-faq-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="store-faq-answer">
+                                <div class="store-faq-answer-inner">
+                                    Currently US only. International shipping is coming soon &mdash; follow us on GitHub for updates.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="store-faq-item">
+                            <button class="store-faq-question" onclick="toggleFaq(this)">
+                                Is this a medical device?
+                                <svg class="store-faq-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="store-faq-answer">
+                                <div class="store-faq-answer-inner">
+                                    No. CYGM is a display accessory &mdash; it shows data from your existing CGM system. It is not FDA-approved and should not be used to make medical decisions. Always refer to your official CGM receiver or app.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div><!-- /store-content -->
+
+            <!-- Mobile bottom nav -->
+            <div class="store-mobile-nav" id="storeMobileNav">
+                <button class="store-mobile-nav-item active" data-section="store-welcome">Welcome</button>
+                <button class="store-mobile-nav-item" data-section="store-complete">Complete Device</button>
+                <button class="store-mobile-nav-item" data-section="store-diy">DIY Kit</button>
+                <button class="store-mobile-nav-item" data-section="store-donate">Donate</button>
+                <button class="store-mobile-nav-item" data-section="store-shipping">Shipping & FAQ</button>
+            </div>
+        </div>
+    </div><!-- /store-overlay -->
+
+    <!-- ============ CHECKOUT OVERLAY ============ -->
+    <div class="checkout-overlay" id="checkoutOverlay">
+        <div class="checkout-container">
+            <div class="checkout-header">
+                <h3>
+                    <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                    Secure Checkout
+                </h3>
+                <button class="checkout-close" onclick="closeCheckout()">&times;</button>
+            </div>
+            <div class="checkout-body" id="checkoutBody">
+                <div class="checkout-loading" id="checkoutLoading">
+                    <div class="checkout-spinner"></div>
+                    <span>Loading secure checkout...</span>
+                </div>
+                <div id="stripe-checkout"></div>
+            </div>
+        </div>
+    </div><!-- /checkout-overlay -->
+
+    <!-- Floating Store Button -->
+    <button class="store-fab" id="storeFab" onclick="openStore()">
+        <span class="fab-pulse"></span>
+        <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        Shop
+    </button>
+
     <!-- Floating Guide Button -->
     <button class="guide-fab" id="guideFab" onclick="openGuide()">
         <span class="fab-pulse"></span>
@@ -3742,6 +5182,7 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                 <li><a href="#diy">Build</a></li>
                 <li><a href="#flasher">Flash</a></li>
                 <li><a href="#" onclick="openGuide(); return false;">Guide</a></li>
+                <li><a href="#" onclick="openStore(); return false;">Shop</a></li>
                 <li><a href="#developer">Developer</a></li>
                 <li><a href="#story">About</a></li>
             </ul>
@@ -3865,7 +5306,7 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
 
                 // Hero badge
                 const heroBadgeText = document.getElementById('heroBadgeText');
-                if (heroBadgeText) heroBadgeText.textContent = `v${latest.version} ${latest.stage} — Now with OTA Updates`;
+                if (heroBadgeText) heroBadgeText.textContent = `v${latest.version} ${latest.stage}`;
 
                 // Firmware strip
                 const fwVersion = document.getElementById('firmwareVersion');
@@ -4041,14 +5482,18 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
             document.body.style.overflow = 'hidden';
         };
         window.closeGuide = function() {
+            if (document.body.classList.contains('guide-only')) {
+                window.location.href = window.location.pathname;
+                return;
+            }
             guideOverlay.classList.remove('active');
             guideFab.classList.remove('hidden');
             document.body.style.overflow = '';
         };
 
-        // ESC to close
+        // ESC to close guide (only if guide is actually open)
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeGuide();
+            if (e.key === 'Escape' && guideOverlay.classList.contains('active')) closeGuide();
         });
 
         // Sidebar nav click
@@ -4105,16 +5550,284 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
 
         guideSections.forEach(section => guideObserver.observe(section));
 
-        // Auto-open guide if URL contains #guide (for QR code direct link)
-        if (window.location.hash === '#guide') {
-            openGuide();
+        // Guide-only mode: ?guide param or #guide hash on initial load
+        const urlParams = new URLSearchParams(window.location.search);
+        const isGuideOnly = urlParams.has('guide') || window.location.hash === '#guide';
+
+        if (isGuideOnly) {
+            document.body.classList.add('guide-only');
+            guideOverlay.classList.add('active');
+            document.body.style.overflow = '';
+
+            // Change close buttons to "Visit Website"
+            const sidebarCloseBtn = document.querySelector('.guide-sidebar-close button');
+            if (sidebarCloseBtn) sidebarCloseBtn.textContent = 'Visit Website \u2192';
+            const mobileCloseBtn = document.querySelector('.guide-mobile-close');
+            if (mobileCloseBtn) mobileCloseBtn.textContent = '\u2190 Website';
         }
-        // Also listen for hash changes (e.g., user clicks a #guide link)
+
+        // Hash changes while on page (normal overlay mode)
         window.addEventListener('hashchange', function() {
-            if (window.location.hash === '#guide') {
+            if (window.location.hash === '#guide' && !document.body.classList.contains('guide-only')) {
                 openGuide();
             }
+            if (window.location.hash === '#shop') {
+                openStore();
+            }
         });
+
+        // ---- STORE OVERLAY ----
+        const storeOverlay = document.getElementById('storeOverlay');
+        const storeContent = document.getElementById('storeContent');
+        const storeSidebarNav = document.getElementById('storeNav');
+        const storeMobileNav = document.getElementById('storeMobileNav');
+        const storeFab = document.getElementById('storeFab');
+
+        window.openStore = function() {
+            storeOverlay.classList.add('active');
+            storeFab.classList.add('hidden');
+            document.getElementById('guideFab').classList.add('hidden');
+            document.body.style.overflow = 'hidden';
+        };
+        window.closeStore = function() {
+            storeOverlay.classList.remove('active');
+            storeFab.classList.remove('hidden');
+            document.getElementById('guideFab').classList.remove('hidden');
+            document.body.style.overflow = '';
+        };
+
+        // ESC closes store (and checkout)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (checkoutOverlay.classList.contains('active')) {
+                    closeCheckout();
+                } else if (storeOverlay.classList.contains('active')) {
+                    closeStore();
+                }
+            }
+        });
+
+        // Store sidebar nav click
+        storeSidebarNav.querySelectorAll('.store-nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = item.getAttribute('data-section');
+                const target = document.getElementById(targetId);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Store mobile nav click
+        storeMobileNav.querySelectorAll('.store-mobile-nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const targetId = item.getAttribute('data-section');
+                const target = document.getElementById(targetId);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Store active section tracking
+        const storeSections = storeContent.querySelectorAll('.store-section');
+        const storeObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    storeSidebarNav.querySelectorAll('.store-nav-item').forEach(item => {
+                        item.classList.toggle('active', item.getAttribute('data-section') === id);
+                    });
+                    storeMobileNav.querySelectorAll('.store-mobile-nav-item').forEach(item => {
+                        item.classList.toggle('active', item.getAttribute('data-section') === id);
+                    });
+                    const activeBtn = storeMobileNav.querySelector('.store-mobile-nav-item.active');
+                    if (activeBtn) {
+                        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                    }
+                }
+            });
+        }, {
+            root: storeContent,
+            threshold: 0.3
+        });
+        storeSections.forEach(section => storeObserver.observe(section));
+
+        // Color swatch selector
+        document.querySelectorAll('.store-color-options').forEach(container => {
+            container.querySelectorAll('.store-color-swatch').forEach(swatch => {
+                swatch.addEventListener('click', () => {
+                    container.querySelectorAll('.store-color-swatch').forEach(s => s.classList.remove('selected'));
+                    swatch.classList.add('selected');
+                    const nameEl = container.parentElement.querySelector('.store-color-name');
+                    if (nameEl) {
+                        nameEl.textContent = swatch.getAttribute('data-color').charAt(0).toUpperCase() + swatch.getAttribute('data-color').slice(1);
+                    }
+                });
+            });
+        });
+
+        // FAQ accordion
+        window.toggleFaq = function(btn) {
+            const item = btn.closest('.store-faq-item');
+            item.classList.toggle('open');
+        };
+
+        // ?shop URL param opens store
+        if (urlParams.has('shop') || window.location.hash === '#shop') {
+            openStore();
+        }
+
+        // ---- STRIPE CHECKOUT ----
+        const checkoutOverlay = document.getElementById('checkoutOverlay');
+        const checkoutBody = document.getElementById('checkoutBody');
+        const checkoutLoading = document.getElementById('checkoutLoading');
+        const stripeCheckoutEl = document.getElementById('stripe-checkout');
+
+        // Replace with your Stripe publishable key from https://dashboard.stripe.com/apikeys
+        const STRIPE_PK = 'pk_test_51TDDbWAEiVbSevHuuKhIu9v8xLMXeIGOHEOOOn1llFlJ2YrpJppPhlf1jxNECVpPBHccerSaxyVHFMYV8P6IU79W001i9s2YFG';
+        let stripeInstance = null;
+        let currentCheckout = null;
+
+        // Donation amount selector
+        let donateAmount = 25;
+        const donateTotalDisplay = document.getElementById('donateTotalDisplay');
+        const donateCustomInput = document.getElementById('donateCustomAmount');
+
+        document.querySelectorAll('.donate-amount-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.donate-amount-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                donateAmount = parseInt(btn.getAttribute('data-amount'));
+                donateTotalDisplay.textContent = donateAmount;
+                donateCustomInput.value = '';
+            });
+        });
+
+        donateCustomInput.addEventListener('input', () => {
+            const val = parseInt(donateCustomInput.value);
+            if (val > 0) {
+                document.querySelectorAll('.donate-amount-btn').forEach(b => b.classList.remove('selected'));
+                donateAmount = Math.min(val, 999);
+                donateTotalDisplay.textContent = donateAmount;
+            }
+        });
+
+        window.buyDonation = function() {
+            if (donateAmount < 1) return;
+            closeStore();
+            openCheckout('donate', '', donateAmount);
+        };
+
+        window.buyProduct = function(productId) {
+            const selectedColor = document.querySelector('#deviceColorOptions .store-color-swatch.selected');
+            const color = selectedColor ? selectedColor.getAttribute('data-color') : '';
+            closeStore();
+            openCheckout(productId, color, 1);
+        };
+
+        async function openCheckout(productId, color, quantity) {
+            checkoutOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            checkoutLoading.style.display = 'flex';
+            stripeCheckoutEl.innerHTML = '';
+
+            try {
+                if (!stripeInstance) {
+                    stripeInstance = Stripe(STRIPE_PK);
+                }
+
+                const response = await fetch('create-checkout-session.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: productId, color: color, quantity: quantity }),
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.error || 'Failed to create checkout session');
+                }
+
+                const { clientSecret } = await response.json();
+
+                checkoutLoading.style.display = 'none';
+
+                currentCheckout = await stripeInstance.initEmbeddedCheckout({
+                    clientSecret: clientSecret,
+                });
+
+                currentCheckout.mount('#stripe-checkout');
+
+            } catch (error) {
+                checkoutLoading.style.display = 'none';
+                stripeCheckoutEl.innerHTML =
+                    '<div class="checkout-error">' +
+                    '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' +
+                    '<p>' + (error.message || 'Something went wrong. Please try again.') + '</p>' +
+                    '</div>';
+            }
+        }
+
+        window.closeCheckout = function() {
+            checkoutOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+            if (currentCheckout) {
+                currentCheckout.destroy();
+                currentCheckout = null;
+            }
+            stripeCheckoutEl.innerHTML = '';
+        };
+
+        // Handle checkout return (success/failure page)
+        if (urlParams.has('session_id')) {
+            (async function() {
+                const sessionId = urlParams.get('session_id');
+                try {
+                    const resp = await fetch('checkout-return.php?session_id=' + encodeURIComponent(sessionId));
+                    const data = await resp.json();
+
+                    checkoutOverlay.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                    checkoutLoading.style.display = 'none';
+
+                    if (data.status === 'complete' || data.payment_status === 'paid') {
+                        if (data.is_donation) {
+                            stripeCheckoutEl.innerHTML =
+                                '<div class="checkout-result">' +
+                                '<div class="checkout-result-icon success"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>' +
+                                '<h2>Thank You for Donating!</h2>' +
+                                '<p>A receipt has been sent to <span class="result-email">' + (data.customer_email || 'your email') + '</span>.</p>' +
+                                '<p style="margin-top:1rem; font-size:0.875rem; color:var(--text-secondary); line-height:1.7;">Your donation goes directly toward building more CYGM devices, improving the firmware, and \u2014 most importantly \u2014 putting devices in the hands of people who need them most, completely free of charge. This project is built by a family for the diabetes community, and your support makes that possible.</p>' +
+                                '<p style="margin-top:0.75rem; font-size:0.8125rem; color:var(--text-muted);">From our family to yours \u2014 thank you.</p>' +
+                                '</div>';
+                        } else {
+                            stripeCheckoutEl.innerHTML =
+                                '<div class="checkout-result">' +
+                                '<div class="checkout-result-icon success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+                                '<h2>Order Confirmed!</h2>' +
+                                '<p>Thank you for your purchase. A confirmation email has been sent to <span class="result-email">' + (data.customer_email || 'your email') + '</span>.</p>' +
+                                '<p style="margin-top:1rem; font-size:0.8125rem; color:var(--text-muted);">Each device is hand-assembled and tested by our family. Most orders ship within 7 business days \u2014 we\'ll email you tracking as soon as it\'s on its way.</p>' +
+                                '</div>';
+                        }
+                    } else {
+                        stripeCheckoutEl.innerHTML =
+                            '<div class="checkout-result">' +
+                            '<div class="checkout-result-icon failure"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>' +
+                            '<h2>Payment Not Completed</h2>' +
+                            '<p>Your payment was not processed. No charges were made. Feel free to try again.</p>' +
+                            '<button class="store-buy-btn" style="margin-top:1.5rem;" onclick="closeCheckout(); openStore();">' +
+                            'Return to Shop</button>' +
+                            '</div>';
+                    }
+
+                    // Clean up URL
+                    window.history.replaceState({}, '', window.location.pathname);
+                } catch (e) {
+                    // Silently handle - user can try again
+                }
+            })();
+        }
 
     })();
     </script>
