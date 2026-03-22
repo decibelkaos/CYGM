@@ -85,8 +85,8 @@ All global task handles declared in `shared_state.h`, defined in `main.c`.
 These settings in `sdkconfig.defaults` were debugged extensively. **Do not change without understanding the impact.**
 
 ```
-CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384    # Apache sends full 16KB TLS records for OTA binary
-CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048     # Device only sends small requests
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192     # OTA uses Range requests (4KB chunks), Dexcom responses fit in 8KB
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=1024     # Device sends small requests (<500B); mbedTLS splits larger ones automatically
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y             # Allocate/free TLS buffers on demand (saves idle RAM)
 CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y   # Free handshake config after completion
 CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y       # Free CA cert after verification

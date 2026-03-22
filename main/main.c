@@ -2274,7 +2274,7 @@ void glucose_update_task(void *pvParameters) {
             size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
             static int critical_heap_count = 0;
 
-            if (largest < 2048) {
+            if (largest < 1024) {
                 critical_heap_count++;
                 ESP_LOGE(TAG, "HEAP CRITICAL: largest=%lu (strike %d/3)",
                          (unsigned long)largest, critical_heap_count);

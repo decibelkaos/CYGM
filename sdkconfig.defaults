@@ -49,9 +49,12 @@ CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
 # mbedTLS - TLS buffer sizes (tuned for ESP32 memory constraints)
 # IN: 8KB is enough — OTA uses Range requests (4KB chunks) so no TLS record exceeds 8KB.
 #     Dexcom/weather APIs also use small responses.  Do NOT increase to 16384.
-# OUT: 2KB is enough (device only sends small GET/POST requests)
+# OUT: 1KB is enough (device only sends small GET/POST requests, max ~400 bytes).
+#      mbedTLS splits larger headers across multiple TLS records automatically.
+#      1024 keeps the dynamic OUT buffer allocation below largest_block (~1728)
+#      after task recreation, enabling SSL reuse without heap fragmentation failures.
 CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
-CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=1024
 
 # Dynamic SSL buffers: allocate/free on demand instead of keeping permanently.
 # CRITICAL: Do NOT use CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH — it aggressively
