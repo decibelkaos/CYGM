@@ -751,11 +751,22 @@ void update_start_ota(void) {
         ESP_LOGI(TAG, "OTA install requested (check task will handle)");
     } else {
         // Automatic check case — no task is polling. Create a fallback task
-        // to prepare memory and run OTA. The fallback task calls
-        // update_prepare_memory() fresh, so the heap isn't fragmented by
-        // a prior version check.
+        // to prepare memory and run OTA.
         ESP_LOGI(TAG, "OTA install requested (creating fallback task)");
-        xTaskCreatePinnedToCore(ota_fallback_task_fn, "ota_fb", 6144, NULL, 5, NULL, 0);
+
+        // Free SSL clients to reclaim ~10KB heap for the task stack.
+        // The fallback task calls update_stop_all_tasks() immediately anyway.
+        dexcom_close_persistent_client();
+        libre_close_persistent_client();
+
+        BaseType_t rc = xTaskCreatePinnedToCore(
+            ota_fallback_task_fn, "ota_fb", 6144, NULL, 5, NULL, 0);
+        if (rc != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create OTA fallback task (heap=%lu, largest=%lu)",
+                     esp_get_free_heap_size(),
+                     heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+            ota_install_requested = false;
+        }
     }
 }
 
