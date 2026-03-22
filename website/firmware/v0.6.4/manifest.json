@@ -1,0 +1,17 @@
+{
+    "name":  "CYGM",
+    "version":  "0.6.4",
+    "new_install_prompt_erase":  false,
+    "builds":  [
+                   {
+                       "chipFamily":  "ESP32",
+                       "improv":  false,
+                       "parts":  [
+                                     {
+                                         "path":  "cygm-merged.bin",
+                                         "offset":  0
+                                     }
+                                 ]
+                   }
+               ]
+}

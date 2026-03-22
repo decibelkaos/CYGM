@@ -568,7 +568,20 @@ static void power_hold_event_cb(lv_event_t *e) {
         if (progress >= 100 && !power_off_initiated) {
             power_off_initiated = true;
             ESP_LOGI(TAG, "Power off confirmed via hold button");
-            xTaskCreatePinnedToCore(power_off_task, "power_off", 4096, NULL, 10, NULL, 0);
+
+            // Free SSL client to reclaim ~10KB heap for the shutdown task stack.
+            // Without this, largest_block is often <3KB and task creation fails silently.
+            dexcom_close_persistent_client();
+            libre_close_persistent_client();
+
+            BaseType_t rc = xTaskCreatePinnedToCore(
+                power_off_task, "power_off", 3072, NULL, 10, NULL, 0);
+            if (rc != pdPASS) {
+                ESP_LOGE(TAG, "Failed to create power_off task (heap=%lu, largest=%lu)",
+                         esp_get_free_heap_size(),
+                         heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+                power_off_initiated = false;  // Allow retry
+            }
         }
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         if (!power_off_initiated) {

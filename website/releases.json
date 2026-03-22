@@ -1,18 +1,31 @@
 ﻿{
     "versions":  [
                      {
+                         "version":  "0.6.4",
+                         "date":  "2026-03-22",
+                         "stage":  "Beta",
+                         "notes":  "Fix power off button failing silently on fragmented heap",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.4/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.4/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.4/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.4/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.4/ota_data_initial.bin"
+                                   },
+                         "latest":  true
+                     },
+                     {
                          "version":  "0.6.3",
                          "date":  "2026-03-21",
                          "stage":  "Beta",
-                         "notes":  "Fixed heap fragmentation cascade: OTA check no longer closes SSL unnecessarily, immediate SSL retry on connection death",
+                         "notes":  "Fix: Eliminate heap fragmentation cascade, SSL immediate retry",
                          "files":  {
                                        "merged":  "firmware/v0.6.3/cygm-merged.bin",
                                        "app":  "firmware/v0.6.3/cygm.bin",
                                        "bootloader":  "firmware/v0.6.3/bootloader.bin",
                                        "partitions":  "firmware/v0.6.3/partition-table.bin",
                                        "ota_data":  "firmware/v0.6.3/ota_data_initial.bin"
-                                   },
-                         "latest":  true
+                                   }
                      },
                      {
                          "version":  "0.6.2",
