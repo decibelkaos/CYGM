@@ -1,16 +1,17 @@
 /*
- * SD Card Logger — v3.0 (Persistent Mount + Serial Capture)
+ * SD Card Logger — v4.0 (Persistent Mount + Serial Capture)
  *
  * Key design: SD card mounted ONCE at boot, stays mounted permanently.
  * Flush just opens/writes/closes files — no mount/unmount heap churn.
  * This prevents heap fragmentation that kills SSL reconnection on ESP32.
  *
- * Three log streams:
- *   C*.LOG — Curated system log (explicit sd_log() calls only)
+ * Two log streams:
  *   G*.CSV — Glucose readings (datetime, value, trend)
  *   S*.LOG — Full serial capture (ALL ESP_LOG output, raw)
  *
- * Permanent cost: ~12KB (2KB curated + 512B glucose + 8KB serial + ~1.5KB mount)
+ * sd_log() calls are forwarded to ESP_LOGI → serial capture → S*.LOG.
+ *
+ * Permanent cost: ~10KB (512B glucose + 8KB serial + ~1.5KB mount)
  */
 
 #include "sd_logger.h"
@@ -39,12 +40,6 @@ static const char *TAG = "SD_LOG";
 #define SD_SPI_HOST  SPI3_HOST
 #define MOUNT_POINT  "/sdcard"
 
-// Curated log buffer — explicit sd_log() calls
-#define SD_LOG_BUFFER_SIZE  2048
-#define SD_LOG_LINE_MAX     200
-
-static char log_buffer[SD_LOG_BUFFER_SIZE];
-static int log_buffer_pos = 0;
 static SemaphoreHandle_t log_mutex = NULL;
 
 // Glucose CSV buffer (simple: datetime,value,trend)
@@ -186,63 +181,31 @@ esp_err_t sd_logger_init(void)
         ESP_LOGI(TAG, "No SD card — logging disabled (0 bytes used)");
     }
 
-    log_buffer_pos = 0;
     return ESP_OK;  // Always succeed — missing card is not fatal
 }
 
 void sd_log(const char *tag, const char *fmt, ...)
 {
-    if (!mounted_card || !log_mutex || sd_suspended) return;
-    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-
-    int remaining = SD_LOG_BUFFER_SIZE - log_buffer_pos - 2;  // room for \n\0
-    if (remaining < SD_LOG_LINE_MAX) {
-        // Buffer nearly full — drop this line (will be flushed soon)
-        xSemaphoreGive(log_mutex);
-        return;
-    }
-
-    // Timestamp
-    time_t now;
-    struct tm ti;
-    time(&now);
-    localtime_r(&now, &ti);
-
-    int written = snprintf(log_buffer + log_buffer_pos, remaining,
-                           "[%04d-%02d-%02d %02d:%02d:%02d] %s: ",
-                           ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
-                           ti.tm_hour, ti.tm_min, ti.tm_sec,
-                           tag ? tag : "LOG");
-    if (written <= 0 || written >= remaining) {
-        xSemaphoreGive(log_mutex);
-        return;
-    }
-    log_buffer_pos += written;
-    remaining -= written;
-
-    // Message
+    // Forward to ESP_LOGI — serial capture picks it up into S*.LOG
     va_list args;
     va_start(args, fmt);
-    written = vsnprintf(log_buffer + log_buffer_pos, remaining, fmt, args);
+    esp_log_writev(ESP_LOG_INFO, tag ? tag : "SD_LOG", fmt, args);
     va_end(args);
-
-    if (written > 0) {
-        if (written >= remaining) written = remaining - 1;
-        log_buffer_pos += written;
-    }
-
-    // Newline
-    if (log_buffer_pos < SD_LOG_BUFFER_SIZE - 1) {
-        log_buffer[log_buffer_pos++] = '\n';
-    }
-
-    xSemaphoreGive(log_mutex);
 }
 
 esp_err_t sd_logger_flush(void)
 {
     if (!mounted_card || sd_suspended) return ESP_ERR_NOT_FOUND;
     if (!log_mutex) return ESP_ERR_INVALID_STATE;
+
+    // Skip flush if heap is too low for SD DMA buffers (~4KB contiguous needed).
+    // Data stays buffered and will be written on the next flush when heap is available.
+    // This prevents the 5-strike suspension from triggering during SSL-alive periods.
+    size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (largest_block < 4096) {
+        ESP_LOGD(TAG, "Flush deferred: heap too low for DMA (%lu)", (unsigned long)largest_block);
+        return ESP_ERR_NO_MEM;
+    }
 
     // Pause serial capture to prevent re-entrancy from file I/O ESP_LOG calls
     serial_capture_paused = true;
@@ -263,17 +226,13 @@ esp_err_t sd_logger_flush(void)
         }
     }
 
-    if (log_buffer_pos == 0 && glucose_buffer_pos == 0 && serial_flush_len == 0) {
+    if (glucose_buffer_pos == 0 && serial_flush_len == 0) {
         xSemaphoreGive(log_mutex);
         serial_capture_paused = false;
         return ESP_OK;
     }
 
-    // Null-terminate curated buffer
-    log_buffer[log_buffer_pos] = '\0';
-    int flush_len = log_buffer_pos;
-
-    // Build daily filename (8.3 FAT format: C260308.LOG = Mar 8, 2026)
+    // Build daily filename
     time_t now;
     struct tm ti;
     time(&now);
@@ -293,29 +252,8 @@ esp_err_t sd_logger_flush(void)
         return ESP_OK;
     }
 
-    // Card is permanently mounted — no mount needed, no heap guard needed.
-    // fopen only allocates ~512 bytes (FIL.buf with DYN_BUFFERS + SECTOR_512).
-
-    char filepath[32];
-    snprintf(filepath, sizeof(filepath), MOUNT_POINT "/C%02d%02d%02d.LOG",
-             ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
-
     esp_err_t ret = ESP_OK;
     bool any_write_failed = false;
-
-    // Write curated system log if buffered
-    if (flush_len > 0) {
-        FILE *f = fopen(filepath, "a");
-        if (f) {
-            size_t written = fwrite(log_buffer, 1, flush_len, f);
-            fclose(f);
-            if ((int)written != flush_len) {
-                ESP_LOGW(TAG, "Partial write: %d/%d bytes", (int)written, flush_len);
-            }
-        } else {
-            any_write_failed = true;
-        }
-    }
 
     // Write glucose CSV if buffered
     if (glucose_buffer_pos > 0) {
@@ -353,7 +291,6 @@ esp_err_t sd_logger_flush(void)
         if (sd_flush_fail_count >= SD_SUSPEND_AFTER_FAILURES) {
             sd_suspended = true;
             serial_capture_enabled = false;
-            log_buffer_pos = 0;
             glucose_buffer_pos = 0;
             if (serial_mutex && xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 serial_buffer_pos = 0;
@@ -366,11 +303,6 @@ esp_err_t sd_logger_flush(void)
     } else {
         sd_flush_fail_count = 0;
     }
-
-    // No unmount — card stays mounted permanently
-
-    // Clear curated buffer regardless of write result
-    log_buffer_pos = 0;
 
     xSemaphoreGive(log_mutex);
     serial_capture_paused = false;

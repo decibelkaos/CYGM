@@ -28,7 +28,7 @@
 
 static const char *TAG = "UPDATE";
 
-#define UPDATE_CHECK_URL "https://cygm.me/version.json"
+#define UPDATE_CHECK_URL "http://cygm.me/version.json"
 #define UPDATE_INTERVAL_MS (24LL * 60 * 60 * 1000)  // 24 hours
 #define HTTP_BUF_SIZE 384
 
@@ -79,8 +79,14 @@ void update_set_manual_polling(bool polling) {
 // ==================== Check Logic ====================
 
 bool update_should_check(void) {
+    // Don't check within first 5 minutes of boot — let heap stabilize first.
+    // Early OTA checks fail with -0x7F00 (ALLOC_FAILED) because the heap is
+    // still fragmented from boot-time SSL + task allocation churn.
+    int64_t uptime_us = esp_timer_get_time();
+    if (uptime_us < 300000000LL) return false;  // 300s = 5 minutes
+
     if (last_check_ms == 0) return true;  // Never checked
-    int64_t now_ms = esp_timer_get_time() / 1000;
+    int64_t now_ms = uptime_us / 1000;
     return (now_ms - last_check_ms) >= UPDATE_INTERVAL_MS;
 }
 
@@ -95,9 +101,8 @@ esp_err_t update_check_now(void) {
         .event_handler = http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 512,
-        // Skip cert bundle — cygm.me uses a CA not in ESP-IDF's bundle.
-        // CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y handles TLS without verification.
-        // This is fine for a non-sensitive version check.
+        // Plain HTTP — version.json is non-sensitive (just version numbers).
+        // Avoids 6.7KB TLS buffer allocation that fails under heap fragmentation.
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);

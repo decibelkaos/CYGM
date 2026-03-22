@@ -1,17 +1,18 @@
 /*
- * SD Card Logger — v3.0 (Persistent Mount + Serial Capture)
+ * SD Card Logger — v4.0 (Persistent Mount + Serial Capture)
  *
- * Three log streams to SD card:
- *   C*.LOG — Curated system log (explicit sd_log() calls)
+ * Two log streams to SD card:
  *   G*.CSV — Glucose readings CSV
  *   S*.LOG — Full serial capture (ALL ESP_LOG output, raw)
+ *
+ * sd_log() forwards to ESP_LOGI, which serial capture picks up into S*.LOG.
  *
  * Hardware: JC2432W328 microSD slot on SPI3_HOST (VSPI)
  * Pins: CS=GPIO5, MOSI=GPIO23, MISO=GPIO19, SCK=GPIO18
  *
  * SD card is mounted once at boot and stays mounted permanently.
  * Flush just opens/writes/closes files — no mount/unmount heap churn.
- * Permanent RAM: ~12KB (2KB curated + 512B glucose + 8KB serial + ~1.5KB mount)
+ * Permanent RAM: ~10KB (512B glucose + 8KB serial + ~1.5KB mount)
  */
 
 #pragma once
@@ -29,20 +30,17 @@
 esp_err_t sd_logger_init(void);
 
 /**
- * Buffer a timestamped log line. No SD I/O occurs — just appends to
- * a 2KB static buffer. Thread-safe. Silently drops if buffer full or no card.
- *
- * Format: [YYYY-MM-DD HH:MM:SS] TAG: message\n
+ * Log a message via ESP_LOGI. Serial capture picks it up into S*.LOG.
+ * Kept for API compatibility — no separate buffer or file.
  */
 void sd_log(const char *tag, const char *fmt, ...);
 
 /**
  * Flush all buffered data to SD card.
- * Opens files, writes curated log + glucose CSV + serial log, closes files.
+ * Opens files, writes glucose CSV + serial log, closes files.
  * No mount/unmount — card is permanently mounted. Minimal heap impact (~512B).
  *
  * Files written per day:
- *   CYYMMDD.LOG — Curated system log
  *   GYYMMDD.CSV — Glucose readings
  *   SYYMMDD.LOG — Full serial output capture
  *

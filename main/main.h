@@ -9,6 +9,8 @@
 
 #include "lvgl.h"
 #include "dexcom_api.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -101,11 +103,17 @@ void glucose_update_task(void *pvParameters);
 
 // ==================== Task Lifecycle Helpers ====================
 
-/** Delete weather/time/battery tasks to free heap for TLS. Yields 500ms for IDLE reclaim. */
+/** Delete weather/time/battery tasks to prevent mutex contention during TLS. */
 bool delete_background_tasks_for_ssl(const char *reason);
 
-/** Recreate weather/time/battery tasks after TLS operation. */
+/** Recreate weather/time/battery tasks after TLS operation (static stacks). */
 void recreate_background_tasks(void);
+
+// Task stack sizes (bytes) — used by both main.c and background_tasks.c
+// Heap-allocated so task deletion frees contiguous memory for TLS reconnection.
+#define WEATHER_STACK_SIZE 4096
+#define TIME_STACK_SIZE    2560
+#define BATTERY_STACK_SIZE 3072
 
 // ==================== Event Callbacks ====================
 

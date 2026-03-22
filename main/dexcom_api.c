@@ -235,8 +235,8 @@ static esp_err_t init_persistent_client(void) {
         .buffer_size = 2048,
         .buffer_size_tx = 2048,
         .keep_alive_enable = true,
-        .keep_alive_idle = 5,
-        .keep_alive_interval = 5,
+        .keep_alive_idle = 30,
+        .keep_alive_interval = 10,
         .keep_alive_count = 3,
     };
 

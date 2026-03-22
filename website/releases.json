@@ -1,6 +1,72 @@
 ﻿{
     "versions":  [
                      {
+                         "version":  "0.6.3",
+                         "date":  "2026-03-21",
+                         "stage":  "Beta",
+                         "notes":  "Fixed heap fragmentation cascade: OTA check no longer closes SSL unnecessarily, immediate SSL retry on connection death",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.3/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.3/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.3/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.3/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.3/ota_data_initial.bin"
+                                   },
+                         "latest":  true
+                     },
+                     {
+                         "version":  "0.6.2",
+                         "date":  "2026-03-19",
+                         "stage":  "Beta",
+                         "notes":  "Updated OTA heap",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.2/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.2/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.2/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.2/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.2/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.6.1",
+                         "date":  "2026-03-19",
+                         "stage":  "Beta",
+                         "notes":  "- Fixed LibreLinkUp session restore (HTTP 400 / missing account-id header)\r\n  - Added account_id_hash NVS persistence for Libre sessions\r\n  - Added OTA migration guard (forces re-login if hash missing)\r\n  - Fixed glucose timestamp parsing (sanity check 300s → 86400s)\r\n  - Website: full LibreLinkUp setup guide",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.1/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.1/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.1/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.1/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.1/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.6.0",
+                         "date":  "2026-03-17",
+                         "stage":  "Beta",
+                         "notes":  "Libre Integration success",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.0/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.0/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.0/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.0/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.0/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.5.14",
+                         "date":  "2026-03-17",
+                         "stage":  "Beta",
+                         "notes":  "General UI/UX fixes",
+                         "files":  {
+                                       "merged":  "firmware/v0.5.14/cygm-merged.bin",
+                                       "app":  "firmware/v0.5.14/cygm.bin",
+                                       "bootloader":  "firmware/v0.5.14/bootloader.bin",
+                                       "partitions":  "firmware/v0.5.14/partition-table.bin",
+                                       "ota_data":  "firmware/v0.5.14/ota_data_initial.bin"
+                                   }
+                     },
+                     {
                          "version":  "0.5.13",
                          "date":  "2026-03-16",
                          "stage":  "Beta",
@@ -11,8 +77,7 @@
                                        "bootloader":  "firmware/v0.5.13/bootloader.bin",
                                        "partitions":  "firmware/v0.5.13/partition-table.bin",
                                        "ota_data":  "firmware/v0.5.13/ota_data_initial.bin"
-                                   },
-                         "latest":  true
+                                   }
                      },
                      {
                          "version":  "0.5.12",
