@@ -21,6 +21,7 @@
 #include "libre_api.h"
 #include "cgm_types.h"
 #include "sd_logger.h"
+#include "features/heartbeat.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -100,15 +101,8 @@ void ui_task_core1(void *pvParameters) {
 
     // Start battery monitoring task NOW (after LVGL is fully initialized)
     ESP_LOGI(TAG, "Starting battery monitor task");
-    xTaskCreatePinnedToCore(
-        battery_monitor_task,
-        "battery_mon",
-        3072,
-        NULL,
-        2,  // Low priority
-        &battery_task_handle,
-        0   // Core 0
-    );
+    xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon",
+        BATTERY_STACK_SIZE, NULL, 2, &battery_task_handle, 0);
 
     // UI task complete - time updates handled by time_update_task()
     // Keep a global inactivity watchdog for ALL non-home screens
@@ -250,7 +244,8 @@ void wifi_task_core0(void *pvParameters) {
 
             // Start time update task (singleton guard)
             if (time_task_handle == NULL) {
-                xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, &time_task_handle);
+                xTaskCreatePinnedToCore(time_update_task, "time_update",
+                    TIME_STACK_SIZE, NULL, 1, &time_task_handle, tskNO_AFFINITY);
             } else {
                 ESP_LOGI(TAG, "time_update task already running");
             }
@@ -304,7 +299,8 @@ void wifi_task_core0(void *pvParameters) {
                     }
                     if (weather_task_handle == NULL) {
                         ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
-                        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+                        xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                            WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                     }
                 } else {
                     ESP_LOGI(TAG, "Time synced successfully, proceeding with %s auto-login", cgm_type);
@@ -414,13 +410,18 @@ void wifi_task_core0(void *pvParameters) {
 
                             sd_logger_flush();
 
+                            // Send "device online" heartbeat (HTTP, ~500ms)
+                            // network_mutex not needed here — no other tasks running yet
+                            heartbeat_send();
+
                             if (glucose_task_handle == NULL) {
                                 ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
                                 xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
                             }
                             if (weather_task_handle == NULL) {
                                 ESP_LOGI(TAG, "Starting weather task (after %s, HTTP mode)...", cgm_type);
-                                xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+                                xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                                    WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                             }
 
                             break;  // Success - exit retry loop
@@ -447,14 +448,16 @@ void wifi_task_core0(void *pvParameters) {
                     }
                     if (weather_task_handle == NULL) {
                         ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
-                        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+                        xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                            WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                     }
                 }
             } else {
                 // No CGM credentials - start weather task
                 ESP_LOGI(TAG, "No %s credentials found, starting weather task (HTTP mode)...", cgm_type);
                 if (weather_task_handle == NULL) {
-                    xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+                    xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                        WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                 }
             }
         } else {

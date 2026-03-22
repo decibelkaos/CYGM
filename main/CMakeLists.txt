@@ -14,6 +14,7 @@
                             "features/geocoding_api.c"
                             "features/glucose_history.c"
                             "features/update_checker.c"
+                            "features/heartbeat.c"
                             "ui/menu_screen.c"
                             "ui/home_screen.c"
                             "ui/wifi_screens.c"

@@ -178,6 +178,32 @@
             0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--accent); }
             50% { opacity: 0.5; box-shadow: 0 0 4px var(--accent); }
         }
+        .devices-online {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-left: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.15);
+        }
+        .online-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--glucose-green);
+            box-shadow: 0 0 8px var(--glucose-green);
+            animation: pulse-online 2.5s ease-in-out infinite;
+        }
+        @keyframes pulse-online {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--glucose-green); }
+            50% { opacity: 0.4; box-shadow: 0 0 3px var(--glucose-green); }
+        }
         .nav-links {
             display: flex;
             align-items: center;
@@ -2074,6 +2100,89 @@
         }
         .guide-tip strong { color: var(--accent); }
 
+        /* Collapsible prerequisite block */
+        .guide-prereq {
+            margin-top: 1rem;
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: var(--radius-xs);
+            overflow: hidden;
+        }
+        .guide-prereq-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            background: rgba(0, 212, 255, 0.04);
+            border: none;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--accent);
+            text-align: left;
+            transition: background 0.2s ease;
+        }
+        .guide-prereq-toggle:hover { background: rgba(0, 212, 255, 0.08); }
+        .guide-prereq-toggle .prereq-chevron {
+            width: 14px; height: 14px;
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+        .guide-prereq-toggle .prereq-chevron path {
+            fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .guide-prereq.open .prereq-chevron { transform: rotate(180deg); }
+        .guide-prereq-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s var(--ease-out);
+        }
+        .guide-prereq.open .guide-prereq-body { max-height: 1200px; }
+        .guide-prereq-inner {
+            padding: 0.75rem 0.85rem 0.85rem;
+            border-top: 1px solid rgba(0, 212, 255, 0.1);
+        }
+        .guide-prereq-inner h4 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0.75rem 0 0.35rem;
+        }
+        .guide-prereq-inner h4:first-child { margin-top: 0; }
+        .guide-prereq-inner p,
+        .guide-prereq-inner li {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+        .guide-prereq-inner ol {
+            padding-left: 0;
+            list-style: none;
+            margin: 0.25rem 0 0;
+        }
+        .guide-prereq-inner ol li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            margin-bottom: 0.35rem;
+        }
+        .prereq-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+            font-size: 0.6875rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
         .guide-warning {
             display: flex;
             align-items: flex-start;
@@ -2540,6 +2649,10 @@
             <div class="nav-logo">
                 <span class="dot"></span>
                 CYGM
+                <span class="devices-online" id="devicesOnline">
+                    <span class="online-dot"></span>
+                    <span id="deviceCount">-</span> online
+                </span>
             </div>
             <button class="nav-toggle" id="navToggle" aria-label="Menu">
                 <span></span><span></span><span></span>
@@ -2776,10 +2889,9 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                     Flash Firmware
                 </button>
-                <a href="#" class="diy-extra-link" onclick="return false;">
+                <a href="https://makerworld.com/en/models/2542672-cygm-case" target="_blank" rel="noopener" class="diy-extra-link">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     3D Print Files
-                    <span class="coming-soon-tip">Coming soon</span>
                 </a>
                 <a href="#" class="diy-extra-link" onclick="return false;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
@@ -3156,16 +3268,69 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
                             </div>
 
                             <h3 style="margin-top: 1.25rem;">FreeStyle Libre (LibreLinkUp)</h3>
+
+                            <div class="guide-warning" style="margin-top: 0.35rem; margin-bottom: 0.75rem;">
+                                <span class="warn-icon"><svg viewBox="0 0 24 24"><path class="warn-tri" d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><text class="warn-bang" x="12" y="15">!</text></svg></span>
+                                <span><strong>Before you start:</strong> CYGM connects through <strong>LibreLinkUp</strong>, Abbott's follower app. You must have a LibreLinkUp account set up <em>before</em> entering your credentials on the device. If you don't have one yet, expand the setup guide below.</span>
+                            </div>
+
+                            <div class="guide-prereq" id="libre-prereq">
+                                <button class="guide-prereq-toggle" onclick="document.getElementById('libre-prereq').classList.toggle('open')">
+                                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                                    LibreLinkUp Account Setup (do this on your phone first)
+                                    <svg class="prereq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                                </button>
+                                <div class="guide-prereq-body">
+                                    <div class="guide-prereq-inner">
+                                        <h4>What you need</h4>
+                                        <p>CYGM reads glucose data through <strong>LibreLinkUp</strong> &mdash; Abbott's companion app that lets caregivers and family members follow a sensor wearer's readings remotely. You'll need:</p>
+                                        <ol style="margin-top: 0.5rem;">
+                                            <li><span class="prereq-num">&bull;</span> <span>A <strong>FreeStyle Libre sensor</strong> (Libre 14-day, Libre 2, Libre 3, or Libre 3 Plus)</span></li>
+                                            <li><span class="prereq-num">&bull;</span> <span>The <strong>FreeStyle Libre app</strong> (or compatible app) on the sensor wearer's phone</span></li>
+                                            <li><span class="prereq-num">&bull;</span> <span>The <strong>LibreLinkUp app</strong> installed on a phone (yours or the wearer's)</span></li>
+                                        </ol>
+
+                                        <h4>Step A &mdash; Sensor wearer sends an invitation</h4>
+                                        <p>On the phone that's paired with the Libre sensor:</p>
+                                        <ol>
+                                            <li><span class="prereq-num">1</span> <span>Open the <strong>FreeStyle Libre app</strong></span></li>
+                                            <li><span class="prereq-num">2</span> <span>Tap the <strong>&#9776; menu</strong> (top-left) &rarr; <strong>Connected Apps</strong> (or <strong>Share</strong>)</span></li>
+                                            <li><span class="prereq-num">3</span> <span>Under <strong>LibreLinkUp</strong>, tap <strong>Manage</strong> or <strong>Connect</strong></span></li>
+                                            <li><span class="prereq-num">4</span> <span>Tap <strong>Add Connection</strong></span></li>
+                                            <li><span class="prereq-num">5</span> <span>Enter the <strong>name and email address</strong> of the person who will log into CYGM</span></li>
+                                            <li><span class="prereq-num">6</span> <span>Tap <strong>Add</strong> &mdash; an invitation email is sent</span></li>
+                                        </ol>
+
+                                        <h4>Step B &mdash; Accept the invitation &amp; create a LibreLinkUp account</h4>
+                                        <ol>
+                                            <li><span class="prereq-num">1</span> <span>Check your email for the <strong>LibreLinkUp invitation</strong></span></li>
+                                            <li><span class="prereq-num">2</span> <span>Tap the link to <strong>download LibreLinkUp</strong> (iOS or Android) if you don't have it</span></li>
+                                            <li><span class="prereq-num">3</span> <span>Open the app, tap <strong>Get Started</strong>, and accept the license agreement</span></li>
+                                            <li><span class="prereq-num">4</span> <span><strong>Create your account</strong> &mdash; choose your country, enter your name, email, and a password</span></li>
+                                            <li><span class="prereq-num">5</span> <span>Check your email again to <strong>verify your account</strong></span></li>
+                                            <li><span class="prereq-num">6</span> <span>Log into the app and <strong>accept the sharing invitation</strong></span></li>
+                                        </ol>
+                                        <p style="margin-top: 0.5rem;">Once you see glucose readings in the LibreLinkUp app, your account is ready. Use the <strong>same email and password</strong> to sign into CYGM below.</p>
+
+                                        <div class="guide-tip" style="margin-top: 0.65rem;">
+                                            <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
+                                            <span><strong>Monitoring yourself?</strong> You can invite yourself &mdash; just use your own email address in Step A. You'll get a LibreLinkUp account that follows your own sensor.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h4 style="font-family:'Outfit',sans-serif; font-size:0.875rem; font-weight:600; color:var(--text-primary); margin: 1rem 0 0.35rem;">On your CYGM device</h4>
                             <ol class="guide-steps">
                                 <li><span class="step-num">1</span> <span>Go to <strong>Settings &rarr; CGM Settings</strong></span></li>
                                 <li><span class="step-num">2</span> <span>Tap <strong>LibreLinkUp</strong></span></li>
-                                <li><span class="step-num">3</span> <span>Tap <strong>Sign In</strong>, then enter the <strong>email</strong> and <strong>password</strong> for your LibreLinkUp follower account.</span></li>
+                                <li><span class="step-num">3</span> <span>Tap <strong>Sign In</strong>, then enter the <strong>email</strong> and <strong>password</strong> from your LibreLinkUp account.</span></li>
                                 <li><span class="step-num">4</span> <span>On success, a green <strong>"Login Successful"</strong> banner appears and glucose data begins flowing automatically.</span></li>
                             </ol>
 
                             <div class="guide-tip">
                                 <span class="tip-icon"><svg viewBox="0 0 24 24"><circle class="tip-circle" cx="12" cy="12" r="10"/><text class="tip-letter" x="12" y="12">i</text></svg></span>
-                                <span><strong>Important:</strong> You need a <strong>LibreLinkUp follower account</strong> &mdash; the Libre wearer must invite you from their FreeStyle LibreLink app (Connected Apps &rarr; LibreLinkUp &rarr; Invite). CYGM uses the follower API to receive glucose data.</span>
+                                <span><strong>Region matters:</strong> LibreLinkUp accounts are region-locked. Your LibreLinkUp account must be in the <strong>same country/region</strong> as the sensor wearer's LibreView account, or sharing won't work.</span>
                             </div>
 
                             <h3 style="margin-top: 1.25rem;">Sensor Changes</h3>
@@ -3835,6 +4000,26 @@ esptool.py --chip esp32 --baud 460800 write_flash 0x0 cygm-merged.bin</div>
         }
 
         loadFirmwareInfo();
+
+        // Devices online counter
+        async function loadDevicesOnline() {
+            try {
+                const resp = await fetch(`api/heartbeat.php?cb=${Date.now()}`, {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const el = document.getElementById('deviceCount');
+                if (el && data.count !== undefined) {
+                    el.textContent = data.count;
+                }
+            } catch (e) {
+                console.error('Devices online fetch failed:', e);
+            }
+        }
+        loadDevicesOnline();
+        setInterval(loadDevicesOnline, 60000); // Refresh every 60s
 
         // Firmware notes toggle
         const fwNotesToggle = document.getElementById('firmwareNotesToggle');

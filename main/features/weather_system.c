@@ -14,6 +14,7 @@
 #include "libre_api.h"
 #include "geocoding_api.h"
 #include "sd_logger.h"
+#include "heartbeat.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -317,11 +318,13 @@ esp_err_t fetch_weather(float lat, float lon) {
                         if (sunrise_str && cJSON_IsString(sunrise_str)) {
                             struct tm tm_sunrise = {0};
                             strptime(sunrise_str->valuestring, "%Y-%m-%dT%H:%M", &tm_sunrise);
+                            tm_sunrise.tm_isdst = -1;  // Auto-determine DST (API returns local time)
                             sunrise_time = mktime(&tm_sunrise);
                         }
                         if (sunset_str && cJSON_IsString(sunset_str)) {
                             struct tm tm_sunset = {0};
                             strptime(sunset_str->valuestring, "%Y-%m-%dT%H:%M", &tm_sunset);
+                            tm_sunset.tm_isdst = -1;  // Auto-determine DST (API returns local time)
                             sunset_time = mktime(&tm_sunset);
                         }
                     }
@@ -506,15 +509,22 @@ void weather_update_task(void *pvParameters) {
 
                     ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
 
-                    // Close Dexcom/Libre SSL to free ~15KB for weather HTTP + cJSON parsing.
-                    // Glucose task handles reconnection via task-deletion pattern.
-                    if (dexcom_persistent_client_is_open()) {
-                        dexcom_close_persistent_client();
-                        ESP_LOGI(TAG, "Closed Dexcom SSL for weather (heap now: %lu)", esp_get_free_heap_size());
-                    }
-                    if (libre_persistent_client_is_open()) {
-                        libre_close_persistent_client();
-                        ESP_LOGI(TAG, "Closed Libre SSL for weather (heap now: %lu)", esp_get_free_heap_size());
+                    // Weather uses plain HTTP — no need to close CGM SSL client.
+                    // ~13KB free with CGM alive is enough for HTTP client + cJSON.
+                    size_t weather_heap = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+                    ESP_LOGI(TAG, "Weather fetch (largest_block=%lu)", (unsigned long)weather_heap);
+
+                    // Safety fallback: close CGM only if heap is desperately low.
+                    // Weather uses plain HTTP (no TLS) — needs only ~2KB for
+                    // esp_http_client + cJSON. Response buffer is static (not heap).
+                    if (weather_heap < 2048) {
+                        ESP_LOGW(TAG, "Low heap for weather (%lu) — closing CGM client", (unsigned long)weather_heap);
+                        if (dexcom_persistent_client_is_open()) {
+                            dexcom_close_persistent_client();
+                        }
+                        if (libre_persistent_client_is_open()) {
+                            libre_close_persistent_client();
+                        }
                     }
 
                     ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
@@ -540,6 +550,12 @@ void weather_update_task(void *pvParameters) {
                         vTaskDelay(pdMS_TO_TICKS(5000));
                     }
                 }
+            }
+
+            // Piggyback device heartbeat on weather cycle (every 15-60 min)
+            if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+                heartbeat_send();
+                xSemaphoreGive(network_mutex);
             }
 
             // Dexcom client will reopen automatically on next glucose fetch

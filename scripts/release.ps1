@@ -43,8 +43,8 @@ function Read-FirmwareVersion {
 # ==================== Credential Storage ====================
 function Load-FtpConfig {
     if (!(Test-Path $script:ConfigFile)) {
-        return @{ Host = "cygm.me"; Username = ""; Password = "";
-                  RemotePath = "/public_html/"; UseSsl = $false }
+        return @{ Host = "access-5017566809.webspace-host.com"; Username = "a1789792"; Password = "";
+                  RemotePath = "/cygm/"; UseSsl = $false }
     }
     $json = Get-Content $script:ConfigFile -Raw | ConvertFrom-Json
     $pass = ""
@@ -252,15 +252,6 @@ function Curl-Upload($host_, $user_, $pass_, $remotePath, $localPath, $ssl) {
         }
         throw "CURL_EXIT_${code}|${detail}"
     }
-
-    # Set world-readable permissions (non-fatal if server rejects chmod)
-    $chmodArgs = @(
-        "--user", "${user_}:${pass_}",
-        "--insecure", "--connect-timeout", "15", "-s", "-S",
-        "-Q", "chmod 644 $remotePath",
-        "sftp://${host_}/"
-    )
-    & "C:\Program Files\Git\mingw64\bin\curl.exe" @chmodArgs 2>&1 | Out-Null
 }
 
 function Curl-Mkdir($host_, $user_, $pass_, $dirPath, $ssl) {
@@ -275,6 +266,34 @@ function Curl-List($host_, $user_, $pass_, $dirPath, $ssl) {
     $output = & "C:\Program Files\Git\mingw64\bin\curl.exe" @curlArgs 2>&1
     if ($LASTEXITCODE -ne 0) { return @() }
     return $output -split "`n" | Where-Object { $_.Trim() }
+}
+
+# ==================== Archive Previous Firmware ====================
+function Get-PreviousVersion($currentVersion) {
+    $rp = "$script:Root\website\releases.json"
+    if (!(Test-Path $rp)) { return $null }
+    $rel = Get-Content $rp -Raw | ConvertFrom-Json
+    # Find the first version in the list that isn't the one we're releasing
+    $prev = $rel.versions | Where-Object { $_.version -ne $currentVersion } | Select-Object -First 1
+    if ($prev) { return "v$($prev.version)" }
+    return $null
+}
+
+function Archive-PreviousFirmware($host_, $user_, $pass_, $path_, $prevTag) {
+    $srcPath = "${path_}firmware/${prevTag}"
+    $dstPath = "${path_}firmware/archive/${prevTag}"
+
+    # Move the previous firmware directory into archive via SFTP rename.
+    # The archive/ directory must already exist on the server.
+    $url = "sftp://${host_}/"
+    $curlArgs = @(
+        "--user", "${user_}:${pass_}",
+        "-Q", "rename $srcPath $dstPath",
+        "--insecure", "--connect-timeout", "15", "-s", "-S",
+        $url
+    )
+    & "C:\Program Files\Git\mingw64\bin\curl.exe" @curlArgs 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
 }
 
 # Pump WPF dispatcher to keep UI responsive during sync operations
@@ -581,7 +600,6 @@ if ($missing) {
     $lines += "  $([char]0x2713)  version.json"
     $lines += "  $([char]0x2713)  releases.json"
     $lines += "  $([char]0x2713)  cygm-manifest.json"
-    $lines += "  $([char]0x2713)  index.html"
     $lblFiles.Text = $lines -join "`n"
 }
 
@@ -623,7 +641,13 @@ $btnUpload.Add_Click({
             Log "Credentials saved."
         }
 
-        # Step 1: Package locally
+        # Step 1: Determine previous version to archive
+        $prevTag = Get-PreviousVersion $ver.Version
+        if ($prevTag) {
+            Log "Previous release: $prevTag (will archive after upload)"
+        }
+
+        # Step 2: Package locally
         Set-Progress 5 "Creating merged binary..."
         Log "Packaging firmware $($ver.Display)..."
         $merged = New-MergedBinary $ver
@@ -642,7 +666,19 @@ $btnUpload.Add_Click({
         Update-WebsiteManifests $ver $notes_
         Log "version.json and releases.json updated."
 
-        # Step 2: Build upload list (remote path + local path pairs)
+        # Step 3: Archive previous firmware on server
+        if ($prevTag) {
+            Set-Progress 18 "Archiving $prevTag on server..."
+            Log "Archiving $prevTag to firmware/archive/$prevTag..."
+            $archived = Archive-PreviousFirmware $host_ $user_ $pass_ $path_ $prevTag
+            if ($archived) {
+                Log "Archived $prevTag successfully."
+            } else {
+                Log "WARNING: Could not archive $prevTag (may not exist on server). Continuing."
+            }
+        }
+
+        # Step 4: Build upload list (remote path + local path pairs)
         $fwRemote = "${path_}firmware/$($ver.Tag)/"
         $uploads = @()
         Get-ChildItem $fwDir | ForEach-Object {
@@ -651,9 +687,8 @@ $btnUpload.Add_Click({
         $uploads += @{ LocalPath = "$script:Root\website\version.json";      RemotePath = "${path_}version.json";      Name = "version.json" }
         $uploads += @{ LocalPath = "$script:Root\website\releases.json";     RemotePath = "${path_}releases.json";     Name = "releases.json" }
         $uploads += @{ LocalPath = "$script:Root\website\cygm-manifest.json"; RemotePath = "${path_}cygm-manifest.json"; Name = "cygm-manifest.json" }
-        $uploads += @{ LocalPath = "$script:Root\website\index.html";         RemotePath = "${path_}index.html";         Name = "index.html" }
 
-        # Step 3: Upload via curl (--ftp-create-dirs handles directory creation)
+        # Step 5: Upload via curl (--ftp-create-dirs handles directory creation)
         Set-Progress 20 "Uploading to $host_..."
         Log "Uploading to $host_ via curl..."
 
@@ -667,6 +702,9 @@ $btnUpload.Add_Click({
             Update-UI
 
             Curl-Upload $host_ $user_ $pass_ $f.RemotePath $f.LocalPath $ssl_
+
+            # Brief pause between uploads to avoid SSH rate limiting
+            if ($i -lt ($total - 1)) { Start-Sleep -Milliseconds 500 }
         }
 
         Set-Progress 100 "Upload complete!"
