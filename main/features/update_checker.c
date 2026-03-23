@@ -115,6 +115,7 @@ esp_err_t update_check_now(void) {
 
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
     last_check_ms = esp_timer_get_time() / 1000;
@@ -548,6 +549,7 @@ void update_do_ota_download(void) {
         ESP_LOGE(TAG, "HEAD failed: %s (HTTP %d, size=%d)",
                  esp_err_to_name(err), status, firmware_size);
         sd_log(TAG, "OTA HEAD failed: HTTP %d, size=%d", status, firmware_size);
+        esp_http_client_close(client);
         esp_http_client_cleanup(client);
         ota_show_result(false, "Connection failed.\nRestarting device...");
         sd_logger_flush();
@@ -562,6 +564,7 @@ void update_do_ota_download(void) {
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
     if (!update_partition) {
         ESP_LOGE(TAG, "No OTA partition");
+        esp_http_client_close(client);
         esp_http_client_cleanup(client);
         ota_show_result(false, "No update partition.\nRestarting device...");
         sd_logger_flush();
@@ -577,6 +580,7 @@ void update_do_ota_download(void) {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
         sd_log(TAG, "OTA begin failed: %s", esp_err_to_name(err));
+        esp_http_client_close(client);
         esp_http_client_cleanup(client);
         ota_show_result(false, "Flash prepare failed.\nRestarting device...");
         sd_logger_flush();
@@ -636,6 +640,7 @@ void update_do_ota_download(void) {
             // Recreate client after 3 failures (fresh TLS connection)
             if (retries >= 3) {
                 ESP_LOGW(TAG, "Recreating HTTP client...");
+                esp_http_client_close(client);
                 esp_http_client_cleanup(client);
                 vTaskDelay(pdMS_TO_TICKS(500));
                 client = esp_http_client_init(&http_config);
@@ -663,7 +668,10 @@ void update_do_ota_download(void) {
         }
     }
 
-    if (client) esp_http_client_cleanup(client);
+    if (client) {
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+    }
 
     // ---- Verify and finalize ----
     if (download_ok && offset >= firmware_size) {
@@ -754,10 +762,12 @@ void update_start_ota(void) {
         // to prepare memory and run OTA.
         ESP_LOGI(TAG, "OTA install requested (creating fallback task)");
 
-        // Free SSL clients to reclaim ~10KB heap for the task stack.
-        // The fallback task calls update_stop_all_tasks() immediately anyway.
+        // Free SSL clients + background task stacks to get contiguous heap.
+        // With SSL alive, largest_block is ~3.5KB — not enough for the 6KB
+        // fallback task stack. Deleting tasks frees ~11KB, giving ~8.7KB largest.
         dexcom_close_persistent_client();
         libre_close_persistent_client();
+        delete_background_tasks_for_ssl("ota-install");
 
         BaseType_t rc = xTaskCreatePinnedToCore(
             ota_fallback_task_fn, "ota_fb", 6144, NULL, 5, NULL, 0);
@@ -765,7 +775,12 @@ void update_start_ota(void) {
             ESP_LOGE(TAG, "Failed to create OTA fallback task (heap=%lu, largest=%lu)",
                      esp_get_free_heap_size(),
                      heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+            sd_log(TAG, "OTA fallback task FAILED: heap=%lu largest=%lu",
+                   esp_get_free_heap_size(),
+                   heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
             ota_install_requested = false;
+            // Recreate deleted tasks since OTA won't proceed
+            recreate_background_tasks();
         }
     }
 }

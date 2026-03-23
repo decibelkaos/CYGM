@@ -269,14 +269,18 @@ function Curl-List($host_, $user_, $pass_, $dirPath, $ssl) {
 }
 
 # ==================== Archive Previous Firmware ====================
-function Get-PreviousVersion($currentVersion) {
-    $rp = "$script:Root\website\releases.json"
-    if (!(Test-Path $rp)) { return $null }
-    $rel = Get-Content $rp -Raw | ConvertFrom-Json
-    # Find the first version in the list that isn't the one we're releasing
-    $prev = $rel.versions | Where-Object { $_.version -ne $currentVersion } | Select-Object -First 1
-    if ($prev) { return "v$($prev.version)" }
-    return $null
+function Get-ServerFirmwareDirs($host_, $user_, $pass_, $path_, $currentTag) {
+    # List the server's firmware/ directory and return all entries that
+    # aren't "archive" and aren't the version being uploaded.
+    $entries = Curl-List $host_ $user_ $pass_ "${path_}firmware/" $false
+    $dirs = @()
+    foreach ($e in $entries) {
+        $name = $e.Trim().TrimEnd('/')
+        if ($name -and $name -ne "." -and $name -ne ".." -and $name -ne "archive" -and $name -ne $currentTag) {
+            $dirs += $name
+        }
+    }
+    return $dirs
 }
 
 function Archive-PreviousFirmware($host_, $user_, $pass_, $path_, $prevTag) {
@@ -641,10 +645,13 @@ $btnUpload.Add_Click({
             Log "Credentials saved."
         }
 
-        # Step 1: Determine previous version to archive
-        $prevTag = Get-PreviousVersion $ver.Version
-        if ($prevTag) {
-            Log "Previous release: $prevTag (will archive after upload)"
+        # Step 1: Scan server for firmware dirs to archive
+        Set-Progress 2 "Scanning server firmware..."
+        $archiveDirs = Get-ServerFirmwareDirs $host_ $user_ $pass_ $path_ $ver.Tag
+        if ($archiveDirs.Count -gt 0) {
+            Log "Found $($archiveDirs.Count) firmware dir(s) to archive: $($archiveDirs -join ', ')"
+        } else {
+            Log "No previous firmware to archive on server."
         }
 
         # Step 2: Package locally
@@ -666,15 +673,17 @@ $btnUpload.Add_Click({
         Update-WebsiteManifests $ver $notes_
         Log "version.json and releases.json updated."
 
-        # Step 3: Archive previous firmware on server
-        if ($prevTag) {
-            Set-Progress 18 "Archiving $prevTag on server..."
-            Log "Archiving $prevTag to firmware/archive/$prevTag..."
-            $archived = Archive-PreviousFirmware $host_ $user_ $pass_ $path_ $prevTag
-            if ($archived) {
-                Log "Archived $prevTag successfully."
-            } else {
-                Log "WARNING: Could not archive $prevTag (may not exist on server). Continuing."
+        # Step 3: Archive all previous firmware on server
+        if ($archiveDirs.Count -gt 0) {
+            Set-Progress 18 "Archiving previous firmware..."
+            foreach ($dir in $archiveDirs) {
+                Log "Archiving $dir to firmware/archive/$dir..."
+                $archived = Archive-PreviousFirmware $host_ $user_ $pass_ $path_ $dir
+                if ($archived) {
+                    Log "Archived $dir successfully."
+                } else {
+                    Log "WARNING: Could not archive $dir (rename failed). Continuing."
+                }
             }
         }
 
