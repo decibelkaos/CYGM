@@ -63,6 +63,7 @@
 #include "tasks/background_tasks.h"
 #include "sd_logger.h"
 #include "features/update_checker.h"
+#include "features/heartbeat.h"
 
 static const char *TAG = "CYGM";
 
@@ -134,7 +135,8 @@ TaskHandle_t battery_task_handle = NULL;
 
 // Task stacks are heap-allocated (not static) so that deleting tasks
 // frees contiguous heap blocks — critical for TLS reconnection on ESP32.
-// SSL keep-alive prevents the create/delete churn that causes fragmentation.
+// Tasks are created AFTER SSL auth so stacks interleave with the SSL
+// region — freeing both on reconnect merges into one large block.
 
 // LED breathing (disabled to save power - variables kept for future use)
 volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
@@ -1609,9 +1611,9 @@ void update_glucose_display(void) {
     }
 }
 
-// Helper: Delete background tasks to prevent network mutex contention during TLS.
-// With static stack allocation, deleting does NOT free heap (stacks are in .bss).
-// It only stops the tasks from running so they don't compete for network resources.
+// Helper: Delete background tasks to free their heap-allocated stacks for TLS.
+// vTaskDelete + idle task reclaim frees ~11KB contiguous heap needed for TLS
+// handshake. Also stops tasks from competing for the network mutex.
 // Returns true if any tasks were deleted.
 bool delete_background_tasks_for_ssl(const char *reason) {
     bool deleted_any = false;
@@ -1633,9 +1635,9 @@ bool delete_background_tasks_for_ssl(const char *reason) {
     }
 
     if (deleted_any) {
-        // Brief yield for FreeRTOS internal list cleanup (no heap to reclaim —
-        // stacks are static). Much shorter than the old 500ms for heap coalescing.
-        vTaskDelay(pdMS_TO_TICKS(50));
+        // Yield so idle task can reclaim deleted task stacks (~11KB freed from heap).
+        // The 100ms gives the idle task time to run on both cores.
+        vTaskDelay(pdMS_TO_TICKS(100));
 
         size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
         size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
@@ -1853,10 +1855,9 @@ void glucose_update_task(void *pvParameters) {
             if (!is_auth) continue;  // Auth lost during refresh — retry next cycle
         }
 
-        // Hoist flag so it's visible in both the glucose fetch block and auto-check section.
-        // Tasks deleted inside the fetch block must NOT be recreated until AFTER the
-        // auto-check, otherwise the recreated stacks fragment the heap and TLS fails.
-        bool tasks_deleted_for_ssl = false;
+        // The initial boot SSL handshake fragments memory permanently (DYNAMIC_FREE
+        // creates holes that LVGL/WiFi fill). Fresh handshakes need task deletion
+        // to free ~11KB of stack memory for contiguous blocks.
 
         if (is_auth) {
             // CRITICAL: Take network mutex to ensure exclusive access
@@ -1887,30 +1888,26 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
-                // SSL reuse strategy: After task creation, heap fragments to ~3KB
-                // largest block.  New TLS handshake needs ~16KB contiguous → fails.
-                // Reusing an open connection only needs ~3-5KB for HTTP buffers.
                 bool client_open = cgm_client_is_open(use_libre);
-
-                // Check largest DRAM block to detect fragmentation (SSL needs byte-addressable memory)
-                size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-                ESP_LOGI(TAG, "Largest contiguous block: %lu bytes", largest_block);
+                bool tasks_deleted_for_ssl = false;
 
                 // SD log memory state every cycle
                 sd_log(TAG, "MEM free=%lu largest=%lu frag=%.1f%% blocks=%lu/%lu",
                        heap_info.total_free_bytes, heap_info.largest_free_block,
                        fragmentation, heap_info.allocated_blocks, heap_info.free_blocks);
 
-                // MEMORY STRATEGY for SSL reconnection:
-                // When persistent client is closed, we need a fresh TLS handshake.
-                // TLSF can't defragment, so we must delete tasks to free contiguous heap.
-
                 if (!client_open) {
+                    // Fresh SSL handshake needs ~10KB contiguous heap.
+                    // The initial boot handshake fragments memory permanently
+                    // (DYNAMIC_FREE creates holes that LVGL/WiFi fill). Delete
+                    // background task stacks (~11KB) to create large enough blocks.
                     tasks_deleted_for_ssl = delete_background_tasks_for_ssl("ssl-reconnect");
                 }
 
                 ESP_LOGI(TAG, "Proceeding with %s (free=%lu, largest=%lu)",
-                         client_open ? "existing SSL" : "fresh SSL", free_internal, largest_block);
+                         client_open ? "existing SSL" : "fresh SSL",
+                         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_DEFAULT),
+                         (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
                 // Mark fetch as in progress
                 glucose_fetch_in_progress = true;
@@ -1924,22 +1921,18 @@ void glucose_update_task(void *pvParameters) {
                 esp_err_t ret = cgm_fetch(use_libre, &glucose);
 
                 // Connection died mid-fetch (SSL was open but socket died).
-                // Retry immediately: dead SSL cleanup freed ~10KB, deleting tasks
-                // frees another ~10KB → plenty of contiguous heap for fresh TLS.
+                // Delete tasks if not already deleted, then retry.
                 if (ret != ESP_OK && !glucose.valid && !cgm_client_is_open(use_libre)) {
-                    ESP_LOGW(TAG, "Connection died mid-fetch — retrying with fresh SSL");
-                    sd_log(TAG, "SSL died mid-fetch, immediate retry");
-
-                    // Delete tasks to free contiguous heap for TLS handshake
                     if (!tasks_deleted_for_ssl) {
                         tasks_deleted_for_ssl = delete_background_tasks_for_ssl("ssl-reconnect");
                     }
+                    ESP_LOGW(TAG, "Connection died mid-fetch — retrying with fresh SSL");
+                    sd_log(TAG, "SSL died mid-fetch, retry (tasks_del=%d)", tasks_deleted_for_ssl);
 
                     ESP_LOGI(TAG, "Retry: heap=%lu, largest=%lu",
                              esp_get_free_heap_size(),
                              heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
-                    // Fresh fetch — cgm_fetch() creates a new SSL connection
                     memset(&glucose, 0, sizeof(glucose));
                     ret = cgm_fetch(use_libre, &glucose);
                 }
@@ -2200,34 +2193,34 @@ void glucose_update_task(void *pvParameters) {
                 }
             }
 
-                // Decide whether to close SSL or keep alive for reuse.
-                // Keeping alive avoids 11KB task delete/recreate churn every 90s
-                // that causes heap fragmentation and device freeze after ~6 hours.
-                bool should_close_ssl = false;
-
+                // Close SSL on failure; keep alive on success.
+                // If the connection survives to next cycle, we skip the handshake
+                // (and the task delete/recreate churn). If it dies, the mid-fetch
+                // retry path handles reconnect with task deletion.
                 if (glucose_fetch_failed) {
-                    should_close_ssl = true;
-                    ESP_LOGI(TAG, "Closing SSL (fetch failed) for clean retry");
+                    cgm_close_client(use_libre);
                     sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
                     sd_logger_resume();
                     sd_logger_flush();
-                }
-
-                // NOTE: OTA check no longer pre-closes SSL here. The OTA check
-                // section (below) handles its own SSL closure only when tasks are
-                // already deleted for another reason. Pre-closing here forced a
-                // task delete/recreate cycle every time, defeating SSL keep-alive.
-
-                if (should_close_ssl) {
-                    cgm_close_client(use_libre);
-                    ESP_LOGI(TAG, "SSL closed, heap=%lu", esp_get_free_heap_size());
+                    ESP_LOGI(TAG, "SSL closed after failed fetch (heap=%lu)", esp_get_free_heap_size());
                 } else {
                     ESP_LOGI(TAG, "Keeping SSL alive for reuse (heap=%lu)", esp_get_free_heap_size());
                 }
 
-                // DON'T recreate tasks here — defer until after the auto-check section.
-                // Recreating ~11KB of task stacks fragments the heap, causing TLS to fail
-                // with -0x7F00 (ALLOC_FAILED) when the auto update check runs immediately after.
+                // Device heartbeat — throttled to once per 15 min
+                {
+                    static int64_t last_heartbeat_ms = 0;
+                    int64_t now_ms = esp_timer_get_time() / 1000;
+                    if (now_ms - last_heartbeat_ms >= 15 * 60 * 1000) {
+                        heartbeat_send();
+                        last_heartbeat_ms = now_ms;
+                    }
+                }
+
+                // Recreate tasks deleted for SSL handshake
+                if (tasks_deleted_for_ssl) {
+                    recreate_background_tasks();
+                }
 
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
@@ -2263,12 +2256,6 @@ void glucose_update_task(void *pvParameters) {
             }
         }
 
-        // Recreate tasks that were deleted for SSL reconnection.
-        // Deferred to here (after the auto-check) so heap stays unfragmented.
-        if (tasks_deleted_for_ssl) {
-            recreate_background_tasks();
-        }
-
         // ── Heap health watchdog ──
         {
             size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
@@ -2295,11 +2282,14 @@ void glucose_update_task(void *pvParameters) {
         }
 
         // ── Stack high water mark monitoring ──
-        if (weather_task_handle || time_task_handle || battery_task_handle) {
-            ESP_LOGI(TAG, "STACK HWM (bytes free): weather=%lu time=%lu battery=%lu",
-                     weather_task_handle ? (unsigned long)(uxTaskGetStackHighWaterMark(weather_task_handle) * sizeof(StackType_t)) : 0,
-                     time_task_handle ? (unsigned long)(uxTaskGetStackHighWaterMark(time_task_handle) * sizeof(StackType_t)) : 0,
-                     battery_task_handle ? (unsigned long)(uxTaskGetStackHighWaterMark(battery_task_handle) * sizeof(StackType_t)) : 0);
+        {
+            TaskHandle_t w = weather_task_handle, t = time_task_handle, b = battery_task_handle;
+            if (w || t || b) {
+                ESP_LOGI(TAG, "STACK HWM (bytes free): weather=%lu time=%lu battery=%lu",
+                         w ? (unsigned long)(uxTaskGetStackHighWaterMark(w) * sizeof(StackType_t)) : 0,
+                         t ? (unsigned long)(uxTaskGetStackHighWaterMark(t) * sizeof(StackType_t)) : 0,
+                         b ? (unsigned long)(uxTaskGetStackHighWaterMark(b) * sizeof(StackType_t)) : 0);
+            }
         }
 
         // Wait loop is at the beginning of while(1) - checks every second for force-fetch

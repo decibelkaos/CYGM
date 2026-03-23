@@ -99,7 +99,7 @@ void ui_task_core1(void *pvParameters) {
     // Stop WiFi boot blink when home screen loads
     led_stop_wifi_boot_blink();
 
-    // Start battery monitoring task NOW (after LVGL is fully initialized)
+    // Start battery monitoring after home screen is loaded
     ESP_LOGI(TAG, "Starting battery monitor task");
     xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon",
         BATTERY_STACK_SIZE, NULL, 2, &battery_task_handle, 0);
@@ -250,9 +250,6 @@ void wifi_task_core0(void *pvParameters) {
                 ESP_LOGI(TAG, "time_update task already running");
             }
 
-            // Delay weather task until after CGM connects (SSL memory priority)
-            // Will be started after CGM auth completes
-
             // Determine active CGM provider
             char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
             nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
@@ -293,12 +290,11 @@ void wifi_task_core0(void *pvParameters) {
                     sd_log(TAG, "Time sync failed after 60s - cannot auth %s", cgm_type);
                     ESP_LOGE(TAG, "Time sync failed after 60s - CANNOT attempt %s auth (SSL will fail)", cgm_type);
 
+                    // Start tasks anyway — glucose handles not-yet-authenticated state
                     if (glucose_task_handle == NULL) {
-                        ESP_LOGI(TAG, "Starting glucose task (will auto-retry after time syncs)...");
                         xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
                     }
                     if (weather_task_handle == NULL) {
-                        ESP_LOGI(TAG, "Starting weather task (time sync failed but WiFi up)...");
                         xTaskCreatePinnedToCore(weather_update_task, "weather_update",
                             WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                     }
@@ -345,6 +341,18 @@ void wifi_task_core0(void *pvParameters) {
                                 glucose_data_valid = false;
                                 glucose_status = glucose.status;
                                 update_glucose_display();
+                            }
+
+                            // Keep SSL alive for glucose_update_task reuse
+                            ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+
+                            // Start background tasks after auth
+                            if (glucose_task_handle == NULL) {
+                                xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                            }
+                            if (weather_task_handle == NULL) {
+                                xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                                    WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                             }
                         } else {
                             ESP_LOGI(TAG, "Libre session restore failed — will do full login");
@@ -411,15 +419,21 @@ void wifi_task_core0(void *pvParameters) {
                             sd_logger_flush();
 
                             // Send "device online" heartbeat (HTTP, ~500ms)
-                            // network_mutex not needed here — no other tasks running yet
+                            // No other network tasks running yet. Safe without mutex.
                             heartbeat_send();
 
+                            // Keep SSL alive — glucose_update_task's first cycle
+                            // will reuse it, avoiding a handshake + task churn.
+                            ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+
+                            // Start background tasks AFTER auth — their stacks interleave
+                            // with the SSL region, so freeing both on reconnect creates
+                            // one large merged block. Creating before auth wastes ~8KB
+                            // during the critical handshake (min_ever dropped to 408).
                             if (glucose_task_handle == NULL) {
-                                ESP_LOGI(TAG, "Starting glucose update task (90 second interval)...");
                                 xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
                             }
                             if (weather_task_handle == NULL) {
-                                ESP_LOGI(TAG, "Starting weather task (after %s, HTTP mode)...", cgm_type);
                                 xTaskCreatePinnedToCore(weather_update_task, "weather_update",
                                     WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                             }
@@ -441,20 +455,18 @@ void wifi_task_core0(void *pvParameters) {
                         }
                     }
 
-                    // Ensure glucose and weather tasks start even if auth failed
+                    // Ensure tasks start even if auth failed
                     if (glucose_task_handle == NULL) {
-                        ESP_LOGI(TAG, "Starting glucose task (will auto-reconnect to %s)...", cgm_type);
                         xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
                     }
                     if (weather_task_handle == NULL) {
-                        ESP_LOGI(TAG, "Starting weather task (auth failed but WiFi connected)...");
                         xTaskCreatePinnedToCore(weather_update_task, "weather_update",
                             WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                     }
                 }
             } else {
-                // No CGM credentials - start weather task
-                ESP_LOGI(TAG, "No %s credentials found, starting weather task (HTTP mode)...", cgm_type);
+                // No CGM credentials — start weather only
+                ESP_LOGI(TAG, "No %s credentials found", cgm_type);
                 if (weather_task_handle == NULL) {
                     xTaskCreatePinnedToCore(weather_update_task, "weather_update",
                         WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
@@ -513,6 +525,20 @@ void wifi_task_core0(void *pvParameters) {
 
                 // Re-initialize SNTP in case time drifted
                 initialize_sntp();
+
+                // Create tasks if initial WiFi connection failed (tasks are only
+                // created inside the connected path during boot)
+                if (time_task_handle == NULL) {
+                    xTaskCreatePinnedToCore(time_update_task, "time_update",
+                        TIME_STACK_SIZE, NULL, 1, &time_task_handle, tskNO_AFFINITY);
+                }
+                if (glucose_task_handle == NULL) {
+                    xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                }
+                if (weather_task_handle == NULL) {
+                    xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                        WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
+                }
             } else if (!wifi_overlay_shown && home_screen_active) {
                 // First reconnect attempt failed — show WiFi overlay
                 if (lvgl_port_lock(200)) {
