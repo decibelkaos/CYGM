@@ -24,7 +24,7 @@ static const char *TAG = "NIGHTSCOUT";
 // Configuration
 // ============================================================================
 
-#define HTTP_BUFFER_SIZE 4096
+#define HTTP_BUFFER_SIZE 2048
 #define MAX_CONSECUTIVE_FAILURES 3
 
 // ============================================================================
@@ -59,10 +59,9 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
                 memcpy(http_response + http_response_len, evt->data, evt->data_len);
                 http_response_len += evt->data_len;
                 http_response[http_response_len] = '\0';
-            } else {
-                ESP_LOGE(TAG, "HTTP response buffer overflow! (%d + %d >= %d)",
-                         http_response_len, evt->data_len, HTTP_BUFFER_SIZE);
             }
+            // Silently truncate if buffer full — status endpoint can exceed 2KB
+            // but glucose endpoint is only ~230 bytes
             break;
         default:
             break;
@@ -218,28 +217,16 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
         return ESP_FAIL;
     }
 
-    // Parse status response to confirm it's a Nightscout server
-    cJSON *root = cJSON_Parse(http_response);
-    if (!root) {
-        ESP_LOGE(TAG, "Invalid JSON from status endpoint");
+    // Verify it's a Nightscout server by checking for "status" in response.
+    // Don't parse full JSON — status endpoint can exceed 2KB buffer.
+    // HTTP 200 + "status" substring is sufficient validation.
+    if (http_response_len == 0 || strstr(http_response, "\"status\"") == NULL) {
+        ESP_LOGE(TAG, "Not a Nightscout server (missing 'status' in response)");
         nightscout_close_persistent_client();
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    cJSON *status_field = cJSON_GetObjectItem(root, "status");
-    if (!status_field || !cJSON_IsString(status_field)) {
-        ESP_LOGE(TAG, "Not a Nightscout server (missing 'status' field)");
-        cJSON_Delete(root);
-        nightscout_close_persistent_client();
-        return ESP_ERR_INVALID_RESPONSE;
-    }
-
-    cJSON *version = cJSON_GetObjectItem(root, "version");
-    ESP_LOGI(TAG, "Nightscout server: status=%s, version=%s",
-             status_field->valuestring,
-             (version && cJSON_IsString(version)) ? version->valuestring : "unknown");
-
-    cJSON_Delete(root);
+    ESP_LOGI(TAG, "Nightscout server validated (HTTP 200, status field present)");
 
     is_authenticated = true;
     consecutive_failures = 0;

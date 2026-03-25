@@ -2226,16 +2226,22 @@ void glucose_update_task(void *pvParameters) {
                 }
             }
 
-                // Close SSL on failure; keep alive on success.
-                // If the connection survives to next cycle, we skip the handshake
-                // (and the task delete/recreate churn). If it dies, the mid-fetch
-                // retry path handles reconnect with task deletion.
-                if (glucose_fetch_failed) {
+                // SSL lifecycle strategy per provider:
+                // - Dexcom/Libre: keep alive on success (connections survive minutes-hours)
+                // - Nightscout HTTPS: always close (Cloudflare sends large TLS records
+                //   that need ~2KB contiguous for the read buffer; post-reconnect
+                //   fragmentation drops largest_block to ~1.9KB, causing read failures)
+                // - Nightscout HTTP: keep alive (no TLS buffers)
+                bool always_close = (provider == CGM_PROVIDER_NIGHTSCOUT && cgm_needs_tls(provider));
+
+                if (glucose_fetch_failed || always_close) {
                     cgm_close_client(provider);
-                    sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
-                    sd_logger_resume();
-                    sd_logger_flush();
-                    ESP_LOGI(TAG, "SSL closed after failed fetch (heap=%lu)", esp_get_free_heap_size());
+                    if (glucose_fetch_failed) {
+                        sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
+                        sd_logger_resume();
+                        sd_logger_flush();
+                    }
+                    ESP_LOGI(TAG, "SSL closed after fetch (heap=%lu)", esp_get_free_heap_size());
                 } else {
                     ESP_LOGI(TAG, "Keeping SSL alive for reuse (heap=%lu)", esp_get_free_heap_size());
                 }
