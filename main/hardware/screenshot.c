@@ -165,7 +165,7 @@ static void screenshot_restart_tasks(bool restore_pause_state)
     // Recreate all tasks we deleted, matching the original creation parameters
     // from background_tasks.c. Singleton guards prevent double-creation.
     if (glucose_task_handle == NULL) {
-        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+        xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
         ESP_LOGI(TAG, "Restarted glucose task");
     }
     if (weather_task_handle == NULL) {

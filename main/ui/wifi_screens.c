@@ -1302,7 +1302,8 @@ static void wifi_connect_task(void *pvParameters) {
 
         // Start time update task if not already running
         if (time_task_handle == NULL) {
-            xTaskCreate(time_update_task, "time_update", 4096, NULL, 1, &time_task_handle);
+            xTaskCreatePinnedToCore(time_update_task, "time_update",
+                TIME_STACK_SIZE, NULL, 1, &time_task_handle, tskNO_AFFINITY);
         } else {
             ESP_LOGI(TAG, "time_update task already running");
         }
@@ -1310,12 +1311,13 @@ static void wifi_connect_task(void *pvParameters) {
         // Start glucose task first (critical, 4KB) then weather (8KB)
         if (glucose_task_handle == NULL && nvs_has_dexcom_credentials()) {
             ESP_LOGI(TAG, "Dexcom credentials found - starting glucose update task...");
-            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+            xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
         }
 
         if (weather_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting weather task (HTTP mode)...");
-            xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+            xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+                WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
         }
 
         // Don't auto-close - wait for user to press OK button

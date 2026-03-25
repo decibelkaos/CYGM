@@ -739,7 +739,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     if (glucose_task_handle != NULL && eTaskGetState(glucose_task_handle) == eDeleted) {
         ESP_LOGE("WATCHDOG", "CRITICAL: Glucose task died! Restarting...");
         glucose_task_handle = NULL;
-        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+        xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
     }
 }
 

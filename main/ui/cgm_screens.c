@@ -141,7 +141,7 @@ static void dexcom_login_task(void *pvParameters) {
 
         if (glucose_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting glucose update task after Dexcom login...");
-            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+            xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
         }
 
         ESP_LOGI(TAG, "Triggering immediate glucose fetch after successful login");
@@ -1504,7 +1504,7 @@ static void libre_login_task(void *pvParameters) {
 
         if (glucose_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting glucose update task after Libre login...");
-            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+            xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
         }
 
         glucose_force_fetch_requested = true;
@@ -2574,7 +2574,7 @@ static void nightscout_login_task(void *pvParameters) {
 
         if (glucose_task_handle == NULL) {
             ESP_LOGI(TAG, "Starting glucose update task after Nightscout login...");
-            xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+            xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
         }
 
         glucose_force_fetch_requested = true;

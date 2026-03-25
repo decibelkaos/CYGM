@@ -301,7 +301,7 @@ void wifi_task_core0(void *pvParameters) {
 
                     // Start tasks anyway — glucose handles not-yet-authenticated state
                     if (glucose_task_handle == NULL) {
-                        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                        xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
                     }
                     if (weather_task_handle == NULL) {
                         xTaskCreatePinnedToCore(weather_update_task, "weather_update",
@@ -357,7 +357,7 @@ void wifi_task_core0(void *pvParameters) {
 
                             // Start background tasks after auth
                             if (glucose_task_handle == NULL) {
-                                xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                                xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
                             }
                             if (weather_task_handle == NULL) {
                                 xTaskCreatePinnedToCore(weather_update_task, "weather_update",
@@ -444,7 +444,7 @@ void wifi_task_core0(void *pvParameters) {
                             // one large merged block. Creating before auth wastes ~8KB
                             // during the critical handshake (min_ever dropped to 408).
                             if (glucose_task_handle == NULL) {
-                                xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                                xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
                             }
                             if (weather_task_handle == NULL) {
                                 xTaskCreatePinnedToCore(weather_update_task, "weather_update",
@@ -470,7 +470,7 @@ void wifi_task_core0(void *pvParameters) {
 
                     // Ensure tasks start even if auth failed
                     if (glucose_task_handle == NULL) {
-                        xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                        xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
                     }
                     if (weather_task_handle == NULL) {
                         xTaskCreatePinnedToCore(weather_update_task, "weather_update",
@@ -546,7 +546,7 @@ void wifi_task_core0(void *pvParameters) {
                         TIME_STACK_SIZE, NULL, 1, &time_task_handle, tskNO_AFFINITY);
                 }
                 if (glucose_task_handle == NULL) {
-                    xTaskCreate(glucose_update_task, "glucose_update", 4096, NULL, 5, &glucose_task_handle);
+                    xTaskCreate(glucose_update_task, "glucose_update", 5120, NULL, 5, &glucose_task_handle);
                 }
                 if (weather_task_handle == NULL) {
                     xTaskCreatePinnedToCore(weather_update_task, "weather_update",
