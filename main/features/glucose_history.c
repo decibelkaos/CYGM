@@ -214,9 +214,8 @@ esp_err_t glucose_history_save_to_nvs(void) {
         return ESP_OK;
     }
 
-    // Serialize into compact format — static buffer to avoid 1.4KB stack pressure
-    // (only called from glucose_update_task, no threading concern)
-    static uint8_t buf[NVS_HISTORY_MAX_SIZE];
+    // Serialize into compact format (on stack — 5KB task stack has room)
+    uint8_t buf[NVS_HISTORY_MAX_SIZE];
     nvs_history_header_t *hdr = (nvs_history_header_t *)buf;
     hdr->version = NVS_FORMAT_VERSION;
     hdr->entry_count = 0;
@@ -289,8 +288,7 @@ esp_err_t glucose_history_load_from_nvs(void) {
         return ESP_ERR_INVALID_SIZE;
     }
 
-    // Static buffer to avoid 1.4KB stack pressure during boot load
-    static uint8_t buf[NVS_HISTORY_MAX_SIZE];
+    uint8_t buf[NVS_HISTORY_MAX_SIZE];
     ret = nvs_get_blob(nvs_handle, NVS_HISTORY_KEY, buf, &blob_size);
     nvs_close(nvs_handle);
 
