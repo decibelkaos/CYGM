@@ -1324,9 +1324,8 @@ static void collapse_cgm_card(void) {
     }
 }
 
-// Animation helpers for heartbeat dot — bridges lv_anim's (obj, int32_t) to style setters
+// Animation helper for heartbeat dot — bridges lv_anim's (obj, int32_t) to style setter
 static void heartbeat_set_bg_opa(void *obj, int32_t v) { lv_obj_set_style_bg_opa(obj, (lv_opa_t)v, 0); }
-static void heartbeat_set_shadow_opa(void *obj, int32_t v) { lv_obj_set_style_shadow_opa(obj, (lv_opa_t)v, 0); }
 
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
@@ -1622,18 +1621,16 @@ void create_home_screen(void) {
     lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
     // --- HEARTBEAT DOT: small breathing indicator between cards at bottom ---
-    // Shows the device is alive and not frozen. 6px dot with soft glow.
+    // Shows the device is alive and not frozen. Simple opacity-only animation.
+    // NO shadow — shadow rendering uses significant LVGL port task stack and
+    // may cause Core 1 stack overflow that corrupts shared memory.
     lv_obj_t *dot = lv_obj_create(screen_home);
     lv_obj_remove_style_all(dot);
     lv_obj_set_size(dot, 6, 6);
-    lv_obj_set_pos(dot, 157, 232);  // Centered between cards (320/2 - 3), below card bottom (10+220+2)
+    lv_obj_set_pos(dot, 157, 232);  // Centered between cards (320/2 - 3), below card bottom
     lv_obj_set_style_bg_color(dot, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_shadow_color(dot, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_shadow_width(dot, 8, 0);
-    lv_obj_set_style_shadow_spread(dot, 2, 0);
-    lv_obj_set_style_shadow_opa(dot, LV_OPA_60, 0);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
 
     // Breathing animation: fade opacity in and out (2.5s cycle)
@@ -1641,20 +1638,9 @@ void create_home_screen(void) {
     lv_anim_init(&a);
     lv_anim_set_var(&a, dot);
     lv_anim_set_exec_cb(&a, heartbeat_set_bg_opa);
-    lv_anim_set_values(&a, LV_OPA_20, LV_OPA_COVER);
+    lv_anim_set_values(&a, LV_OPA_10, LV_OPA_COVER);
     lv_anim_set_time(&a, 1250);
     lv_anim_set_playback_time(&a, 1250);
     lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
     lv_anim_start(&a);
-
-    // Shadow breathes in sync
-    lv_anim_t sa;
-    lv_anim_init(&sa);
-    lv_anim_set_var(&sa, dot);
-    lv_anim_set_exec_cb(&sa, heartbeat_set_shadow_opa);
-    lv_anim_set_values(&sa, LV_OPA_0, LV_OPA_60);
-    lv_anim_set_time(&sa, 1250);
-    lv_anim_set_playback_time(&sa, 1250);
-    lv_anim_set_repeat_count(&sa, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_start(&sa);
 }

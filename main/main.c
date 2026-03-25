@@ -2016,7 +2016,6 @@ void glucose_update_task(void *pvParameters) {
 
                 // UI updates: only when on home screen (LVGL objects may not exist otherwise)
                 if (home_screen_active) {
-                    // Stop animation and restore blue bar
                     if (lvgl_port_lock(0)) {
                         if (glucose_fetch_animation_timer != NULL) {
                             lv_timer_del(glucose_fetch_animation_timer);
@@ -2031,7 +2030,6 @@ void glucose_update_task(void *pvParameters) {
                     update_glucose_display();
                 }
 
-                // Show success LED (green fade)
                 led_show_success();
 
                 sd_log(TAG, "OK: %d mg/dL, %s, heap=%lu",
