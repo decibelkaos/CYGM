@@ -1616,4 +1616,41 @@ void create_home_screen(void) {
     // Register gesture handler on home screen for swipe expand/collapse
     lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);
     lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    // --- HEARTBEAT DOT: small breathing indicator between cards at bottom ---
+    // Shows the device is alive and not frozen. 6px dot with soft glow.
+    lv_obj_t *dot = lv_obj_create(screen_home);
+    lv_obj_remove_style_all(dot);
+    lv_obj_set_size(dot, 6, 6);
+    lv_obj_set_pos(dot, 157, 232);  // Centered between cards (320/2 - 3), below card bottom (10+220+2)
+    lv_obj_set_style_bg_color(dot, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_color(dot, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_shadow_width(dot, 8, 0);
+    lv_obj_set_style_shadow_spread(dot, 2, 0);
+    lv_obj_set_style_shadow_opa(dot, LV_OPA_60, 0);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+
+    // Breathing animation: fade opacity in and out (2.5s cycle)
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, dot);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_bg_opa);
+    lv_anim_set_values(&a, LV_OPA_20, LV_OPA_COVER);
+    lv_anim_set_time(&a, 1250);
+    lv_anim_set_playback_time(&a, 1250);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&a);
+
+    // Shadow breathes in sync
+    lv_anim_t sa;
+    lv_anim_init(&sa);
+    lv_anim_set_var(&sa, dot);
+    lv_anim_set_exec_cb(&sa, (lv_anim_exec_xcb_t)lv_obj_set_style_shadow_opa);
+    lv_anim_set_values(&sa, LV_OPA_0, LV_OPA_60);
+    lv_anim_set_time(&sa, 1250);
+    lv_anim_set_playback_time(&sa, 1250);
+    lv_anim_set_repeat_count(&sa, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&sa);
 }
