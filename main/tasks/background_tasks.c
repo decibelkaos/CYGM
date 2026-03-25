@@ -352,8 +352,15 @@ void wifi_task_core0(void *pvParameters) {
                                 update_glucose_display();
                             }
 
-                            // Keep SSL alive for glucose_update_task reuse
-                            ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+                            // Nightscout HTTPS: close SSL now — task creation will fragment
+                            // heap, making TLS read buffer allocation fail on first cycle.
+                            // Other providers: keep alive for reuse.
+                            if (boot_provider == CGM_PROVIDER_NIGHTSCOUT && nightscout_uses_https()) {
+                                nightscout_close_persistent_client();
+                                ESP_LOGI(TAG, "SSL closed (Nightscout HTTPS, heap=%lu)", esp_get_free_heap_size());
+                            } else {
+                                ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+                            }
 
                             // Start background tasks after auth
                             if (glucose_task_handle == NULL) {
@@ -435,9 +442,15 @@ void wifi_task_core0(void *pvParameters) {
                             // No other network tasks running yet. Safe without mutex.
                             heartbeat_send();
 
-                            // Keep SSL alive — glucose_update_task's first cycle
-                            // will reuse it, avoiding a handshake + task churn.
-                            ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+                            // Nightscout HTTPS: close SSL now — task creation will fragment
+                            // heap, making TLS read buffer allocation fail on first cycle.
+                            // Other providers: keep alive for reuse.
+                            if (boot_provider == CGM_PROVIDER_NIGHTSCOUT && nightscout_uses_https()) {
+                                nightscout_close_persistent_client();
+                                ESP_LOGI(TAG, "SSL closed (Nightscout HTTPS, heap=%lu)", esp_get_free_heap_size());
+                            } else {
+                                ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+                            }
 
                             // Start background tasks AFTER auth — their stacks interleave
                             // with the SSL region, so freeing both on reconnect creates
