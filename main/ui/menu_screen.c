@@ -20,6 +20,7 @@
 #include "sd_logger.h"
 #include "nvs_config.h"
 #include "esp_system.h"
+#include "esp_wifi.h"
 #include "esp_heap_caps.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
@@ -569,18 +570,23 @@ static void power_hold_event_cb(lv_event_t *e) {
             power_off_initiated = true;
             ESP_LOGI(TAG, "Power off confirmed via hold button");
 
-            // Free SSL client to reclaim ~10KB heap for the shutdown task stack.
-            // Without this, largest_block is often <3KB and task creation fails silently.
+            // Free SSL + background tasks to reclaim contiguous heap.
+            // Post-reconnect fragmentation leaves largest_block ~2.9KB,
+            // not enough for the 3KB power_off task stack.
             dexcom_close_persistent_client();
             libre_close_persistent_client();
+            delete_background_tasks_for_ssl("power-off");
 
             BaseType_t rc = xTaskCreatePinnedToCore(
                 power_off_task, "power_off", 3072, NULL, 10, NULL, 0);
             if (rc != pdPASS) {
-                ESP_LOGE(TAG, "Failed to create power_off task (heap=%lu, largest=%lu)",
-                         esp_get_free_heap_size(),
-                         heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-                power_off_initiated = false;  // Allow retry
+                ESP_LOGE(TAG, "Failed to create power_off task — forcing shutdown");
+                // Last resort: shut down directly from LVGL context
+                sd_logger_flush();
+                esp_wifi_stop();
+                prepare_for_sleep();
+                esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+                esp_deep_sleep_start();
             }
         }
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {

@@ -81,7 +81,12 @@ static int serial_capture_vprintf(const char *fmt, va_list args)
             if (remaining > 2) {
                 int written = vsnprintf(serial_buffer + serial_buffer_pos, remaining, fmt, args_copy);
                 if (written > 0) {
-                    if (written >= remaining) written = remaining - 1;
+                    if (written >= remaining) {
+                        // Message truncated — force newline at end to prevent
+                        // garbled concatenation with the next log message.
+                        written = remaining - 1;
+                        serial_buffer[serial_buffer_pos + written - 1] = '\n';
+                    }
                     serial_buffer_pos += written;
                 }
             }
@@ -165,12 +170,14 @@ esp_err_t sd_logger_init(void)
                  (unsigned long)(((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024)),
                  (unsigned)mount_cost);
 
-        // Enable serial capture — intercept ALL ESP_LOG output
+        // Install custom vprintf handler (always — needed for "log on" command).
+        // Serial capture starts DISABLED to save memory and keep user SD cards
+        // clean (glucose CSV only). Enable via serial command: "log on"
         serial_mutex = xSemaphoreCreateMutex();
         if (serial_mutex) {
-            serial_capture_enabled = true;
+            serial_capture_enabled = false;
             esp_log_set_vprintf(serial_capture_vprintf);
-            ESP_LOGI(TAG, "Serial capture to SD enabled (8KB buffer → S*.LOG)");
+            ESP_LOGI(TAG, "SD card ready (serial capture OFF — type 'log on' to enable)");
         }
     } else {
         // No card — free the SPI bus to reclaim memory (~0.5KB + DMA)

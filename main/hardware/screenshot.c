@@ -26,6 +26,11 @@
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
 #include "driver/uart.h"
+#include "driver/ledc.h"
+#include "driver/gpio.h"
+#include "nvs_config.h"
+#include "esp_wifi.h"
+#include "esp_sleep.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -164,15 +169,18 @@ static void screenshot_restart_tasks(bool restore_pause_state)
         ESP_LOGI(TAG, "Restarted glucose task");
     }
     if (weather_task_handle == NULL) {
-        xTaskCreate(weather_update_task, "weather_update", 4096, NULL, 3, &weather_task_handle);
+        xTaskCreatePinnedToCore(weather_update_task, "weather_update",
+            WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
         ESP_LOGI(TAG, "Restarted weather task");
     }
     if (time_task_handle == NULL) {
-        xTaskCreate(time_update_task, "time_update", 4096, NULL, 3, &time_task_handle);
+        xTaskCreatePinnedToCore(time_update_task, "time_update",
+            TIME_STACK_SIZE, NULL, 3, &time_task_handle, tskNO_AFFINITY);
         ESP_LOGI(TAG, "Restarted time task");
     }
     if (battery_task_handle == NULL) {
-        xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon", 3072, NULL, 2, &battery_task_handle, 0);
+        xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon",
+            BATTERY_STACK_SIZE, NULL, 2, &battery_task_handle, 0);
         ESP_LOGI(TAG, "Restarted battery task");
     }
 
@@ -372,6 +380,77 @@ static void screenshot_cmd_task(void *arg)
 
                 if (strcmp(cmd_buf, "ss") == 0 || strcmp(cmd_buf, "screenshot") == 0) {
                     screenshot_take();
+                } else if (strcmp(cmd_buf, "ship") == 0) {
+                    ESP_LOGW(TAG, "=== SHIP MODE ===");
+                    ESP_LOGW(TAG, "This will ERASE all data and power off.");
+                    ESP_LOGW(TAG, "Type 'confirm' within 10 seconds to proceed.");
+
+                    // Wait for confirmation
+                    char confirm_buf[16];
+                    int confirm_pos = 0;
+                    bool confirmed = false;
+                    int64_t deadline = esp_timer_get_time() + 10000000; // 10 seconds
+
+                    while (esp_timer_get_time() < deadline) {
+                        int clen = uart_read_bytes(UART_NUM_0, &byte, 1, pdMS_TO_TICKS(200));
+                        if (clen <= 0) continue;
+                        if (byte == '\n' || byte == '\r') {
+                            if (confirm_pos > 0) {
+                                confirm_buf[confirm_pos] = '\0';
+                                if (strcmp(confirm_buf, "confirm") == 0) {
+                                    confirmed = true;
+                                }
+                                break;
+                            }
+                        } else if (confirm_pos < (int)sizeof(confirm_buf) - 1) {
+                            confirm_buf[confirm_pos++] = (char)byte;
+                        }
+                    }
+
+                    if (!confirmed) {
+                        ESP_LOGI(TAG, "Ship mode cancelled.");
+                    } else {
+                        ESP_LOGW(TAG, "Erasing NVS...");
+                        nvs_factory_reset();
+
+                        ESP_LOGW(TAG, "Flushing SD...");
+                        sd_logger_flush();
+
+                        ESP_LOGW(TAG, "Stopping WiFi...");
+                        esp_wifi_stop();
+
+                        ESP_LOGW(TAG, "Powering off...");
+                        // Turn off display
+                        if (lcd_panel != NULL) {
+                            esp_lcd_panel_disp_on_off(lcd_panel, false);
+                        }
+                        // Stop LEDs (active-low: idle=1 means off)
+                        ledc_stop(LEDC_LOW_SPEED_MODE, LED_RED_CHANNEL, 1);
+                        ledc_stop(LEDC_LOW_SPEED_MODE, LED_GREEN_CHANNEL, 1);
+                        ledc_stop(LEDC_LOW_SPEED_MODE, LED_BLUE_CHANNEL, 1);
+                        ledc_stop(LEDC_LOW_SPEED_MODE, BUZZER_CHANNEL, 0);
+                        // Drive LEDs off
+                        gpio_reset_pin(LED_RED);
+                        gpio_reset_pin(LED_GREEN);
+                        gpio_reset_pin(LED_BLUE);
+                        gpio_set_direction(LED_RED, GPIO_MODE_OUTPUT);
+                        gpio_set_direction(LED_GREEN, GPIO_MODE_OUTPUT);
+                        gpio_set_direction(LED_BLUE, GPIO_MODE_OUTPUT);
+                        gpio_set_level(LED_RED, 1);
+                        gpio_set_level(LED_GREEN, 1);
+                        gpio_set_level(LED_BLUE, 1);
+                        gpio_hold_en(LED_RED);
+                        // Backlight off
+                        gpio_reset_pin(LCD_BL);
+                        gpio_set_direction(LCD_BL, GPIO_MODE_OUTPUT);
+                        gpio_set_level(LCD_BL, 0);
+                        gpio_hold_en(LCD_BL);
+                        // Deep sleep — wake on boot button
+                        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+                        ESP_LOGW(TAG, "Device shipped. Goodbye.");
+                        vTaskDelay(pdMS_TO_TICKS(100));
+                        esp_deep_sleep_start();
+                    }
                 } else if (strcmp(cmd_buf, "log on") == 0) {
                     sd_serial_capture_set(true);
                     ESP_LOGI(TAG, "Serial capture: ON");
@@ -379,7 +458,7 @@ static void screenshot_cmd_task(void *arg)
                     sd_serial_capture_set(false);
                     ESP_LOGI(TAG, "Serial capture: OFF");
                 } else if (strcmp(cmd_buf, "help") == 0) {
-                    ESP_LOGI(TAG, "Commands: ss | screenshot | log on | log off | help");
+                    ESP_LOGI(TAG, "Commands: ss | screenshot | log on | log off | ship | help");
                 }
 
                 cmd_pos = 0;
@@ -394,11 +473,8 @@ static void screenshot_cmd_task(void *arg)
 
 esp_err_t screenshot_init(void)
 {
-    if (!sd_logger_available()) {
-        ESP_LOGI(TAG, "No SD card — screenshot disabled");
-        return ESP_OK;
-    }
-
+    // Always start the command listener — "ship" command works without SD card.
+    // Screenshot and log commands gracefully handle missing SD.
     BaseType_t ret = xTaskCreatePinnedToCore(
         screenshot_cmd_task,
         "ss_cmd",
