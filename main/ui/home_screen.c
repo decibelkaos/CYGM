@@ -1324,6 +1324,10 @@ static void collapse_cgm_card(void) {
     }
 }
 
+// Animation helpers for heartbeat dot — bridges lv_anim's (obj, int32_t) to style setters
+static void heartbeat_set_bg_opa(void *obj, int32_t v) { lv_obj_set_style_bg_opa(obj, (lv_opa_t)v, 0); }
+static void heartbeat_set_shadow_opa(void *obj, int32_t v) { lv_obj_set_style_shadow_opa(obj, (lv_opa_t)v, 0); }
+
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
     lv_obj_add_style(screen_home, &style_bg, 0);
@@ -1636,7 +1640,7 @@ void create_home_screen(void) {
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, dot);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_style_bg_opa);
+    lv_anim_set_exec_cb(&a, heartbeat_set_bg_opa);
     lv_anim_set_values(&a, LV_OPA_20, LV_OPA_COVER);
     lv_anim_set_time(&a, 1250);
     lv_anim_set_playback_time(&a, 1250);
@@ -1647,7 +1651,7 @@ void create_home_screen(void) {
     lv_anim_t sa;
     lv_anim_init(&sa);
     lv_anim_set_var(&sa, dot);
-    lv_anim_set_exec_cb(&sa, (lv_anim_exec_xcb_t)lv_obj_set_style_shadow_opa);
+    lv_anim_set_exec_cb(&sa, heartbeat_set_shadow_opa);
     lv_anim_set_values(&sa, LV_OPA_0, LV_OPA_60);
     lv_anim_set_time(&sa, 1250);
     lv_anim_set_playback_time(&sa, 1250);
