@@ -115,6 +115,12 @@ esp_err_t nvs_load_libre_session(char *token, size_t token_max,
                                   char *account_id, size_t acct_max);
 esp_err_t nvs_clear_libre_session(void);
 
+// Nightscout credentials (URL + optional API token)
+esp_err_t nvs_set_nightscout_credentials(const char *url, const char *token);
+esp_err_t nvs_get_nightscout_credentials(char *url, size_t url_len, char *token, size_t token_len);
+bool nvs_has_nightscout_credentials(void);
+esp_err_t nvs_clear_nightscout_credentials(void);
+
 // Alarm settings structures
 typedef enum {
     ALARM_TONE_BEEP_1 = 0,

@@ -45,6 +45,7 @@
 #include "wifi_manager.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
+#include "nightscout_api.h"
 #include "cgm_types.h"
 #include "hardware/led.h"
 #include "hardware/buzzer.h"
@@ -234,6 +235,15 @@ lv_obj_t *screen_libre_password_entry = NULL;
 lv_obj_t *screen_libre_status = NULL;
 char libre_email_buf[64] = {0};
 char libre_password_buf[64] = {0};
+
+// Nightscout UI screens and credential buffers
+lv_obj_t *screen_nightscout_auth = NULL;
+lv_obj_t *screen_nightscout_login = NULL;
+lv_obj_t *screen_nightscout_url_entry = NULL;
+lv_obj_t *screen_nightscout_token_entry = NULL;
+lv_obj_t *screen_nightscout_status = NULL;
+char nightscout_url_buf[128] = {0};
+char nightscout_token_buf[64] = {0};
 
 // Glucose data - "Last Known Good" approach
 // We ALWAYS display the last valid glucose reading, even if current fetch fails
@@ -1670,39 +1680,58 @@ void recreate_background_tasks(void) {
 // CGM Provider Dispatch Helpers
 // ============================================================================
 
-static inline bool cgm_is_authenticated(bool use_libre) {
-    return use_libre ? libre_is_authenticated() : dexcom_is_authenticated();
+static inline bool cgm_is_authenticated(cgm_provider_t p) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) return nightscout_is_authenticated();
+    if (p == CGM_PROVIDER_LIBRE) return libre_is_authenticated();
+    return dexcom_is_authenticated();
 }
 
-static inline bool cgm_session_needs_refresh(bool use_libre) {
-    return use_libre ? libre_session_needs_refresh() : dexcom_session_needs_refresh();
+static inline bool cgm_session_needs_refresh(cgm_provider_t p) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) return nightscout_session_needs_refresh();
+    if (p == CGM_PROVIDER_LIBRE) return libre_session_needs_refresh();
+    return dexcom_session_needs_refresh();
 }
 
-static inline void cgm_close_client(bool use_libre) {
-    if (use_libre) libre_close_persistent_client();
-    else           dexcom_close_persistent_client();
+static inline void cgm_close_client(cgm_provider_t p) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) nightscout_close_persistent_client();
+    else if (p == CGM_PROVIDER_LIBRE) libre_close_persistent_client();
+    else                              dexcom_close_persistent_client();
 }
 
-static inline bool cgm_client_is_open(bool use_libre) {
-    return use_libre ? libre_persistent_client_is_open() : dexcom_persistent_client_is_open();
+static inline bool cgm_client_is_open(cgm_provider_t p) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) return nightscout_persistent_client_is_open();
+    if (p == CGM_PROVIDER_LIBRE) return libre_persistent_client_is_open();
+    return dexcom_persistent_client_is_open();
 }
 
-static inline esp_err_t cgm_authenticate(bool use_libre) {
-    if (use_libre) {
+static inline esp_err_t cgm_authenticate(cgm_provider_t p) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) {
+        char url[128], token[64];
+        if (nvs_get_nightscout_credentials(url, sizeof(url), token, sizeof(token)) != ESP_OK)
+            return ESP_ERR_NOT_FOUND;
+        return nightscout_authenticate(url, token);
+    }
+    if (p == CGM_PROVIDER_LIBRE) {
         char email[64], pass[64];
         if (nvs_get_libre_credentials(email, sizeof(email), pass, sizeof(pass)) != ESP_OK)
             return ESP_ERR_NOT_FOUND;
         return libre_authenticate(email, pass);
-    } else {
-        char user[64], pass[64];
-        if (nvs_get_dexcom_credentials(user, sizeof(user), pass, sizeof(pass)) != ESP_OK)
-            return ESP_ERR_NOT_FOUND;
-        return dexcom_authenticate(user, pass);
     }
+    char user[64], pass[64];
+    if (nvs_get_dexcom_credentials(user, sizeof(user), pass, sizeof(pass)) != ESP_OK)
+        return ESP_ERR_NOT_FOUND;
+    return dexcom_authenticate(user, pass);
 }
 
-static inline esp_err_t cgm_fetch(bool use_libre, cgm_glucose_t *g) {
-    return use_libre ? libre_fetch_glucose(g) : dexcom_fetch_glucose(g);
+static inline esp_err_t cgm_fetch(cgm_provider_t p, cgm_glucose_t *g) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) return nightscout_fetch_glucose(g);
+    if (p == CGM_PROVIDER_LIBRE) return libre_fetch_glucose(g);
+    return dexcom_fetch_glucose(g);
+}
+
+static inline bool cgm_needs_tls(cgm_provider_t p) {
+    if (p == CGM_PROVIDER_NIGHTSCOUT) return nightscout_uses_https();
+    return true;  // Dexcom and Libre always use HTTPS
 }
 
 // Glucose update task - fetches glucose periodically (every 90 seconds)
@@ -1710,7 +1739,9 @@ void glucose_update_task(void *pvParameters) {
     // Determine active CGM provider once at task start
     char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
     nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
-    bool use_libre = (strcmp(cgm_type, "libre") == 0);
+    cgm_provider_t provider = CGM_PROVIDER_DEXCOM;
+    if (strcmp(cgm_type, "libre") == 0) provider = CGM_PROVIDER_LIBRE;
+    else if (strcmp(cgm_type, "nightscout") == 0) provider = CGM_PROVIDER_NIGHTSCOUT;
 
     ESP_LOGI(TAG, "Glucose update task started (90s interval, provider=%s)", cgm_type);
 
@@ -1780,16 +1811,17 @@ void glucose_update_task(void *pvParameters) {
         // failed re-auth during API outage), try again using stored credentials.
         // CRITICAL: Must delete background tasks first — TLS handshake needs ~16KB
         // contiguous heap, but running tasks fragment it to ~3KB largest block.
-        bool is_auth = cgm_is_authenticated(use_libre);
+        bool is_auth = cgm_is_authenticated(provider);
         if (!is_auth) {
             ESP_LOGW(TAG, "[Glucose Task] Not authenticated — attempting re-auth (backoff=%ds)",
                      poll_interval_sec);
             if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-                // Free heap for TLS handshake — same pattern as glucose fetch path
-                bool tasks_deleted = delete_background_tasks_for_ssl("re-auth");
-                cgm_close_client(use_libre);  // Clean slate for fresh handshake
+                // Free heap for TLS handshake (skip for HTTP-mode Nightscout)
+                bool tasks_deleted = cgm_needs_tls(provider) ?
+                    delete_background_tasks_for_ssl("re-auth") : false;
+                cgm_close_client(provider);  // Clean slate for fresh handshake
 
-                esp_err_t auth_ret = cgm_authenticate(use_libre);
+                esp_err_t auth_ret = cgm_authenticate(provider);
                 if (auth_ret == ESP_OK) {
                     ESP_LOGI(TAG, "[Glucose Task] Re-auth succeeded — resuming glucose fetch");
                     sd_log(TAG, "Auto re-auth OK after WiFi recovery");
@@ -1797,7 +1829,7 @@ void glucose_update_task(void *pvParameters) {
                     consecutive_task_failures = 0;
                     poll_interval_sec = 90;
                     // Close SSL from auth — glucose fetch will reopen
-                    cgm_close_client(use_libre);
+                    cgm_close_client(provider);
                 } else if (auth_ret == ESP_ERR_NOT_FOUND) {
                     ESP_LOGW(TAG, "[Glucose Task] No stored credentials for %s", cgm_type);
                 } else {
@@ -1827,15 +1859,15 @@ void glucose_update_task(void *pvParameters) {
         // Proactive session refresh: handle BEFORE entering fetch path so the
         // inline refresh inside dexcom_fetch_glucose() never triggers under
         // low-memory conditions. We control task deletion here.
-        if (is_auth && cgm_session_needs_refresh(use_libre)) {
+        if (is_auth && cgm_session_needs_refresh(provider)) {
             ESP_LOGI(TAG, "Proactive session refresh — handling at task level");
             sd_log(TAG, "Proactive session refresh");
 
             if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
                 bool tasks_deleted = delete_background_tasks_for_ssl("session-refresh");
-                cgm_close_client(use_libre);
+                cgm_close_client(provider);
 
-                esp_err_t ref_ret = cgm_authenticate(use_libre);
+                esp_err_t ref_ret = cgm_authenticate(provider);
                 if (ref_ret == ESP_OK) {
                     ESP_LOGI(TAG, "Proactive refresh OK — keeping fresh client alive");
                     sd_log(TAG, "Proactive refresh OK");
@@ -1843,7 +1875,7 @@ void glucose_update_task(void *pvParameters) {
                 } else {
                     ESP_LOGW(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
                     sd_log(TAG, "Proactive refresh failed: %s", esp_err_to_name(ref_ret));
-                    is_auth = cgm_is_authenticated(use_libre);
+                    is_auth = cgm_is_authenticated(provider);
                 }
 
                 if (tasks_deleted) {
@@ -1888,7 +1920,7 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
-                bool client_open = cgm_client_is_open(use_libre);
+                bool client_open = cgm_client_is_open(provider);
                 bool tasks_deleted_for_ssl = false;
 
                 // SD log memory state every cycle
@@ -1896,11 +1928,12 @@ void glucose_update_task(void *pvParameters) {
                        heap_info.total_free_bytes, heap_info.largest_free_block,
                        fragmentation, heap_info.allocated_blocks, heap_info.free_blocks);
 
-                if (!client_open) {
-                    // Fresh SSL handshake needs ~10KB contiguous heap.
+                if (!client_open && cgm_needs_tls(provider)) {
+                    // Fresh TLS handshake needs ~10KB contiguous heap.
                     // The initial boot handshake fragments memory permanently
                     // (DYNAMIC_FREE creates holes that LVGL/WiFi fill). Delete
                     // background task stacks (~11KB) to create large enough blocks.
+                    // Skipped for HTTP-mode Nightscout (no TLS needed).
                     tasks_deleted_for_ssl = delete_background_tasks_for_ssl("ssl-reconnect");
                 }
 
@@ -1918,15 +1951,15 @@ void glucose_update_task(void *pvParameters) {
                 // Blink blue to indicate CGM poll starting
                 led_blink_blue();
 
-                esp_err_t ret = cgm_fetch(use_libre, &glucose);
+                esp_err_t ret = cgm_fetch(provider, &glucose);
 
                 // Connection died mid-fetch (SSL was open but socket died).
                 // Delete tasks if not already deleted, then retry.
-                if (ret != ESP_OK && !glucose.valid && !cgm_client_is_open(use_libre)) {
-                    if (!tasks_deleted_for_ssl) {
+                if (ret != ESP_OK && !glucose.valid && !cgm_client_is_open(provider)) {
+                    if (!tasks_deleted_for_ssl && cgm_needs_tls(provider)) {
                         tasks_deleted_for_ssl = delete_background_tasks_for_ssl("ssl-reconnect");
                     }
-                    ESP_LOGW(TAG, "Connection died mid-fetch — retrying with fresh SSL");
+                    ESP_LOGW(TAG, "Connection died mid-fetch — retrying with fresh connection");
                     sd_log(TAG, "SSL died mid-fetch, retry (tasks_del=%d)", tasks_deleted_for_ssl);
 
                     ESP_LOGI(TAG, "Retry: heap=%lu, largest=%lu",
@@ -1934,7 +1967,7 @@ void glucose_update_task(void *pvParameters) {
                              heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
                     memset(&glucose, 0, sizeof(glucose));
-                    ret = cgm_fetch(use_libre, &glucose);
+                    ret = cgm_fetch(provider, &glucose);
                 }
 
             if (ret == ESP_OK && glucose.valid) {
@@ -2198,7 +2231,7 @@ void glucose_update_task(void *pvParameters) {
                 // (and the task delete/recreate churn). If it dies, the mid-fetch
                 // retry path handles reconnect with task deletion.
                 if (glucose_fetch_failed) {
-                    cgm_close_client(use_libre);
+                    cgm_close_client(provider);
                     sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
                     sd_logger_resume();
                     sd_logger_flush();

@@ -19,6 +19,7 @@
 #include "wifi_manager.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
+#include "nightscout_api.h"
 #include "cgm_types.h"
 #include "sd_logger.h"
 #include "features/heartbeat.h"
@@ -253,17 +254,26 @@ void wifi_task_core0(void *pvParameters) {
             // Determine active CGM provider
             char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
             nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
-            bool boot_use_libre = (strcmp(cgm_type, "libre") == 0);
+            cgm_provider_t boot_provider = CGM_PROVIDER_DEXCOM;
+            if (strcmp(cgm_type, "libre") == 0) boot_provider = CGM_PROVIDER_LIBRE;
+            else if (strcmp(cgm_type, "nightscout") == 0) boot_provider = CGM_PROVIDER_NIGHTSCOUT;
 
             // Check for saved credentials (dispatch by provider)
-            bool has_cgm_creds = boot_use_libre ? nvs_has_libre_credentials() : nvs_has_dexcom_credentials();
+            bool has_cgm_creds;
+            switch (boot_provider) {
+                case CGM_PROVIDER_NIGHTSCOUT: has_cgm_creds = nvs_has_nightscout_credentials(); break;
+                case CGM_PROVIDER_LIBRE:      has_cgm_creds = nvs_has_libre_credentials(); break;
+                default:                      has_cgm_creds = nvs_has_dexcom_credentials(); break;
+            }
 
             if (has_cgm_creds) {
-                ESP_LOGI(TAG, "Found saved %s credentials, will attempt auto-login after time sync",
-                         boot_use_libre ? "Libre" : "Dexcom");
+                ESP_LOGI(TAG, "Found saved %s credentials, will attempt auto-login after time sync", cgm_type);
 
                 // Load credentials into UI buffers
-                if (boot_use_libre) {
+                if (boot_provider == CGM_PROVIDER_NIGHTSCOUT) {
+                    nvs_get_nightscout_credentials(nightscout_url_buf, sizeof(nightscout_url_buf),
+                                                    nightscout_token_buf, sizeof(nightscout_token_buf));
+                } else if (boot_provider == CGM_PROVIDER_LIBRE) {
                     nvs_get_libre_credentials(libre_email_buf, sizeof(libre_email_buf),
                                                libre_password_buf, sizeof(libre_password_buf));
                 } else {
@@ -275,8 +285,7 @@ void wifi_task_core0(void *pvParameters) {
                 }
 
                 // CRITICAL: Wait for SNTP time sync (SSL certificates require accurate time!)
-                ESP_LOGI(TAG, "Waiting for SNTP time sync before %s auth (required for SSL)...",
-                         boot_use_libre ? "Libre" : "Dexcom");
+                ESP_LOGI(TAG, "Waiting for SNTP time sync before %s auth (required for SSL)...", cgm_type);
 
                 time_t now;
                 struct tm timeinfo;
@@ -306,7 +315,7 @@ void wifi_task_core0(void *pvParameters) {
 
                     // Libre: try restoring saved session before full login
                     bool session_restored = false;
-                    if (boot_use_libre) {
+                    if (boot_provider == CGM_PROVIDER_LIBRE) {
                         if (libre_restore_session() == ESP_OK) {
                             ESP_LOGI(TAG, "Libre session restored from NVS — skipping login");
                             sd_log(TAG, "Libre session restored (skip login)");
@@ -363,7 +372,9 @@ void wifi_task_core0(void *pvParameters) {
                         ESP_LOGI(TAG, "%s auth attempt %d/%d...", cgm_type, attempt, max_retries);
 
                         esp_err_t ret;
-                        if (boot_use_libre) {
+                        if (boot_provider == CGM_PROVIDER_NIGHTSCOUT) {
+                            ret = nightscout_authenticate(nightscout_url_buf, nightscout_token_buf);
+                        } else if (boot_provider == CGM_PROVIDER_LIBRE) {
                             ret = libre_authenticate(libre_email_buf, libre_password_buf);
                         } else {
                             ret = dexcom_authenticate(dexcom_username_buf, dexcom_password_buf);
@@ -376,7 +387,9 @@ void wifi_task_core0(void *pvParameters) {
                             // Fetch initial glucose reading
                             cgm_glucose_t glucose = {0};
                             esp_err_t fetch_ret;
-                            if (boot_use_libre) {
+                            if (boot_provider == CGM_PROVIDER_NIGHTSCOUT) {
+                                fetch_ret = nightscout_fetch_glucose(&glucose);
+                            } else if (boot_provider == CGM_PROVIDER_LIBRE) {
                                 fetch_ret = libre_fetch_glucose(&glucose);
                             } else {
                                 fetch_ret = dexcom_fetch_glucose(&glucose);

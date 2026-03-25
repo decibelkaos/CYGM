@@ -1044,6 +1044,95 @@ esp_err_t nvs_clear_libre_session(void) {
     return ret;
 }
 
+// ==================== Nightscout Credentials ====================
+
+#define NVS_NS_URL_KEY   "ns_url"
+#define NVS_NS_TOKEN_KEY "ns_token"
+
+esp_err_t nvs_set_nightscout_credentials(const char *url, const char *token) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_NS_URL_KEY, url);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Token may be empty for public instances — store empty string
+    ret = nvs_set_str(nvs_handle, NVS_NS_TOKEN_KEY, token ? token : "");
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Nightscout credentials saved to NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_get_nightscout_credentials(char *url, size_t url_len, char *token, size_t token_len) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_NS_URL_KEY, url, &url_len);
+    if (ret != ESP_OK) {
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_NS_TOKEN_KEY, token, &token_len);
+    if (ret != ESP_OK) {
+        // Token is optional — not an error if missing
+        token[0] = '\0';
+    }
+
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+bool nvs_has_nightscout_credentials(void) {
+    char url[128];
+    return (nvs_get_nightscout_credentials(url, sizeof(url), url, sizeof(url)) == ESP_OK
+            && url[0] != '\0');
+}
+
+esp_err_t nvs_clear_nightscout_credentials(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    nvs_erase_key(nvs_handle, NVS_NS_URL_KEY);
+    nvs_erase_key(nvs_handle, NVS_NS_TOKEN_KEY);
+    ret = nvs_commit(nvs_handle);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Nightscout credentials cleared from NVS");
+    }
+
+    nvs_close(nvs_handle);
+    return ret;
+}
+
 // ============================================================================
 // CGM Alarm Settings
 // ============================================================================

@@ -25,6 +25,13 @@ void create_libre_email_entry_screen(void);
 void create_libre_password_entry_screen(void);
 void create_libre_status_screen(void);
 
+// Nightscout screens
+void create_nightscout_auth_screen(void);
+void create_nightscout_login_screen(void);
+void create_nightscout_url_entry_screen(void);
+void create_nightscout_token_entry_screen(void);
+void create_nightscout_status_screen(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -20,4 +20,11 @@ typedef dexcom_glucose_t cgm_glucose_t;
 #define cgm_trend_arrow       dexcom_trend_arrow
 #define cgm_trend_description dexcom_trend_description
 
+// Active CGM provider
+typedef enum {
+    CGM_PROVIDER_DEXCOM = 0,
+    CGM_PROVIDER_LIBRE,
+    CGM_PROVIDER_NIGHTSCOUT,
+} cgm_provider_t;
+
 #endif // CGM_TYPES_H
