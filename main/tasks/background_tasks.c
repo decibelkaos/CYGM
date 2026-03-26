@@ -352,15 +352,11 @@ void wifi_task_core0(void *pvParameters) {
                                 update_glucose_display();
                             }
 
-                            // Nightscout HTTPS: close SSL now — task creation will fragment
-                            // heap, making TLS read buffer allocation fail on first cycle.
-                            // Other providers: keep alive for reuse.
-                            if (boot_provider == CGM_PROVIDER_NIGHTSCOUT && nightscout_uses_https()) {
-                                nightscout_close_persistent_client();
-                                ESP_LOGI(TAG, "SSL closed (Nightscout HTTPS, heap=%lu)", esp_get_free_heap_size());
-                            } else {
-                                ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
-                            }
+                            // Close SSL before creating tasks — task stacks will fragment
+                            // the heap, making TLS read buffers fail on the first cycle.
+                            // Every provider's first glucose cycle does delete→handshake→fetch.
+                            libre_close_persistent_client();
+                            ESP_LOGI(TAG, "SSL closed after Libre session restore (heap=%lu)", esp_get_free_heap_size());
 
                             // Start background tasks after auth
                             if (glucose_task_handle == NULL) {
@@ -444,13 +440,16 @@ void wifi_task_core0(void *pvParameters) {
 
                             // Nightscout HTTPS: close SSL now — task creation will fragment
                             // heap, making TLS read buffer allocation fail on first cycle.
-                            // Other providers: keep alive for reuse.
-                            if (boot_provider == CGM_PROVIDER_NIGHTSCOUT && nightscout_uses_https()) {
+                            // Close SSL before creating tasks — task stacks will fragment
+                            // the heap, making TLS read buffers fail on the first cycle.
+                            if (boot_provider == CGM_PROVIDER_NIGHTSCOUT) {
                                 nightscout_close_persistent_client();
-                                ESP_LOGI(TAG, "SSL closed (Nightscout HTTPS, heap=%lu)", esp_get_free_heap_size());
+                            } else if (boot_provider == CGM_PROVIDER_LIBRE) {
+                                libre_close_persistent_client();
                             } else {
-                                ESP_LOGI(TAG, "SSL kept alive for glucose task reuse (heap=%lu)", esp_get_free_heap_size());
+                                dexcom_close_persistent_client();
                             }
+                            ESP_LOGI(TAG, "SSL closed after initial fetch (heap=%lu)", esp_get_free_heap_size());
 
                             // Start background tasks AFTER auth — their stacks interleave
                             // with the SSL region, so freeing both on reconnect creates

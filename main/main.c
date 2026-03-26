@@ -2224,13 +2224,14 @@ void glucose_update_task(void *pvParameters) {
                 }
             }
 
-                // SSL lifecycle strategy per provider:
-                // - Dexcom/Libre: keep alive on success (connections survive minutes-hours)
-                // - Nightscout HTTPS: always close (Cloudflare sends large TLS records
-                //   that need ~2KB contiguous for the read buffer; post-reconnect
-                //   fragmentation drops largest_block to ~1.9KB, causing read failures)
-                // - Nightscout HTTP: keep alive (no TLS buffers)
-                bool always_close = (provider == CGM_PROVIDER_NIGHTSCOUT && cgm_needs_tls(provider));
+                // SSL lifecycle: always close after fetch for TLS providers.
+                // Post-reconnect fragmentation drops largest_block to ~2.5KB,
+                // but TLS read buffers need ~1.7KB contiguous. Keeping SSL alive
+                // means the NEXT cycle's read fails (alloc 1734 failed), forcing
+                // a wasteful double-fetch (fail → delete tasks → retry → succeed).
+                // Closing proactively ensures every cycle starts clean.
+                // HTTP-mode Nightscout: keep alive (no TLS buffers needed).
+                bool always_close = cgm_needs_tls(provider);
 
                 if (glucose_fetch_failed || always_close) {
                     cgm_close_client(provider);
@@ -2257,22 +2258,6 @@ void glucose_update_task(void *pvParameters) {
                 // Recreate tasks deleted for SSL handshake
                 if (tasks_deleted_for_ssl) {
                     recreate_background_tasks();
-
-                    // Post-recreation heap check: if fragmentation is irrecoverable,
-                    // reboot now to get a clean heap layout instead of limping along
-                    // with 2-3KB free until the next crash.
-                    size_t post_free = esp_get_free_heap_size();
-                    size_t post_largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-                    if (post_largest < 2048 && post_free < 4096) {
-                        ESP_LOGE(TAG, "HEAP IRRECOVERABLE after task recreation: free=%lu largest=%lu — rebooting",
-                                 (unsigned long)post_free, (unsigned long)post_largest);
-                        sd_log(TAG, "REBOOT: post-recreation heap critical free=%lu largest=%lu",
-                               (unsigned long)post_free, (unsigned long)post_largest);
-                        sd_logger_flush();
-                        xSemaphoreGive(network_mutex);
-                        vTaskDelay(pdMS_TO_TICKS(500));
-                        esp_restart();
-                    }
                 }
 
                 // Release network mutex
