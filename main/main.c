@@ -2257,6 +2257,22 @@ void glucose_update_task(void *pvParameters) {
                 // Recreate tasks deleted for SSL handshake
                 if (tasks_deleted_for_ssl) {
                     recreate_background_tasks();
+
+                    // Post-recreation heap check: if fragmentation is irrecoverable,
+                    // reboot now to get a clean heap layout instead of limping along
+                    // with 2-3KB free until the next crash.
+                    size_t post_free = esp_get_free_heap_size();
+                    size_t post_largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+                    if (post_largest < 2048 && post_free < 4096) {
+                        ESP_LOGE(TAG, "HEAP IRRECOVERABLE after task recreation: free=%lu largest=%lu — rebooting",
+                                 (unsigned long)post_free, (unsigned long)post_largest);
+                        sd_log(TAG, "REBOOT: post-recreation heap critical free=%lu largest=%lu",
+                               (unsigned long)post_free, (unsigned long)post_largest);
+                        sd_logger_flush();
+                        xSemaphoreGive(network_mutex);
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        esp_restart();
+                    }
                 }
 
                 // Release network mutex
@@ -2298,7 +2314,7 @@ void glucose_update_task(void *pvParameters) {
             size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
             static int critical_heap_count = 0;
 
-            if (largest < 1024) {
+            if (largest < 2048) {
                 critical_heap_count++;
                 ESP_LOGE(TAG, "HEAP CRITICAL: largest=%lu (strike %d/3)",
                          (unsigned long)largest, critical_heap_count);
