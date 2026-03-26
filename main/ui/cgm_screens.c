@@ -414,12 +414,15 @@ static void dexcom_login_btn_event_cb(lv_event_t *e) {
             glucose_task_handle = NULL;
         }
 
-        // Close any existing Libre connection before switching
+        // Close any existing connections before switching
         if (libre_is_authenticated()) {
             ESP_LOGI(TAG, "Closing Libre connection for provider switch");
             libre_close_persistent_client();
             libre_logout();
         }
+        nightscout_close_persistent_client();
+        dexcom_close_persistent_client();
+        delete_background_tasks_for_ssl("dexcom-login");
 
         if (xTaskCreate(dexcom_login_task, "dexcom_login", 6144, NULL, 2, NULL) != pdPASS) {
             dexcom_login_in_progress = false;
@@ -1633,12 +1636,15 @@ static void libre_login_btn_event_cb(lv_event_t *e) {
             glucose_task_handle = NULL;
         }
 
-        // Close any existing Dexcom connection before switching
+        // Close any existing connections before switching
         if (dexcom_is_authenticated()) {
             ESP_LOGI(TAG, "Closing Dexcom connection for provider switch");
             dexcom_close_persistent_client();
             dexcom_logout();
         }
+        nightscout_close_persistent_client();
+        libre_close_persistent_client();
+        delete_background_tasks_for_ssl("libre-login");
 
         if (xTaskCreate(libre_login_task, "libre_login", 6144, NULL, 5, NULL) != pdPASS) {
             libre_login_in_progress = false;
@@ -2719,19 +2725,17 @@ static void nightscout_login_btn_event_cb(lv_event_t *e) {
             glucose_task_handle = NULL;
         }
 
-        // Close any existing Dexcom connection before switching
+        // Close all connections before switching
         if (dexcom_is_authenticated()) {
-            ESP_LOGI(TAG, "Closing Dexcom connection for provider switch");
             dexcom_close_persistent_client();
             dexcom_logout();
         }
-
-        // Close any existing Libre connection before switching
         if (libre_is_authenticated()) {
-            ESP_LOGI(TAG, "Closing Libre connection for provider switch");
             libre_close_persistent_client();
             libre_logout();
         }
+        nightscout_close_persistent_client();
+        delete_background_tasks_for_ssl("nightscout-login");
 
         if (xTaskCreate(nightscout_login_task, "ns_login", 6144, NULL, 5, NULL) != pdPASS) {
             nightscout_login_in_progress = false;
