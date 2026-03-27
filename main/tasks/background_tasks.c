@@ -36,9 +36,19 @@ static const char *TAG = "BACKGROUND_TASKS";
 void ui_task_core1(void *pvParameters) {
     ESP_LOGI(TAG, "UI Task started on Core 1");
 
-    // Initialize touch on Core 1
+    // Initialize touch on Core 1 — non-fatal (device works without touch)
+    // Retry once after delay if first attempt fails (I2C timing race with WiFi)
     add_boot_log("Init touch screen");
-    ESP_ERROR_CHECK(touch_init_core1());
+    esp_err_t touch_err = touch_init_core1();
+    if (touch_err != ESP_OK) {
+        ESP_LOGW(TAG, "Touch init failed: %s — retrying in 200ms", esp_err_to_name(touch_err));
+        vTaskDelay(pdMS_TO_TICKS(200));
+        touch_err = touch_init_core1();
+    }
+    if (touch_err != ESP_OK) {
+        ESP_LOGE(TAG, "Touch init failed after retry: %s — continuing without touch", esp_err_to_name(touch_err));
+        add_boot_log("Touch FAILED - no touch");
+    }
 
     // Initialize LVGL
     add_boot_log("Init LVGL");
