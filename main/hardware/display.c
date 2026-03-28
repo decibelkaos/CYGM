@@ -212,17 +212,12 @@ esp_err_t lvgl_init(void) {
     };
     lvgl_display = lvgl_port_add_disp(&disp_cfg);
 
-    // Add touch input (skip if touch init failed — device works without touch)
-    if (touch_handle != NULL) {
-        const lvgl_port_touch_cfg_t touch_cfg = {
-            .disp = lvgl_display,
-            .handle = touch_handle,
-        };
-        lvgl_touch_indev = lvgl_port_add_touch(&touch_cfg);
-    } else {
-        ESP_LOGW(TAG, "Touch not available — LVGL running without touch input");
-        lvgl_touch_indev = NULL;
-    }
+    // Add touch input
+    const lvgl_port_touch_cfg_t touch_cfg = {
+        .disp = lvgl_display,
+        .handle = touch_handle,
+    };
+    lvgl_touch_indev = lvgl_port_add_touch(&touch_cfg);
 
     ESP_LOGI(TAG, "LVGL initialized successfully");
     return ESP_OK;
