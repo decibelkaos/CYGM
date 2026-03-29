@@ -116,6 +116,7 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
     esp_err_t err = esp_http_client_perform(client);
     int status_code = esp_http_client_get_status_code(client);
 
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {

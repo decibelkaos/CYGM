@@ -44,6 +44,7 @@ esp_err_t heartbeat_send(void) {
 
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
     if (err == ESP_OK && status == 200) {

@@ -14,7 +14,6 @@
 #include "libre_api.h"
 #include "geocoding_api.h"
 #include "sd_logger.h"
-#include "heartbeat.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -338,6 +337,7 @@ esp_err_t fetch_weather(float lat, float lon) {
                            current_temp_f, high_temp_f, low_temp_f, current_weather_code);
 
                     cJSON_Delete(json);
+                    esp_http_client_close(client);
                     esp_http_client_cleanup(client);
                     return ESP_OK;
                 }
@@ -348,6 +348,7 @@ esp_err_t fetch_weather(float lat, float lon) {
 
     ESP_LOGE(TAG, "Failed to fetch weather: %s", esp_err_to_name(err));
     sd_log(TAG, "Weather: FAILED %s", esp_err_to_name(err));
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return ESP_FAIL;
 }
@@ -550,12 +551,6 @@ void weather_update_task(void *pvParameters) {
                         vTaskDelay(pdMS_TO_TICKS(5000));
                     }
                 }
-            }
-
-            // Piggyback device heartbeat on weather cycle (every 15-60 min)
-            if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
-                heartbeat_send();
-                xSemaphoreGive(network_mutex);
             }
 
             // Dexcom client will reopen automatically on next glucose fetch

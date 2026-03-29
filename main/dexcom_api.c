@@ -212,6 +212,7 @@ static time_t parse_dexcom_timestamp(const char *dt_str) {
 static void cleanup_persistent_client(void) {
     if (persistent_client != NULL) {
         ESP_LOGI(TAG, "Cleaning up persistent HTTP client");
+        esp_http_client_close(persistent_client);
         esp_http_client_cleanup(persistent_client);
         persistent_client = NULL;
     }
@@ -1071,47 +1072,10 @@ bool dexcom_persistent_client_is_open(void) {
 void dexcom_close_persistent_client(void) {
     if (persistent_client != NULL) {
         ESP_LOGI(TAG, "Closing persistent HTTP client to free memory (~30KB)");
+        esp_http_client_close(persistent_client);
         esp_http_client_cleanup(persistent_client);
         persistent_client = NULL;
         ESP_LOGI(TAG, "Free heap after closing Dexcom client: %lu bytes", esp_get_free_heap_size());
     }
 }
 
-// Re-open persistent HTTP client after weather operations complete
-// Next glucose fetch will re-establish SSL connection automatically
-esp_err_t dexcom_reopen_persistent_client(void) {
-    // If already open, nothing to do
-    if (persistent_client != NULL) {
-        ESP_LOGD(TAG, "Persistent client already open");
-        return ESP_OK;
-    }
-
-    // Check if we have authentication
-    if (!is_authenticated) {
-        ESP_LOGW(TAG, "Cannot reopen client - not authenticated");
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    // Re-initialize persistent client with same config as during authentication
-    ESP_LOGI(TAG, "Re-opening persistent HTTP client for Dexcom");
-
-    esp_http_client_config_t config = {
-        .url = get_base_url(),
-        .event_handler = NULL,
-        .timeout_ms = 10000,
-        .user_agent = "Dexcom Share/3.0.2.11 CFNetwork/711.2.23 Darwin/14.0.0",
-        .keep_alive_enable = true,
-        .transport_type = HTTP_TRANSPORT_OVER_SSL,
-        .crt_bundle_attach = esp_crt_bundle_attach
-    };
-
-    persistent_client = esp_http_client_init(&config);
-    if (persistent_client == NULL) {
-        ESP_LOGE(TAG, "Failed to re-initialize persistent HTTP client");
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Persistent HTTP client re-opened successfully");
-    ESP_LOGI(TAG, "Free heap after reopening Dexcom client: %lu bytes", esp_get_free_heap_size());
-    return ESP_OK;
-}

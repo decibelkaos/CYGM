@@ -174,6 +174,7 @@ bool libre_persistent_client_is_open(void) {
 void libre_close_persistent_client(void) {
     if (persistent_client != NULL) {
         ESP_LOGI(TAG, "Closing persistent HTTP client");
+        esp_http_client_close(persistent_client);
         esp_http_client_cleanup(persistent_client);
         persistent_client = NULL;
         ESP_LOGI(TAG, "Free heap after closing Libre client: %lu bytes",
@@ -268,9 +269,11 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
         ESP_LOGE(TAG, "Connections request failed: %s", esp_err_to_name(err));
         if (using_persistent) {
             // Connection died — clean up and let caller retry
+            esp_http_client_close(client);
             esp_http_client_cleanup(client);
             persistent_client = NULL;
         } else {
+            esp_http_client_close(client);
             esp_http_client_cleanup(client);
         }
         return err;
@@ -521,12 +524,14 @@ auth_attempt:
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Login request failed: %s", esp_err_to_name(err));
+        esp_http_client_close(client);
         esp_http_client_cleanup(client);
         return err;
     }
 
     int status = esp_http_client_get_status_code(client);
     ESP_LOGI(TAG, "Login response: HTTP %d, len=%d", status, http_response_len);
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
     if (status != 200) {

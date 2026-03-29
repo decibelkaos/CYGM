@@ -85,10 +85,8 @@ const char* dexcom_trend_arrow(dexcom_trend_t trend);
 // Get trend description string
 const char* dexcom_trend_description(dexcom_trend_t trend);
 
-// Memory management - close/reopen persistent HTTP client
-// Use this to free ~30KB memory when needed (e.g., for weather operations)
+// Memory management - close persistent HTTP client to free ~15-20KB
 void dexcom_close_persistent_client(void);
-esp_err_t dexcom_reopen_persistent_client(void);
 
 // Check if persistent client is currently open
 // Returns true if client exists (reusing connection, needs ~15-20KB for fetch)
