@@ -690,32 +690,9 @@ void show_welcome_overlay(void) {
 
 // Glucose fetch timer update callback (updates progress bar)
 static void glucose_timer_update_cb(lv_timer_t *timer) {
-    if (!home_screen_active || glucose_fetch_timer_bar == NULL) {
+    if (!home_screen_active) {
         return;
     }
-
-    // Calculate elapsed time since last fetch (in milliseconds)
-    int64_t now = esp_timer_get_time() / 1000;  // Convert microseconds to milliseconds
-    int64_t elapsed = now - last_glucose_fetch_time;
-
-    // Glucose task runs every 90 seconds (90000 ms)
-    const int64_t FETCH_INTERVAL_MS = 90000;
-
-    // Calculate percentage (0-100%)
-    int percentage = (int)((elapsed * 100) / FETCH_INTERVAL_MS);
-    if (percentage > 100) percentage = 100;
-    if (percentage < 0) percentage = 0;
-
-    // Update bar value
-    lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
-
-    // Breathing opacity: 10% → 100% → 10% over 5 seconds (visual heartbeat)
-    // Manual calculation in existing timer — NO lv_anim objects (those cause freezes)
-    static int breath_tick = 0;
-    breath_tick = (breath_tick + 1) % 10;  // 0-9, full cycle = 10 ticks = 5s
-    int phase = (breath_tick <= 5) ? breath_tick : (10 - breath_tick);  // 0→5→0 triangle
-    lv_opa_t opa = 25 + (255 - 25) * phase / 5;  // ~10% to 100%
-    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, opa, LV_PART_INDICATOR);
 
     // =====================================================================
     // SAFETY WATCHDOG: Independent staleness check on the UI task
@@ -1254,11 +1231,6 @@ static void expand_cgm_card(void) {
         lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -22);
     }
 
-    // Timer bar: fill most of card width
-    if (glucose_fetch_timer_bar != NULL) {
-        lv_obj_set_width(glucose_fetch_timer_bar, 260);
-    }
-
     // Brightness: to the left of gear cog (TOP_RIGHT minus gear width and gap)
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_RIGHT, -34, 0);
@@ -1323,9 +1295,6 @@ static void collapse_cgm_card(void) {
     }
     if (label_time_ago != NULL) {
         lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
-    }
-    if (glucose_fetch_timer_bar != NULL) {
-        lv_obj_set_width(glucose_fetch_timer_bar, 100);
     }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
@@ -1547,17 +1516,8 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
 
-    // Glucose fetch countdown bar (subtle indicator at bottom of card)
-    glucose_fetch_timer_bar = lv_bar_create(right_card);
-    lv_obj_set_size(glucose_fetch_timer_bar, 100, 3);
-    lv_obj_align(glucose_fetch_timer_bar, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_bar_set_range(glucose_fetch_timer_bar, 0, 100);
-    lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(0x2C2C2E), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(glucose_fetch_timer_bar, 1, 0);
-    
+    // Progress bar removed — saves memory. Colon blink in time display serves as heartbeat.
+
     // --- MENU BUTTON (top right) - transparent, just icon ---
     lv_obj_t *menu_btn = lv_btn_create(screen_home);
     lv_obj_set_size(menu_btn, 36, 36);

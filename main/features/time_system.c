@@ -202,11 +202,13 @@ void update_time_display(void) {
 
     char strftime_buf[64];
 
-    // Update clock
+    // Update clock — toggle colon every 10s as heartbeat (no recolor, no animations)
+    static bool colon_visible = true;
+    colon_visible = !colon_visible;
     if (user_24hr_format) {
-        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M", &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), colon_visible ? "%H:%M" : "%H %M", &timeinfo);
     } else {
-        strftime(strftime_buf, sizeof(strftime_buf), "%I:%M", &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), colon_visible ? "%I:%M" : "%I %M", &timeinfo);
     }
 
     if (lvgl_port_lock(0)) {
