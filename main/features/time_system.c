@@ -202,12 +202,12 @@ void update_time_display(void) {
 
     char strftime_buf[64];
 
-    // Update clock
-    if (user_24hr_format) {
-        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M", &timeinfo);
-    } else {
-        strftime(strftime_buf, sizeof(strftime_buf), "%I:%M", &timeinfo);  // Time only (no AM/PM)
-    }
+    // Update clock — blink colon every second as a heartbeat indicator
+    static bool colon_visible = true;
+    colon_visible = !colon_visible;
+    const char *fmt_with_colon = user_24hr_format ? "%H:%M" : "%I:%M";
+    const char *fmt_no_colon   = user_24hr_format ? "%H %M" : "%I %M";
+    strftime(strftime_buf, sizeof(strftime_buf), colon_visible ? fmt_with_colon : fmt_no_colon, &timeinfo);
 
     if (lvgl_port_lock(0)) {
         lv_label_set_text(label_clock, strftime_buf);
@@ -237,7 +237,7 @@ void update_time_display(void) {
 void time_update_task(void *pvParameters) {
     while (1) {
         update_time_display();
-        vTaskDelay(pdMS_TO_TICKS(10000));  // Update every 10 seconds
+        vTaskDelay(pdMS_TO_TICKS(1000));  // Update every second (colon blink = heartbeat)
     }
 }
 
