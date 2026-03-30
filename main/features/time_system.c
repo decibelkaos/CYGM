@@ -202,34 +202,19 @@ void update_time_display(void) {
 
     char strftime_buf[64];
 
-    // Update clock — blink colon every second as a heartbeat indicator
-    // Always render ":" to keep fixed width, but toggle its color via recolor
-    static bool colon_visible = true;
-    colon_visible = !colon_visible;
-
-    char hour_min[8];
+    // Update clock
     if (user_24hr_format) {
-        strftime(hour_min, sizeof(hour_min), "%H:%M", &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M", &timeinfo);
     } else {
-        strftime(hour_min, sizeof(hour_min), "%I:%M", &timeinfo);
-    }
-    // Build recolored string: "HH#color :# MM" where color hides colon when off
-    // Recolor format: #RRGGBB text#
-    if (colon_visible) {
-        snprintf(strftime_buf, sizeof(strftime_buf), "%c%c:%c%c", hour_min[0], hour_min[1], hour_min[3], hour_min[4]);
-    } else {
-        snprintf(strftime_buf, sizeof(strftime_buf), "%c%c#1a2332 :#%c%c", hour_min[0], hour_min[1], hour_min[3], hour_min[4]);
+        strftime(strftime_buf, sizeof(strftime_buf), "%I:%M", &timeinfo);
     }
 
     if (lvgl_port_lock(0)) {
-        lv_label_set_recolor(label_clock, true);
         lv_label_set_text(label_clock, strftime_buf);
 
-        // Update expanded CGM view time label (plain, no blink)
+        // Update expanded CGM view time label
         if (expanded_time_label != NULL) {
-            char plain_time[8];
-            snprintf(plain_time, sizeof(plain_time), "%c%c:%c%c", hour_min[0], hour_min[1], hour_min[3], hour_min[4]);
-            lv_label_set_text(expanded_time_label, plain_time);
+            lv_label_set_text(expanded_time_label, strftime_buf);
         }
 
         // Update AM/PM label (12hr mode only)
@@ -252,7 +237,7 @@ void update_time_display(void) {
 void time_update_task(void *pvParameters) {
     while (1) {
         update_time_display();
-        vTaskDelay(pdMS_TO_TICKS(1000));  // Update every second (colon blink = heartbeat)
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Update every 10 seconds
     }
 }
 
