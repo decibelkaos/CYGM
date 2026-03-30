@@ -706,8 +706,16 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     if (percentage > 100) percentage = 100;
     if (percentage < 0) percentage = 0;
 
-    // Update bar
+    // Update bar value
     lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
+
+    // Breathing opacity: 10% → 100% → 10% over 5 seconds (visual heartbeat)
+    // Manual calculation in existing timer — NO lv_anim objects (those cause freezes)
+    static int breath_tick = 0;
+    breath_tick = (breath_tick + 1) % 10;  // 0-9, full cycle = 10 ticks = 5s
+    int phase = (breath_tick <= 5) ? breath_tick : (10 - breath_tick);  // 0→5→0 triangle
+    lv_opa_t opa = 25 + (255 - 25) * phase / 5;  // ~10% to 100%
+    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, opa, LV_PART_INDICATOR);
 
     // =====================================================================
     // SAFETY WATCHDOG: Independent staleness check on the UI task
