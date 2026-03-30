@@ -214,8 +214,13 @@ esp_err_t glucose_history_save_to_nvs(void) {
         return ESP_OK;
     }
 
-    // Serialize into compact format (on stack — 5KB task stack has room)
-    uint8_t buf[NVS_HISTORY_MAX_SIZE];
+    // Serialize into compact format — heap allocated to avoid stack overflow
+    // (NVS_HISTORY_MAX_SIZE=1448 bytes plus NVS library internals exceed 5KB stack)
+    uint8_t *buf = malloc(NVS_HISTORY_MAX_SIZE);
+    if (!buf) {
+        ESP_LOGE(TAG, "Failed to allocate NVS save buffer");
+        return ESP_ERR_NO_MEM;
+    }
     nvs_history_header_t *hdr = (nvs_history_header_t *)buf;
     hdr->version = NVS_FORMAT_VERSION;
     hdr->entry_count = 0;
@@ -247,6 +252,7 @@ esp_err_t glucose_history_save_to_nvs(void) {
     esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NVS open failed for history save: %s", esp_err_to_name(ret));
+        free(buf);
         return ret;
     }
 
@@ -263,6 +269,7 @@ esp_err_t glucose_history_save_to_nvs(void) {
     }
 
     nvs_close(nvs_handle);
+    free(buf);
     return ret;
 }
 
@@ -288,11 +295,16 @@ esp_err_t glucose_history_load_from_nvs(void) {
         return ESP_ERR_INVALID_SIZE;
     }
 
-    uint8_t buf[NVS_HISTORY_MAX_SIZE];
+    uint8_t *buf = malloc(NVS_HISTORY_MAX_SIZE);
+    if (!buf) {
+        nvs_close(nvs_handle);
+        return ESP_ERR_NO_MEM;
+    }
     ret = nvs_get_blob(nvs_handle, NVS_HISTORY_KEY, buf, &blob_size);
     nvs_close(nvs_handle);
 
     if (ret != ESP_OK) {
+        free(buf);
         return ret;
     }
 
@@ -300,6 +312,7 @@ esp_err_t glucose_history_load_from_nvs(void) {
     nvs_history_header_t *hdr = (nvs_history_header_t *)buf;
     if (hdr->version != NVS_FORMAT_VERSION) {
         ESP_LOGW(TAG, "Unknown NVS format version %d, starting fresh", hdr->version);
+        free(buf);
         return ESP_ERR_NOT_FOUND;
     }
 
@@ -308,11 +321,13 @@ esp_err_t glucose_history_load_from_nvs(void) {
     if (blob_size < expected_size || entry_count > GLUCOSE_HISTORY_MAX_POINTS) {
         ESP_LOGE(TAG, "NVS history corrupted (entries=%d, blob=%u, expected=%u)",
                  entry_count, (unsigned)blob_size, (unsigned)expected_size);
+        free(buf);
         return ESP_ERR_INVALID_STATE;
     }
 
     if (hdr->head >= GLUCOSE_HISTORY_MAX_POINTS) {
         ESP_LOGE(TAG, "NVS history corrupted (head=%d)", hdr->head);
+        free(buf);
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -334,6 +349,7 @@ esp_err_t glucose_history_load_from_nvs(void) {
     g_history.head = (int)hdr->head;
 
     ESP_LOGI(TAG, "Loaded %d readings from NVS (compact format, %u bytes)", entry_count, (unsigned)blob_size);
+    free(buf);
     return ESP_OK;
 }
 
