@@ -690,9 +690,24 @@ void show_welcome_overlay(void) {
 
 // Glucose fetch timer update callback (updates progress bar)
 static void glucose_timer_update_cb(lv_timer_t *timer) {
-    if (!home_screen_active) {
+    if (!home_screen_active || glucose_fetch_timer_bar == NULL) {
         return;
     }
+
+    // Calculate elapsed time since last fetch (in milliseconds)
+    int64_t now = esp_timer_get_time() / 1000;  // Convert microseconds to milliseconds
+    int64_t elapsed = now - last_glucose_fetch_time;
+
+    // Glucose task runs every 90 seconds (90000 ms)
+    const int64_t FETCH_INTERVAL_MS = 90000;
+
+    // Calculate percentage (0-100%)
+    int percentage = (int)((elapsed * 100) / FETCH_INTERVAL_MS);
+    if (percentage > 100) percentage = 100;
+    if (percentage < 0) percentage = 0;
+
+    // Update bar
+    lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
 
     // =====================================================================
     // SAFETY WATCHDOG: Independent staleness check on the UI task
@@ -1231,6 +1246,11 @@ static void expand_cgm_card(void) {
         lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -22);
     }
 
+    // Timer bar: fill most of card width
+    if (glucose_fetch_timer_bar != NULL) {
+        lv_obj_set_width(glucose_fetch_timer_bar, 260);
+    }
+
     // Brightness: to the left of gear cog (TOP_RIGHT minus gear width and gap)
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_RIGHT, -34, 0);
@@ -1296,10 +1316,16 @@ static void collapse_cgm_card(void) {
     if (label_time_ago != NULL) {
         lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
     }
+    if (glucose_fetch_timer_bar != NULL) {
+        lv_obj_set_width(glucose_fetch_timer_bar, 100);
+    }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
     }
 }
+
+// Animation helper for heartbeat dot — bridges lv_anim's (obj, int32_t) to style setter
+static void heartbeat_set_bg_opa(void *obj, int32_t v) { lv_obj_set_style_bg_opa(obj, (lv_opa_t)v, 0); }
 
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
@@ -1516,8 +1542,17 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
 
-    // Progress bar removed — saves memory. Colon blink in time display serves as heartbeat.
-
+    // Glucose fetch countdown bar (subtle indicator at bottom of card)
+    glucose_fetch_timer_bar = lv_bar_create(right_card);
+    lv_obj_set_size(glucose_fetch_timer_bar, 100, 3);
+    lv_obj_align(glucose_fetch_timer_bar, LV_ALIGN_BOTTOM_MID, 0, -4);
+    lv_bar_set_range(glucose_fetch_timer_bar, 0, 100);
+    lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(0x2C2C2E), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(glucose_fetch_timer_bar, 1, 0);
+    
     // --- MENU BUTTON (top right) - transparent, just icon ---
     lv_obj_t *menu_btn = lv_btn_create(screen_home);
     lv_obj_set_size(menu_btn, 36, 36);
@@ -1585,6 +1620,27 @@ void create_home_screen(void) {
     lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);
     lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
-    // Heartbeat dot removed — LVGL animation callbacks were suspected of
-    // causing intermittent freezes between glucose_history_add and led_show_success.
+    // --- HEARTBEAT DOT: small breathing indicator between cards at bottom ---
+    // Shows the device is alive and not frozen. Simple opacity-only animation.
+    // NO shadow — shadow rendering uses significant LVGL port task stack and
+    // may cause Core 1 stack overflow that corrupts shared memory.
+    lv_obj_t *dot = lv_obj_create(screen_home);
+    lv_obj_remove_style_all(dot);
+    lv_obj_set_size(dot, 6, 6);
+    lv_obj_set_pos(dot, 157, 232);  // Centered between cards (320/2 - 3), below card bottom
+    lv_obj_set_style_bg_color(dot, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+
+    // Breathing animation: fade opacity in and out (2.5s cycle)
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, dot);
+    lv_anim_set_exec_cb(&a, heartbeat_set_bg_opa);
+    lv_anim_set_values(&a, LV_OPA_10, LV_OPA_COVER);
+    lv_anim_set_time(&a, 1250);
+    lv_anim_set_playback_time(&a, 1250);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&a);
 }
