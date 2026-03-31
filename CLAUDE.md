@@ -2,7 +2,7 @@
 
 ## Project Overview
 ESP32-based CGM display device (JC2432W328: ESP32 + ST7789 LCD + CST820 touch).
-Reads glucose data from Dexcom API and displays it with weather, time, and alarms.
+Reads glucose data from Dexcom, LibreLinkUp, or Nightscout and displays it with weather, time, and alarms.
 
 ## Tech Stack
 - **MCU**: ESP32-D0WD (Xtensa dual-core, no PSRAM, ~320KB RAM)
@@ -113,6 +113,10 @@ OTA over HTTPS requires ~17KB contiguous heap for the TLS IN buffer. The ESP32's
 - `network_mutex` serializes all SSL operations — always acquire before network I/O
 - LVGL v8 API: `lv_obj_create`, `lv_label_create`, etc. (NOT v9 syntax)
 - Always use `esp_http_client` for HTTP requests (not raw sockets)
+- **ALWAYS** call `esp_http_client_close()` before `esp_http_client_cleanup()` — prevents socket leaks
+- **NEVER** use `lv_anim_start()`, shadows, or `lv_label_set_recolor()` — causes device freeze
+- Always close SSL after each glucose fetch for ALL TLS providers
+- Delete background tasks before creating any new task >3KB on fragmented heap
 
 ## sdkconfig Danger Zones
 Changes to these require `idf.py fullclean && idf.py build`:
