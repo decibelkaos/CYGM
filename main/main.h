@@ -111,7 +111,7 @@ void recreate_background_tasks(void);
 
 // Task stack sizes (bytes) — used by both main.c and background_tasks.c
 // Heap-allocated so task deletion frees contiguous memory for TLS reconnection.
-#define WEATHER_STACK_SIZE 2048   // HWM: ~1.3 KB used (was 4096)
+#define WEATHER_STACK_SIZE 3072   // HTTP client needs more stack than HWM suggested (was 4096, 2048 overflowed)
 #define TIME_STACK_SIZE    1536   // HWM: ~916 bytes used (was 2560)
 #define BATTERY_STACK_SIZE 2048   // HWM: ~1.9 KB used (was 3072)
 
