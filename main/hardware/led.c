@@ -142,7 +142,7 @@ void led_init(void) {
     ESP_LOGI(TAG, "LED PWM initialized");
 
     // Start LED animation task on Core 0
-    xTaskCreatePinnedToCore(led_task, "led_task", 2048, NULL, 5, &led_task_handle, 0);
+    xTaskCreatePinnedToCore(led_task, "led_task", 1024, NULL, 5, &led_task_handle, 0);
     ESP_LOGI(TAG, "LED animation task started");
 }
 

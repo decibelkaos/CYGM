@@ -196,7 +196,7 @@ esp_err_t lvgl_init(void) {
     const lvgl_port_display_cfg_t disp_cfg = {
         .panel_handle = lcd_panel,
         .io_handle = lcd_io_handle,
-        .buffer_size = LCD_WIDTH * 30,  // Reduced from 60 to 30 lines (1/8 screen) to reduce memory fragmentation (saves ~38KB)
+        .buffer_size = LCD_WIDTH * 10,  // 10 lines minimum — saves 25.6 KB vs 30 lines. No animations, so more render passes are fine.
         .double_buffer = true,
         .hres = LCD_WIDTH,
         .vres = LCD_HEIGHT,
