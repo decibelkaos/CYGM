@@ -875,9 +875,7 @@ void create_alarm_snooze_screen(void) {
     lv_obj_set_style_border_width(screen_alarm_snooze, 1, 0);
     lv_obj_set_style_border_color(screen_alarm_snooze, lv_color_hex(0x2A3A4A), 0);
     lv_obj_set_style_border_opa(screen_alarm_snooze, LV_OPA_50, 0);
-    lv_obj_set_style_shadow_width(screen_alarm_snooze, 25, 0);
-    lv_obj_set_style_shadow_color(screen_alarm_snooze, lv_color_black(), 0);
-    lv_obj_set_style_shadow_opa(screen_alarm_snooze, LV_OPA_70, 0);
+    lv_obj_set_style_shadow_width(screen_alarm_snooze, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(screen_alarm_snooze, 0, 0);
     lv_obj_clear_flag(screen_alarm_snooze, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1250,6 +1248,21 @@ static void alarm_tone_btn_event_cb(lv_event_t *e) {
 static void alarm_snooze_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
+        // SAFETY: If alarm was already auto-cancelled, don't set snooze —
+        // a stale snooze would suppress future alarms for up to 3 hours.
+        if (current_alarm_state == ALARM_STATE_NONE) {
+            ESP_LOGW(TAG, "Snooze rejected — alarm already cancelled");
+            sd_log(TAG, "ALARM: snooze rejected, alarm state=NONE");
+            lv_scr_load(screen_home);
+            if (screen_alarm_snooze != NULL) {
+                lv_obj_del(screen_alarm_snooze);
+                screen_alarm_snooze = NULL;
+            }
+            home_screen_active = true;
+            pause_background_tasks = false;
+            return;
+        }
+
         int snooze_minutes = (int)(intptr_t)lv_event_get_user_data(e);
 
         time_t now;
@@ -1263,20 +1276,21 @@ static void alarm_snooze_event_cb(lv_event_t *e) {
 
         alarm_acknowledged = true;
 
-        if (visual_alarm_active) {
-            visual_alarm_active = false;
-        }
+        // Properly stop visual + audio alarms (deletes timers, overlay, container)
+        stop_visual_alarm();
+        stop_audio_alarm();
 
         lv_scr_load(screen_home);
 
-        if (visual_alarm_overlay != NULL) {
-            lv_obj_del(visual_alarm_overlay);
-            visual_alarm_overlay = NULL;
-        }
+        // Clean up snooze screen (child of screen_home)
         if (screen_alarm_snooze != NULL) {
             lv_obj_del(screen_alarm_snooze);
             screen_alarm_snooze = NULL;
         }
+
+        // Restore home screen state flags
+        home_screen_active = true;
+        pause_background_tasks = false;
     }
 }
 

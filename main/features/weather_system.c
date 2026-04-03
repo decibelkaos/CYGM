@@ -190,7 +190,7 @@ void update_location_display(void) {
         return;
     }
 
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock(1)) {
         lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
         lvgl_port_unlock();
     }
@@ -201,7 +201,10 @@ void update_sunrise_sunset_display(void) {
         return;
     }
 
-    if (lvgl_port_lock(0)) {
+    // Retry lock (5 attempts) — weather is lower priority than glucose
+    bool locked = false;
+    for (int i = 0; i < 5 && !locked; i++) locked = lvgl_port_lock(1);
+    if (locked) {
         if (sunrise_time != 0 && sunset_time != 0) {
             struct tm tm_sunrise;
             struct tm tm_sunset;
@@ -361,49 +364,50 @@ void update_weather_display(void) {
         return;
     }
 
-    if (lvgl_port_lock(0)) {
-        // Update temperature label
-        char temp_buf[16];
-        if (user_temp_celsius) {
-            int temp_c = (current_temp_f - 32) * 5 / 9;
-            snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
-        } else {
-            snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
-        }
-        lv_label_set_text(home_temp_label, temp_buf);
+    // Prepare text buffers outside lock (minimize lock hold time)
+    char temp_buf[16];
+    if (user_temp_celsius) {
+        int temp_c = (current_temp_f - 32) * 5 / 9;
+        snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
+    } else {
+        snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
+    }
 
-        // Update expanded CGM view temp label
+    char hilo_buf[32];
+    if (user_temp_celsius) {
+        int high_c = (high_temp_f - 32) * 5 / 9;
+        int low_c = (low_temp_f - 32) * 5 / 9;
+        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
+    } else {
+        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
+    }
+
+    const char *condition_text = get_weather_condition_text(current_weather_code);
+    const char *location_text = strlen(user_location) > 0 ? user_location : "";
+
+    // Lock 1: Update text labels (~2-3ms)
+    if (lvgl_port_lock(1)) {
+        lv_label_set_text(home_temp_label, temp_buf);
         if (expanded_temp_label != NULL) {
             lv_label_set_text(expanded_temp_label, temp_buf);
         }
-
-        // Update Hi/Lo label (stacked vertically)
-        char hilo_buf[32];
-        if (user_temp_celsius) {
-            int high_c = (high_temp_f - 32) * 5 / 9;
-            int low_c = (low_temp_f - 32) * 5 / 9;
-            snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
-        } else {
-            snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
-        }
         lv_label_set_text(home_hilo_label, hilo_buf);
-
-        // Update weather condition text
-        lv_label_set_text(home_condition_label, get_weather_condition_text(current_weather_code));
-
-        // Update location label
-        lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
-
-        // Update weather icon (clear canvas with fully transparent background first)
-        lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Fully transparent
-        draw_weather_icon(home_weather_canvas, current_weather_code);
-
-        ESP_LOGD(TAG, "Weather display updated: %d F (Hi: %d F, Lo: %d F) - %s",
-                 current_temp_f, high_temp_f, low_temp_f, get_weather_condition_text(current_weather_code));
+        lv_label_set_text(home_condition_label, condition_text);
+        lv_label_set_text(home_location_label, location_text);
         lvgl_port_unlock();
     }
 
-    // Update sunrise/sunset times (separate function since it has its own lock)
+    // Lock 2: Draw weather icon (~5-10ms, separate to reduce contention)
+    if (lvgl_port_lock(1)) {
+        lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+        draw_weather_icon(home_weather_canvas, current_weather_code);
+        lvgl_port_unlock();
+    }
+
+    ESP_LOGD(TAG, "Weather display updated: %d F (Hi: %d F, Lo: %d F) - %s",
+             current_temp_f, high_temp_f, low_temp_f, condition_text);
+
+    // Update sunrise/sunset times (separate function with its own lock)
     update_sunrise_sunset_display();
 }
 void weather_update_task(void *pvParameters) {

@@ -28,15 +28,7 @@ void led_init(void);
 void led_set_color(uint8_t r, uint8_t g, uint8_t b);
 
 /**
- * Set breathing color (for future use - breathing task disabled)
- * @param r Red brightness (0-127)
- * @param g Green brightness (0-127)
- * @param b Blue brightness (0-127)
- */
-void led_set_breathing_color(uint8_t r, uint8_t g, uint8_t b);
-
-/**
- * Start WiFi boot blink pattern (green, 200ms interval)
+ * Start WiFi boot blink pattern (blue, 1s on/off)
  */
 void led_start_wifi_boot_blink(void);
 

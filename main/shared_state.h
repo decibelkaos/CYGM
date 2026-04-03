@@ -33,13 +33,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
 #define CYGM_VERSION_MINOR 7
-#define CYGM_VERSION_PATCH 2
+#define CYGM_VERSION_PATCH 3
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-03-31"
+#define CYGM_VERSION_DATE "2026-04-03"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.7.2.2026-03-31.Beta"
+#define CYGM_VERSION_STRING "0.7.3.2026-04-03.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -127,12 +127,6 @@ extern TaskHandle_t glucose_task_handle;
 extern TaskHandle_t time_task_handle;
 extern TaskHandle_t battery_task_handle;
 
-// ==================== LED State ====================
-
-extern volatile uint8_t led_breathe_r;
-extern volatile uint8_t led_breathe_g;
-extern volatile uint8_t led_breathe_b;
-
 // ==================== Background Task Control ====================
 
 extern bool home_screen_active;       // True when home screen is displayed
@@ -165,8 +159,8 @@ extern cgm_alarms_t current_alarm_settings;
 extern alarm_config_t *editing_alarm;
 extern lv_obj_t *alarm_threshold_value_label;
 
-// Alarm state
-extern active_alarm_state_t current_alarm_state;
+// Alarm state (volatile: written on Core 0, read on Core 1 and vice versa)
+extern volatile active_alarm_state_t current_alarm_state;
 extern bool alarm_acknowledged;
 
 // Visual alarm components
@@ -176,9 +170,9 @@ extern lv_obj_t *visual_alarm_disarm_progress;
 extern lv_obj_t *visual_alarm_disarm_label;
 extern lv_obj_t *screen_alarm_snooze;
 extern lv_timer_t *visual_alarm_timer;
-extern bool visual_alarm_active;
+extern volatile bool visual_alarm_active;
 extern uint8_t visual_alarm_pulse_state;
-extern int64_t alarm_snooze_until;
+extern volatile int64_t alarm_snooze_until;
 
 // ==================== Battery Monitoring ====================
 

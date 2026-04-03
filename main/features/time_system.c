@@ -209,7 +209,7 @@ void update_time_display(void) {
         strftime(strftime_buf, sizeof(strftime_buf), "%I:%M", &timeinfo);  // Time only (no AM/PM)
     }
 
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock(1)) {
         lv_label_set_text(label_clock, strftime_buf);
 
         // Update expanded CGM view time label

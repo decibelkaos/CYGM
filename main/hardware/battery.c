@@ -200,7 +200,7 @@ static void battery_flash_timer_cb(lv_timer_t *timer) {
     // Flash battery icon red when battery is at 10%
     static bool flash_state = false;
 
-    if (battery_canvas != NULL && lvgl_port_lock(0)) {
+    if (battery_canvas != NULL && lvgl_port_lock(1)) {
         uint32_t color = flash_state ? COLOR_RED : COLOR_TEXT_WHITE;
         draw_battery_icon(battery_canvas, color, battery_percent);
         flash_state = !flash_state;
@@ -216,7 +216,7 @@ static void charging_anim_timer_cb(lv_timer_t *timer) {
     static int anim_fill = 0;
     static int anim_pause = 0;
 
-    if (battery_canvas == NULL || !lvgl_port_lock(0)) return;
+    if (battery_canvas == NULL || !lvgl_port_lock(1)) return;
 
     if (anim_pause > 0) {
         anim_pause--;
@@ -249,7 +249,7 @@ void update_battery_display(void) {
     // During charging, the animation timer handles icon drawing
     if (bat_confirmed_charging) {
         // Show pre-charge percentage in green (ADC is inflated during charging)
-        if (battery_percent_label != NULL && lvgl_port_lock(0)) {
+        if (battery_percent_label != NULL && lvgl_port_lock(1)) {
             lv_label_set_text_fmt(battery_percent_label, "%d%%", battery_percent);
             lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_GREEN), 0);
             lvgl_port_unlock();
@@ -257,7 +257,7 @@ void update_battery_display(void) {
         return;
     }
 
-    if (!lvgl_port_lock(0)) {
+    if (!lvgl_port_lock(1)) {
         return;
     }
 
@@ -345,7 +345,7 @@ static void battery_start_charging(bool from_jump) {
     sd_log(TAG, "Charging: STARTED (%.3fV, corrected=%d%%)", battery_voltage, bat_pre_charge_percent);
 
     // Start fill animation (LVGL lock required for thread-safe timer creation)
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(1)) {
         if (battery_charging_fade_timer == NULL) {
             battery_charging_fade_timer = lv_timer_create(charging_anim_timer_cb, 100, NULL);
         }
@@ -559,7 +559,7 @@ void battery_monitor_task(void *arg) {
                 sd_log(TAG, "CRITICAL: %.3fV - SHUTDOWN", battery_voltage);
                 sd_logger_flush();
 
-                if (lvgl_port_lock(0)) {
+                if (lvgl_port_lock(1)) {
                     lv_obj_t *shutdown_screen = lv_obj_create(NULL);
                     lv_obj_set_style_bg_color(shutdown_screen, lv_color_black(), 0);
 

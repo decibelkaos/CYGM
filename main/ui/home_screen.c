@@ -1444,7 +1444,7 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(home_sunrise_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(home_sunrise_label, LV_ALIGN_BOTTOM_LEFT, 22, 6);
 
-    // Sunset time with icon (very bottom right, icon closer to time)
+    // Sunset time with icon (very bottom right)
     static lv_color_t canvas_buf_sunset[LV_CANVAS_BUF_SIZE_TRUE_COLOR(12, 12)];
     home_sunset_canvas = lv_canvas_create(left_card);
     lv_canvas_set_buffer(home_sunset_canvas, canvas_buf_sunset, 12, 12, LV_IMG_CF_TRUE_COLOR);

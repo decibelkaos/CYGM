@@ -26,6 +26,7 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
@@ -61,7 +62,7 @@ void ui_task_core1(void *pvParameters) {
     add_boot_log("Display ready");
 
     // Update boot log with any buffered messages
-    if (boot_log_label != NULL && lvgl_port_lock(0)) {
+    if (boot_log_label != NULL && lvgl_port_lock(1)) {
         lv_label_set_text(boot_log_label, boot_log_buffer);
         lvgl_port_unlock();
     }
@@ -76,7 +77,7 @@ void ui_task_core1(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(300));
 
     // Switch to home screen with smooth fade animation
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock(1)) {
         lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
         lvgl_port_unlock();
     }
@@ -91,14 +92,14 @@ void ui_task_core1(void *pvParameters) {
 
     // Show legal disclaimer overlay on boot (unless user has accepted permanently)
     if (!nvs_get_disclaimer_accepted()) {
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             show_disclaimer_overlay();
             lvgl_port_unlock();
         }
     }
 
-    // Stop WiFi boot blink when home screen loads
-    led_stop_wifi_boot_blink();
+    // Stop any boot LED activity (WiFi blink or error pulse) when home screen loads
+    led_off();
 
     // Start battery monitoring after home screen is loaded
     ESP_LOGI(TAG, "Starting battery monitor task");
@@ -113,7 +114,7 @@ void ui_task_core1(void *pvParameters) {
             if (inactive_ms >= UI_INACTIVITY_RETURN_MS) {
                 ESP_LOGI(TAG, "UI inactivity timeout (%lu ms) - returning to home", (unsigned long)inactive_ms);
 
-                if (lvgl_port_lock(100)) {
+                if (lvgl_port_lock(1)) {
                     lv_scr_load(screen_home);
                     lvgl_port_unlock();
                 }
@@ -140,14 +141,20 @@ void wifi_task_core0(void *pvParameters) {
     if (saved_count == 0) {
         ESP_LOGI(TAG, "No saved WiFi credentials - setup required");
         add_boot_log("WiFi: Setup needed");
-        led_set_breathing_color(127, 127, 0);  // Yellow = setup needed
+        led_start_wifi_boot_blink();  // Blue blink = setup needed
 
-        // Update WiFi status icon to show not connected (only if LVGL is initialized)
-        if (label_wifi_status != NULL && lvgl_port_lock(0)) {
-            lv_label_set_recolor(label_wifi_status, true);
-            lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
-            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
-            lvgl_port_unlock();
+        // Update WiFi status icon - retry up to 500ms during boot
+        if (label_wifi_status != NULL) {
+            for (int retry = 0; retry < 50; retry++) {
+                if (lvgl_port_lock(1)) {
+                    lv_label_set_recolor(label_wifi_status, true);
+                    lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
+                    lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+                    lvgl_port_unlock();
+                    break;
+                }
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
         }
     } else {
         // Smart WiFi connection: Try last connected network first, then fall back to others
@@ -197,7 +204,7 @@ void wifi_task_core0(void *pvParameters) {
             int idx = connection_order[attempt];
             ESP_LOGI(TAG, "Trying WiFi network %d/%d: %s", attempt + 1, order_count, networks[idx].ssid);
             add_boot_log("Connecting WiFi...");
-            led_set_breathing_color(127, 127, 0);  // Yellow = connecting
+            led_start_wifi_boot_blink();  // Blue blink = connecting
 
             if (wifi_manager_connect_to(networks[idx].ssid, networks[idx].password) == ESP_OK) {
                 // Get the ACTUAL connected SSID from WiFi stack (might differ from attempted SSID due to fallback)
@@ -230,12 +237,19 @@ void wifi_task_core0(void *pvParameters) {
             wifi_connected = true;
             led_start_wifi_boot_blink();  // Start green blink during boot
 
-            // Update WiFi status icon - just green icon, no text (only if LVGL is initialized)
-            if (label_wifi_status != NULL && lvgl_port_lock(0)) {
-                lv_label_set_recolor(label_wifi_status, false);  // Disable recolor
-                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
-                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
-                lvgl_port_unlock();
+            // Update WiFi status icon - retry up to 500ms during boot
+            // (LVGL port task may be busy with splash→home transition)
+            if (label_wifi_status != NULL) {
+                for (int retry = 0; retry < 50; retry++) {
+                    if (lvgl_port_lock(1)) {
+                        lv_label_set_recolor(label_wifi_status, false);
+                        lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
+                        lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
+                        lvgl_port_unlock();
+                        break;
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
             }
 
             // SD card logger will be initialized after time sync (needs correct timestamp for filename)
@@ -321,6 +335,11 @@ void wifi_task_core0(void *pvParameters) {
                             sd_log(TAG, "Libre session restored (skip login)");
                             session_restored = true;
 
+                            // Wait for home screen before fetching
+                            for (int w = 0; w < 100 && !home_screen_active; w++) {
+                                vTaskDelay(pdMS_TO_TICKS(100));
+                            }
+
                             // Fetch initial glucose with restored session
                             cgm_glucose_t glucose = {0};
                             esp_err_t fetch_ret = libre_fetch_glucose(&glucose);
@@ -341,7 +360,9 @@ void wifi_task_core0(void *pvParameters) {
 
                                 if (!first_glucose_received) {
                                     first_glucose_received = true;
-                                    play_success_sound();
+                                    if (esp_reset_reason() == ESP_RST_POWERON) {
+                                        play_success_sound();
+                                    }
                                 }
 
                                 check_glucose_alarms(current_glucose);
@@ -387,6 +408,11 @@ void wifi_task_core0(void *pvParameters) {
                             sd_log(TAG, "%s auto-login OK (attempt %d)", cgm_type, attempt);
                             ESP_LOGI(TAG, "%s auto-login successful on attempt %d!", cgm_type, attempt);
 
+                            // Wait for home screen before fetching (UI task loads it on Core 1)
+                            for (int w = 0; w < 100 && !home_screen_active; w++) {
+                                vTaskDelay(pdMS_TO_TICKS(100));
+                            }
+
                             // Fetch initial glucose reading
                             cgm_glucose_t glucose = {0};
                             esp_err_t fetch_ret;
@@ -416,8 +442,10 @@ void wifi_task_core0(void *pvParameters) {
 
                                 if (!first_glucose_received) {
                                     first_glucose_received = true;
-                                    ESP_LOGI(TAG, "First glucose reading received - playing success sound");
-                                    play_success_sound();
+                                    if (esp_reset_reason() == ESP_RST_POWERON) {
+                                        ESP_LOGI(TAG, "First glucose reading - playing success sound");
+                                        play_success_sound();
+                                    }
                                 }
 
                                 check_glucose_alarms(current_glucose);
@@ -502,12 +530,18 @@ void wifi_task_core0(void *pvParameters) {
             ESP_LOGE(TAG, "WiFi connection failed");
             led_start_error_blink();  // Red blink for error
 
-            // Update WiFi status on home screen - gray WiFi icon with RED warning (only if LVGL is initialized)
-            if (label_wifi_status != NULL && lvgl_port_lock(0)) {
-                lv_label_set_recolor(label_wifi_status, true);
-                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
-                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
-                lvgl_port_unlock();
+            // Update WiFi status on home screen - retry up to 500ms
+            if (label_wifi_status != NULL) {
+                for (int retry = 0; retry < 50; retry++) {
+                    if (lvgl_port_lock(1)) {
+                        lv_label_set_recolor(label_wifi_status, true);
+                        lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
+                        lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+                        lvgl_port_unlock();
+                        break;
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
             }
         }
     }

@@ -74,20 +74,24 @@ static void anim_dot_opa_cb(void *obj, int32_t val) {
 
 // Update WiFi status icon on home screen (non-static for auto-reconnect)
 void update_wifi_status_display(bool connected) {
-    if (lvgl_port_lock(0)) {
-        if (connected) {
-            // Green WiFi icon for connected (no text)
-            lv_label_set_recolor(label_wifi_status, false);  // Disable recolor
-            lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
-            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
-        } else {
-            // Gray WiFi icon with RED warning for disconnected
-            lv_label_set_recolor(label_wifi_status, true);  // Enable recolor for red warning
-            lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
-            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+    // Retry up to 500ms — called from wifi_task (Core 0), LVGL may be busy
+    for (int retry = 0; retry < 50; retry++) {
+        if (lvgl_port_lock(1)) {
+            if (connected) {
+                lv_label_set_recolor(label_wifi_status, false);
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI);
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_GREEN), 0);
+            } else {
+                lv_label_set_recolor(label_wifi_status, true);
+                lv_label_set_text(label_wifi_status, LV_SYMBOL_WIFI " #FF0000 " LV_SYMBOL_WARNING "#");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
+            }
+            lvgl_port_unlock();
+            return;
         }
-        lvgl_port_unlock();
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
+    ESP_LOGW("WIFI_UI", "Failed to update WiFi status icon (LVGL busy)");
 }
 
 // Show WiFi scanning overlay — glass-themed, overlays the list semi-transparently
@@ -235,7 +239,7 @@ static void wifi_removal_hold_event_cb(lv_event_t *e) {
                 wifi_manager_disconnect();
                 wifi_connected = false;
                 update_wifi_status_display(false);
-                led_set_breathing_color(127, 127, 0);
+                led_off();
             }
 
             // Close overlay
@@ -1124,11 +1128,16 @@ static void show_wifi_connecting_overlay(void) {
     lvgl_port_unlock();
 }
 
-// Update WiFi connecting status text
+// Update WiFi connecting status text (called from wifi_connect_task on Core 0)
 static void update_wifi_connecting_status(const char *status) {
-    if (wifi_connecting_status_label != NULL && lvgl_port_lock(0)) {
-        lv_label_set_text(wifi_connecting_status_label, status);
-        lvgl_port_unlock();
+    if (wifi_connecting_status_label == NULL) return;
+    for (int retry = 0; retry < 50; retry++) {
+        if (lvgl_port_lock(1)) {
+            lv_label_set_text(wifi_connecting_status_label, status);
+            lvgl_port_unlock();
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -1227,7 +1236,7 @@ static void wifi_connect_task(void *pvParameters) {
     // Show connecting overlay
     show_wifi_connecting_overlay();
 
-    led_set_breathing_color(0, 0, 127);  // Blue = connecting
+    led_start_wifi_boot_blink();  // Blue blink = connecting
     update_wifi_connecting_status("Connecting to WiFi...");
 
     ESP_LOGI(TAG, "Connecting to: %s via wifi_manager", selected_ssid);
@@ -1239,7 +1248,7 @@ static void wifi_connect_task(void *pvParameters) {
         ESP_LOGI(TAG, "WiFi connection successful to correct network");
         sd_log(TAG, "WiFi UI: connected to %s", selected_ssid);
         wifi_connected = true;
-        led_set_breathing_color(0, 127, 0);  // Green = connected
+        led_show_success();  // Green fade = connected
 
         // Save credentials to NVS now that connection is successful
         nvs_save_wifi_credentials(selected_ssid, wifi_password);
@@ -1324,7 +1333,7 @@ static void wifi_connect_task(void *pvParameters) {
     } else {
         ESP_LOGE(TAG, "WiFi connection failed");
         sd_log(TAG, "WiFi UI: FAILED to connect to %s", selected_ssid);
-        led_set_breathing_color(127, 0, 0);  // Red = failed
+        led_start_error_blink();  // Red pulse = failed
 
         // Turn bar red at current position
         if (lvgl_port_lock(1000)) {

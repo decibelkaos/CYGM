@@ -139,9 +139,6 @@ TaskHandle_t battery_task_handle = NULL;
 // Tasks are created AFTER SSL auth so stacks interleave with the SSL
 // region — freeing both on reconnect merges into one large block.
 
-// LED breathing (disabled to save power - variables kept for future use)
-volatile uint8_t led_breathe_r = 127, led_breathe_g = 0, led_breathe_b = 0;
-
 // Background Task Control
 bool home_screen_active = false;       // True when home screen is displayed
 bool pause_background_tasks = false;   // Pause Dexcom/Weather when not on home screen
@@ -172,7 +169,7 @@ alarm_config_t *editing_alarm = NULL;  // Pointer to alarm being edited
 lv_obj_t *alarm_threshold_value_label = NULL;  // Reference to threshold value label for color updates
 
 // Alarm state tracking (enum defined in shared_state.h)
-active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
+volatile active_alarm_state_t current_alarm_state = ALARM_STATE_NONE;
 bool alarm_acknowledged = false;
 
 // Visual alarm components
@@ -185,15 +182,21 @@ static int64_t disarm_press_start_ms = 0;      // Timestamp when button was pres
 #define DISARM_HOLD_MS 1500                     // Hold duration to disarm (1.5s)
 lv_obj_t *screen_alarm_snooze = NULL;       // Snooze/dismiss screen
 lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
-bool visual_alarm_active = false;
+volatile bool visual_alarm_active = false;
 uint8_t visual_alarm_pulse_state = 0;       // 0 = dim, 1 = bright flash
 static uint32_t visual_alarm_flash_color = COLOR_RED;  // Current alarm flash color
 static lv_obj_t *visual_alarm_glucose_label = NULL;    // Glucose value label in alarm card (for live updates)
-int64_t alarm_snooze_until = 0;             // Unix timestamp when snooze expires
+volatile int64_t alarm_snooze_until = 0;    // Unix timestamp when snooze expires
 
 // Audio alarm repeat
 static lv_timer_t *audio_alarm_timer = NULL;       // Timer for repeating audio
 static alarm_config_t *active_alarm_config = NULL; // Current alarm being played
+
+// Deferred alarm cleanup flags (Core 0 writes, Core 1 pulse timer reads)
+static volatile bool visual_alarm_stop_requested = false;
+static volatile bool visual_alarm_glucose_update_pending = false;
+static volatile int  visual_alarm_pending_glucose = 0;
+static volatile bool audio_alarm_stop_requested = false;
 
 // Battery monitoring
 adc_oneshot_unit_handle_t adc_handle = NULL;
@@ -353,7 +356,7 @@ void weather_icon_animation_timer_cb(lv_timer_t *timer) {
     weather_icon_anim_frame++;
 
     // Redraw weather icon with new frame
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock(1)) {
         draw_weather_icon(home_weather_canvas, current_weather_code);
         lvgl_port_unlock();
     }
@@ -960,16 +963,27 @@ void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
 // ==================== Weather Functions ====================
 // Moved to features/weather_system.c
 
+// ==================== LVGL Lock Helper ====================
+
+// Try to acquire LVGL lock with multiple 1ms attempts.
+// Each attempt is a safe 1ms try-lock; the loop provides effective patience
+// without using dangerous >1ms timeouts (which risk FreeRTOS SMP assert crash).
+static bool lvgl_port_lock_retry(int max_attempts) {
+    for (int i = 0; i < max_attempts; i++) {
+        if (lvgl_port_lock(1)) return true;
+    }
+    return false;
+}
+
 // ==================== Alarm Functions ====================
 
 // Forward declarations for alarm helpers
 static void start_visual_alarm(void);
-static void stop_visual_alarm(void);
 static void start_audio_alarm(alarm_config_t *alarm);
-static void stop_audio_alarm(void);
 static void trigger_alarm(active_alarm_state_t state);
 static void visual_alarm_pulse_timer_cb(lv_timer_t *timer);
 static void audio_alarm_repeat_timer_cb(lv_timer_t *timer);
+static void visual_alarm_cleanup_lvgl(void);
 
 static uint32_t get_glucose_alarm_color(int glucose_mg_dl);
 void check_glucose_alarms(int glucose_mg_dl);
@@ -1123,16 +1137,58 @@ void check_glucose_alarms(int glucose_mg_dl) {
         } else {
             ESP_LOGI(TAG, "Glucose returned to normal range");
             sd_log(TAG, "ALARM: glucose returned to normal (%d)", glucose_mg_dl);
+            alarm_snooze_until = 0;  // Clear stale snooze to prevent suppressing future alarms
             stop_visual_alarm();
             stop_audio_alarm();
         }
     }
 }
 
-// Timer callback for pulsing alarm — flashes a bright border at the screen edges
+// Timer callback for pulsing alarm — flashes a bright border at the screen edges.
+// Also processes deferred operations from Core 0 (cleanup, glucose update, audio timer).
+// Runs in LVGL task context (Core 1) — lock already held via recursive mutex.
 static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
+    // ---- Deferred stop: Core 0 requested cleanup but couldn't get LVGL lock ----
+    if (visual_alarm_stop_requested) {
+        ESP_LOGI(TAG, "Pulse timer: processing deferred alarm cleanup");
+        visual_alarm_active = false;
+        visual_alarm_stop_requested = false;
+        visual_alarm_glucose_update_pending = false;
+        // Clean up deferred audio timer too
+        if (audio_alarm_stop_requested && audio_alarm_timer != NULL) {
+            lv_timer_del(audio_alarm_timer);
+            audio_alarm_timer = NULL;
+            audio_alarm_stop_requested = false;
+        }
+        visual_alarm_cleanup_lvgl();  // Deletes this timer — must return immediately
+        return;
+    }
+
+    // ---- Deferred audio timer cleanup (stop_audio_alarm lock failed) ----
+    if (audio_alarm_stop_requested && audio_alarm_timer != NULL) {
+        lv_timer_del(audio_alarm_timer);
+        audio_alarm_timer = NULL;
+        audio_alarm_stop_requested = false;
+        ESP_LOGI(TAG, "Pulse timer: cleaned up deferred audio timer");
+    }
+
+    // ---- Deferred audio timer creation (start_audio_alarm lock failed) ----
+    if (active_alarm_config != NULL && audio_alarm_timer == NULL && !audio_alarm_stop_requested) {
+        audio_alarm_timer = lv_timer_create(audio_alarm_repeat_timer_cb, 3000, NULL);
+        lv_timer_ready(audio_alarm_timer);
+        ESP_LOGI(TAG, "Pulse timer: created deferred audio timer");
+    }
+
     if (!visual_alarm_active || visual_alarm_overlay == NULL) {
         return;
+    }
+
+    // ---- Deferred glucose update (update_visual_alarm_glucose lock-free path) ----
+    if (visual_alarm_glucose_update_pending && visual_alarm_glucose_label != NULL) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", visual_alarm_pending_glucose);
+        lv_label_set_text(visual_alarm_glucose_label, buf);
+        visual_alarm_glucose_update_pending = false;
     }
 
     // Auto-clear if glucose data has gone stale (e.g., Dexcom session expired overnight)
@@ -1150,21 +1206,19 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
         }
     }
 
-    if (lvgl_port_lock(0)) {
-        if (visual_alarm_pulse_state == 0) {
-            // Flash ON — thick alarm-color border at screen edges
-            lv_obj_set_style_border_width(visual_alarm_overlay, 8, 0);
-            lv_obj_set_style_border_color(visual_alarm_overlay, lv_color_hex(visual_alarm_flash_color), 0);
-            lv_obj_set_style_border_opa(visual_alarm_overlay, LV_OPA_COVER, 0);
-            visual_alarm_pulse_state = 1;
-        } else {
-            // Flash OFF — no border
-            lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);
-            visual_alarm_pulse_state = 0;
-        }
-        lv_obj_invalidate(visual_alarm_overlay);
-        lvgl_port_unlock();
+    // Pulse the border (already in LVGL context — lock held via recursive mutex, no inner lock needed)
+    if (visual_alarm_pulse_state == 0) {
+        // Flash ON — thick alarm-color border at screen edges
+        lv_obj_set_style_border_width(visual_alarm_overlay, 8, 0);
+        lv_obj_set_style_border_color(visual_alarm_overlay, lv_color_hex(visual_alarm_flash_color), 0);
+        lv_obj_set_style_border_opa(visual_alarm_overlay, LV_OPA_COVER, 0);
+        visual_alarm_pulse_state = 1;
+    } else {
+        // Flash OFF — no border
+        lv_obj_set_style_border_width(visual_alarm_overlay, 0, 0);
+        visual_alarm_pulse_state = 0;
     }
+    lv_obj_invalidate(visual_alarm_overlay);
 }
 
 // Timer callback for repeating audio alarm.
@@ -1205,28 +1259,34 @@ static void start_audio_alarm(alarm_config_t *alarm) {
 
     // Create LVGL timer to play tone from Core 1 (LVGL task context).
     // lv_timer_ready() makes it fire on the very next LVGL cycle.
-    if (lvgl_port_lock(200)) {
+    audio_alarm_stop_requested = false;
+    if (lvgl_port_lock(1)) {
         audio_alarm_timer = lv_timer_create(audio_alarm_repeat_timer_cb, 3000, NULL);
         lv_timer_ready(audio_alarm_timer);  // Fire immediately
         lvgl_port_unlock();
+    } else {
+        // Lock failed — pulse timer will create the audio timer on next tick
+        ESP_LOGW(TAG, "LVGL lock failed — audio timer creation deferred to pulse timer");
     }
 }
 
 // Stop audio alarm
-static void stop_audio_alarm(void) {
+void stop_audio_alarm(void) {
     // Clear config FIRST so timer callback won't start a new tone
     active_alarm_config = NULL;
 
     if (audio_alarm_timer != NULL) {
         ESP_LOGI(TAG, "Stopping audio alarm repeat timer");
-        // Timeout must exceed longest alarm tone (Dixie Horn ~3.5s)
-        if (lvgl_port_lock(5000)) {
+        if (lvgl_port_lock(1)) {
             lv_timer_del(audio_alarm_timer);
+            audio_alarm_timer = NULL;
             lvgl_port_unlock();
         } else {
-            ESP_LOGW(TAG, "LVGL lock timeout deleting alarm timer");
+            // Defer deletion — pulse timer will clean up.
+            // Don't null audio_alarm_timer yet so pulse timer can find and delete it.
+            audio_alarm_stop_requested = true;
+            ESP_LOGW(TAG, "LVGL lock failed — audio timer deletion deferred to pulse timer");
         }
-        audio_alarm_timer = NULL;
     }
     buzzer_stop();  // Ensure buzzer is silenced
 }
@@ -1259,12 +1319,23 @@ static void visual_alarm_disarm_event_cb(lv_event_t *e) {
         }
 
         if (elapsed >= DISARM_HOLD_MS) {
-            ESP_LOGI(TAG, "Hold-to-disarm completed - showing snooze/dismiss overlay");
             disarm_press_start_ms = 0;
             stop_visual_alarm();
             stop_audio_alarm();
 
-            if (lvgl_port_lock(0)) {
+            // SAFETY: If alarm was already auto-cancelled (glucose returned to normal
+            // while overlay was stuck due to failed LVGL lock), just clean up —
+            // do NOT show snooze screen (prevents setting a stale snooze).
+            if (current_alarm_state == ALARM_STATE_NONE) {
+                ESP_LOGW(TAG, "Disarm completed but alarm already cancelled — cleanup only");
+                sd_log(TAG, "ALARM: disarm on cancelled alarm, cleanup only (no snooze)");
+                home_screen_active = true;
+                pause_background_tasks = false;
+                return;
+            }
+
+            ESP_LOGI(TAG, "Hold-to-disarm completed - showing snooze/dismiss overlay");
+            if (lvgl_port_lock(1)) {
                 if (screen_alarm_snooze != NULL) {
                     lv_obj_del(screen_alarm_snooze);
                     screen_alarm_snooze = NULL;
@@ -1296,6 +1367,8 @@ static void start_visual_alarm(void) {
 
     ESP_LOGI(TAG, "Starting visual alarm");
     visual_alarm_active = true;
+    visual_alarm_stop_requested = false;
+    visual_alarm_glucose_update_pending = false;
     visual_alarm_pulse_state = 0;
 
     // Save current brightness and set to 100% for visual alarm
@@ -1325,7 +1398,7 @@ static void start_visual_alarm(void) {
     }
     visual_alarm_flash_color = alarm_color;
 
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock(1)) {
         // ---- Dim backdrop with alarm-color border frame at screen edges ----
         visual_alarm_overlay = lv_obj_create(lv_scr_act());
         lv_obj_set_size(visual_alarm_overlay, LV_HOR_RES, LV_VER_RES);
@@ -1350,9 +1423,7 @@ static void start_visual_alarm(void) {
         lv_obj_set_style_border_width(visual_alarm_container, 1, 0);
         lv_obj_set_style_border_color(visual_alarm_container, lv_color_hex(0x2A3A4A), 0);
         lv_obj_set_style_border_opa(visual_alarm_container, LV_OPA_50, 0);
-        lv_obj_set_style_shadow_width(visual_alarm_container, 25, 0);
-        lv_obj_set_style_shadow_color(visual_alarm_container, lv_color_black(), 0);
-        lv_obj_set_style_shadow_opa(visual_alarm_container, LV_OPA_70, 0);
+        lv_obj_set_style_shadow_width(visual_alarm_container, 0, 0);  // NEVER use shadows — causes device freeze
         lv_obj_set_style_pad_all(visual_alarm_container, 0, 0);
         lv_obj_clear_flag(visual_alarm_container, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_move_foreground(visual_alarm_container);
@@ -1431,64 +1502,79 @@ static void start_visual_alarm(void) {
         lv_obj_add_event_cb(visual_alarm_disarm_btn, visual_alarm_disarm_event_cb, LV_EVENT_RELEASED, NULL);
         lv_obj_add_event_cb(visual_alarm_disarm_btn, visual_alarm_disarm_event_cb, LV_EVENT_PRESS_LOST, NULL);
 
+        // Pulse timer — fast for urgent alarms (200ms), moderate for warnings (350ms)
+        // Must be created inside LVGL lock (LVGL API requirement)
+        if (visual_alarm_timer != NULL) {
+            lv_timer_del(visual_alarm_timer);  // Clean up stale timer from previous alarm
+            visual_alarm_timer = NULL;
+        }
+        uint32_t pulse_ms = (current_alarm_state == ALARM_STATE_HIGH_ALARM ||
+                             current_alarm_state == ALARM_STATE_LOW_ALARM) ? 200 : 350;
+        visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, pulse_ms, NULL);
+
         lvgl_port_unlock();
     }
-
-    // Pulse timer — fast for urgent alarms (200ms), moderate for warnings (350ms)
-    uint32_t pulse_ms = (current_alarm_state == ALARM_STATE_HIGH_ALARM ||
-                         current_alarm_state == ALARM_STATE_LOW_ALARM) ? 200 : 350;
-    visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, pulse_ms, NULL);
 }
 
-// Stop visual alarm
-static void stop_visual_alarm(void) {
-    if (!visual_alarm_active) {
-        return;
-    }
-
-    ESP_LOGI(TAG, "Stopping visual alarm");
-    visual_alarm_active = false;
-
-    // Restore saved brightness
-    screen_brightness_percent = saved_brightness_percent;
-    display_set_brightness(saved_brightness_percent);
-    ESP_LOGI(TAG, "Brightness restored to %d%%", saved_brightness_percent);
-
-    // Stop LED alarm flash
-    led_stop_alarm_flash();
-
+// Delete all visual alarm LVGL objects. MUST be called with LVGL lock held.
+static void visual_alarm_cleanup_lvgl(void) {
     if (visual_alarm_timer != NULL) {
         lv_timer_del(visual_alarm_timer);
         visual_alarm_timer = NULL;
     }
-
-    if (lvgl_port_lock(0)) {
-        if (visual_alarm_overlay != NULL) {
-            lv_obj_del(visual_alarm_overlay);
-            visual_alarm_overlay = NULL;
-        }
-        if (visual_alarm_container != NULL) {
-            // Deleting container also deletes slider and label (they are children)
-            lv_obj_del(visual_alarm_container);
-            visual_alarm_container = NULL;
-            visual_alarm_disarm_btn = NULL;
-            visual_alarm_disarm_progress = NULL;
-            visual_alarm_disarm_label = NULL;
-            visual_alarm_glucose_label = NULL;
-        }
-        lvgl_port_unlock();
+    if (visual_alarm_overlay != NULL) {
+        lv_obj_del(visual_alarm_overlay);
+        visual_alarm_overlay = NULL;
+    }
+    if (visual_alarm_container != NULL) {
+        lv_obj_del(visual_alarm_container);
+        visual_alarm_container = NULL;
+        visual_alarm_disarm_btn = NULL;
+        visual_alarm_disarm_progress = NULL;
+        visual_alarm_disarm_label = NULL;
+        visual_alarm_glucose_label = NULL;
     }
 }
 
-// Update glucose value shown on the visual alarm card (keeps it current between fetches)
+// Stop visual alarm — hardware cleanup is immediate, LVGL cleanup deferred if lock fails
+void stop_visual_alarm(void) {
+    // Non-LVGL cleanup: brightness + LED (idempotent, safe from any core)
+    if (visual_alarm_active && !visual_alarm_stop_requested) {
+        ESP_LOGI(TAG, "Stopping visual alarm");
+
+        // Restore saved brightness
+        screen_brightness_percent = saved_brightness_percent;
+        display_set_brightness(saved_brightness_percent);
+        ESP_LOGI(TAG, "Brightness restored to %d%%", saved_brightness_percent);
+
+        // Stop LED alarm flash
+        led_stop_alarm_flash();
+    }
+
+    // Try immediate LVGL cleanup
+    if (lvgl_port_lock(1)) {
+        visual_alarm_active = false;
+        visual_alarm_stop_requested = false;
+        visual_alarm_glucose_update_pending = false;
+        visual_alarm_cleanup_lvgl();
+        lvgl_port_unlock();
+    } else if (visual_alarm_active) {
+        // Lock failed (Core 1 busy) — defer cleanup to pulse timer callback.
+        // Keep visual_alarm_active=true so the timer keeps running and can
+        // process the deferred cleanup on its next 200-350ms tick.
+        visual_alarm_stop_requested = true;
+        ESP_LOGW(TAG, "LVGL lock failed — deferring visual alarm cleanup to pulse timer");
+    }
+    // If !visual_alarm_active && lock failed: objects may already be cleaned up
+    // or will be cleaned up by a pending deferred stop — nothing more to do.
+}
+
+// Update glucose value shown on the visual alarm card (defers to pulse timer)
 static void update_visual_alarm_glucose(int glucose_mg_dl) {
     if (!visual_alarm_active || visual_alarm_glucose_label == NULL) return;
-    if (lvgl_port_lock(0)) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", glucose_mg_dl);
-        lv_label_set_text(visual_alarm_glucose_label, buf);
-        lvgl_port_unlock();
-    }
+    // Defer to pulse timer (runs every 200-350ms in LVGL context)
+    visual_alarm_pending_glucose = glucose_mg_dl;
+    visual_alarm_glucose_update_pending = true;
 }
 
 // Update glucose display on home screen
@@ -1498,7 +1584,7 @@ void update_glucose_display(void) {
         return;
     }
 
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock_retry(15)) {  // Life-safety: 15 attempts (~15ms patience)
         if (glucose_data_valid) {
             // Calculate data age first - this determines display behavior
             time_t now;
@@ -1618,6 +1704,8 @@ void update_glucose_display(void) {
             }
         }
         lvgl_port_unlock();
+    } else {
+        ESP_LOGW(TAG, "LVGL lock timeout in update_glucose_display");
     }
 }
 
@@ -1628,24 +1716,19 @@ void update_glucose_display(void) {
 bool delete_background_tasks_for_ssl(const char *reason) {
     bool deleted_any = false;
 
+    // Only delete weather_task (~3KB stack). Keep time_task and battery_task
+    // alive so the clock keeps updating and battery monitoring continues even
+    // if the SSL handshake hangs (e.g., WiFi degradation blocking TCP).
+    // Heap logs show largest_free_block is already 40KB+ before deletion —
+    // well above the ~17KB needed for TLS. Weather task alone frees enough.
     if (weather_task_handle != NULL) {
         vTaskDelete(weather_task_handle);
         weather_task_handle = NULL;
         deleted_any = true;
     }
-    if (time_task_handle != NULL) {
-        vTaskDelete(time_task_handle);
-        time_task_handle = NULL;
-        deleted_any = true;
-    }
-    if (battery_task_handle != NULL) {
-        vTaskDelete(battery_task_handle);
-        battery_task_handle = NULL;
-        deleted_any = true;
-    }
 
     if (deleted_any) {
-        // Yield so idle task can reclaim deleted task stacks (~11KB freed from heap).
+        // Yield so idle task can reclaim deleted task stack (~3KB freed from heap).
         // The 100ms gives the idle task time to run on both cores.
         vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -1658,20 +1741,12 @@ bool delete_background_tasks_for_ssl(const char *reason) {
     return deleted_any;
 }
 
-// Helper: Recreate background tasks after TLS operation completes.
-// Heap-allocated stacks so deletion frees contiguous memory for TLS reconnection.
+// Helper: Recreate weather task after TLS operation completes.
+// Only weather_task is deleted for SSL (time + battery stay alive).
 void recreate_background_tasks(void) {
     if (weather_task_handle == NULL) {
         xTaskCreatePinnedToCore(weather_update_task, "weather_update",
             WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
-    }
-    if (time_task_handle == NULL) {
-        xTaskCreatePinnedToCore(time_update_task, "time_update",
-            TIME_STACK_SIZE, NULL, 3, &time_task_handle, tskNO_AFFINITY);
-    }
-    if (battery_task_handle == NULL) {
-        xTaskCreatePinnedToCore(battery_monitor_task, "battery_mon",
-            BATTERY_STACK_SIZE, NULL, 2, &battery_task_handle, 0);
     }
     ESP_LOGI(TAG, "Tasks recreated (heap=%lu)", esp_get_free_heap_size());
 }
@@ -1944,14 +2019,23 @@ void glucose_update_task(void *pvParameters) {
 
                 // Mark fetch as in progress
                 glucose_fetch_in_progress = true;
-
                 cgm_glucose_t glucose = {0};  // Initialize to prevent garbage data
+                esp_err_t ret = ESP_FAIL;
+
+                // Re-check WiFi — could have dropped during task deletion / mutex wait.
+                // Starting an SSL handshake with dead WiFi blocks for minutes.
+                if (!wifi_connected) {
+                    ESP_LOGW(TAG, "WiFi lost before fetch — aborting");
+                    glucose_fetch_in_progress = false;
+                    goto fetch_cleanup;
+                }
+
                 ESP_LOGI(TAG, "Fetching periodic glucose reading...");
 
                 // Blink blue to indicate CGM poll starting
                 led_blink_blue();
 
-                esp_err_t ret = cgm_fetch(provider, &glucose);
+                ret = cgm_fetch(provider, &glucose);
 
                 // Connection died mid-fetch (SSL was open but socket died).
                 // Delete tasks if not already deleted, then retry.
@@ -2002,6 +2086,7 @@ void glucose_update_task(void *pvParameters) {
 
                 // Add to history for trend chart (convert seconds to milliseconds)
                 glucose_history_add(glucose.value, (int64_t)glucose.timestamp * 1000);
+                ESP_LOGI(TAG, "History done, updating UI (heap=%lu)", esp_get_free_heap_size());
 
                 // Mark fetch as successful
                 glucose_fetch_failed = false;
@@ -2016,7 +2101,7 @@ void glucose_update_task(void *pvParameters) {
 
                 // UI updates: only when on home screen (LVGL objects may not exist otherwise)
                 if (home_screen_active) {
-                    if (lvgl_port_lock(0)) {
+                    if (lvgl_port_lock_retry(5)) {
                         if (glucose_fetch_animation_timer != NULL) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
@@ -2026,6 +2111,8 @@ void glucose_update_task(void *pvParameters) {
                             lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
                         }
                         lvgl_port_unlock();
+                    } else {
+                        ESP_LOGW(TAG, "LVGL lock timeout in glucose success UI");
                     }
                     update_glucose_display();
                 }
@@ -2039,11 +2126,13 @@ void glucose_update_task(void *pvParameters) {
                     sd_log_glucose(glucose.value, cgm_trend_description(glucose.trend));
                 }
 
-                // Play success sound on first glucose reading
+                // Play success sound on first glucose reading (only on fresh power-on)
                 if (!first_glucose_received) {
                     first_glucose_received = true;
-                    ESP_LOGI(TAG, "First glucose reading received - playing success sound");
-                    play_success_sound();
+                    if (esp_reset_reason() == ESP_RST_POWERON) {
+                        ESP_LOGI(TAG, "First glucose reading received - playing success sound");
+                        play_success_sound();
+                    }
                 }
 
                 // Alarms ALWAYS run regardless of active screen (life-safety)
@@ -2089,7 +2178,7 @@ void glucose_update_task(void *pvParameters) {
                 // UI updates: only when on home screen
                 if (home_screen_active) {
                     // Stop animation and set bar to orange (stale, not failed)
-                    if (lvgl_port_lock(0)) {
+                    if (lvgl_port_lock(1)) {
                         if (glucose_fetch_animation_timer != NULL) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
@@ -2155,7 +2244,7 @@ void glucose_update_task(void *pvParameters) {
                 // UI updates: only when on home screen
                 if (home_screen_active) {
                     // Stop animation and update bar to red (but keep blue glow)
-                    if (lvgl_port_lock(0)) {
+                    if (lvgl_port_lock(1)) {
                         if (glucose_fetch_animation_timer != NULL) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
@@ -2183,10 +2272,7 @@ void glucose_update_task(void *pvParameters) {
 
                 ESP_LOGW(TAG, "Periodic glucose fetch failed: %s", esp_err_to_name(ret));
 
-                // Show error LED (red blink)
-                led_start_error_blink();
-                vTaskDelay(pdMS_TO_TICKS(5000));  // Blink for 5 seconds
-                led_stop_error_blink();
+                // Error LED blink is deferred until after network_mutex release (below)
 
                 {
                     const char *sts = (glucose.status == GLUCOSE_STATUS_OK) ? "OK" :
@@ -2224,6 +2310,7 @@ void glucose_update_task(void *pvParameters) {
                 }
             }
 
+            fetch_cleanup:
                 // SSL lifecycle: always close after fetch for TLS providers.
                 // Post-reconnect fragmentation drops largest_block to ~2.5KB,
                 // but TLS read buffers need ~1.7KB contiguous. Keeping SSL alive
@@ -2263,6 +2350,14 @@ void glucose_update_task(void *pvParameters) {
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
                 ESP_LOGI(TAG, "Network mutex released after glucose fetch");
+
+                // Deferred error LED blink — runs AFTER mutex release to avoid
+                // blocking weather/time tasks for 5 seconds during the delay.
+                if (glucose_fetch_failed) {
+                    led_start_error_blink();
+                    vTaskDelay(pdMS_TO_TICKS(5000));
+                    led_stop_error_blink();
+                }
             } else {
                 ESP_LOGE(TAG, "Failed to acquire network mutex - this should never happen!");
             }
@@ -2412,7 +2507,7 @@ void menu_btn_event_cb(lv_event_t *e) {
         dismiss_wifi_disconnected_overlay();
         ESP_LOGI(TAG, "Background tasks paused (leaving home screen)");
 
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             // MEMORY OPTIMIZATION: Create menu screen on-demand if it doesn't exist
             if (screen_menu == NULL) {
                 ESP_LOGI(TAG, "Creating menu screen on-demand (freed previously)");
@@ -2445,7 +2540,7 @@ void wifi_icon_event_cb(lv_event_t *e) {
                  esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
         // Recreate WiFi list screen fresh (delete old one if exists)
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_wifi_list != NULL) {
                 lv_obj_del(screen_wifi_list);
                 screen_wifi_list = NULL;
@@ -2473,7 +2568,7 @@ void back_btn_event_cb(lv_event_t *e) {
         pause_background_tasks = false;
         ESP_LOGI(TAG, "Background tasks resumed (returned to home screen)");
 
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             lv_scr_load(screen_home);
             lvgl_port_unlock();
         }
@@ -2482,7 +2577,7 @@ void back_btn_event_cb(lv_event_t *e) {
         vTaskDelay(pdMS_TO_TICKS(100));
 
         // MEMORY OPTIMIZATION: Delete menu screen after returning to home to free memory
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_menu != NULL) {
                 ESP_LOGI(TAG, "Deleting menu screen to free memory");
                 lv_obj_del(screen_menu);
@@ -2535,7 +2630,7 @@ void menu_item_event_cb(lv_event_t *e) {
         switch (item_index) {
             case 0:  // CGM Settings
                 ESP_LOGI(TAG, "Launching CGM Settings...");
-                if (lvgl_port_lock(0)) {
+                if (lvgl_port_lock(1)) {
                     if (screen_cgm_menu != NULL) {
                         lv_obj_del(screen_cgm_menu);
                         screen_cgm_menu = NULL;
@@ -2561,7 +2656,7 @@ void menu_item_event_cb(lv_event_t *e) {
                          esp_get_free_heap_size(), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
                 // Load WiFi list screen (create if needed)
-                if (lvgl_port_lock(0)) {
+                if (lvgl_port_lock(1)) {
                     if (screen_wifi_list != NULL) {
                         lv_obj_del(screen_wifi_list);
                         screen_wifi_list = NULL;
@@ -2584,7 +2679,7 @@ void menu_item_event_cb(lv_event_t *e) {
                 break;
             case 2:  // Time/Date/Weather Settings (combined)
                 ESP_LOGI(TAG, "Launching Time/Weather settings...");
-                if (lvgl_port_lock(0)) {
+                if (lvgl_port_lock(1)) {
                     // Clean up any leftover search screen (keyboard = 40+ objects)
                     if (screen_zipcode_entry != NULL) {
                         lv_obj_del(screen_zipcode_entry);
@@ -2640,7 +2735,7 @@ void add_boot_log(const char *msg) {
 
     // Update label if it exists and LVGL is ready
     if (boot_log_label != NULL) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             lv_label_set_text(boot_log_label, boot_log_buffer);
             lvgl_port_unlock();
         }
@@ -2648,7 +2743,7 @@ void add_boot_log(const char *msg) {
 
     // Update progress bar based on boot milestones
     if (boot_progress_bar != NULL) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             int progress = 0;
 
             // Map boot messages to progress percentage
@@ -2675,84 +2770,78 @@ void add_boot_log(const char *msg) {
     }
 }
 
-// Draw small sunrise icon (12x12)
+// Draw sunrise icon (12x12) — half-sun above horizon with upward rays
 void draw_sunrise_icon(lv_obj_t *canvas) {
     lv_draw_arc_dsc_t arc_dsc;
     lv_draw_arc_dsc_init(&arc_dsc);
-
     lv_draw_line_dsc_t line_dsc;
     lv_draw_line_dsc_init(&line_dsc);
+    lv_point_t pts[2];
 
-    // Draw small sun
-    arc_dsc.color = lv_color_hex(0xFFAA00);
+    // Horizon line across lower portion
+    line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
+    line_dsc.width = 1;
+    pts[0] = (lv_point_t){0, 8};
+    pts[1] = (lv_point_t){11, 8};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
+
+    // Half-sun ABOVE horizon (thick arc = solid semicircle look)
+    arc_dsc.color = lv_color_hex(0xFFAA00);  // Golden orange
     arc_dsc.width = 4;
-    lv_canvas_draw_arc(canvas, 6, 6, 3, 0, 360, &arc_dsc);
+    lv_canvas_draw_arc(canvas, 6, 8, 3, 180, 360, &arc_dsc);
 
-    // Draw 4 rays (top, right, bottom, left)
+    // Upward rays
     line_dsc.color = lv_color_hex(0xFFAA00);
     line_dsc.width = 1;
-    lv_point_t ray[2];
-
-    // Top ray
-    ray[0].x = 6; ray[0].y = 0;
-    ray[1].x = 6; ray[1].y = 2;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
-
-    // Right ray
-    ray[0].x = 10; ray[0].y = 6;
-    ray[1].x = 12; ray[1].y = 6;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
-
-    // Bottom ray (shorter, suggesting horizon)
-    ray[0].x = 6; ray[0].y = 10;
-    ray[1].x = 6; ray[1].y = 11;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
-
-    // Left ray
-    ray[0].x = 0; ray[0].y = 6;
-    ray[1].x = 2; ray[1].y = 6;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+    // Center ray (straight up)
+    pts[0] = (lv_point_t){6, 0};
+    pts[1] = (lv_point_t){6, 3};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
+    // Left diagonal ray
+    pts[0] = (lv_point_t){2, 2};
+    pts[1] = (lv_point_t){4, 4};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
+    // Right diagonal ray
+    pts[0] = (lv_point_t){10, 2};
+    pts[1] = (lv_point_t){8, 4};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
 }
 
-// Draw small sunset icon (12x12)
+// Draw sunset icon (12x12) — half-sun below horizon with fading rays
 void draw_sunset_icon(lv_obj_t *canvas) {
     lv_draw_arc_dsc_t arc_dsc;
     lv_draw_arc_dsc_init(&arc_dsc);
-
     lv_draw_line_dsc_t line_dsc;
     lv_draw_line_dsc_init(&line_dsc);
+    lv_point_t pts[2];
 
-    // Draw small sun (lower position for sunset)
-    arc_dsc.color = lv_color_hex(0xFF6600);  // More orange/red for sunset
-    arc_dsc.width = 4;
-    lv_canvas_draw_arc(canvas, 6, 8, 3, 0, 360, &arc_dsc);
-
-    // Draw horizon line
+    // Horizon line across upper portion (sun sinking below)
     line_dsc.color = lv_color_hex(COLOR_TEXT_GRAY);
     line_dsc.width = 1;
-    lv_point_t horizon[2];
-    horizon[0].x = 0; horizon[0].y = 11;
-    horizon[1].x = 12; horizon[1].y = 11;
-    lv_canvas_draw_line(canvas, horizon, 2, &line_dsc);
+    pts[0] = (lv_point_t){0, 3};
+    pts[1] = (lv_point_t){11, 3};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
 
-    // Draw rays above horizon only
+    // Half-sun BELOW horizon (bottom half visible, sinking)
+    arc_dsc.color = lv_color_hex(0xFF6600);  // Sunset deep orange
+    arc_dsc.width = 4;
+    lv_canvas_draw_arc(canvas, 6, 3, 3, 0, 180, &arc_dsc);
+
+    // Short rays above horizon (fading daylight)
     line_dsc.color = lv_color_hex(0xFF6600);
-    lv_point_t ray[2];
-
-    // Top-left ray
-    ray[0].x = 2; ray[0].y = 4;
-    ray[1].x = 4; ray[1].y = 6;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
-
-    // Top ray
-    ray[0].x = 6; ray[0].y = 3;
-    ray[1].x = 6; ray[1].y = 5;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
-
-    // Top-right ray
-    ray[0].x = 8; ray[0].y = 6;
-    ray[1].x = 10; ray[1].y = 4;
-    lv_canvas_draw_line(canvas, ray, 2, &line_dsc);
+    line_dsc.width = 1;
+    // Center ray
+    pts[0] = (lv_point_t){6, 0};
+    pts[1] = (lv_point_t){6, 1};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
+    // Left diagonal ray
+    pts[0] = (lv_point_t){2, 0};
+    pts[1] = (lv_point_t){3, 2};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
+    // Right diagonal ray
+    pts[0] = (lv_point_t){10, 0};
+    pts[1] = (lv_point_t){9, 2};
+    lv_canvas_draw_line(canvas, pts, 2, &line_dsc);
 }
 
 // ===== SPLASH SCREEN =====
@@ -2925,7 +3014,6 @@ void app_main(void) {
     // Initialize LED
     add_boot_log("Init LED");
     led_init();
-    led_set_breathing_color(127, 0, 0);  // Red = initializing
 
     // Initialize Buzzer/Speaker
     add_boot_log("Init buzzer");
@@ -2934,10 +3022,6 @@ void app_main(void) {
     // Initialize Battery Monitoring
     add_boot_log("Init battery");
     battery_init();
-
-    // LED breathing task disabled - LED off
-    // xTaskCreate(led_breathing_task, "led_breathe", 2048, NULL, 1, NULL);
-    led_set_color(0, 0, 0);  // Turn LED off completely
 
     // Create Core 1 task: UI + Touch
     add_boot_log("Start UI task");
@@ -2969,7 +3053,13 @@ void app_main(void) {
     // Confirm OTA boot (prevents automatic rollback to previous firmware)
     update_confirm_boot();
 
-    // Play boot-up sound to indicate device is ready
-    vTaskDelay(pdMS_TO_TICKS(500));  // Small delay to let everything settle
-    play_boot_sound();
+    // Play boot-up sound — but ONLY on fresh power-on.
+    // Crash/watchdog/software reboots must be silent (user may be sleeping).
+    esp_reset_reason_t reset_reason = esp_reset_reason();
+    if (reset_reason == ESP_RST_POWERON) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        play_boot_sound();
+    } else {
+        ESP_LOGI(TAG, "Silent boot (reset reason: %d)", reset_reason);
+    }
 }

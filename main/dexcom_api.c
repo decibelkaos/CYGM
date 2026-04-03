@@ -231,7 +231,7 @@ static esp_err_t init_persistent_client(void) {
         .url = get_base_url(),  // Set base URL initially
         .method = HTTP_METHOD_POST,
         .event_handler = http_event_handler,
-        .timeout_ms = 30000,
+        .timeout_ms = 15000,
         .is_async = false,
         .buffer_size = 2048,
         .buffer_size_tx = 2048,

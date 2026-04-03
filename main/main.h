@@ -91,6 +91,16 @@ void draw_trend_arrow_sized(lv_obj_t *canvas, dexcom_trend_t trend, int sz);
 void check_glucose_alarms(int glucose_mg_dl);
 
 /**
+ * Stop visual alarm (overlay, container, timer, LED, brightness restore)
+ */
+void stop_visual_alarm(void);
+
+/**
+ * Stop audio alarm (timer, buzzer)
+ */
+void stop_audio_alarm(void);
+
+/**
  * Update glucose display widgets (value, trend, time ago)
  */
 void update_glucose_display(void);
