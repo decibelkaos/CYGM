@@ -78,7 +78,7 @@ static void location_search_task(void *pvParameters) {
         xSemaphoreGive(network_mutex);
     }
 
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(1)) {
         if (err == ESP_OK && search_result_count > 0) {
             ESP_LOGI(TAG, "Found %d location(s)", search_result_count);
             selected_result_idx = 0;

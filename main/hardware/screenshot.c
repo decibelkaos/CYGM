@@ -298,8 +298,13 @@ esp_err_t screenshot_take(void)
         return ESP_FAIL;
     }
 
-    // Step 5: Lock LVGL for exclusive access
-    if (!lvgl_port_lock(5000)) {
+    // Step 5: Lock LVGL for exclusive access (retry ~1s — screenshot is interactive)
+    bool locked = false;
+    for (int retry = 0; retry < 100 && !locked; retry++) {
+        locked = lvgl_port_lock(1);
+        if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (!locked) {
         ESP_LOGE(TAG, "LVGL lock timeout");
         fclose(f);
         sd_card_unmount(card);

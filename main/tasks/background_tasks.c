@@ -76,14 +76,14 @@ void ui_task_core1(void *pvParameters) {
     // Small delay to show 100% completion
     vTaskDelay(pdMS_TO_TICKS(300));
 
-    // Switch to home screen with smooth fade animation
+    // Switch to home screen (no animation — lv_anim_start causes freeze on this hardware)
     if (lvgl_port_lock(1)) {
-        lv_scr_load_anim(screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0, false);
+        lv_scr_load(screen_home);
         lvgl_port_unlock();
     }
 
-    // Wait for animation to complete
-    vTaskDelay(pdMS_TO_TICKS(500));
+    // Brief settle delay
+    vTaskDelay(pdMS_TO_TICKS(200));
 
     // Mark home screen as active - allow background tasks to run
     home_screen_active = true;
@@ -550,6 +550,7 @@ void wifi_task_core0(void *pvParameters) {
     // SAFETY: WiFi reconnection is NEVER paused regardless of active screen.
     // Without WiFi there is no glucose data, which is life-critical.
     bool was_connected = wifi_connected;
+    bool ever_connected = wifi_connected;  // Only show overlay after a prior successful connection
     bool wifi_overlay_shown = false;
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(15000));
@@ -569,15 +570,20 @@ void wifi_task_core0(void *pvParameters) {
             if (ret == ESP_OK) {
                 wifi_connected = true;
                 was_connected = true;
+                ever_connected = true;
                 sd_log(TAG, "WiFi auto-reconnect successful");
                 ESP_LOGI(TAG, "Auto-reconnect successful");
                 update_wifi_status_display(true);
 
                 // Dismiss WiFi overlay if it was shown
                 if (wifi_overlay_shown) {
-                    if (lvgl_port_lock(200)) {
-                        dismiss_wifi_disconnected_overlay();
-                        lvgl_port_unlock();
+                    for (int retry = 0; retry < 50; retry++) {
+                        if (lvgl_port_lock(1)) {
+                            dismiss_wifi_disconnected_overlay();
+                            lvgl_port_unlock();
+                            break;
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(10));
                     }
                     wifi_overlay_shown = false;
                 }
@@ -598,11 +604,16 @@ void wifi_task_core0(void *pvParameters) {
                     xTaskCreatePinnedToCore(weather_update_task, "weather_update",
                         WEATHER_STACK_SIZE, NULL, 3, &weather_task_handle, 0);
                 }
-            } else if (!wifi_overlay_shown && home_screen_active) {
-                // First reconnect attempt failed — show WiFi overlay
-                if (lvgl_port_lock(200)) {
-                    show_wifi_disconnected_overlay();
-                    lvgl_port_unlock();
+            } else if (!wifi_overlay_shown && home_screen_active && ever_connected) {
+                // Reconnect failed after a prior successful connection — show overlay
+                // (Don't show on first boot when WiFi was never connected)
+                for (int retry = 0; retry < 50; retry++) {
+                    if (lvgl_port_lock(1)) {
+                        show_wifi_disconnected_overlay();
+                        lvgl_port_unlock();
+                        break;
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(10));
                 }
                 wifi_overlay_shown = true;
             }
@@ -610,13 +621,18 @@ void wifi_task_core0(void *pvParameters) {
             if (!was_connected) {
                 // Connection restored externally (e.g. event handler retry succeeded)
                 was_connected = true;
+                ever_connected = true;
                 update_wifi_status_display(true);
 
                 // Dismiss WiFi overlay if it was shown
                 if (wifi_overlay_shown) {
-                    if (lvgl_port_lock(200)) {
-                        dismiss_wifi_disconnected_overlay();
-                        lvgl_port_unlock();
+                    for (int retry = 0; retry < 50; retry++) {
+                        if (lvgl_port_lock(1)) {
+                            dismiss_wifi_disconnected_overlay();
+                            lvgl_port_unlock();
+                            break;
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(10));
                     }
                     wifi_overlay_shown = false;
                 }

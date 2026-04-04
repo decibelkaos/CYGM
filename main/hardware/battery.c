@@ -366,7 +366,12 @@ static void battery_stop_charging(void) {
 
     // Stop animation timer and redraw icon (LVGL lock covers both operations
     // atomically — prevents orphaned timers from race with LVGL task)
-    if (lvgl_port_lock(200)) {
+    bool locked = false;
+    for (int retry = 0; retry < 50 && !locked; retry++) {
+        locked = lvgl_port_lock(1);
+        if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (locked) {
         if (battery_charging_fade_timer != NULL) {
             lv_timer_del(battery_charging_fade_timer);
             battery_charging_fade_timer = NULL;

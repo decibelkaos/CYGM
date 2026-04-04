@@ -203,7 +203,10 @@ void update_sunrise_sunset_display(void) {
 
     // Retry lock (5 attempts) — weather is lower priority than glucose
     bool locked = false;
-    for (int i = 0; i < 5 && !locked; i++) locked = lvgl_port_lock(1);
+    for (int i = 0; i < 5 && !locked; i++) {
+        locked = lvgl_port_lock(1);
+        if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
     if (locked) {
         if (sunrise_time != 0 && sunset_time != 0) {
             struct tm tm_sunrise;

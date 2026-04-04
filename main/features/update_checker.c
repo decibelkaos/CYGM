@@ -275,7 +275,7 @@ static void dismiss_ota_overlay(void) {
 }
 
 static void ota_update_progress(int pct, const char *status) {
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(1)) {
         if (ota_bar) lv_bar_set_value(ota_bar, pct, LV_ANIM_ON);
         if (ota_pct_label) {
             char buf[8];
@@ -300,7 +300,12 @@ static void ota_result_timer_cb(lv_timer_t *timer) {
 }
 
 static void ota_show_result(bool success, const char *msg) {
-    if (lvgl_port_lock(200)) {
+    bool locked = false;
+    for (int retry = 0; retry < 50 && !locked; retry++) {
+        locked = lvgl_port_lock(1);
+        if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (locked) {
         dismiss_ota_overlay();
 
         // Create result overlay
@@ -724,10 +729,14 @@ static void ota_fallback_task_fn(void *param) {
     ota_install_requested = false;
 
     // Show OTA progress overlay
-    if (lvgl_port_lock(200)) {
-        dismiss_update_overlay();
-        show_ota_overlay("Stopping tasks...");
-        lvgl_port_unlock();
+    for (int retry = 0; retry < 50; retry++) {
+        if (lvgl_port_lock(1)) {
+            dismiss_update_overlay();
+            show_ota_overlay("Stopping tasks...");
+            lvgl_port_unlock();
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     // AGGRESSIVE cleanup: delete all non-essential tasks to maximize heap.

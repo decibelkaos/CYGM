@@ -111,7 +111,7 @@ static void dexcom_login_task(void *pvParameters) {
     // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG, "Dexcom login: network mutex timeout");
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
@@ -147,7 +147,7 @@ static void dexcom_login_task(void *pvParameters) {
         ESP_LOGI(TAG, "Triggering immediate glucose fetch after successful login");
         glucose_force_fetch_requested = true;
 
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lv_scr_load(screen_home);
             // Clean up all CGM screens
@@ -173,7 +173,7 @@ static void dexcom_login_task(void *pvParameters) {
         }
         xSemaphoreGive(network_mutex);
 
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
@@ -204,7 +204,7 @@ static void dexcom_to_auth_event_cb(lv_event_t *e);
 // Dexcom back button event handler — return to CGM menu
 static void dexcom_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_cgm_menu_screen();
             lv_scr_load(screen_cgm_menu);
             if (screen_dexcom_auth != NULL) {
@@ -243,7 +243,7 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
         sd_log(TAG, "Dexcom: user logout");
 
         // Recreate auth screen to show login option
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_dexcom_auth != NULL) {
                 lv_obj_del(screen_dexcom_auth);
                 screen_dexcom_auth = NULL;
@@ -263,7 +263,7 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
 // CGM back button event handler
 static void cgm_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_menu_screen();
             lv_scr_load(screen_menu);
             if (screen_cgm_menu != NULL) {
@@ -278,7 +278,7 @@ static void cgm_back_event_cb(lv_event_t *e) {
 // Dexcom button event handler
 static void dexcom_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_dexcom_auth != NULL) {
                 lv_obj_del(screen_dexcom_auth);
                 screen_dexcom_auth = NULL;
@@ -299,7 +299,7 @@ static void dexcom_btn_event_cb(lv_event_t *e) {
 static void librelinkup_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "LibreLinkUp button pressed");
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_auth_screen();
             lv_scr_load(screen_libre_auth);
             if (screen_cgm_menu != NULL) {
@@ -314,7 +314,7 @@ static void librelinkup_btn_event_cb(lv_event_t *e) {
 // Dexcom view status button event handler
 static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_dexcom_status != NULL) {
                 lv_obj_del(screen_dexcom_status);
                 screen_dexcom_status = NULL;
@@ -334,7 +334,7 @@ static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
 // Dexcom open login button event handler
 static void dexcom_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_dexcom_login != NULL) {
                 lv_obj_del(screen_dexcom_login);
                 screen_dexcom_login = NULL;
@@ -354,7 +354,7 @@ static void dexcom_open_login_event_cb(lv_event_t *e) {
 // Dexcom username tap event handler
 static void dexcom_username_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_dexcom_username_entry != NULL) {
                 lv_obj_del(screen_dexcom_username_entry);
                 screen_dexcom_username_entry = NULL;
@@ -376,7 +376,7 @@ static void dexcom_username_tap_event_cb(lv_event_t *e) {
 // Dexcom password tap event handler
 static void dexcom_password_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (screen_dexcom_password_entry != NULL) {
                 lv_obj_del(screen_dexcom_password_entry);
                 screen_dexcom_password_entry = NULL;
@@ -445,7 +445,7 @@ static void dexcom_username_entry_keyboard_event_cb(lv_event_t *e) {
         }
         // Both CANCEL and READY return to login screen
         if (simulated_code == LV_EVENT_CANCEL || simulated_code == LV_EVENT_READY) {
-            if (lvgl_port_lock(0)) {
+            if (lvgl_port_lock(1)) {
                 // Recreate login (was deleted; labels auto-populate from buffers)
                 create_dexcom_login_screen();
                 lv_scr_load(screen_dexcom_login);
@@ -500,7 +500,7 @@ static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e) {
         }
         // Both CANCEL and READY return to login screen
         if (simulated_code == LV_EVENT_CANCEL || simulated_code == LV_EVENT_READY) {
-            if (lvgl_port_lock(0)) {
+            if (lvgl_port_lock(1)) {
                 // Recreate login (was deleted; labels auto-populate from buffers)
                 create_dexcom_login_screen();
                 lv_scr_load(screen_dexcom_login);
@@ -583,7 +583,7 @@ static void dexcom_password_entry_field_event_cb(lv_event_t *e) {
 // Navigate back to dexcom auth screen (used by login and status screens)
 static void dexcom_to_auth_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             // Recreate auth screen (was deleted when navigating deeper)
             if (screen_dexcom_auth != NULL) {
                 lv_obj_del(screen_dexcom_auth);
@@ -1477,7 +1477,7 @@ static void libre_login_task(void *pvParameters) {
     // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG, "Libre login: network mutex timeout");
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
@@ -1512,7 +1512,7 @@ static void libre_login_task(void *pvParameters) {
 
         glucose_force_fetch_requested = true;
 
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lv_scr_load(screen_home);
             libre_cleanup_screens();
@@ -1531,7 +1531,7 @@ static void libre_login_task(void *pvParameters) {
         }
         xSemaphoreGive(network_mutex);
 
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
@@ -1544,7 +1544,7 @@ static void libre_login_task(void *pvParameters) {
 // Libre back → CGM menu
 static void libre_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_cgm_menu_screen();
             lv_scr_load(screen_cgm_menu);
             libre_cleanup_screens();
@@ -1556,7 +1556,7 @@ static void libre_back_event_cb(lv_event_t *e) {
 // Libre status/login → auth screen
 static void libre_to_auth_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_auth_screen();
             lv_scr_load(screen_libre_auth);
             if (screen_libre_login != NULL) { lv_obj_del(screen_libre_login); screen_libre_login = NULL; }
@@ -1569,7 +1569,7 @@ static void libre_to_auth_event_cb(lv_event_t *e) {
 // Open Libre login screen
 static void libre_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_login_screen();
             lv_scr_load(screen_libre_login);
             if (screen_libre_auth != NULL) { lv_obj_del(screen_libre_auth); screen_libre_auth = NULL; }
@@ -1581,7 +1581,7 @@ static void libre_open_login_event_cb(lv_event_t *e) {
 // View Libre status
 static void libre_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_status_screen();
             lv_scr_load(screen_libre_status);
             if (screen_libre_auth != NULL) { lv_obj_del(screen_libre_auth); screen_libre_auth = NULL; }
@@ -1593,7 +1593,7 @@ static void libre_view_status_btn_event_cb(lv_event_t *e) {
 // Tap email field
 static void libre_email_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_email_entry_screen();
             lv_scr_load(screen_libre_email_entry);
             if (screen_libre_login != NULL) { lv_obj_del(screen_libre_login); screen_libre_login = NULL; }
@@ -1605,7 +1605,7 @@ static void libre_email_tap_event_cb(lv_event_t *e) {
 // Tap password field
 static void libre_password_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_password_entry_screen();
             lv_scr_load(screen_libre_password_entry);
             if (screen_libre_login != NULL) { lv_obj_del(screen_libre_login); screen_libre_login = NULL; }
@@ -1666,7 +1666,7 @@ static void libre_email_entry_keyboard_event_cb(lv_event_t *e) {
             libre_email_buf[sizeof(libre_email_buf) - 1] = '\0';
         }
         // Both OK and Cancel go back to login
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_login_screen();
             lv_scr_load(screen_libre_login);
             if (screen_libre_email_entry != NULL) { lv_obj_del(screen_libre_email_entry); screen_libre_email_entry = NULL; }
@@ -1700,7 +1700,7 @@ static void libre_password_entry_keyboard_event_cb(lv_event_t *e) {
             strncpy(libre_password_buf, text, sizeof(libre_password_buf) - 1);
             libre_password_buf[sizeof(libre_password_buf) - 1] = '\0';
         }
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_login_screen();
             lv_scr_load(screen_libre_login);
             if (screen_libre_password_entry != NULL) { lv_obj_del(screen_libre_password_entry); screen_libre_password_entry = NULL; }
@@ -1786,7 +1786,7 @@ static void libre_logout_btn_event_cb(lv_event_t *e) {
         memset(libre_email_buf, 0, sizeof(libre_email_buf));
         memset(libre_password_buf, 0, sizeof(libre_password_buf));
 
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_libre_auth_screen();
             lv_scr_load(screen_libre_auth);
             if (screen_libre_status != NULL) { lv_obj_del(screen_libre_status); screen_libre_status = NULL; }
@@ -2543,7 +2543,7 @@ static void nightscout_login_task(void *pvParameters) {
     // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG, "Nightscout login: network mutex timeout");
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
@@ -2585,7 +2585,7 @@ static void nightscout_login_task(void *pvParameters) {
 
         glucose_force_fetch_requested = true;
 
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lv_scr_load(screen_home);
             nightscout_cleanup_screens();
@@ -2604,7 +2604,7 @@ static void nightscout_login_task(void *pvParameters) {
         }
         xSemaphoreGive(network_mutex);
 
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
@@ -2617,7 +2617,7 @@ static void nightscout_login_task(void *pvParameters) {
 // Nightscout back -> CGM menu
 static void nightscout_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_cgm_menu_screen();
             lv_scr_load(screen_cgm_menu);
             nightscout_cleanup_screens();
@@ -2629,7 +2629,7 @@ static void nightscout_back_event_cb(lv_event_t *e) {
 // Nightscout status/login -> auth screen
 static void nightscout_to_auth_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_auth_screen();
             lv_scr_load(screen_nightscout_auth);
             if (screen_nightscout_login != NULL) { lv_obj_del(screen_nightscout_login); screen_nightscout_login = NULL; }
@@ -2643,7 +2643,7 @@ static void nightscout_to_auth_event_cb(lv_event_t *e) {
 static void nightscout_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Nightscout button pressed");
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_auth_screen();
             lv_scr_load(screen_nightscout_auth);
             if (screen_cgm_menu != NULL) {
@@ -2658,7 +2658,7 @@ static void nightscout_btn_event_cb(lv_event_t *e) {
 // Open Nightscout login screen
 static void nightscout_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_login_screen();
             lv_scr_load(screen_nightscout_login);
             if (screen_nightscout_auth != NULL) { lv_obj_del(screen_nightscout_auth); screen_nightscout_auth = NULL; }
@@ -2670,7 +2670,7 @@ static void nightscout_open_login_event_cb(lv_event_t *e) {
 // View Nightscout status
 static void nightscout_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_status_screen();
             lv_scr_load(screen_nightscout_status);
             if (screen_nightscout_auth != NULL) { lv_obj_del(screen_nightscout_auth); screen_nightscout_auth = NULL; }
@@ -2682,7 +2682,7 @@ static void nightscout_view_status_btn_event_cb(lv_event_t *e) {
 // Tap URL field
 static void nightscout_url_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_url_entry_screen();
             lv_scr_load(screen_nightscout_url_entry);
             if (screen_nightscout_login != NULL) { lv_obj_del(screen_nightscout_login); screen_nightscout_login = NULL; }
@@ -2694,7 +2694,7 @@ static void nightscout_url_tap_event_cb(lv_event_t *e) {
 // Tap token field
 static void nightscout_token_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_token_entry_screen();
             lv_scr_load(screen_nightscout_token_entry);
             if (screen_nightscout_login != NULL) { lv_obj_del(screen_nightscout_login); screen_nightscout_login = NULL; }
@@ -2757,7 +2757,7 @@ static void nightscout_url_entry_keyboard_event_cb(lv_event_t *e) {
             nightscout_url_buf[sizeof(nightscout_url_buf) - 1] = '\0';
         }
         // Both OK and Cancel go back to login
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_login_screen();
             lv_scr_load(screen_nightscout_login);
             if (screen_nightscout_url_entry != NULL) { lv_obj_del(screen_nightscout_url_entry); screen_nightscout_url_entry = NULL; }
@@ -2791,7 +2791,7 @@ static void nightscout_token_entry_keyboard_event_cb(lv_event_t *e) {
             strncpy(nightscout_token_buf, text, sizeof(nightscout_token_buf) - 1);
             nightscout_token_buf[sizeof(nightscout_token_buf) - 1] = '\0';
         }
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_login_screen();
             lv_scr_load(screen_nightscout_login);
             if (screen_nightscout_token_entry != NULL) { lv_obj_del(screen_nightscout_token_entry); screen_nightscout_token_entry = NULL; }
@@ -2877,7 +2877,7 @@ static void nightscout_logout_btn_event_cb(lv_event_t *e) {
         memset(nightscout_url_buf, 0, sizeof(nightscout_url_buf));
         memset(nightscout_token_buf, 0, sizeof(nightscout_token_buf));
 
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_nightscout_auth_screen();
             lv_scr_load(screen_nightscout_auth);
             if (screen_nightscout_status != NULL) { lv_obj_del(screen_nightscout_status); screen_nightscout_status = NULL; }

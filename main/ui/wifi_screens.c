@@ -96,7 +96,7 @@ void update_wifi_status_display(bool connected) {
 
 // Show WiFi scanning overlay — glass-themed, overlays the list semi-transparently
 void show_wifi_scanning_overlay(void) {
-    if (!lvgl_port_lock(0)) {
+    if (!lvgl_port_lock(1)) {
         return;
     }
 
@@ -176,7 +176,7 @@ void show_wifi_scanning_overlay(void) {
 
 // Hide WiFi scanning overlay
 void hide_wifi_scanning_overlay(void) {
-    if (!lvgl_port_lock(0)) {
+    if (!lvgl_port_lock(1)) {
         return;
     }
 
@@ -266,7 +266,7 @@ static void wifi_removal_cancel_btn_cb(lv_event_t *e) {
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "WiFi removal cancelled");
 
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             if (wifi_removal_overlay != NULL) {
                 lv_obj_del(wifi_removal_overlay);
                 wifi_removal_overlay = NULL;
@@ -286,7 +286,7 @@ void show_wifi_removal_overlay(const char *ssid) {
     // Save SSID for removal
     strncpy(wifi_removal_ssid, ssid, sizeof(wifi_removal_ssid) - 1);
 
-    if (!lvgl_port_lock(0)) {
+    if (!lvgl_port_lock(1)) {
         return;
     }
 
@@ -472,7 +472,7 @@ void wifi_scan_and_show_networks(void) {
     }
 
     // Create network list UI
-    if (lvgl_port_lock(0)) {
+    if (lvgl_port_lock(1)) {
         // Remove any existing network list
         lv_obj_clean(screen_wifi_list);
 
@@ -874,7 +874,7 @@ static void network_item_event_cb(lv_event_t *e) {
         wifi_password[0] = '\0';
 
         // Create and load password screen
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             // Create password screen if it doesn't exist
             if (screen_wifi_password == NULL) {
                 create_wifi_password_screen();
@@ -1030,7 +1030,7 @@ static void wifi_password_cancel_btn_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Password entry cancelled, returning to network list");
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             lv_scr_load(screen_wifi_list);
             lvgl_port_unlock();
         }
@@ -1039,10 +1039,14 @@ static void wifi_password_cancel_btn_cb(lv_event_t *e) {
 
 // Show WiFi connecting overlay
 static void show_wifi_connecting_overlay(void) {
-    // Use blocking lock — this runs in wifi_connect_task (separate task),
-    // not in LVGL context.  The LVGL task may still be finishing the
-    // button event callback, so wait for it to release the lock.
-    if (!lvgl_port_lock(2000)) {
+    // Retry lock — runs in wifi_connect_task (Core 0), not LVGL context.
+    // LVGL task may still be finishing the button event callback.
+    bool locked = false;
+    for (int retry = 0; retry < 50 && !locked; retry++) {
+        locked = lvgl_port_lock(1);
+        if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (!locked) {
         ESP_LOGE(TAG, "Failed to get LVGL lock for connecting overlay");
         return;
     }
@@ -1162,7 +1166,7 @@ static void wifi_connecting_ok_btn_cb(lv_event_t *e) {
         }
 
         // Now it's safe to delete WiFi screens (they're no longer active)
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             lv_mem_monitor_t mon;
             lv_mem_monitor(&mon);
             ESP_LOGI(TAG, "LVGL memory before cleanup: used=%d, free=%d, frag=%d%%",
@@ -1189,7 +1193,7 @@ static void wifi_connecting_ok_btn_cb(lv_event_t *e) {
         }
 
         // Log LVGL memory state after cleanup
-        if (lvgl_port_lock(100)) {
+        if (lvgl_port_lock(1)) {
             lv_mem_monitor_t mon;
             lv_mem_monitor(&mon);
             ESP_LOGI(TAG, "LVGL memory after cleanup: used=%d, free=%d, frag=%d%%",
@@ -1207,7 +1211,12 @@ static void wifi_connecting_ok_btn_cb(lv_event_t *e) {
 
 // Hide WiFi connecting overlay
 static void hide_wifi_connecting_overlay(void) {
-    if (!lvgl_port_lock(1000)) {
+    bool locked = false;
+    for (int retry = 0; retry < 50 && !locked; retry++) {
+        locked = lvgl_port_lock(1);
+        if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (!locked) {
         ESP_LOGE(TAG, "Failed to get LVGL lock for hiding overlay");
         return;
     }
@@ -1233,6 +1242,8 @@ static void hide_wifi_connecting_overlay(void) {
 
 // WiFi connection background task
 static void wifi_connect_task(void *pvParameters) {
+    bool locked = false;  // Reused for LVGL lock retries below
+
     // Show connecting overlay
     show_wifi_connecting_overlay();
 
@@ -1269,7 +1280,12 @@ static void wifi_connect_task(void *pvParameters) {
         update_wifi_connecting_status("Connected!");
 
         // Show connection details and OK button
-        if (lvgl_port_lock(1000)) {
+        locked = false;
+        for (int retry = 0; retry < 50 && !locked; retry++) {
+            locked = lvgl_port_lock(1);
+            if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (locked) {
             if (wifi_connecting_bar != NULL) {
                 // Stop fill animation and snap bar to 100% green
                 lv_anim_del(wifi_connecting_bar, NULL);
@@ -1336,7 +1352,12 @@ static void wifi_connect_task(void *pvParameters) {
         led_start_error_blink();  // Red pulse = failed
 
         // Turn bar red at current position
-        if (lvgl_port_lock(1000)) {
+        locked = false;
+        for (int retry = 0; retry < 50 && !locked; retry++) {
+            locked = lvgl_port_lock(1);
+            if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (locked) {
             if (wifi_connecting_bar != NULL) {
                 lv_anim_del(wifi_connecting_bar, NULL);
                 lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
@@ -1387,7 +1408,7 @@ static void keyboard_event_cb(lv_event_t *e) {
     // Handle cancel/close button
     if (code == LV_EVENT_CANCEL) {
         ESP_LOGI(TAG, "Password entry cancelled, returning to network list");
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             lv_scr_load(screen_wifi_list);
             lvgl_port_unlock();
         }

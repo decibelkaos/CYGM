@@ -503,9 +503,7 @@ void show_disclaimer_overlay(void) {
     lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
-    lv_obj_set_style_shadow_width(card, 25, 0);
-    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -608,9 +606,7 @@ void show_welcome_overlay(void) {
     lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
-    lv_obj_set_style_shadow_width(card, 25, 0);
-    lv_obj_set_style_shadow_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -949,7 +945,7 @@ static void trend_arrow_event_cb(lv_event_t *e) {
             return;
         }
 
-        if (lvgl_port_lock(0)) {
+        if (lvgl_port_lock(1)) {
             create_glucose_chart_overlay();
             lvgl_port_unlock();
         }
@@ -1324,9 +1320,6 @@ static void collapse_cgm_card(void) {
     }
 }
 
-// Animation helper for heartbeat dot — bridges lv_anim's (obj, int32_t) to style setter
-static void heartbeat_set_bg_opa(void *obj, int32_t v) { lv_obj_set_style_bg_opa(obj, (lv_opa_t)v, 0); }
-
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
     lv_obj_add_style(screen_home, &style_bg, 0);
@@ -1620,27 +1613,6 @@ void create_home_screen(void) {
     lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);
     lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
-    // --- HEARTBEAT DOT: small breathing indicator between cards at bottom ---
-    // Shows the device is alive and not frozen. Simple opacity-only animation.
-    // NO shadow — shadow rendering uses significant LVGL port task stack and
-    // may cause Core 1 stack overflow that corrupts shared memory.
-    lv_obj_t *dot = lv_obj_create(screen_home);
-    lv_obj_remove_style_all(dot);
-    lv_obj_set_size(dot, 6, 6);
-    lv_obj_set_pos(dot, 157, 232);  // Centered between cards (320/2 - 3), below card bottom
-    lv_obj_set_style_bg_color(dot, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-
-    // Breathing animation: fade opacity in and out (2.5s cycle)
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, dot);
-    lv_anim_set_exec_cb(&a, heartbeat_set_bg_opa);
-    lv_anim_set_values(&a, LV_OPA_10, LV_OPA_COVER);
-    lv_anim_set_time(&a, 1250);
-    lv_anim_set_playback_time(&a, 1250);
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_start(&a);
+    // Heartbeat dot removed — lv_anim_start causes intermittent device freeze.
+    // The progress bar's 1s timer is the only proven-safe 1Hz LVGL operation.
 }

@@ -424,10 +424,14 @@ static void update_ota_wait_task_fn(void *param) {
     if (update_ota_install_requested()) {
         update_clear_ota_request();
 
-        if (lvgl_port_lock(200)) {
-            dismiss_update_overlay();
-            show_ota_overlay("Stopping tasks...");
-            lvgl_port_unlock();
+        for (int retry = 0; retry < 50; retry++) {
+            if (lvgl_port_lock(1)) {
+                dismiss_update_overlay();
+                show_ota_overlay("Stopping tasks...");
+                lvgl_port_unlock();
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
 
         // Delete ALL tasks to maximize heap for OTA TLS (~35KB freed)

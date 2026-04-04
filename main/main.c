@@ -1398,9 +1398,26 @@ static void start_visual_alarm(void) {
     }
     visual_alarm_flash_color = alarm_color;
 
-    if (lvgl_port_lock(1)) {
-        // ---- Dim backdrop with alarm-color border frame at screen edges ----
-        visual_alarm_overlay = lv_obj_create(lv_scr_act());
+    // Life-safety: retry lock with ~500ms patience — alarm MUST display
+    bool alarm_locked = false;
+    for (int retry = 0; retry < 50 && !alarm_locked; retry++) {
+        alarm_locked = lvgl_port_lock(1);
+        if (!alarm_locked) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (!alarm_locked) {
+        // Failed after 500ms — reset state so alarm re-triggers on next glucose check
+        ESP_LOGE(TAG, "CRITICAL: LVGL lock failed for visual alarm — will retry next cycle");
+        sd_log(TAG, "ALARM: LVGL lock failed, resetting for retry");
+        visual_alarm_active = false;
+        current_alarm_state = ALARM_STATE_NONE;  // Reset so check_glucose_alarms re-triggers
+        led_stop_alarm_flash();
+        screen_brightness_percent = saved_brightness_percent;
+        display_set_brightness(saved_brightness_percent);
+        return;
+    }
+
+    // ---- Dim backdrop with alarm-color border frame at screen edges ----
+    visual_alarm_overlay = lv_obj_create(lv_scr_act());
         lv_obj_set_size(visual_alarm_overlay, LV_HOR_RES, LV_VER_RES);
         lv_obj_set_pos(visual_alarm_overlay, 0, 0);
         lv_obj_set_style_bg_color(visual_alarm_overlay, lv_color_black(), 0);
@@ -1513,8 +1530,7 @@ static void start_visual_alarm(void) {
         visual_alarm_timer = lv_timer_create(visual_alarm_pulse_timer_cb, pulse_ms, NULL);
 
         lvgl_port_unlock();
-    }
-}
+}  // end start_visual_alarm
 
 // Delete all visual alarm LVGL objects. MUST be called with LVGL lock held.
 static void visual_alarm_cleanup_lvgl(void) {
@@ -2196,7 +2212,7 @@ void glucose_update_task(void *pvParameters) {
                     if (!sensor_change_mode && wifi_connected &&
                         (glucose.status == GLUCOSE_STATUS_NO_DATA ||
                          glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS)) {
-                        if (lvgl_port_lock(200)) {
+                        if (lvgl_port_lock_retry(50)) {
                             show_nodata_overlay();
                             lvgl_port_unlock();
                         }
@@ -2263,7 +2279,7 @@ void glucose_update_task(void *pvParameters) {
                     if (!sensor_change_mode && wifi_connected &&
                         (glucose.status == GLUCOSE_STATUS_NO_DATA ||
                          glucose.status == GLUCOSE_STATUS_SIGNAL_LOSS)) {
-                        if (lvgl_port_lock(200)) {
+                        if (lvgl_port_lock_retry(50)) {
                             show_nodata_overlay();
                             lvgl_port_unlock();
                         }
@@ -2380,7 +2396,7 @@ void glucose_update_task(void *pvParameters) {
                     const update_info_t *info = update_get_info();
                     if (info->available) {
                         ESP_LOGI(TAG, "Update available: v%s — showing overlay", info->version);
-                        if (lvgl_port_lock(200)) {
+                        if (lvgl_port_lock_retry(50)) {
                             show_update_overlay();
                             lvgl_port_unlock();
                         }
@@ -2932,6 +2948,34 @@ void create_splash_screen(void) {
 // ==================== Main Application ====================
 
 void app_main(void) {
+    // --- Sleep guard: catch spurious wakeups from USB disconnect ---
+    // USB unplug can cause two types of false wake:
+    //   (a) Brownout reset from power rail voltage dip (TP4056 switchover)
+    //   (b) GPIO 0 glitch waking EXT0 as USB-UART bridge loses power
+    esp_reset_reason_t boot_reason = esp_reset_reason();
+
+    if (boot_reason == ESP_RST_BROWNOUT) {
+        // Power dip during USB disconnect — return to sleep immediately
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+        esp_deep_sleep_start();
+    }
+
+    if (boot_reason == ESP_RST_DEEPSLEEP) {
+        // Woke from deep sleep — verify button is ACTUALLY pressed.
+        // USB disconnect glitch on GPIO 0 settles within ~10ms.
+        // A real button press holds LOW for 200ms+.
+        gpio_reset_pin(GPIO_NUM_0);
+        gpio_set_direction(GPIO_NUM_0, GPIO_MODE_INPUT);
+        gpio_set_pull_mode(GPIO_NUM_0, GPIO_PULLUP_ONLY);
+        vTaskDelay(pdMS_TO_TICKS(100));  // Let glitch settle
+        if (gpio_get_level(GPIO_NUM_0) == 1) {
+            // Button NOT pressed — spurious wakeup from USB disconnect
+            esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+            esp_deep_sleep_start();
+        }
+        // Button IS pressed — legitimate wake, continue boot
+    }
+
     ESP_LOGI(TAG, "=== CYGM - Continuous Glucose Monitor ===");
     ESP_LOGI(TAG, "Hardware: JC2432W328 (ESP32-D0WD)");
     ESP_LOGI(TAG, "Core 0: WiFi | Core 1: UI/Touch");
