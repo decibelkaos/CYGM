@@ -96,6 +96,13 @@ extern "C" {
 #define COLOR_RED           0xEF4444  // Red alert
 #define COLOR_BORDER        0xFFFFFF  // White border/outline
 
+// Ambient tint colors (blended onto COLOR_CARD_BG at low opacity)
+#define COLOR_TINT_GREEN    0x22C55E  // In-range zone
+#define COLOR_TINT_YELLOW   0xFACC15  // Warning zone
+#define COLOR_TINT_RED      0xEF4444  // Alarm zone
+#define COLOR_TINT_AMBER    0xF59E0B  // Golden hour warmth
+#define COLOR_TINT_COOL     0x3B82F6  // Night coolness
+
 // ==================== Type Definitions ====================
 
 // Alarm state tracking

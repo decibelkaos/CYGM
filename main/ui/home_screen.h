@@ -45,6 +45,9 @@ void show_disclaimer_overlay(void);
 // Welcome overlay (shown once after first ToS acceptance)
 void show_welcome_overlay(void);
 
+// Update ambient background tint on home screen cards
+void update_ambient_tint(void);
+
 #ifdef __cplusplus
 }
 #endif

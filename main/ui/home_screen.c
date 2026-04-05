@@ -18,6 +18,7 @@
 #include "libre_api.h"
 #include "sd_logger.h"
 #include "lvgl.h"
+#include <stdlib.h>
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -57,6 +58,115 @@ static void anim_width_cb(void *var, int32_t v) {
 }
 static void anim_opa_cb(void *var, int32_t v) {
     lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
+}
+
+// ==================== Ambient Tint Helpers ====================
+
+// Linear interpolation between two colors. t=0 returns c1, t=255 returns c2.
+// Uses lv_color_mix which handles RGB565 format correctly.
+static lv_color_t color_lerp(lv_color_t c1, lv_color_t c2, uint8_t t) {
+    // lv_color_mix(c1, c2, mix) — mix=255 returns c1, mix=0 returns c2
+    return lv_color_mix(c2, c1, t);
+}
+
+// Blend a tint color onto the card background at a given intensity (0-255).
+// intensity=0 returns pure card bg, intensity=255 returns pure tint.
+static lv_color_t blend_tint(uint32_t tint_hex, uint8_t intensity) {
+    return color_lerp(lv_color_hex(COLOR_CARD_BG), lv_color_hex(tint_hex), intensity);
+}
+
+// Compute glucose zone tint color based on current glucose and alarm thresholds.
+// Returns the blended card background color.
+static lv_color_t compute_glucose_zone_tint(int glucose) {
+    int low_alarm_val   = current_alarm_settings.low_alarm.threshold;
+    int low_warn_val    = current_alarm_settings.low_warning.threshold;
+    int high_warn_val   = current_alarm_settings.high_warning.threshold;
+    int high_alarm_val  = current_alarm_settings.high_alarm.threshold;
+
+    // Tint intensity: 0 = no tint (pure card bg), 18 = max subtle tint (~7%)
+    const uint8_t MAX_TINT = 18;
+
+    if (glucose <= low_alarm_val) {
+        // At or below low alarm: full red tint
+        return blend_tint(COLOR_TINT_RED, MAX_TINT);
+    } else if (glucose <= low_warn_val) {
+        // Between low alarm and low warning: red to yellow gradient
+        int range = low_warn_val - low_alarm_val;
+        if (range <= 0) return blend_tint(COLOR_TINT_YELLOW, MAX_TINT);
+        uint8_t t = (uint8_t)((glucose - low_alarm_val) * 255 / range);
+        lv_color_t zone_color = color_lerp(lv_color_hex(COLOR_TINT_RED), lv_color_hex(COLOR_TINT_YELLOW), t);
+        return color_lerp(lv_color_hex(COLOR_CARD_BG), zone_color, MAX_TINT);
+    } else if (glucose < high_warn_val) {
+        // In range: green tint, weakest at midpoint
+        int midpoint = (low_warn_val + high_warn_val) / 2;
+        int half_range = (high_warn_val - low_warn_val) / 2;
+        if (half_range <= 0) return blend_tint(COLOR_TINT_GREEN, MAX_TINT / 2);
+        int dist = abs(glucose - midpoint);
+        // Closer to midpoint = less tint (more calm), closer to edge = more tint
+        uint8_t edge_factor = (uint8_t)(dist * MAX_TINT / half_range);
+        uint8_t intensity = MAX_TINT / 3 + edge_factor * 2 / 3;
+        if (intensity > MAX_TINT) intensity = MAX_TINT;
+        return blend_tint(COLOR_TINT_GREEN, intensity);
+    } else if (glucose < high_alarm_val) {
+        // Between high warning and high alarm: yellow to red gradient
+        int range = high_alarm_val - high_warn_val;
+        if (range <= 0) return blend_tint(COLOR_TINT_YELLOW, MAX_TINT);
+        uint8_t t = (uint8_t)((glucose - high_warn_val) * 255 / range);
+        lv_color_t zone_color = color_lerp(lv_color_hex(COLOR_TINT_YELLOW), lv_color_hex(COLOR_TINT_RED), t);
+        return color_lerp(lv_color_hex(COLOR_CARD_BG), zone_color, MAX_TINT);
+    } else {
+        // At or above high alarm: full red tint
+        return blend_tint(COLOR_TINT_RED, MAX_TINT);
+    }
+}
+
+// Compute time-of-day tint adjustment. Returns a color to blend additively.
+// Uses sunrise_time and sunset_time globals from weather_system.
+static lv_color_t compute_time_of_day_tint(lv_color_t base) {
+    time_t now;
+    time(&now);
+
+    // If sunrise/sunset not available, return base unchanged
+    if (sunrise_time == 0 || sunset_time == 0) return base;
+
+    const int GOLDEN_MINUTES = 30;
+    const uint8_t TOD_TINT = 8;  // ~3% overlay
+
+    double diff_sunrise = difftime(now, sunrise_time) / 60.0;  // minutes from sunrise
+    double diff_sunset  = difftime(now, sunset_time) / 60.0;   // minutes from sunset
+
+    // Golden hour around sunrise (+-30 min)
+    if (diff_sunrise >= -GOLDEN_MINUTES && diff_sunrise <= GOLDEN_MINUTES) {
+        uint8_t intensity = (uint8_t)(TOD_TINT * (GOLDEN_MINUTES - abs((int)diff_sunrise)) / GOLDEN_MINUTES);
+        return color_lerp(base, lv_color_hex(COLOR_TINT_AMBER), intensity);
+    }
+    // Golden hour around sunset (+-30 min)
+    if (diff_sunset >= -GOLDEN_MINUTES && diff_sunset <= GOLDEN_MINUTES) {
+        uint8_t intensity = (uint8_t)(TOD_TINT * (GOLDEN_MINUTES - abs((int)diff_sunset)) / GOLDEN_MINUTES);
+        return color_lerp(base, lv_color_hex(COLOR_TINT_AMBER), intensity);
+    }
+    // Night (after sunset+30 or before sunrise-30)
+    if (diff_sunset > GOLDEN_MINUTES || diff_sunrise < -GOLDEN_MINUTES) {
+        return color_lerp(base, lv_color_hex(COLOR_TINT_COOL), TOD_TINT);
+    }
+
+    // Daytime — no change
+    return base;
+}
+
+// Combined: compute final card tint from glucose + time of day
+static lv_color_t compute_ambient_tint(int glucose) {
+    lv_color_t zone_tint = compute_glucose_zone_tint(glucose);
+    return compute_time_of_day_tint(zone_tint);
+}
+
+// Public: update ambient tint on both cards (call after glucose update)
+void update_ambient_tint(void) {
+    if (!glucose_data_valid || current_glucose <= 0) return;
+    if (left_card == NULL || right_card == NULL) return;
+    lv_color_t tint = compute_ambient_tint(current_glucose);
+    lv_obj_set_style_bg_color(left_card, tint, 0);
+    lv_obj_set_style_bg_color(right_card, tint, 0);
 }
 
 // ==================== No-Data / Sensor Change Overlay ====================
