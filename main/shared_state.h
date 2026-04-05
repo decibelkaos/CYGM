@@ -268,7 +268,8 @@ extern lv_obj_t *label_glucose;
 extern lv_obj_t *trend_canvas;
 extern lv_obj_t *label_time_ago;
 extern lv_obj_t *label_unit;              // "mg/dL" unit label (repositioned in expanded mode)
-extern lv_obj_t *glucose_fetch_timer_bar;  // Progress bar showing time until next glucose fetch
+extern lv_obj_t *glucose_freshness_arc;    // Arc showing glucose reading age (0-5 min)
+extern bool glucose_fetch_active;          // True while a glucose fetch is in progress
 extern lv_timer_t *glucose_timer_update;    // Timer to update the progress bar
 extern int64_t last_glucose_fetch_time;     // Timestamp of last glucose fetch (milliseconds)
 extern bool glucose_fetch_in_progress;      // True when actively fetching glucose

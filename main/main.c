@@ -280,7 +280,8 @@ lv_obj_t *label_glucose = NULL;
 lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
 lv_obj_t *label_time_ago = NULL;
 lv_obj_t *label_unit = NULL;              // "mg/dL" unit label
-lv_obj_t *glucose_fetch_timer_bar = NULL;  // Progress bar showing time until next glucose fetch
+lv_obj_t *glucose_freshness_arc = NULL;    // Arc showing glucose reading age (0-5 min)
+bool glucose_fetch_active = false;         // True while a glucose fetch is in progress
 lv_timer_t *glucose_timer_update = NULL;    // Timer to update the progress bar
 int64_t last_glucose_fetch_time = 0;        // Timestamp of last glucose fetch (milliseconds)
 bool glucose_fetch_in_progress = false;     // True when actively fetching glucose
@@ -2042,6 +2043,7 @@ void glucose_update_task(void *pvParameters) {
 
                 // Mark fetch as in progress
                 glucose_fetch_in_progress = true;
+                glucose_fetch_active = true;
                 cgm_glucose_t glucose = {0};  // Initialize to prevent garbage data
                 esp_err_t ret = ESP_FAIL;
 
@@ -2050,6 +2052,7 @@ void glucose_update_task(void *pvParameters) {
                 if (!wifi_connected) {
                     ESP_LOGW(TAG, "WiFi lost before fetch — aborting");
                     glucose_fetch_in_progress = false;
+                    glucose_fetch_active = false;
                     goto fetch_cleanup;
                 }
 
@@ -2083,6 +2086,7 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGI(TAG, "Duplicate reading (same timestamp) — skipping storage");
                     glucose_fetch_failed = false;
                     glucose_fetch_in_progress = false;
+                    glucose_fetch_active = false;
                     consecutive_task_failures = 0;
                     poll_interval_sec = 90;
                     last_glucose_fetch_time = esp_timer_get_time() / 1000;
@@ -2114,6 +2118,7 @@ void glucose_update_task(void *pvParameters) {
                 // Mark fetch as successful
                 glucose_fetch_failed = false;
                 glucose_fetch_in_progress = false;
+                glucose_fetch_active = false;
 
                 // Reset backoff on success
                 if (consecutive_task_failures > 0) {
@@ -2129,9 +2134,8 @@ void glucose_update_task(void *pvParameters) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
                         }
-                        if (glucose_fetch_timer_bar != NULL) {
-                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
+                        if (glucose_freshness_arc != NULL) {
+                            lv_arc_set_value(glucose_freshness_arc, 100);  // Fresh reading
                         }
                         lvgl_port_unlock();
                     } else {
@@ -2184,6 +2188,7 @@ void glucose_update_task(void *pvParameters) {
                 // Connection works — do NOT trigger SSL close or backoff
                 glucose_fetch_failed = false;
                 glucose_fetch_in_progress = false;
+                glucose_fetch_active = false;
                 poll_interval_sec = 90;  // Keep normal cadence
 
                 // Safety net: if data is >30 minutes old, force invalid display
@@ -2206,10 +2211,7 @@ void glucose_update_task(void *pvParameters) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
                         }
-                        if (glucose_fetch_timer_bar != NULL) {
-                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ORANGE), LV_PART_INDICATOR);
-                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                        }
+                        // Duplicate/stale: arc stays at current value (reading age unchanged)
                         lvgl_port_unlock();
                     }
 
@@ -2263,6 +2265,7 @@ void glucose_update_task(void *pvParameters) {
                 // Mark fetch as failed
                 glucose_fetch_failed = true;
                 glucose_fetch_in_progress = false;
+                glucose_fetch_active = false;
 
                 // UI updates: only when on home screen
                 if (home_screen_active) {
@@ -2272,11 +2275,7 @@ void glucose_update_task(void *pvParameters) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
                         }
-                        if (glucose_fetch_timer_bar != NULL) {
-                            lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
-                            lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-                            lv_obj_set_style_shadow_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                        }
+                        // Error: arc color will be updated by timer callback
                         lvgl_port_unlock();
                     }
 

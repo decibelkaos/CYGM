@@ -794,26 +794,42 @@ void show_welcome_overlay(void) {
 #define CARD_H              220
 #define ANIM_DURATION       350
 
-// Glucose fetch timer update callback (updates progress bar)
+// Glucose freshness arc + heartbeat update callback (1Hz)
 static void glucose_timer_update_cb(lv_timer_t *timer) {
-    if (!home_screen_active || glucose_fetch_timer_bar == NULL) {
+    if (!home_screen_active || glucose_freshness_arc == NULL) {
         return;
     }
 
-    // Calculate elapsed time since last fetch (in milliseconds)
-    int64_t now = esp_timer_get_time() / 1000;  // Convert microseconds to milliseconds
-    int64_t elapsed = now - last_glucose_fetch_time;
+    // Freshness arc: depletes from 100 to 0 over 300 seconds (5 minutes)
+    if (glucose_timestamp > 0) {
+        time_t now;
+        time(&now);
+        int seconds_old = (int)difftime(now, glucose_timestamp);
+        int arc_value = 100 - (seconds_old * 100 / 300);
+        if (arc_value < 0) arc_value = 0;
+        if (arc_value > 100) arc_value = 100;
+        lv_arc_set_value(glucose_freshness_arc, arc_value);
+    }
 
-    // Glucose task runs every 90 seconds (90000 ms)
-    const int64_t FETCH_INTERVAL_MS = 90000;
-
-    // Calculate percentage (0-100%)
-    int percentage = (int)((elapsed * 100) / FETCH_INTERVAL_MS);
-    if (percentage > 100) percentage = 100;
-    if (percentage < 0) percentage = 0;
-
-    // Update bar
-    lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
+    // Fetch-in-progress: shift arc color to accent blue
+    if (glucose_fetch_active) {
+        lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_COVER, LV_PART_INDICATOR);
+    } else if (glucose_data_valid && current_glucose > 0) {
+        // Color matches glucose zone
+        int glu = current_glucose;
+        int low_a = current_alarm_settings.low_alarm.threshold;
+        int low_w = current_alarm_settings.low_warning.threshold;
+        int high_w = current_alarm_settings.high_warning.threshold;
+        int high_a = current_alarm_settings.high_alarm.threshold;
+        uint32_t arc_color;
+        if (glu <= low_a || glu >= high_a) arc_color = COLOR_RED;
+        else if (glu <= low_w || glu >= high_w) arc_color = COLOR_YELLOW;
+        else arc_color = COLOR_GREEN;
+        lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(arc_color), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(arc_color), LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_70, LV_PART_INDICATOR);
+    }
 
     // Ambient tint: recompute once per minute (every 60 ticks of 1Hz timer)
     {
@@ -1396,9 +1412,10 @@ static void expand_cgm_card(void) {
         lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -22);
     }
 
-    // Timer bar: fill most of card width
-    if (glucose_fetch_timer_bar != NULL) {
-        lv_obj_set_width(glucose_fetch_timer_bar, 260);
+    // Freshness arc: scale up for expanded card
+    if (glucose_freshness_arc != NULL) {
+        lv_obj_set_size(glucose_freshness_arc, 200, 200);
+        lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 40);
     }
 
     // Brightness: to the left of gear cog (TOP_RIGHT minus gear width and gap)
@@ -1466,8 +1483,9 @@ static void collapse_cgm_card(void) {
     if (label_time_ago != NULL) {
         lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
     }
-    if (glucose_fetch_timer_bar != NULL) {
-        lv_obj_set_width(glucose_fetch_timer_bar, 100);
+    if (glucose_freshness_arc != NULL) {
+        lv_obj_set_size(glucose_freshness_arc, 100, 100);
+        lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 14);
     }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
@@ -1716,16 +1734,26 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
 
-    // Glucose fetch countdown bar (subtle indicator at bottom of card)
-    glucose_fetch_timer_bar = lv_bar_create(right_card);
-    lv_obj_set_size(glucose_fetch_timer_bar, 100, 3);
-    lv_obj_align(glucose_fetch_timer_bar, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_bar_set_range(glucose_fetch_timer_bar, 0, 100);
-    lv_bar_set_value(glucose_fetch_timer_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(0x2C2C2E), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(glucose_fetch_timer_bar, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(glucose_fetch_timer_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(glucose_fetch_timer_bar, 1, 0);
+    // Freshness arc: shows glucose reading age (full=fresh, empty=5min old)
+    glucose_freshness_arc = lv_arc_create(right_card);
+    lv_obj_set_size(glucose_freshness_arc, 100, 100);
+    lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 14);
+    lv_arc_set_rotation(glucose_freshness_arc, 200);     // Start from bottom-left
+    lv_arc_set_bg_angles(glucose_freshness_arc, 0, 140); // 140 degree sweep
+    lv_arc_set_range(glucose_freshness_arc, 0, 100);
+    lv_arc_set_value(glucose_freshness_arc, 100);
+    lv_obj_remove_style(glucose_freshness_arc, NULL, LV_PART_KNOB);  // No knob
+    lv_obj_clear_flag(glucose_freshness_arc, LV_OBJ_FLAG_CLICKABLE); // Not interactive
+
+    // Arc indicator (the filled part)
+    lv_obj_set_style_arc_width(glucose_freshness_arc, 3, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(COLOR_GREEN), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_70, LV_PART_INDICATOR);
+
+    // Arc background track (the unfilled part)
+    lv_obj_set_style_arc_width(glucose_freshness_arc, 3, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(COLOR_GREEN), LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_10, LV_PART_MAIN);
     
     // --- MENU BUTTON (top right) - transparent, just icon ---
     lv_obj_t *menu_btn = lv_btn_create(screen_home);
