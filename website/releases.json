@@ -1,18 +1,109 @@
 ﻿{
     "versions":  [
                      {
+                         "version":  "0.7.4",
+                         "date":  "2026-04-03",
+                         "stage":  "Beta",
+                         "notes":  "v0.7.4 — Anti-Freeze Update (2026-04-03)\r\n\r\n  Fixed a critical issue where the device could freeze for hours when WiFi signal degraded during an SSL handshake. Clock and\r\n  battery monitoring now stay alive during glucose fetches. Migrated LVGL lock calls to prevent deadlocks. Improved alarm system\r\n  with cross-core safe deferred cleanup. LED behavior overhauled for cleaner, professional feedback. Device reboots silently after\r\n  crashes (no buzzer while sleeping). Validated with 7.5-hour overnight run: 298 fetches, zero failures, zero crashes.",
+                         "files":  {
+                                       "merged":  "firmware/v0.7.4/cygm-merged.bin",
+                                       "app":  "firmware/v0.7.4/cygm.bin",
+                                       "bootloader":  "firmware/v0.7.4/bootloader.bin",
+                                       "partitions":  "firmware/v0.7.4/partition-table.bin",
+                                       "ota_data":  "firmware/v0.7.4/ota_data_initial.bin"
+                                   },
+                         "latest":  true
+                     },
+                     {
+                         "version":  "0.7.2",
+                         "date":  "2026-03-31",
+                         "stage":  "Beta",
+                         "notes":  "v0.7.2 Beta — 2026-03-31\r\n\r\n  Fix: Socket Leak Prevention\r\n  - Added missing esp_http_client_close() calls before esp_http_client_cleanup() in all HTTP paths (Dexcom, Libre, weather, heartbeat, geocoding)\r\n  - Without proper socket close, file descriptors leaked over time, causing \"No more processes\" errors and eventual device freeze after hours of operation\r\n  - Removed unused dexcom_reopen_persistent_client() function\r\n  - Moved heartbeat from weather task to glucose task",
+                         "files":  {
+                                       "merged":  "firmware/v0.7.2/cygm-merged.bin",
+                                       "app":  "firmware/v0.7.2/cygm.bin",
+                                       "bootloader":  "firmware/v0.7.2/bootloader.bin",
+                                       "partitions":  "firmware/v0.7.2/partition-table.bin",
+                                       "ota_data":  "firmware/v0.7.2/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.7.1",
+                         "date":  "2026-03-26",
+                         "stage":  "Beta",
+                         "notes":  "New: Nightscout CGM Support (v0.7.0)\r\n  - Added Nightscout as a third CGM provider alongside Dexcom Share and LibreLinkUp\r\n  - Enter your Nightscout server URL and optional API token to receive glucose readings\r\n  - Supports both HTTP and HTTPS — HTTP connections use zero TLS memory\r\n  - URLs without a protocol prefix automatically default to HTTPS\r\n  - Full UI with login flow, keyboard entry, and password masking for API tokens\r\n\r\n  Fix: Device Stability\r\n  - Eliminated overnight freeze caused by LVGL shadow rendering stack overflow\r\n  - Always close SSL after each glucose fetch — ensures every cycle starts with clean contiguous heap\r\n  - Increased glucose task stack from 4KB to 5KB to prevent NVS save stack overflow\r\n  - Added breathing heartbeat dot between home screen cards — visual indicator the device is alive\r\n  - Fixed provider switch login failures (Dexcom/Libre/Nightscout) on fragmented heap\r\n  - Fixed power off button failing on fragmented heap\r\n  - Fixed OTA auto-install button failing silently on fragmented heap\r\n\r\n  Fix: Nightscout HTTPS\r\n  - Fixed TLS handshake failure with Cloudflare-hosted Nightscout instances (SNI was disabled)\r\n  - Optimized status endpoint validation — no longer parses full JSON response\r\n  - Reduced HTTP response buffer to 2KB (glucose responses are only ~230 bytes)\r\n\r\n  Other\r\n  - SD serial logging now disabled by default — users get clean glucose CSV only\r\n  - New ship serial command for factory reset + power off (for shipping fresh devices)\r\n  - New log on / log off serial commands to toggle debug logging\r\n  - CGM provider dispatch refactored from bool to enum for cleaner three-provider support\r\n  - Serial command listener now starts even without SD card",
+                         "files":  {
+                                       "merged":  "firmware/v0.7.1/cygm-merged.bin",
+                                       "app":  "firmware/v0.7.1/cygm.bin",
+                                       "bootloader":  "firmware/v0.7.1/bootloader.bin",
+                                       "partitions":  "firmware/v0.7.1/partition-table.bin",
+                                       "ota_data":  "firmware/v0.7.1/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.6.9",
+                         "date":  "2026-03-22",
+                         "stage":  "Beta",
+                         "notes":  "-Fixed version number",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.9/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.9/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.9/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.9/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.9/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.6.8",
+                         "date":  "2026-03-22",
+                         "stage":  "Beta",
+                         "notes":  "Fix: SSL reconnect via task deletion, keep-alive between cycles (v0.6.8)\r\n\r\n  - SSL connections now stay alive between glucose cycles, eliminating handshake overhead during normal operation\r\n  - When the server drops the connection, background tasks are temporarily freed to make room for a fresh TLS handshake, then restored automatically\r\n  - Improved boot memory headroom (min_ever: 408 → 9348 bytes)\r\n  - Fixed edge case where WiFi reconnect after initial failure wouldn\u0027t start glucose/weather tasks",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.8/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.8/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.8/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.8/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.8/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.6.7",
+                         "date":  "2026-03-22",
+                         "stage":  "Beta",
+                         "notes":  "Fix: SSL reconnect via task deletion, keep-alive between cycles",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.7/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.7/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.7/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.7/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.7/ota_data_initial.bin"
+                                   }
+                     },
+                     {
+                         "version":  "0.6.5",
+                         "date":  "2026-03-22",
+                         "stage":  "Beta",
+                         "notes":  "-Added device online status",
+                         "files":  {
+                                       "merged":  "firmware/v0.6.5/cygm-merged.bin",
+                                       "app":  "firmware/v0.6.5/cygm.bin",
+                                       "bootloader":  "firmware/v0.6.5/bootloader.bin",
+                                       "partitions":  "firmware/v0.6.5/partition-table.bin",
+                                       "ota_data":  "firmware/v0.6.5/ota_data_initial.bin"
+                                   }
+                     },
+                     {
                          "version":  "0.6.4",
                          "date":  "2026-03-22",
                          "stage":  "Beta",
-                         "notes":  "Fix power off button failing silently on fragmented heap",
+                         "notes":  "Fixed power off issue.",
                          "files":  {
                                        "merged":  "firmware/v0.6.4/cygm-merged.bin",
                                        "app":  "firmware/v0.6.4/cygm.bin",
                                        "bootloader":  "firmware/v0.6.4/bootloader.bin",
                                        "partitions":  "firmware/v0.6.4/partition-table.bin",
                                        "ota_data":  "firmware/v0.6.4/ota_data_initial.bin"
-                                   },
-                         "latest":  true
+                                   }
                      },
                      {
                          "version":  "0.6.3",

@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Stripe secret key — replace with your real key from https://dashboard.stripe.com/apikeys
-$secret_key = 'sk_test_51TDDbWAEiVbSevHuZQ167ndm5e17KetCSkNcBII29oc2OgozVPUUeanHjzewfQAjODrfJHeOioiOe0BTO9ul7nso00LAvHvlYv';
+$secret_key = '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';
 
 $input = json_decode(file_get_contents('php://input'), true);
 $product_id = $input['product_id'] ?? '';
@@ -25,8 +25,8 @@ $quantity = intval($input['quantity'] ?? 1);
 
 // Map product IDs to Stripe Price IDs (create these in your Stripe Dashboard)
 $prices = [
-    'complete_device' => 'price_1TDFiEAEiVbSevHueJaCL6dI',
-    'diy_kit'         => 'price_1TDFiyAEiVbSevHuRHotEnOV',
+    'complete_device' => 'price_1TDEtdAEiVbSevHukrtZ3Fsh',
+    'diy_kit'         => 'price_1TDF4KAEiVbSevHutT3nmD9H',
     'donate'          => 'price_1TDG6QAEiVbSevHuQWBhXjpm',
 ];
 
@@ -69,6 +69,7 @@ if ($product_id === 'donate') {
 // Only collect shipping for physical products
 if (!in_array($product_id, $no_shipping)) {
     $params['shipping_address_collection[allowed_countries][0]'] = 'US';
+    $params['shipping_options[0][shipping_rate]'] = 'shr_1TEJHlAEiVbSevHu2arBsniB';
 }
 
 // Pass case color as metadata on both session and payment intent

@@ -189,7 +189,7 @@ void initialize_sntp(void) {
 }
 
 void update_time_display(void) {
-    if (label_clock == NULL || label_date == NULL) {
+    if (label_clock_h == NULL || label_date == NULL) {
         ESP_LOGW(TAG, "Clock labels not initialized yet");
         return;  // Not initialized yet
     }
@@ -202,20 +202,24 @@ void update_time_display(void) {
 
     char strftime_buf[64];
 
-    // Update clock
+    // Update clock (split into hour + minute labels; colon blinks via heartbeat timer)
+    char hbuf[4], mbuf[4];
     if (user_24hr_format) {
-        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M", &timeinfo);
+        snprintf(hbuf, sizeof(hbuf), "%02d", timeinfo.tm_hour);
     } else {
-        strftime(strftime_buf, sizeof(strftime_buf), "%I:%M", &timeinfo);  // Time only (no AM/PM)
+        int h12 = timeinfo.tm_hour % 12;
+        if (h12 == 0) h12 = 12;
+        snprintf(hbuf, sizeof(hbuf), "%02d", h12);
     }
+    snprintf(mbuf, sizeof(mbuf), "%02d", timeinfo.tm_min);
 
     if (lvgl_port_lock(1)) {
-        lv_label_set_text(label_clock, strftime_buf);
+        lv_label_set_text(label_clock_h, hbuf);
+        lv_label_set_text(label_clock_m, mbuf);
 
-        // Update expanded CGM view time label
-        if (expanded_time_label != NULL) {
-            lv_label_set_text(expanded_time_label, strftime_buf);
-        }
+        // Update expanded CGM view time labels
+        if (expanded_time_h != NULL) lv_label_set_text(expanded_time_h, hbuf);
+        if (expanded_time_m != NULL) lv_label_set_text(expanded_time_m, mbuf);
 
         // Update AM/PM label (12hr mode only)
         if (!user_24hr_format && label_ampm != NULL) {

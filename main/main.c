@@ -22,6 +22,7 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
+#include "esp_private/brownout.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_sntp.h"
@@ -270,7 +271,9 @@ lv_obj_t *dexcom_password_entry_ta = NULL;
 lv_obj_t *dexcom_password_entry_keyboard = NULL;
 
 // Home screen widgets
-lv_obj_t *label_clock = NULL;
+lv_obj_t *label_clock_h = NULL;
+lv_obj_t *label_clock_colon = NULL;
+lv_obj_t *label_clock_m = NULL;
 lv_obj_t *label_date = NULL;
 lv_obj_t *label_ampm = NULL;  // AM/PM indicator (12hr mode only)
 lv_obj_t *label_glucose = NULL;
@@ -341,7 +344,9 @@ uint8_t weather_icon_anim_frame = 0;
 bool cgm_expanded = false;
 lv_obj_t *left_card = NULL;
 lv_obj_t *right_card = NULL;
-lv_obj_t *expanded_time_label = NULL;
+lv_obj_t *expanded_time_h = NULL;
+lv_obj_t *expanded_time_colon = NULL;
+lv_obj_t *expanded_time_m = NULL;
 lv_obj_t *expanded_temp_label = NULL;
 
 // ===== HELPER FUNCTIONS =====
@@ -2975,6 +2980,12 @@ void app_main(void) {
         }
         // Button IS pressed — legitimate wake, continue boot
     }
+
+    // Brownout detector served its purpose (guarding SHIP MODE above).
+    // Disable for normal operation — TP4056 causes a brief voltage dip
+    // on USB disconnect that triggers false brownout resets.
+    // Battery monitor shuts down at 3.2V, well above the 2.43V threshold.
+    esp_brownout_disable();
 
     ESP_LOGI(TAG, "=== CYGM - Continuous Glucose Monitor ===");
     ESP_LOGI(TAG, "Hardware: JC2432W328 (ESP32-D0WD)");

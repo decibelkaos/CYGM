@@ -252,7 +252,9 @@ extern bool sensor_change_mode;        // User confirmed CGM sensor change in pr
 
 // ==================== Home Screen Widgets ====================
 
-extern lv_obj_t *label_clock;
+extern lv_obj_t *label_clock_h;
+extern lv_obj_t *label_clock_colon;
+extern lv_obj_t *label_clock_m;
 extern lv_obj_t *label_date;
 extern lv_obj_t *label_ampm;
 extern lv_obj_t *label_glucose;
@@ -327,7 +329,9 @@ extern uint8_t weather_icon_anim_frame;
 extern bool cgm_expanded;               // True when CGM card is expanded
 extern lv_obj_t *left_card;             // Left card (time/weather)
 extern lv_obj_t *right_card;            // Right card (CGM data)
-extern lv_obj_t *expanded_time_label;   // Time label shown in expanded CGM top bar
+extern lv_obj_t *expanded_time_h;       // Hour label in expanded CGM top bar
+extern lv_obj_t *expanded_time_colon;   // Colon label in expanded CGM top bar (blinks)
+extern lv_obj_t *expanded_time_m;       // Minute label in expanded CGM top bar
 extern lv_obj_t *expanded_temp_label;   // Temp label shown in expanded CGM top bar
 
 // ==================== SD Card Logging ====================

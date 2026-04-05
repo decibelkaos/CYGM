@@ -483,7 +483,7 @@ esp_err_t screenshot_init(void)
     BaseType_t ret = xTaskCreatePinnedToCore(
         screenshot_cmd_task,
         "ss_cmd",
-        1536,   // UART listener only — minimal stack needed
+        4096,   // screenshot_take() runs inline: SD mount, fopen, LVGL render need deep stack
         NULL,
         2,    // Low priority — just listening for commands
         NULL,

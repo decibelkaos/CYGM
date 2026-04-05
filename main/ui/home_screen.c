@@ -705,6 +705,25 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     // Update bar
     lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
 
+    // Heartbeat: toggle colon visibility every second (cheapest LVGL op — single flag bit)
+    if (label_clock_colon != NULL) {
+        static bool colon_visible = true;
+        colon_visible = !colon_visible;
+        if (colon_visible) {
+            lv_obj_clear_flag(label_clock_colon, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(label_clock_colon, LV_OBJ_FLAG_HIDDEN);
+        }
+        // Expanded view: same colon toggle (only when CGM card is expanded)
+        if (expanded_time_colon != NULL && cgm_expanded) {
+            if (colon_visible) {
+                lv_obj_clear_flag(expanded_time_colon, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(expanded_time_colon, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+    }
+
     // =====================================================================
     // SAFETY WATCHDOG: Independent staleness check on the UI task
     // This runs every second regardless of whether the glucose task is alive.
@@ -1142,9 +1161,12 @@ static void expand_cgm_card(void) {
 
     ESP_LOGI(TAG, "Expanding CGM card");
 
-    // Sync expanded labels with current values
-    if (expanded_time_label != NULL && label_clock != NULL) {
-        lv_label_set_text(expanded_time_label, lv_label_get_text(label_clock));
+    // Sync expanded time labels with current values
+    if (expanded_time_h != NULL && label_clock_h != NULL) {
+        lv_label_set_text(expanded_time_h, lv_label_get_text(label_clock_h));
+    }
+    if (expanded_time_m != NULL && label_clock_m != NULL) {
+        lv_label_set_text(expanded_time_m, lv_label_get_text(label_clock_m));
     }
     if (expanded_temp_label != NULL && home_temp_label != NULL) {
         lv_label_set_text(expanded_temp_label, lv_label_get_text(home_temp_label));
@@ -1182,11 +1204,15 @@ static void expand_cgm_card(void) {
     lv_anim_set_exec_cb(&a, anim_opa_cb);
     lv_anim_set_values(&a, 0, 255);
 
-    if (expanded_time_label != NULL) {
-        lv_obj_clear_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_opa(expanded_time_label, 0, 0);
-        lv_anim_set_var(&a, expanded_time_label);
-        lv_anim_start(&a);
+    // Fade in expanded time labels (hour, colon, minute)
+    lv_obj_t *exp_time_labels[] = {expanded_time_h, expanded_time_colon, expanded_time_m};
+    for (int i = 0; i < 3; i++) {
+        if (exp_time_labels[i] != NULL) {
+            lv_obj_clear_flag(exp_time_labels[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_opa(exp_time_labels[i], 0, 0);
+            lv_anim_set_var(&a, exp_time_labels[i]);
+            lv_anim_start(&a);
+        }
     }
     if (expanded_temp_label != NULL) {
         lv_obj_clear_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
@@ -1285,9 +1311,9 @@ static void collapse_cgm_card(void) {
     lv_anim_start(&a);
 
     // Hide expanded top bar elements
-    if (expanded_time_label != NULL) {
-        lv_obj_add_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
-    }
+    if (expanded_time_h != NULL) lv_obj_add_flag(expanded_time_h, LV_OBJ_FLAG_HIDDEN);
+    if (expanded_time_colon != NULL) lv_obj_add_flag(expanded_time_colon, LV_OBJ_FLAG_HIDDEN);
+    if (expanded_time_m != NULL) lv_obj_add_flag(expanded_time_m, LV_OBJ_FLAG_HIDDEN);
     if (expanded_temp_label != NULL) {
         lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
     }
@@ -1342,13 +1368,40 @@ void create_home_screen(void) {
     lv_obj_add_event_cb(label_wifi_status, wifi_icon_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Time (large, white, centered at top, clickable to toggle format)
-    label_clock = lv_label_create(left_card);
-    lv_label_set_text(label_clock, "00:00");
-    lv_obj_set_style_text_font(label_clock, &lv_font_montserrat_48, 0);
-    lv_obj_set_style_text_color(label_clock, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(label_clock, LV_ALIGN_TOP_MID, 0, 16);
-    lv_obj_add_flag(label_clock, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(label_clock, clock_label_event_cb, LV_EVENT_CLICKED, NULL);
+    // Split into 3 labels (hour, colon, minute) so colon can blink without jitter.
+    // Montserrat has PROPORTIONAL digits ("1"=284 vs "0"=512 advance width units).
+    // Fixed-width labels + RIGHT/LEFT text align keep digits flush against colon.
+    // All use lv_obj_align (parent-relative, persistent) — NOT lv_obj_align_to (one-shot).
+    label_clock_colon = lv_label_create(left_card);
+    lv_label_set_text(label_clock_colon, ":");
+    lv_obj_set_style_text_font(label_clock_colon, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(label_clock_colon, lv_color_hex(COLOR_TEXT_WHITE), 0);
+
+    label_clock_h = lv_label_create(left_card);
+    lv_label_set_text(label_clock_h, "00");
+    lv_obj_set_style_text_font(label_clock_h, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(label_clock_h, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_add_flag(label_clock_h, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(label_clock_h, clock_label_event_cb, LV_EVENT_CLICKED, NULL);
+
+    label_clock_m = lv_label_create(left_card);
+    lv_label_set_text(label_clock_m, "00");
+    lv_obj_set_style_text_font(label_clock_m, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(label_clock_m, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_add_flag(label_clock_m, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(label_clock_m, clock_label_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // Compute widths from rendered "00" (widest pair) then fix positions
+    lv_obj_update_layout(left_card);
+    lv_coord_t cw = lv_obj_get_width(label_clock_colon);
+    lv_coord_t hw = lv_obj_get_width(label_clock_h);
+    lv_obj_set_width(label_clock_h, hw);
+    lv_obj_set_style_text_align(label_clock_h, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(label_clock_m, hw);
+    lv_obj_set_style_text_align(label_clock_m, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(label_clock_colon, LV_ALIGN_TOP_MID, 0, 16);
+    lv_obj_align(label_clock_h, LV_ALIGN_TOP_MID, -(cw / 2 + hw / 2), 16);
+    lv_obj_align(label_clock_m, LV_ALIGN_TOP_MID, (cw / 2 + hw / 2), 16);
 
     // AM/PM label (small, in top right corner like WiFi icon, 12hr mode only)
     label_ampm = lv_label_create(left_card);
@@ -1587,12 +1640,39 @@ void create_home_screen(void) {
     // --- EXPANDED VIEW TOP BAR (hidden, shown when CGM card is expanded) ---
     // Layout: [battery]    [time  temp ☀]    [💡] [⚙]
     // Time and temp shifted left of center; mini weather icon right of temp
-    expanded_time_label = lv_label_create(right_card);
-    lv_label_set_text(expanded_time_label, "00:00");
-    lv_obj_set_style_text_font(expanded_time_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(expanded_time_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(expanded_time_label, LV_ALIGN_TOP_MID, -30, 2);
-    lv_obj_add_flag(expanded_time_label, LV_OBJ_FLAG_HIDDEN);
+    // Expanded time: split into 3 labels for jitter-free blink.
+    // All use lv_obj_align (parent-relative, persistent) so they follow card resize during expand.
+    // lv_obj_align_to is one-shot and breaks when the card animates from 150→308px.
+    expanded_time_colon = lv_label_create(right_card);
+    lv_label_set_text(expanded_time_colon, ":");
+    lv_obj_set_style_text_font(expanded_time_colon, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(expanded_time_colon, lv_color_hex(COLOR_TEXT_WHITE), 0);
+
+    expanded_time_h = lv_label_create(right_card);
+    lv_label_set_text(expanded_time_h, "00");
+    lv_obj_set_style_text_font(expanded_time_h, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(expanded_time_h, lv_color_hex(COLOR_TEXT_WHITE), 0);
+
+    expanded_time_m = lv_label_create(right_card);
+    lv_label_set_text(expanded_time_m, "00");
+    lv_obj_set_style_text_font(expanded_time_m, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(expanded_time_m, lv_color_hex(COLOR_TEXT_WHITE), 0);
+
+    // Measure widths BEFORE hiding (hidden objects return width 0 in LVGL v8)
+    lv_obj_update_layout(right_card);
+    lv_coord_t ecw = lv_obj_get_width(expanded_time_colon);
+    lv_coord_t ehw = lv_obj_get_width(expanded_time_h);
+    lv_obj_set_width(expanded_time_h, ehw);
+    lv_obj_set_style_text_align(expanded_time_h, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(expanded_time_m, ehw);
+    lv_obj_set_style_text_align(expanded_time_m, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(expanded_time_colon, LV_ALIGN_TOP_MID, -30, 2);
+    lv_obj_align(expanded_time_h, LV_ALIGN_TOP_MID, -30 - ecw / 2 - ehw / 2, 2);
+    lv_obj_align(expanded_time_m, LV_ALIGN_TOP_MID, -30 + ecw / 2 + ehw / 2, 2);
+    // Now hide — expand_cgm_card() will unhide + fade in
+    lv_obj_add_flag(expanded_time_colon, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(expanded_time_h, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(expanded_time_m, LV_OBJ_FLAG_HIDDEN);
 
     expanded_temp_label = lv_label_create(right_card);
     lv_label_set_text(expanded_temp_label, "-- F");
@@ -1613,6 +1693,6 @@ void create_home_screen(void) {
     lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);
     lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
-    // Heartbeat dot removed — lv_anim_start causes intermittent device freeze.
-    // The progress bar's 1s timer is the only proven-safe 1Hz LVGL operation.
+    // Heartbeat: colon blink driven by glucose_timer_update_cb (1Hz).
+    // Toggles LV_OBJ_FLAG_HIDDEN on label_clock_colon — cheapest LVGL op (single bit).
 }

@@ -2,7 +2,7 @@
 header('Content-Type: application/json');
 
 // Stripe secret key — must match create-checkout-session.php
-$secret_key = 'sk_test_51TDDbWAEiVbSevHuZQ167ndm5e17KetCSkNcBII29oc2OgozVPUUeanHjzewfQAjODrfJHeOioiOe0BTO9ul7nso00LAvHvlYv';
+$secret_key = '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';
 
 $session_id = $_GET['session_id'] ?? '';
 
