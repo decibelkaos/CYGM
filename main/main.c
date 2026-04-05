@@ -1660,6 +1660,8 @@ void update_glucose_display(void) {
                     draw_trend_arrow(trend_canvas, current_trend);
                 }
 
+                update_ambient_tint();
+
                 char time_ago_str[32];
                 if (minutes_ago < 1) {
                     snprintf(time_ago_str, sizeof(time_ago_str), "Just now");

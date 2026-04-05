@@ -815,6 +815,24 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     // Update bar
     lv_bar_set_value(glucose_fetch_timer_bar, percentage, LV_ANIM_OFF);
 
+    // Ambient tint: recompute once per minute (every 60 ticks of 1Hz timer)
+    {
+        static uint8_t tint_counter = 0;
+        tint_counter++;
+        if (tint_counter >= 60) {
+            tint_counter = 0;
+            if (glucose_data_valid && current_glucose > 0) {
+                lv_color_t tint = compute_ambient_tint(current_glucose);
+                if (left_card != NULL) {
+                    lv_obj_set_style_bg_color(left_card, tint, 0);
+                }
+                if (right_card != NULL) {
+                    lv_obj_set_style_bg_color(right_card, tint, 0);
+                }
+            }
+        }
+    }
+
     // Heartbeat: toggle colon visibility every second (cheapest LVGL op — single flag bit)
     if (label_clock_colon != NULL) {
         static bool colon_visible = true;
