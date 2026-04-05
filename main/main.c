@@ -281,6 +281,7 @@ lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
 lv_obj_t *label_time_ago = NULL;
 lv_obj_t *label_unit = NULL;              // "mg/dL" unit label
 lv_obj_t *glucose_freshness_arc = NULL;    // Arc showing glucose reading age (0-5 min)
+lv_obj_t *sparkline_canvas = NULL;         // Mini sparkline on right card
 bool glucose_fetch_active = false;         // True while a glucose fetch is in progress
 lv_timer_t *glucose_timer_update = NULL;    // Timer to update the progress bar
 int64_t last_glucose_fetch_time = 0;        // Timestamp of last glucose fetch (milliseconds)
@@ -2137,6 +2138,7 @@ void glucose_update_task(void *pvParameters) {
                         if (glucose_freshness_arc != NULL) {
                             lv_arc_set_value(glucose_freshness_arc, 100);  // Fresh reading
                         }
+                        redraw_sparkline();  // Update mini sparkline with new reading
                         lvgl_port_unlock();
                     } else {
                         ESP_LOGW(TAG, "LVGL lock timeout in glucose success UI");

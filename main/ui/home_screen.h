@@ -48,6 +48,9 @@ void show_welcome_overlay(void);
 // Update ambient background tint on home screen cards
 void update_ambient_tint(void);
 
+// Redraw the mini sparkline on the home screen (call after new glucose data)
+void redraw_sparkline(void);
+
 #ifdef __cplusplus
 }
 #endif

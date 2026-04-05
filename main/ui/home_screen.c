@@ -169,6 +169,105 @@ void update_ambient_tint(void) {
     lv_obj_set_style_bg_color(right_card, tint, 0);
 }
 
+// ==================== Mini Sparkline ====================
+
+#define SPARKLINE_W 120
+#define SPARKLINE_H 25
+
+static lv_color_t sparkline_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(SPARKLINE_W, SPARKLINE_H)];
+
+// Draw the sparkline — called on new glucose readings and screen create
+void redraw_sparkline(void) {
+    if (sparkline_canvas == NULL) return;
+
+    // Clear canvas to card background (transparent doesn't work well with canvas)
+    lv_canvas_fill_bg(sparkline_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_COVER);
+
+    // Get last 2 hours of data
+    glucose_history_point_t points[24];
+    int count = glucose_history_get_range(120, points, 24);
+    if (count < 2) return;  // Need at least 2 points to draw a line
+
+    // Determine Y-axis range from alarm thresholds (with padding)
+    int y_min = current_alarm_settings.low_alarm.threshold - 20;
+    int y_max = current_alarm_settings.high_alarm.threshold + 20;
+    if (y_min < 40) y_min = 40;
+    if (y_max > 400) y_max = 400;
+    int y_range = y_max - y_min;
+    if (y_range <= 0) y_range = 1;
+
+    // Alarm threshold lines as Y pixel positions
+    int low_warn_y  = SPARKLINE_H - 1 - ((current_alarm_settings.low_warning.threshold - y_min) * (SPARKLINE_H - 1) / y_range);
+    int high_warn_y = SPARKLINE_H - 1 - ((current_alarm_settings.high_warning.threshold - y_min) * (SPARKLINE_H - 1) / y_range);
+
+    // Draw faint dashed threshold lines
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = lv_color_hex(COLOR_TEXT_DIM);
+    line_dsc.opa = LV_OPA_30;
+    line_dsc.width = 1;
+
+    // Low warning threshold dashes
+    if (low_warn_y >= 0 && low_warn_y < SPARKLINE_H) {
+        for (int dx = 0; dx < SPARKLINE_W; dx += 6) {
+            int end_x = dx + 3;
+            if (end_x >= SPARKLINE_W) end_x = SPARKLINE_W - 1;
+            lv_point_t dash_pts[2] = {{dx, low_warn_y}, {end_x, low_warn_y}};
+            lv_canvas_draw_line(sparkline_canvas, dash_pts, 2, &line_dsc);
+        }
+    }
+    // High warning threshold dashes
+    if (high_warn_y >= 0 && high_warn_y < SPARKLINE_H) {
+        for (int dx = 0; dx < SPARKLINE_W; dx += 6) {
+            int end_x = dx + 3;
+            if (end_x >= SPARKLINE_W) end_x = SPARKLINE_W - 1;
+            lv_point_t dash_pts[2] = {{dx, high_warn_y}, {end_x, high_warn_y}};
+            lv_canvas_draw_line(sparkline_canvas, dash_pts, 2, &line_dsc);
+        }
+    }
+
+    // Draw glucose line segments
+    lv_draw_line_dsc_t glu_line_dsc;
+    lv_draw_line_dsc_init(&glu_line_dsc);
+    glu_line_dsc.width = 2;
+
+    for (int i = 0; i < count - 1; i++) {
+        if (!points[i].valid || !points[i + 1].valid) continue;
+
+        int x1 = i * (SPARKLINE_W - 1) / (count - 1);
+        int x2 = (i + 1) * (SPARKLINE_W - 1) / (count - 1);
+
+        int g1 = points[i].glucose;
+        int g2 = points[i + 1].glucose;
+
+        // Clamp to range
+        if (g1 < y_min) g1 = y_min; if (g1 > y_max) g1 = y_max;
+        if (g2 < y_min) g2 = y_min; if (g2 > y_max) g2 = y_max;
+
+        int y1 = SPARKLINE_H - 1 - ((g1 - y_min) * (SPARKLINE_H - 1) / y_range);
+        int y2 = SPARKLINE_H - 1 - ((g2 - y_min) * (SPARKLINE_H - 1) / y_range);
+
+        // Color segment by midpoint glucose
+        int mid_glu = (points[i].glucose + points[i + 1].glucose) / 2;
+        int low_a  = current_alarm_settings.low_alarm.threshold;
+        int low_w  = current_alarm_settings.low_warning.threshold;
+        int high_w = current_alarm_settings.high_warning.threshold;
+        int high_a = current_alarm_settings.high_alarm.threshold;
+
+        if (mid_glu <= low_a || mid_glu >= high_a) {
+            glu_line_dsc.color = lv_color_hex(COLOR_RED);
+        } else if (mid_glu <= low_w || mid_glu >= high_w) {
+            glu_line_dsc.color = lv_color_hex(COLOR_YELLOW);
+        } else {
+            glu_line_dsc.color = lv_color_hex(COLOR_GREEN);
+        }
+        glu_line_dsc.opa = LV_OPA_80;
+
+        lv_point_t seg[2] = {{x1, y1}, {x2, y2}};
+        lv_canvas_draw_line(sparkline_canvas, seg, 2, &glu_line_dsc);
+    }
+}
+
 // ==================== No-Data / Sensor Change Overlay ====================
 
 static lv_obj_t *nodata_overlay = NULL;
@@ -1418,6 +1517,10 @@ static void expand_cgm_card(void) {
         lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 40);
     }
 
+    if (sparkline_canvas != NULL) {
+        lv_obj_add_flag(sparkline_canvas, LV_OBJ_FLAG_HIDDEN);  // Hide in expanded mode
+    }
+
     // Brightness: to the left of gear cog (TOP_RIGHT minus gear width and gap)
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_RIGHT, -34, 0);
@@ -1486,6 +1589,10 @@ static void collapse_cgm_card(void) {
     if (glucose_freshness_arc != NULL) {
         lv_obj_set_size(glucose_freshness_arc, 100, 100);
         lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 14);
+    }
+    if (sparkline_canvas != NULL) {
+        lv_obj_clear_flag(sparkline_canvas, LV_OBJ_FLAG_HIDDEN);  // Show in collapsed mode
+        lv_obj_align(sparkline_canvas, LV_ALIGN_BOTTOM_MID, 0, -30);
     }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
@@ -1733,6 +1840,13 @@ void create_home_screen(void) {
     lv_obj_set_style_text_font(label_time_ago, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
+
+    // Mini sparkline: last 2 hours of glucose readings
+    sparkline_canvas = lv_canvas_create(right_card);
+    lv_canvas_set_buffer(sparkline_canvas, sparkline_buf, SPARKLINE_W, SPARKLINE_H, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(sparkline_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_COVER);
+    lv_obj_align(sparkline_canvas, LV_ALIGN_BOTTOM_MID, 0, -30);
+    redraw_sparkline();  // Initial draw from loaded history
 
     // Freshness arc: shows glucose reading age (full=fresh, empty=5min old)
     glucose_freshness_arc = lv_arc_create(right_card);
