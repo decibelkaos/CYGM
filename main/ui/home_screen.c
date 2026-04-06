@@ -18,7 +18,6 @@
 #include "libre_api.h"
 #include "sd_logger.h"
 #include "lvgl.h"
-#include <stdlib.h>
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -60,211 +59,51 @@ static void anim_opa_cb(void *var, int32_t v) {
     lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
 }
 
-// ==================== Ambient Tint Helpers ====================
+// ==================== Zone Border ====================
 
-// Linear interpolation between two colors. t=0 returns c1, t=255 returns c2.
-// Uses lv_color_mix which handles RGB565 format correctly.
-static lv_color_t color_lerp(lv_color_t c1, lv_color_t c2, uint8_t t) {
-    // lv_color_mix(c1, c2, mix) — mix=255 returns c1, mix=0 returns c2
-    return lv_color_mix(c2, c1, t);
-}
+// Compute zone border color with gradient transitions between thresholds.
+// Returns an lv_color_t that smoothly transitions: red ↔ yellow ↔ green ↔ yellow ↔ red
+static lv_color_t compute_zone_border_color(int glucose) {
+    int low_a  = current_alarm_settings.low_alarm.threshold;
+    int low_w  = current_alarm_settings.low_warning.threshold;
+    int high_w = current_alarm_settings.high_warning.threshold;
+    int high_a = current_alarm_settings.high_alarm.threshold;
 
-// Blend a tint color onto the card background at a given intensity (0-255).
-// intensity=0 returns pure card bg, intensity=255 returns pure tint.
-static lv_color_t blend_tint(uint32_t tint_hex, uint8_t intensity) {
-    return color_lerp(lv_color_hex(COLOR_CARD_BG), lv_color_hex(tint_hex), intensity);
-}
-
-// Compute glucose zone tint color based on current glucose and alarm thresholds.
-// Returns the blended card background color.
-static lv_color_t compute_glucose_zone_tint(int glucose) {
-    int low_alarm_val   = current_alarm_settings.low_alarm.threshold;
-    int low_warn_val    = current_alarm_settings.low_warning.threshold;
-    int high_warn_val   = current_alarm_settings.high_warning.threshold;
-    int high_alarm_val  = current_alarm_settings.high_alarm.threshold;
-
-    // Tint intensity: 0 = no tint (pure card bg), 18 = max subtle tint (~7%)
-    const uint8_t MAX_TINT = 18;
-
-    if (glucose <= low_alarm_val) {
-        // At or below low alarm: full red tint
-        return blend_tint(COLOR_TINT_RED, MAX_TINT);
-    } else if (glucose <= low_warn_val) {
-        // Between low alarm and low warning: red to yellow gradient
-        int range = low_warn_val - low_alarm_val;
-        if (range <= 0) return blend_tint(COLOR_TINT_YELLOW, MAX_TINT);
-        uint8_t t = (uint8_t)((glucose - low_alarm_val) * 255 / range);
-        lv_color_t zone_color = color_lerp(lv_color_hex(COLOR_TINT_RED), lv_color_hex(COLOR_TINT_YELLOW), t);
-        return color_lerp(lv_color_hex(COLOR_CARD_BG), zone_color, MAX_TINT);
-    } else if (glucose < high_warn_val) {
-        // In range: green tint, weakest at midpoint
-        int midpoint = (low_warn_val + high_warn_val) / 2;
-        int half_range = (high_warn_val - low_warn_val) / 2;
-        if (half_range <= 0) return blend_tint(COLOR_TINT_GREEN, MAX_TINT / 2);
-        int dist = abs(glucose - midpoint);
-        // Closer to midpoint = less tint (more calm), closer to edge = more tint
-        uint8_t edge_factor = (uint8_t)(dist * MAX_TINT / half_range);
-        uint8_t intensity = MAX_TINT / 3 + edge_factor * 2 / 3;
-        if (intensity > MAX_TINT) intensity = MAX_TINT;
-        return blend_tint(COLOR_TINT_GREEN, intensity);
-    } else if (glucose < high_alarm_val) {
-        // Between high warning and high alarm: yellow to red gradient
-        int range = high_alarm_val - high_warn_val;
-        if (range <= 0) return blend_tint(COLOR_TINT_YELLOW, MAX_TINT);
-        uint8_t t = (uint8_t)((glucose - high_warn_val) * 255 / range);
-        lv_color_t zone_color = color_lerp(lv_color_hex(COLOR_TINT_YELLOW), lv_color_hex(COLOR_TINT_RED), t);
-        return color_lerp(lv_color_hex(COLOR_CARD_BG), zone_color, MAX_TINT);
+    if (glucose <= low_a) {
+        return lv_color_hex(COLOR_RED);
+    } else if (glucose <= low_w) {
+        // Gradient: red → yellow as glucose rises from low_alarm to low_warning
+        int range = low_w - low_a;
+        if (range <= 0) return lv_color_hex(COLOR_YELLOW);
+        uint8_t mix = (uint8_t)((glucose - low_a) * 255 / range);
+        return lv_color_mix(lv_color_hex(COLOR_YELLOW), lv_color_hex(COLOR_RED), mix);
+    } else if (glucose < high_w) {
+        return lv_color_hex(COLOR_GREEN);
+    } else if (glucose < high_a) {
+        // Gradient: green → yellow → red as glucose rises from high_warning to high_alarm
+        int range = high_a - high_w;
+        if (range <= 0) return lv_color_hex(COLOR_RED);
+        uint8_t mix = (uint8_t)((glucose - high_w) * 255 / range);
+        // First half: green → yellow. Second half: yellow → red.
+        if (mix < 128) {
+            return lv_color_mix(lv_color_hex(COLOR_YELLOW), lv_color_hex(COLOR_GREEN), mix * 2);
+        } else {
+            return lv_color_mix(lv_color_hex(COLOR_RED), lv_color_hex(COLOR_YELLOW), (mix - 128) * 2);
+        }
     } else {
-        // At or above high alarm: full red tint
-        return blend_tint(COLOR_TINT_RED, MAX_TINT);
+        return lv_color_hex(COLOR_RED);
     }
 }
 
-// Compute time-of-day tint adjustment. Returns a color to blend additively.
-// Uses sunrise_time and sunset_time globals from weather_system.
-static lv_color_t compute_time_of_day_tint(lv_color_t base) {
-    time_t now;
-    time(&now);
-
-    // If sunrise/sunset not available, return base unchanged
-    if (sunrise_time == 0 || sunset_time == 0) return base;
-
-    const int GOLDEN_MINUTES = 30;
-    const uint8_t TOD_TINT = 8;  // ~3% overlay
-
-    double diff_sunrise = difftime(now, sunrise_time) / 60.0;  // minutes from sunrise
-    double diff_sunset  = difftime(now, sunset_time) / 60.0;   // minutes from sunset
-
-    // Golden hour around sunrise (+-30 min)
-    if (diff_sunrise >= -GOLDEN_MINUTES && diff_sunrise <= GOLDEN_MINUTES) {
-        uint8_t intensity = (uint8_t)(TOD_TINT * (GOLDEN_MINUTES - abs((int)diff_sunrise)) / GOLDEN_MINUTES);
-        return color_lerp(base, lv_color_hex(COLOR_TINT_AMBER), intensity);
-    }
-    // Golden hour around sunset (+-30 min)
-    if (diff_sunset >= -GOLDEN_MINUTES && diff_sunset <= GOLDEN_MINUTES) {
-        uint8_t intensity = (uint8_t)(TOD_TINT * (GOLDEN_MINUTES - abs((int)diff_sunset)) / GOLDEN_MINUTES);
-        return color_lerp(base, lv_color_hex(COLOR_TINT_AMBER), intensity);
-    }
-    // Night (after sunset+30 or before sunrise-30)
-    if (diff_sunset > GOLDEN_MINUTES || diff_sunrise < -GOLDEN_MINUTES) {
-        return color_lerp(base, lv_color_hex(COLOR_TINT_COOL), TOD_TINT);
-    }
-
-    // Daytime — no change
-    return base;
-}
-
-// Combined: compute final card tint from glucose + time of day
-static lv_color_t compute_ambient_tint(int glucose) {
-    lv_color_t zone_tint = compute_glucose_zone_tint(glucose);
-    return compute_time_of_day_tint(zone_tint);
-}
-
-// Public: update ambient tint on both cards (call after glucose update)
+// Public: update zone border color on both cards
 void update_ambient_tint(void) {
     if (!glucose_data_valid || current_glucose <= 0) return;
-    if (left_card == NULL || right_card == NULL) return;
-    lv_color_t tint = compute_ambient_tint(current_glucose);
-    lv_obj_set_style_bg_color(left_card, tint, 0);
-    lv_obj_set_style_bg_color(right_card, tint, 0);
-}
-
-// ==================== Mini Sparkline ====================
-
-#define SPARKLINE_W 120
-#define SPARKLINE_H 25
-
-static lv_color_t sparkline_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(SPARKLINE_W, SPARKLINE_H)];
-
-// Draw the sparkline — called on new glucose readings and screen create
-void redraw_sparkline(void) {
-    if (sparkline_canvas == NULL) return;
-
-    // Clear canvas to card background (transparent doesn't work well with canvas)
-    lv_canvas_fill_bg(sparkline_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_COVER);
-
-    // Get last 2 hours of data
-    glucose_history_point_t points[24];
-    int count = glucose_history_get_range(120, points, 24);
-    if (count < 2) return;  // Need at least 2 points to draw a line
-
-    // Determine Y-axis range from alarm thresholds (with padding)
-    int y_min = current_alarm_settings.low_alarm.threshold - 20;
-    int y_max = current_alarm_settings.high_alarm.threshold + 20;
-    if (y_min < 40) y_min = 40;
-    if (y_max > 400) y_max = 400;
-    int y_range = y_max - y_min;
-    if (y_range <= 0) y_range = 1;
-
-    // Alarm threshold lines as Y pixel positions
-    int low_warn_y  = SPARKLINE_H - 1 - ((current_alarm_settings.low_warning.threshold - y_min) * (SPARKLINE_H - 1) / y_range);
-    int high_warn_y = SPARKLINE_H - 1 - ((current_alarm_settings.high_warning.threshold - y_min) * (SPARKLINE_H - 1) / y_range);
-
-    // Draw faint dashed threshold lines
-    lv_draw_line_dsc_t line_dsc;
-    lv_draw_line_dsc_init(&line_dsc);
-    line_dsc.color = lv_color_hex(COLOR_TEXT_DIM);
-    line_dsc.opa = LV_OPA_30;
-    line_dsc.width = 1;
-
-    // Low warning threshold dashes
-    if (low_warn_y >= 0 && low_warn_y < SPARKLINE_H) {
-        for (int dx = 0; dx < SPARKLINE_W; dx += 6) {
-            int end_x = dx + 3;
-            if (end_x >= SPARKLINE_W) end_x = SPARKLINE_W - 1;
-            lv_point_t dash_pts[2] = {{dx, low_warn_y}, {end_x, low_warn_y}};
-            lv_canvas_draw_line(sparkline_canvas, dash_pts, 2, &line_dsc);
-        }
+    lv_color_t border = compute_zone_border_color(current_glucose);
+    if (left_card != NULL) {
+        lv_obj_set_style_border_color(left_card, border, 0);
     }
-    // High warning threshold dashes
-    if (high_warn_y >= 0 && high_warn_y < SPARKLINE_H) {
-        for (int dx = 0; dx < SPARKLINE_W; dx += 6) {
-            int end_x = dx + 3;
-            if (end_x >= SPARKLINE_W) end_x = SPARKLINE_W - 1;
-            lv_point_t dash_pts[2] = {{dx, high_warn_y}, {end_x, high_warn_y}};
-            lv_canvas_draw_line(sparkline_canvas, dash_pts, 2, &line_dsc);
-        }
-    }
-
-    // Draw glucose line segments
-    lv_draw_line_dsc_t glu_line_dsc;
-    lv_draw_line_dsc_init(&glu_line_dsc);
-    glu_line_dsc.width = 2;
-
-    for (int i = 0; i < count - 1; i++) {
-        if (!points[i].valid || !points[i + 1].valid) continue;
-
-        int x1 = i * (SPARKLINE_W - 1) / (count - 1);
-        int x2 = (i + 1) * (SPARKLINE_W - 1) / (count - 1);
-
-        int g1 = points[i].glucose;
-        int g2 = points[i + 1].glucose;
-
-        // Clamp to range
-        if (g1 < y_min) g1 = y_min; if (g1 > y_max) g1 = y_max;
-        if (g2 < y_min) g2 = y_min; if (g2 > y_max) g2 = y_max;
-
-        int y1 = SPARKLINE_H - 1 - ((g1 - y_min) * (SPARKLINE_H - 1) / y_range);
-        int y2 = SPARKLINE_H - 1 - ((g2 - y_min) * (SPARKLINE_H - 1) / y_range);
-
-        // Color segment by midpoint glucose
-        int mid_glu = (points[i].glucose + points[i + 1].glucose) / 2;
-        int low_a  = current_alarm_settings.low_alarm.threshold;
-        int low_w  = current_alarm_settings.low_warning.threshold;
-        int high_w = current_alarm_settings.high_warning.threshold;
-        int high_a = current_alarm_settings.high_alarm.threshold;
-
-        if (mid_glu <= low_a || mid_glu >= high_a) {
-            glu_line_dsc.color = lv_color_hex(COLOR_RED);
-        } else if (mid_glu <= low_w || mid_glu >= high_w) {
-            glu_line_dsc.color = lv_color_hex(COLOR_YELLOW);
-        } else {
-            glu_line_dsc.color = lv_color_hex(COLOR_GREEN);
-        }
-        glu_line_dsc.opa = LV_OPA_80;
-
-        lv_point_t seg[2] = {{x1, y1}, {x2, y2}};
-        lv_canvas_draw_line(sparkline_canvas, seg, 2, &glu_line_dsc);
+    if (right_card != NULL) {
+        lv_obj_set_style_border_color(right_card, border, 0);
     }
 }
 
@@ -930,20 +769,16 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
         lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_70, LV_PART_INDICATOR);
     }
 
-    // Ambient tint: recompute once per minute (every 60 ticks of 1Hz timer)
+    // Zone border: recompute every 10 seconds
     {
         static uint8_t tint_counter = 0;
         tint_counter++;
-        if (tint_counter >= 60) {
+        if (tint_counter >= 10) {
             tint_counter = 0;
             if (glucose_data_valid && current_glucose > 0) {
-                lv_color_t tint = compute_ambient_tint(current_glucose);
-                if (left_card != NULL) {
-                    lv_obj_set_style_bg_color(left_card, tint, 0);
-                }
-                if (right_card != NULL) {
-                    lv_obj_set_style_bg_color(right_card, tint, 0);
-                }
+                lv_color_t border = compute_zone_border_color(current_glucose);
+                if (left_card != NULL) lv_obj_set_style_border_color(left_card, border, 0);
+                if (right_card != NULL) lv_obj_set_style_border_color(right_card, border, 0);
             }
         }
     }
@@ -1496,9 +1331,9 @@ static void expand_cgm_card(void) {
         draw_trend_arrow_sized(trend_canvas, current_trend, 80);
     }
 
-    // Trend arrow: fixed position on right side of card (doesn't shift with digit count)
+    // Trend arrow: fixed position on right side of card
     if (trend_canvas != NULL) {
-        lv_obj_align(trend_canvas, LV_ALIGN_RIGHT_MID, -16, -8);
+        lv_obj_align(trend_canvas, LV_ALIGN_RIGHT_MID, -6, -8);
     }
 
     // Unit "mg/dL": below glucose, centered under the value
@@ -1508,18 +1343,16 @@ static void expand_cgm_card(void) {
 
     // Time ago: centered near bottom
     if (label_time_ago != NULL) {
-        lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -22);
+        lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -4);
     }
 
-    // Freshness arc: scale up for expanded card
+    // Freshness arc: semicircle around expanded trend arrow
     if (glucose_freshness_arc != NULL) {
-        lv_obj_set_size(glucose_freshness_arc, 200, 200);
-        lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 40);
+        lv_obj_set_size(glucose_freshness_arc, 100, 100);
+        lv_obj_align(glucose_freshness_arc, LV_ALIGN_RIGHT_MID, 9, -8);  // Shifted right from trend arrow
     }
 
-    if (sparkline_canvas != NULL) {
-        lv_obj_add_flag(sparkline_canvas, LV_OBJ_FLAG_HIDDEN);  // Hide in expanded mode
-    }
+
 
     // Brightness: to the left of gear cog (TOP_RIGHT minus gear width and gap)
     if (brightness_btn_ref != NULL) {
@@ -1572,27 +1405,23 @@ static void collapse_cgm_card(void) {
     // --- Restore all elements to normal positions ---
     if (label_glucose != NULL) {
         lv_obj_set_style_text_font(label_glucose, &lv_font_montserrat_48, 0);
-        lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
+        lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 16);
     }
     if (label_unit != NULL) {
-        lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 75);
+        lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 65);
     }
     if (trend_canvas != NULL) {
         lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
         lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
         draw_trend_arrow(trend_canvas, current_trend);
-        lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
+        lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 36);
     }
     if (label_time_ago != NULL) {
-        lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
+        lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -4);
     }
     if (glucose_freshness_arc != NULL) {
-        lv_obj_set_size(glucose_freshness_arc, 100, 100);
-        lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 14);
-    }
-    if (sparkline_canvas != NULL) {
-        lv_obj_clear_flag(sparkline_canvas, LV_OBJ_FLAG_HIDDEN);  // Show in collapsed mode
-        lv_obj_align(sparkline_canvas, LV_ALIGN_BOTTOM_MID, 0, -30);
+        lv_obj_set_size(glucose_freshness_arc, 90, 90);
+        lv_obj_align(glucose_freshness_arc, LV_ALIGN_CENTER, 0, 36);  // Same center as trend arrow
     }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
@@ -1602,7 +1431,7 @@ static void collapse_cgm_card(void) {
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
     lv_obj_add_style(screen_home, &style_bg, 0);
-    
+
     // --- LEFT CARD: Time, Weather & WiFi Status ---
     left_card = lv_obj_create(screen_home);
     lv_obj_set_size(left_card, NORMAL_LEFT_W, CARD_H);
@@ -1802,6 +1631,7 @@ void create_home_screen(void) {
     static lv_color_t brightness_icon_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(20, 24)];
     brightness_icon = lv_canvas_create(brightness_btn);
     lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 20, 24, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_set_style_bg_opa(brightness_icon, LV_OPA_TRANSP, 0);
     draw_lightbulb_icon(brightness_icon, COLOR_ACCENT_BLUE);
     lv_obj_center(brightness_icon);
 
@@ -1815,49 +1645,44 @@ void create_home_screen(void) {
     lv_obj_set_style_bg_opa(label_glucose, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(label_glucose, 0, 0);  // Remove padding
 
-    lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 20);
-    
-    // Unit (stored for repositioning in expanded mode)
+    lv_obj_align(label_glucose, LV_ALIGN_TOP_MID, 0, 16);
+
+    // Unit — directly under glucose number
     label_unit = lv_label_create(right_card);
     lv_label_set_text(label_unit, "mg/dL");
     lv_obj_set_style_text_font(label_unit, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(label_unit, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 75);
-    
+    lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 65);
+
     // Trend arrow (canvas for custom drawing, buffer sized for expanded 80x80)
     trend_canvas = lv_canvas_create(right_card);
     lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);  // Transparent background
-    lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 30);
+    lv_obj_set_style_bg_opa(trend_canvas, LV_OPA_TRANSP, 0);
+    lv_canvas_fill_bg(trend_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, 36);
 
     // Make trend arrow clickable to open glucose history chart
     lv_obj_add_flag(trend_canvas, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(trend_canvas, trend_arrow_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Time ago
+    // Time ago (at bottom)
     label_time_ago = lv_label_create(right_card);
     lv_label_set_text(label_time_ago, "-- min ago");
     lv_obj_set_style_text_font(label_time_ago, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -25);
+    lv_obj_align(label_time_ago, LV_ALIGN_BOTTOM_MID, 0, -4);
 
-    // Mini sparkline: last 2 hours of glucose readings
-    sparkline_canvas = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(sparkline_canvas, sparkline_buf, SPARKLINE_W, SPARKLINE_H, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(sparkline_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_COVER);
-    lv_obj_align(sparkline_canvas, LV_ALIGN_BOTTOM_MID, 0, -30);
-    redraw_sparkline();  // Initial draw from loaded history
-
-    // Freshness arc: shows glucose reading age (full=fresh, empty=5min old)
+    // Freshness arc: semicircle halo around trend arrow, depletes as reading ages
     glucose_freshness_arc = lv_arc_create(right_card);
-    lv_obj_set_size(glucose_freshness_arc, 100, 100);
-    lv_obj_align(glucose_freshness_arc, LV_ALIGN_BOTTOM_MID, 0, 14);
-    lv_arc_set_rotation(glucose_freshness_arc, 200);     // Start from bottom-left
-    lv_arc_set_bg_angles(glucose_freshness_arc, 0, 140); // 140 degree sweep
+    lv_obj_set_size(glucose_freshness_arc, 90, 90);
+    lv_obj_align(glucose_freshness_arc, LV_ALIGN_CENTER, 0, 36);  // Same center as trend arrow
+    lv_arc_set_rotation(glucose_freshness_arc, 0);
+    lv_arc_set_bg_angles(glucose_freshness_arc, 180, 360); // Top semicircle only
     lv_arc_set_range(glucose_freshness_arc, 0, 100);
     lv_arc_set_value(glucose_freshness_arc, 100);
     lv_obj_remove_style(glucose_freshness_arc, NULL, LV_PART_KNOB);  // No knob
     lv_obj_clear_flag(glucose_freshness_arc, LV_OBJ_FLAG_CLICKABLE); // Not interactive
+    lv_obj_set_style_pad_all(glucose_freshness_arc, 0, 0);
 
     // Arc indicator (the filled part)
     lv_obj_set_style_arc_width(glucose_freshness_arc, 3, LV_PART_INDICATOR);

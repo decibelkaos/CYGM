@@ -281,7 +281,6 @@ lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
 lv_obj_t *label_time_ago = NULL;
 lv_obj_t *label_unit = NULL;              // "mg/dL" unit label
 lv_obj_t *glucose_freshness_arc = NULL;    // Arc showing glucose reading age (0-5 min)
-lv_obj_t *sparkline_canvas = NULL;         // Mini sparkline on right card
 bool glucose_fetch_active = false;         // True while a glucose fetch is in progress
 lv_timer_t *glucose_timer_update = NULL;    // Timer to update the progress bar
 int64_t last_glucose_fetch_time = 0;        // Timestamp of last glucose fetch (milliseconds)
@@ -2138,7 +2137,6 @@ void glucose_update_task(void *pvParameters) {
                         if (glucose_freshness_arc != NULL) {
                             lv_arc_set_value(glucose_freshness_arc, 100);  // Fresh reading
                         }
-                        redraw_sparkline();  // Update mini sparkline with new reading
                         lvgl_port_unlock();
                     } else {
                         ESP_LOGW(TAG, "LVGL lock timeout in glucose success UI");
@@ -2335,6 +2333,7 @@ void glucose_update_task(void *pvParameters) {
             }
 
             fetch_cleanup:
+                glucose_fetch_active = false;  // Safety net: ensure arc doesn't stay blue
                 // SSL lifecycle: always close after fetch for TLS providers.
                 // Post-reconnect fragmentation drops largest_block to ~2.5KB,
                 // but TLS read buffers need ~1.7KB contiguous. Keeping SSL alive
@@ -2480,12 +2479,13 @@ void init_styles(void) {
     lv_style_set_bg_color(&style_bg, lv_color_hex(COLOR_BG));
     lv_style_set_bg_opa(&style_bg, LV_OPA_COVER);
     
-    // Card style - clean dark blue-grey
+    // Card style - clean dark blue-grey with zone-colored border
     lv_style_init(&style_card);
     lv_style_set_bg_color(&style_card, lv_color_hex(COLOR_CARD_BG));
     lv_style_set_bg_opa(&style_card, LV_OPA_COVER);
     lv_style_set_radius(&style_card, 12);
-    lv_style_set_border_width(&style_card, 0);
+    lv_style_set_border_width(&style_card, 2);
+    lv_style_set_border_opa(&style_card, LV_OPA_60);
     lv_style_set_pad_all(&style_card, 10);
 }
 

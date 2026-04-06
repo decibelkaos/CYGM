@@ -33,13 +33,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
 #define CYGM_VERSION_MINOR 7
-#define CYGM_VERSION_PATCH 5
+#define CYGM_VERSION_PATCH 6
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-04-03"
+#define CYGM_VERSION_DATE "2026-04-05"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.7.5.2026-04-03.Beta"
+#define CYGM_VERSION_STRING "0.7.6.2026-04-05.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -95,13 +95,6 @@ extern "C" {
 #define COLOR_ORANGE        0xF59E0B  // Orange warning
 #define COLOR_RED           0xEF4444  // Red alert
 #define COLOR_BORDER        0xFFFFFF  // White border/outline
-
-// Ambient tint colors (blended onto COLOR_CARD_BG at low opacity)
-#define COLOR_TINT_GREEN    0x22C55E  // In-range zone
-#define COLOR_TINT_YELLOW   0xFACC15  // Warning zone
-#define COLOR_TINT_RED      0xEF4444  // Alarm zone
-#define COLOR_TINT_AMBER    0xF59E0B  // Golden hour warmth
-#define COLOR_TINT_COOL     0x3B82F6  // Night coolness
 
 // ==================== Type Definitions ====================
 
@@ -269,7 +262,6 @@ extern lv_obj_t *trend_canvas;
 extern lv_obj_t *label_time_ago;
 extern lv_obj_t *label_unit;              // "mg/dL" unit label (repositioned in expanded mode)
 extern lv_obj_t *glucose_freshness_arc;    // Arc showing glucose reading age (0-5 min)
-extern lv_obj_t *sparkline_canvas;         // Mini sparkline on right card
 extern bool glucose_fetch_active;          // True while a glucose fetch is in progress
 extern lv_timer_t *glucose_timer_update;    // Timer to update the progress bar
 extern int64_t last_glucose_fetch_time;     // Timestamp of last glucose fetch (milliseconds)
