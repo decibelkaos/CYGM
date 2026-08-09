@@ -1,0 +1,16 @@
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# Editors / tooling
+.vscode/
+.clangd
+.cache/
+
+# Local files
+*.log
+*.tmp
+*.bak

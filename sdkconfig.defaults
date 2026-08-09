@@ -1,0 +1,147 @@
+# CYGM - CGM Display Default Configuration
+# Target: ESP32 (ESP32-D0WD)
+
+# Serial flasher config
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+
+# Partition Table (custom OTA layout)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# FreeRTOS
+CONFIG_FREERTOS_HZ=100
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Log level
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# SPI RAM (disabled - JC2432W328 has no PSRAM)
+CONFIG_SPIRAM=n
+
+# SPI Flash - BOYA chip support
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
+
+# LCD and Touch Components
+CONFIG_LCD_PANEL_IO_INCLUDE_TOUCH=y
+
+# LVGL Configuration - Enable larger fonts for readability
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_32=y
+CONFIG_LV_FONT_MONTSERRAT_48=y
+
+# LVGL subpixel font rendering — OFF. Costs a per-glyph 3x render pass on every
+# text change (the home screen rewrites labels at 1Hz) for no visible gain here.
+# The Kconfig symbol is LV_USE_FONT_SUBPX; a bare LV_FONT_SUBPX matches nothing.
+# CONFIG_LV_USE_FONT_SUBPX is not set
+CONFIG_LV_COLOR_DEPTH_16=y
+
+# LVGL refresh cadence. This is the real frame ceiling, not the lvgl_port timer
+# period: an existing sdkconfig carries 100 (10 FPS) from an old menuconfig pass
+# and overrides this default, so it must be re-set in menuconfig to take effect.
+CONFIG_LV_DISP_DEF_REFR_PERIOD=30
+CONFIG_LV_INDEV_DEF_READ_PERIOD=30
+
+# Dev-only FPS/CPU overlay. Uncomment to measure SPI pclk and LVGL period changes
+# instead of guessing at them; must stay off in shipped builds.
+# CONFIG_LV_USE_PERF_MONITOR=y
+
+# LVGL QR Code library (for About screen)
+CONFIG_LV_USE_QRCODE=y
+
+# ESP-TLS - Allow insecure connections for geocoding (non-critical data)
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+
+# ESP HTTPS OTA - Allow without cert verification (cygm.me CA not in bundle)
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# mbedTLS - TLS buffer sizes (tuned for ESP32 memory constraints)
+# IN: 8KB is enough — OTA uses Range requests (4KB chunks) so no TLS record exceeds 8KB.
+#     Dexcom/weather APIs also use small responses.  Do NOT increase to 16384.
+# OUT: 1KB is enough (device only sends small GET/POST requests, max ~400 bytes).
+#      mbedTLS splits larger headers across multiple TLS records automatically.
+#      1024 keeps the dynamic OUT buffer allocation below largest_block (~1728)
+#      after task recreation, enabling SSL reuse without heap fragmentation failures.
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=1024
+
+# Dynamic SSL buffers: allocate/free on demand instead of keeping permanently.
+# CRITICAL: Do NOT use CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH — it aggressively
+# resizes buffers post-handshake causing -0x7100 read errors on streaming connections
+# (ESP-IDF issues #17816, #11833). DYNAMIC_BUFFER is the safe alternative.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
+
+# Compiler optimization (size, not debug)
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# WiFi - STA only, reduced buffers (saves ~6.4KB DRAM)
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
+
+# Disable IPv6 (saves ~7KB DRAM + ~39KB flash — device uses IPv4 only)
+CONFIG_LWIP_IPV6=n
+
+# Disable DHCP server (device is STA, never serves DHCP)
+CONFIG_LWIP_DHCPS=n
+
+# Reduce network buffer counts (device has 1-2 concurrent TCP connections max)
+CONFIG_LWIP_MAX_SOCKETS=4
+CONFIG_LWIP_MAX_ACTIVE_TCP=4
+CONFIG_LWIP_MAX_LISTENING_TCP=2
+CONFIG_LWIP_MAX_UDP_PCBS=4
+CONFIG_LWIP_MAX_RAW_PCBS=4
+
+# OTA rollback — auto-reverts to previous firmware if new one crashes on boot
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# [E] mbedTLS — TLS client only (device never serves TLS, saves ~10-20KB flash)
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+
+# [F] mbedTLS — Strip unused features (saves ~15-25KB flash)
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
+CONFIG_MBEDTLS_PEM_WRITE_C=n
+CONFIG_MBEDTLS_X509_CRL_PARSE_C=n
+CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
+CONFIG_MBEDTLS_PKCS7_C=n
+# CONFIG_MBEDTLS_SHA512_C — MUST stay enabled (SHA-384 needed for Dexcom cert validation)
+
+# [G] mbedTLS — Keep SECP256R1 + SECP384R1 + CURVE25519 (saves ~15-30KB flash)
+CONFIG_MBEDTLS_ECP_DP_SECP192R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP224R1_ENABLED=n
+# CONFIG_MBEDTLS_ECP_DP_SECP384R1 — MUST stay enabled (Dexcom certs use P-384)
+CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP192K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP224K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+
+# [H] mbedTLS — Common cert bundle only (~40 CAs vs 200+, saves ~25KB flash)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# FATFS — Dynamic buffers for SD card (saves ~7KB during mount)
+# Without this, FATFS.win[] and FIL.buf[] are 4096 bytes each (FF_MAX_SS),
+# SD cards use 512-byte sectors.  Default FF_MAX_SS=4096 (for wear-levelling
+# on internal flash) wastes heap: win[] is 4096 even though disk reports 512.
+# Force 512 so win[] = 512 bytes, and DYN_BUFFERS allocates it separately.
+CONFIG_FATFS_SECTOR_512=y
+CONFIG_FATFS_USE_DYN_BUFFERS=y
+
+# [L] Nano printf (saves ~50KB flash — lighter printf/sprintf implementation)
+CONFIG_NEWLIB_NANO_FORMAT=y
+
+# [N] CPU 240MHz (33% faster SSL handshakes and LVGL rendering)
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
+
+# A hung task (e.g. LVGL stuck in an assert loop) must reboot the display,
+# never freeze it: task-watchdog trigger -> panic -> silent reboot.
+CONFIG_ESP_TASK_WDT_PANIC=y
