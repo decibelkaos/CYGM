@@ -68,7 +68,9 @@ typedef struct __attribute__((packed)) {
     uint8_t  suppress_min;         // +20  5-120 minutes  default 30
     uint8_t  snooze_default_min;   // +21  5-120 minutes  default 30
     uint8_t  urgent_low_floor;     // +22  40-90 mg/dL    default 55
-    uint8_t  reserved[9];          // +23..+31 zero-filled — consume from the front
+    /* ---- appended (zero default keeps older blobs on shipped behavior) ---- */
+    uint8_t  auto_snooze_disabled; // +23  0/1            default 0 (unattended auto-snooze ON)
+    uint8_t  reserved[8];          // +24..+31 zero-filled — consume from the front
 } cygm_alarm_ext_t;                // 32 bytes
 
 _Static_assert(sizeof(cygm_alarm_ext_t) == 32,

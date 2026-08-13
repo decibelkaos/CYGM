@@ -1656,6 +1656,7 @@ esp_err_t nvs_load_alarm_ext(cygm_alarm_ext_t *ext) {
     ext->snooze_default_min  = clamp_u8(ext->snooze_default_min, 5, 120);
     // Life safety: the urgent-low guard has a floor and a ceiling, never "off".
     ext->urgent_low_floor    = clamp_u8(ext->urgent_low_floor, 40, 90);
+    ext->auto_snooze_disabled = ext->auto_snooze_disabled ? 1 : 0;
 
     return ret;
 }

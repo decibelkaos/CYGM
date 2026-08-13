@@ -1118,10 +1118,11 @@ void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_
 // Paged rather than scrolled: scroll momentum can schedule style transitions,
 // and animations freeze this hardware.
 
-#define ALARM_OPT_PAGES     5
+#define ALARM_OPT_PAGES     6
 #define ALARM_OPT_ROW_H     36
 #define ALARM_OPT_ROW_STEP  40
 #define ALARM_OPT_ROW_W    290
+#define AUTO_SNOOZE_HOLD_MS 3000   // deliberate 3s hold — this is a safety setting
 
 static lv_obj_t *screen_alarm_options = NULL;
 static lv_obj_t *alarm_options_page_body = NULL;      // holds only the current page's rows
@@ -1135,6 +1136,13 @@ static bool alarm_ext_dirty = false;
 static lv_obj_t *quiet_start_value_lbl = NULL;
 static lv_obj_t *quiet_end_value_lbl = NULL;
 static lv_obj_t *gap_tone_value_lbl = NULL;
+
+// Hold-to-change control for the unattended auto-snooze — a tap must never
+// flip it, so it reuses the takeover DISMISS press/hold pattern.
+static lv_obj_t *auto_snooze_btn_lbl = NULL;
+static lv_obj_t *auto_snooze_progress = NULL;
+static int       auto_snooze_progress_max_w = 0;
+static int64_t   auto_snooze_press_ms = 0;
 
 // ---- Stepper table: one callback drives every +/- pair ----
 
@@ -1209,6 +1217,9 @@ static void alarm_options_clear_refs(void) {
     quiet_start_value_lbl = NULL;
     quiet_end_value_lbl = NULL;
     gap_tone_value_lbl = NULL;
+    auto_snooze_btn_lbl = NULL;
+    auto_snooze_progress = NULL;
+    auto_snooze_press_ms = 0;
 }
 
 // Values are bounded here as well as clamped on edit so GCC can prove the
@@ -1335,6 +1346,47 @@ static lv_obj_t *opt_row_add_action(lv_obj_t *row, const char *text, lv_event_cb
     return lbl;
 }
 
+// ---- Auto-snooze hold-to-change ----
+
+static void auto_snooze_btn_refresh(void) {
+    if (auto_snooze_btn_lbl == NULL) return;
+    bool on = !alarm_ext_settings.auto_snooze_disabled;
+    lv_label_set_text(auto_snooze_btn_lbl, on ? "ON" : "OFF");
+    lv_obj_set_style_text_color(auto_snooze_btn_lbl,
+        lv_color_hex(on ? COLOR_GREEN : COLOR_ORANGE), 0);
+}
+
+static void auto_snooze_hold_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED) {
+        auto_snooze_press_ms = esp_timer_get_time() / 1000;
+    } else if (code == LV_EVENT_PRESSING) {
+        if (auto_snooze_press_ms == 0) return;
+        int64_t elapsed = (esp_timer_get_time() / 1000) - auto_snooze_press_ms;
+
+        int w = (int)((elapsed * auto_snooze_progress_max_w) / AUTO_SNOOZE_HOLD_MS);
+        if (w > auto_snooze_progress_max_w) w = auto_snooze_progress_max_w;
+        if (auto_snooze_progress != NULL) lv_obj_set_width(auto_snooze_progress, w);
+
+        if (elapsed >= AUTO_SNOOZE_HOLD_MS) {
+            auto_snooze_press_ms = 0;
+            lv_indev_wait_release(lv_indev_get_act());
+            alarm_ext_settings.auto_snooze_disabled =
+                alarm_ext_settings.auto_snooze_disabled ? 0 : 1;
+            alarm_ext_dirty = true;
+            alarm_ext_flush();  // a safety setting saves now, not on back-out
+            if (auto_snooze_progress != NULL) lv_obj_set_width(auto_snooze_progress, 0);
+            auto_snooze_btn_refresh();
+            ESP_LOGW(TAG, "Unattended auto-snooze %s (via 3s hold)",
+                     alarm_ext_settings.auto_snooze_disabled ? "DISABLED" : "enabled");
+        }
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        auto_snooze_press_ms = 0;
+        if (auto_snooze_progress != NULL) lv_obj_set_width(auto_snooze_progress, 0);
+    }
+}
+
 // ---- Page content ----
 
 static const char *alarm_options_page_title(int page) {
@@ -1343,7 +1395,8 @@ static const char *alarm_options_page_title(int page) {
         case 1:  return "ESCALATION";
         case 2:  return "DATA GAP";
         case 3:  return "PREDICTIVE";
-        default: return "SAFETY FLOOR";
+        case 4:  return "SAFETY FLOOR";
+        default: return "UNATTENDED";
     }
 }
 
@@ -1418,7 +1471,7 @@ static void alarm_options_build_page(void) {
             opt_row_add_stepper(r, OPT_RATE);
             break;
         }
-        default: {
+        case 4: {
             lv_obj_t *r = opt_row_create(0, "Urgent Low", "always-on safety floor");
             opt_row_add_stepper(r, OPT_URGENT_FLOOR);
 
@@ -1442,6 +1495,53 @@ static void alarm_options_build_page(void) {
             lv_obj_set_style_text_font(eff_lbl, &lv_font_montserrat_12, 0);
             lv_obj_set_style_text_color(eff_lbl, lv_color_hex(COLOR_ORANGE), 0);
             lv_obj_align(eff_lbl, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP + 62);
+            break;
+        }
+        default: {
+            lv_obj_t *r = opt_row_create(0, "Auto-Snooze", "unattended alarms");
+
+            lv_obj_t *btn = lv_btn_create(r);
+            lv_obj_set_size(btn, 96, 28);
+            lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -10, 0);
+            lv_obj_update_layout(btn);
+            cygm_apply_ghost_btn(btn);
+            lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_PRESSED, NULL);
+            lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_PRESSING, NULL);
+            lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_RELEASED, NULL);
+            lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_PRESS_LOST, NULL);
+
+            auto_snooze_progress_max_w = 96 - 8;
+            auto_snooze_progress = lv_obj_create(btn);
+            lv_obj_remove_style_all(auto_snooze_progress);
+            lv_obj_set_size(auto_snooze_progress, 0, 28 - 8);
+            lv_obj_align(auto_snooze_progress, LV_ALIGN_LEFT_MID, 4, 0);
+            lv_obj_set_style_bg_color(auto_snooze_progress, lv_color_hex(COLOR_ORANGE), 0);
+            lv_obj_set_style_bg_opa(auto_snooze_progress, LV_OPA_30, 0);
+            lv_obj_set_style_radius(auto_snooze_progress, 6, 0);
+            lv_obj_clear_flag(auto_snooze_progress, LV_OBJ_FLAG_CLICKABLE);
+
+            auto_snooze_btn_lbl = lv_label_create(btn);
+            lv_obj_set_style_text_font(auto_snooze_btn_lbl, &lv_font_montserrat_14, 0);
+            lv_obj_center(auto_snooze_btn_lbl);
+            auto_snooze_btn_refresh();
+
+            lv_obj_t *hint = lv_label_create(r);
+            lv_label_set_text(hint, "hold 3s");
+            lv_obj_set_style_text_font(hint, &lv_font_montserrat_10, 0);
+            lv_obj_set_style_text_color(hint, lv_color_hex(COLOR_TEXT_DIM), 0);
+            lv_obj_align(hint, LV_ALIGN_RIGHT_MID, -116, 0);
+
+            lv_obj_t *note = lv_label_create(alarm_options_page_body);
+            lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+            lv_obj_set_width(note, 274);
+            lv_label_set_text(note,
+                "An alarm nobody touches for 30 minutes snoozes itself and the "
+                "display returns home. It re-fires when the snooze ends if glucose "
+                "is still out of range. Turning this OFF means an unattended alarm "
+                "sounds until someone responds.");
+            lv_obj_set_style_text_font(note, &lv_font_montserrat_10, 0);
+            lv_obj_set_style_text_color(note, lv_color_hex(COLOR_TEXT_GRAY), 0);
+            lv_obj_align(note, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP + 6);
             break;
         }
     }

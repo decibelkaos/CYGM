@@ -1434,6 +1434,7 @@ void cygm_alarm_ext_defaults(cygm_alarm_ext_t *ext) {
     ext->suppress_min        = 30;
     ext->snooze_default_min  = 30;
     ext->urgent_low_floor    = 55;
+    ext->auto_snooze_disabled = 0;  // stored inverted so zero-filled old blobs stay ON
 }
 
 // Quiet hours. The window may wrap midnight. Returns false while the clock is
@@ -1818,8 +1819,9 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
     // touched the screen for 30 minutes. Stand down as a snooze — the safe
     // action, since it re-arms and re-fires if the reading is still out of
     // range — and give the display back to the home screen instead of pulsing
-    // at an empty room all night.
-    if (lv_tick_elaps(visual_alarm_shown_tick) >= ALARM_UNATTENDED_MS &&
+    // at an empty room all night. Opt-out lives behind a hold in Alert Options.
+    if (!alarm_ext_settings.auto_snooze_disabled &&
+        lv_tick_elaps(visual_alarm_shown_tick) >= ALARM_UNATTENDED_MS &&
         lv_disp_get_inactive_time(NULL) >= ALARM_UNATTENDED_MS) {
         ESP_LOGW(TAG, "Alarm unattended for 30 min - auto-snoozing, returning home");
         sd_log(TAG, "ALARM: unattended 30min, auto-snooze glucose=%d state=%d",
@@ -1859,6 +1861,21 @@ static void alarm_buzzer_task(void *arg) {
 // Repeat timer, in LVGL task context (Core 1). Never plays the tone here — that
 // would hold the LVGL lock 0.5-4s; it notifies alarm_buzzer_task and returns.
 static void audio_alarm_repeat_timer_cb(lv_timer_t *timer) {
+    // Unattended tone-only alarm (tier has Screen Flash off, so there is no
+    // takeover and no pulse timer to host the timeout) — same 30-min stand-down
+    // as the takeover path, riding this timer instead.
+    if (!visual_alarm_active && active_alarm_config != NULL &&
+        !alarm_ext_settings.auto_snooze_disabled &&
+        alarm_audio_start_ms > 0 &&
+        (esp_timer_get_time() / 1000) - alarm_audio_start_ms >= ALARM_UNATTENDED_MS &&
+        lv_disp_get_inactive_time(NULL) >= ALARM_UNATTENDED_MS) {
+        ESP_LOGW(TAG, "Tone-only alarm unattended for 30 min - auto-snoozing");
+        sd_log(TAG, "ALARM: tone-only unattended 30min, auto-snooze glucose=%d state=%d",
+               current_glucose, current_alarm_state);
+        alarm_snooze_and_close();  // Deletes this timer — must return immediately
+        return;
+    }
+
     if (active_alarm_config != NULL && (active_alarm_config->audio_enabled || alarm_audio_urgent)) {
         // Volume is recomputed every repeat: the urgent-low guard pins it at
         // full, escalation steps it up while the alert stays unacknowledged.
