@@ -178,8 +178,10 @@ lv_obj_t *visual_alarm_disarm_label = NULL;    // Label on disarm button
 static lv_obj_t *visual_alarm_snooze_btn = NULL;  // Giant SNOOZE button on the takeover
 static int64_t disarm_press_start_ms = 0;      // Timestamp when button was pressed
 #define DISARM_HOLD_MS 1500                     // Hold duration to disarm (1.5s)
+#define ALARM_UNATTENDED_MS (30 * 60 * 1000)    // Untouched takeover auto-snoozes after 30 min
 lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
 volatile bool visual_alarm_active = false;
+static uint32_t visual_alarm_shown_tick = 0;   // lv_tick when the takeover appeared
 // Tier the on-screen takeover was built for. Title, colour and pulse rate are
 // baked in at build time, so escalating tier must rebuild, not reuse, the overlay.
 static active_alarm_state_t visual_alarm_shown_state = ALARM_STATE_NONE;
@@ -1399,6 +1401,7 @@ void check_glucose_alarms(int glucose_mg_dl);
 void update_glucose_display(void);
 static void visual_alarm_disarm_event_cb(lv_event_t *e);
 static void visual_alarm_snooze_event_cb(lv_event_t *e);
+static void alarm_snooze_and_close(void);
 static bool raise_alert(cygm_alert_kind_t kind, alarm_config_t *cfg,
                         const char *title, const char *reason, uint32_t color);
 
@@ -1811,6 +1814,20 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
         }
     }
 
+    // Unattended takeover: the alarm has been up 30 minutes AND nothing has
+    // touched the screen for 30 minutes. Stand down as a snooze — the safe
+    // action, since it re-arms and re-fires if the reading is still out of
+    // range — and give the display back to the home screen instead of pulsing
+    // at an empty room all night.
+    if (lv_tick_elaps(visual_alarm_shown_tick) >= ALARM_UNATTENDED_MS &&
+        lv_disp_get_inactive_time(NULL) >= ALARM_UNATTENDED_MS) {
+        ESP_LOGW(TAG, "Alarm unattended for 30 min - auto-snoozing, returning home");
+        sd_log(TAG, "ALARM: unattended 30min, auto-snooze glucose=%d state=%d",
+               current_glucose, current_alarm_state);
+        alarm_snooze_and_close();  // Deletes this timer — must return immediately
+        return;
+    }
+
     // Pulse the border (already in LVGL context — lock held via recursive mutex, no inner lock needed)
     if (visual_alarm_pulse_state == 0) {
         // Flash ON — thick alarm-color border at screen edges
@@ -1994,11 +2011,10 @@ static void visual_alarm_disarm_event_cb(lv_event_t *e) {
     }
 }
 
-// SNOOZE is a single tap: it is the safe action (the alarm re-arms itself), so
-// it must not require a hold at 3am. DISMISS keeps the hold-to-confirm above.
-static void visual_alarm_snooze_event_cb(lv_event_t *e) {
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-
+// Shared by the SNOOZE tap and the unattended-alarm timeout: arm the snooze
+// window (or the per-type suppression), tear the takeover down, return home.
+// Runs in LVGL context only (event callback or the pulse timer).
+static void alarm_snooze_and_close(void) {
     int snooze_min = alarm_ext_settings.snooze_default_min;
     if (snooze_min < 5 || snooze_min > 120) snooze_min = 30;
 
@@ -2043,6 +2059,13 @@ static void visual_alarm_snooze_event_cb(lv_event_t *e) {
     pause_background_tasks = false;
 }
 
+// SNOOZE is a single tap: it is the safe action (the alarm re-arms itself), so
+// it must not require a hold at 3am. DISMISS keeps the hold-to-confirm above.
+static void visual_alarm_snooze_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    alarm_snooze_and_close();
+}
+
 // Full-screen takeover: value, reason line, and giant SNOOZE / DISMISS buttons.
 // Two objects: `overlay` is the opaque backdrop whose border the pulse timer
 // flashes, `container` is the content panel inset so that frame stays visible.
@@ -2062,6 +2085,7 @@ static void start_visual_alarm(void) {
     visual_alarm_glucose_update_pending = false;
     visual_alarm_pulse_state = 0;
     visual_alarm_shown_state = current_alarm_state;
+    visual_alarm_shown_tick = lv_tick_get();  // Starts the unattended-timeout clock
 
     // Determine alarm info and active config
     const char *alarm_type = "ALARM";
