@@ -92,6 +92,10 @@ bool nvs_has_weather_settings(void);
 esp_err_t nvs_save_cgm_type(const char *cgm_type);
 esp_err_t nvs_load_cgm_type(char *cgm_type, size_t len);
 
+// Last firmware version whose "What's New" card was shown (full version string)
+esp_err_t nvs_save_seen_version(const char *version);
+esp_err_t nvs_load_seen_version(char *version, size_t len);
+
 // Dexcom Share API credentials (username/password based)
 esp_err_t nvs_set_dexcom_credentials(const char *username, const char *password);
 esp_err_t nvs_get_dexcom_credentials(char *username, size_t user_len, char *password, size_t pass_len);

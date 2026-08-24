@@ -726,6 +726,54 @@ esp_err_t nvs_load_cgm_type(char *cgm_type, size_t len) {
 }
 
 
+// ==================== Last-Seen Firmware Version ====================
+// Drives the post-update "What's New" card: differs from the running version
+// exactly once after each firmware update.
+
+#define NVS_SEEN_VERSION_KEY "seen_ver"
+
+esp_err_t nvs_save_seen_version(const char *version) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+
+    if (version == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_set_str(nvs_handle, NVS_SEEN_VERSION_KEY, version);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+esp_err_t nvs_load_seen_version(char *version, size_t len) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret;
+    size_t ver_len = len;
+
+    if (version == NULL || len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    version[0] = '\0';
+
+    ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_get_str(nvs_handle, NVS_SEEN_VERSION_KEY, version, &ver_len);
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+
 // ==================== Dexcom Share Credentials ====================
 
 #define NVS_DEXCOM_USER_KEY "dex_user"
@@ -1082,8 +1130,13 @@ esp_err_t nvs_get_nightscout_credentials(char *url, size_t url_len, char *token,
 }
 
 bool nvs_has_nightscout_credentials(void) {
+    // Separate buffers: the token is read AFTER the url, so sharing one buffer
+    // let an empty token (public sites) blank the url and report "no
+    // credentials" on every boot — token-less users had to re-enter settings
+    // after any power loss.
     char url[128];
-    return (nvs_get_nightscout_credentials(url, sizeof(url), url, sizeof(url)) == ESP_OK
+    char token[64];
+    return (nvs_get_nightscout_credentials(url, sizeof(url), token, sizeof(token)) == ESP_OK
             && url[0] != '\0');
 }
 

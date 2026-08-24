@@ -13,6 +13,7 @@
 #include "hardware/battery.h"
 #include "hardware/screenshot.h"
 #include "nvs_config.h"
+#include "whats_new.h"
 #include "ui/glucose_chart.h"
 #include "ui/wifi_screens.h"
 #include "dexcom_api.h"
@@ -1081,6 +1082,122 @@ static void home_update_stale_visuals(bool night) {
 }
 
 // Glucose freshness arc + heartbeat update callback (1Hz)
+// ==================== Post-Update "What's New" Card ====================
+// Shown once per firmware version, on the first calm home tick after an
+// update: it yields to the Display sheet, the night face, and any alarm, and
+// the version is stamped as seen only when the user taps OK — a reboot before
+// that shows the card again. Bullets live in whats_new.h (one line each).
+
+static lv_obj_t *whats_new_overlay = NULL;
+static bool whats_new_resolved = false;
+static bool whats_new_pending = false;
+
+static void whats_new_delete_cb(lv_event_t *e) {
+    (void)e;
+    whats_new_overlay = NULL;
+}
+
+static void whats_new_ok_cb(lv_event_t *e) {
+    (void)e;
+    nvs_save_seen_version(CYGM_VERSION_STRING);
+    whats_new_pending = false;
+    if (whats_new_overlay != NULL) {
+        lv_obj_del(whats_new_overlay);  // delete cb NULLs the static
+    }
+    ESP_LOGI(TAG, "What's New card dismissed for %s", CYGM_VERSION_STRING);
+}
+
+static void whats_new_show(void) {
+    whats_new_overlay = lv_obj_create(screen_home);
+    lv_obj_set_size(whats_new_overlay, 320, 240);
+    lv_obj_set_pos(whats_new_overlay, 0, 0);
+    lv_obj_set_style_bg_color(whats_new_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(whats_new_overlay, LV_OPA_60, 0);  // scrim; absorbs taps
+    lv_obj_set_style_border_width(whats_new_overlay, 0, 0);
+    lv_obj_set_style_radius(whats_new_overlay, 0, 0);
+    lv_obj_set_style_pad_all(whats_new_overlay, 0, 0);
+    lv_obj_clear_flag(whats_new_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(whats_new_overlay, whats_new_delete_cb, LV_EVENT_DELETE, NULL);
+
+    lv_obj_t *panel = lv_obj_create(whats_new_overlay);
+    lv_obj_set_size(panel, 292, 206);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, 12, 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
+    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    char title_text[32];
+    snprintf(title_text, sizeof(title_text), "Updated to v%d.%d.%d",
+             CYGM_VERSION_MAJOR, CYGM_VERSION_MINOR, CYGM_VERSION_PATCH);
+    lv_obj_t *title = lv_label_create(panel);
+    lv_label_set_text(title, title_text);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
+
+    lv_obj_t *caption = lv_label_create(panel);
+    lv_label_set_text(caption, "WHAT'S NEW");
+    lv_obj_set_style_text_font(caption, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(caption, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(caption, 2, 0);
+    lv_obj_align(caption, LV_ALIGN_TOP_MID, 0, 34);
+
+    for (int i = 0; i < (int)WHATS_NEW_COUNT && i < 5; i++) {
+        char line[64];
+        snprintf(line, sizeof(line), "\xE2\x80\xA2  %s", whats_new_bullets[i]);
+        lv_obj_t *bullet = lv_label_create(panel);
+        lv_label_set_long_mode(bullet, LV_LABEL_LONG_CLIP);  // one line, no wrap
+        lv_obj_set_width(bullet, 292 - 32);
+        lv_label_set_text(bullet, line);
+        lv_obj_set_style_text_font(bullet, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(bullet, lv_color_hex(COLOR_TEXT_WHITE), 0);
+        lv_obj_align(bullet, LV_ALIGN_TOP_LEFT, 16, 54 + i * 20);
+    }
+
+    lv_obj_t *ok_btn = lv_btn_create(panel);
+    lv_obj_set_size(ok_btn, 120, 36);
+    lv_obj_align(ok_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_update_layout(ok_btn);
+    cygm_apply_ghost_btn(ok_btn);
+    lv_obj_add_event_cb(ok_btn, whats_new_ok_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *ok_lbl = lv_label_create(ok_btn);
+    lv_label_set_text(ok_lbl, "OK");
+    lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(ok_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_center(ok_lbl);
+
+    ESP_LOGI(TAG, "What's New card shown for %s", CYGM_VERSION_STRING);
+}
+
+static void whats_new_maybe_show(void) {
+    if (whats_new_overlay != NULL) return;
+
+    if (!whats_new_resolved) {
+        whats_new_resolved = true;
+        char seen[48];
+        esp_err_t err = nvs_load_seen_version(seen, sizeof(seen));
+        if (err != ESP_OK || seen[0] == '\0') {
+            // No stamp yet. WiFi credentials mean a device that UPDATED from
+            // firmware older than the stamp itself — that user gets the card.
+            // A true fresh install is stamped silently.
+            whats_new_pending = nvs_has_wifi_credentials();
+        } else {
+            whats_new_pending = (strcmp(seen, CYGM_VERSION_STRING) != 0);
+        }
+        if (!whats_new_pending) {
+            nvs_save_seen_version(CYGM_VERSION_STRING);
+        }
+    }
+
+    if (!whats_new_pending || visual_alarm_active) return;
+    whats_new_show();
+}
+
 static void glucose_timer_update_cb(lv_timer_t *timer) {
     if (!home_screen_active || glucose_freshness_arc == NULL) {
         return;
@@ -1106,6 +1223,8 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     if (night_face_active) {
         home_night_reassert();
     } else {
+        whats_new_maybe_show();  // one-shot; yields to sheet/night/alarm above
+
         // Countdown to the next CGM pull. The glucose task arms a deadline on
         // every wait, so the arc drains across exactly one poll interval.
         // Empty with no deadline armed means a pull is due or the link is down.
