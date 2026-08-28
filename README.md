@@ -25,7 +25,7 @@ in the way, no account with us.
 The easiest install is the **browser flasher at [cygm.me](https://cygm.me)** —
 no toolchain needed.
 
-## Features (v0.15.x)
+## Features (v0.16.x)
 
 - **Three CGM providers**: Dexcom Share, LibreLinkUp, Nightscout — pick one
   on-device, switch anytime
@@ -42,7 +42,10 @@ no toolchain needed.
   a glucose value
 - **Units & locale**: mg/dL and mmol/L, 12/24 h clock, 80+ timezones, weather
   with sunrise/sunset (Open-Meteo)
-- **OTA updates** over WiFi; optional CSV logging to microSD
+- **OTA updates** over WiFi, with a one-time card after each update listing
+  what changed; optional CSV logging to microSD
+- **Runs fine without a battery**: settings survive power loss, so a
+  permanently plugged-in build comes back up configured after an outage
 
 ## Building from source
 
@@ -77,6 +80,8 @@ main/
 
 - [Device guide](https://cygm.me/guide.html) — setup, every screen, tips,
   troubleshooting
+- [Release notes](https://github.com/decibelkaos/CYGM/releases) — what changed
+  in each version
 
 ## Third-party services
 
