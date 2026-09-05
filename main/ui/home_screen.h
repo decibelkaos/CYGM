@@ -17,6 +17,9 @@ void create_home_screen(void);
 // Draw the battery icon onto `canvas`; `percent` is the 0-100 fill level.
 void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent);
 
+// Draw the no-battery plug icon onto `canvas` (same 30x14 canvas as the gauge).
+void draw_plug_icon(lv_obj_t *canvas, uint32_t color);
+
 // No-data / sensor change overlay
 void show_nodata_overlay(void);
 void dismiss_nodata_overlay(void);

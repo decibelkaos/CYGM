@@ -60,10 +60,15 @@ void battery_init(void) {
     ESP_LOGI(TAG, "Battery monitoring initialized (GPIO %d)", BATTERY_ADC_GPIO);
 }
 
+// Raw-count spread (max - min) across the last full read. A floating divider
+// node scatters by hundreds of counts; a fitted cell stays within a handful.
+static int bat_last_spread = 0;
+
 static float battery_read_voltage(void) {
     // Take multiple readings and average for better precision
     const int num_samples = 10;
     int adc_sum = 0;
+    int adc_min = 4095, adc_max = 0;
 
     for (int i = 0; i < num_samples; i++) {
         int adc_raw = 0;
@@ -73,10 +78,13 @@ static float battery_read_voltage(void) {
             return 0.0f;
         }
         adc_sum += adc_raw;
+        if (adc_raw < adc_min) adc_min = adc_raw;
+        if (adc_raw > adc_max) adc_max = adc_raw;
         vTaskDelay(1);  // Yield between samples (1 tick regardless of tick rate)
     }
 
     int adc_avg = adc_sum / num_samples;
+    bat_last_spread = adc_max - adc_min;
 
     int voltage_mv = 0;
     if (adc_cali_handle != NULL) {
@@ -89,10 +97,42 @@ static float battery_read_voltage(void) {
     // Account for voltage divider
     float battery_volts = (voltage_mv / 1000.0f) * BATTERY_VOLTAGE_DIVIDER;
 
-    ESP_LOGI(TAG, "Battery ADC: raw=%d, voltage_mv=%d, calculated=%.3fV (divider=%.2fx)",
-             adc_avg, voltage_mv, battery_volts, BATTERY_VOLTAGE_DIVIDER);
+    ESP_LOGI(TAG, "Battery ADC: raw=%d, spread=%d, voltage_mv=%d, calculated=%.3fV (divider=%.2fx)",
+             adc_avg, bat_last_spread, voltage_mv, battery_volts, BATTERY_VOLTAGE_DIVIDER);
 
     return battery_volts;
+}
+
+static int bat_absent_streak = 0;   // Consecutive reads that look like no cell
+static int bat_present_streak = 0;  // Consecutive reads that look like a real cell
+
+// Returns true when the presence state changed this cycle.
+static bool battery_update_presence(float volts) {
+    bool looks_absent = (volts >= BATTERY_ABSENT_MIN_VOLTAGE) ||
+                        (volts < BATTERY_ABSENT_MAX_VOLTAGE) ||
+                        (bat_last_spread > BATTERY_ABSENT_NOISE_RAW);
+    if (looks_absent) {
+        bat_absent_streak++;
+        bat_present_streak = 0;
+    } else {
+        bat_present_streak++;
+        bat_absent_streak = 0;
+    }
+
+    if (battery_present && bat_absent_streak >= BATTERY_ABSENT_CONFIRM) {
+        battery_present = false;
+        ESP_LOGW(TAG, "No battery detected (%.3fV, spread=%d) - USB power only",
+                 volts, bat_last_spread);
+        sd_log(TAG, "No battery: %.3fV spread=%d", volts, bat_last_spread);
+        return true;
+    }
+    if (!battery_present && bat_present_streak >= BATTERY_ABSENT_CONFIRM) {
+        battery_present = true;
+        ESP_LOGI(TAG, "Battery detected (%.3fV, spread=%d)", volts, bat_last_spread);
+        sd_log(TAG, "Battery fitted: %.3fV", volts);
+        return true;
+    }
+    return false;
 }
 
 // Lightweight ADC read — fewer samples, no logging (~8ms). Used for fast change
@@ -191,11 +231,27 @@ bool battery_is_charging(void) {
     return bat_confirmed_charging;
 }
 
+bool battery_is_present(void) {
+    return battery_present;
+}
+
+// Swap the battery gauge for the plug icon (or back). Caller holds the LVGL lock.
+static void battery_apply_presence_ui(void) {
+    if (battery_canvas == NULL) return;
+    if (battery_present) {
+        draw_battery_icon(battery_canvas, battery_percent_to_color(battery_percent), battery_percent);
+        if (battery_percent_label != NULL) lv_obj_clear_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        draw_plug_icon(battery_canvas, COLOR_TEXT_GRAY);
+        if (battery_percent_label != NULL) lv_obj_add_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static void battery_flash_timer_cb(lv_timer_t *timer) {
     // Flash battery icon red when battery is at 10%
     static bool flash_state = false;
 
-    if (battery_canvas != NULL && lvgl_port_lock(1)) {
+    if (battery_canvas != NULL && battery_present && lvgl_port_lock(1)) {
         uint32_t color = flash_state ? COLOR_RED : COLOR_TEXT_WHITE;
         draw_battery_icon(battery_canvas, color, battery_percent);
         flash_state = !flash_state;
@@ -238,6 +294,14 @@ static void charging_anim_timer_cb(lv_timer_t *timer) {
 void update_battery_display(void) {
     if (battery_canvas == NULL) {
         return;  // UI not initialized yet
+    }
+
+    if (!battery_present) {
+        if (lvgl_port_lock(1)) {
+            battery_apply_presence_ui();
+            lvgl_port_unlock();
+        }
+        return;
     }
 
     // During charging, the animation timer handles icon drawing
@@ -393,6 +457,30 @@ void battery_monitor_task(void *arg) {
 
         battery_voltage = battery_read_voltage();
         int raw_percent = battery_voltage_to_percent(battery_voltage);
+
+        // --- No-battery detection (USB-only builds) ---
+        if (battery_update_presence(battery_voltage)) {
+            if (!battery_present) {
+                battery_stop_charging();  // Charging heuristics are meaningless with no cell
+            } else {
+                bat_history_count = 0;
+                bat_history_idx = 0;
+                bat_displayed_percent = -1;
+                bat_voltage_hist_count = 0;
+                bat_prev_voltage = 0.0f;
+                bat_prev_raw_percent = -1;
+            }
+            if (lvgl_port_lock(1)) {
+                battery_apply_presence_ui();
+                lvgl_port_unlock();
+            }
+        }
+        if (!battery_present) {
+            update_battery_display();  // Re-applies the USB symbol if the home screen was rebuilt
+            vTaskDelay(pdMS_TO_TICKS(bat_boot_readings < CHARGE_BOOT_FAST_COUNT ? CHARGE_BOOT_INTERVAL_MS : 60000));
+            bat_boot_readings++;
+            continue;
+        }
 
         // Voltage history for trend detection: [0]=oldest, [4]=newest.
         if (bat_voltage_hist_count < 5) {

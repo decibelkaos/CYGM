@@ -40,6 +40,9 @@ void update_sunrise_sunset_display(void);
 /** Human-readable text for a mapped weather code (0-7). */
 const char* get_weather_condition_text(int weather_code);
 
+// Stored temperatures are always Fahrenheit; convert with rounding for display.
+int weather_f_to_c(int temp_f);
+
 /** Weather task: fetches at the configured interval. */
 void weather_update_task(void *pvParameters);
 

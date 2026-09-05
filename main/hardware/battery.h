@@ -38,6 +38,9 @@ uint32_t battery_percent_to_dark_color(int percent);
  */
 bool battery_is_charging(void);
 
+/** False once the ADC has shown no cell fitted (USB-only build). */
+bool battery_is_present(void);
+
 #ifdef __cplusplus
 }
 #endif

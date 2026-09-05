@@ -1391,7 +1391,7 @@ static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
 
 // Battery tap event: toggle percentage label visibility
 static void battery_tap_event_cb(lv_event_t *e) {
-    if (battery_percent_label == NULL) return;
+    if (battery_percent_label == NULL || !battery_present) return;
     if (lv_obj_has_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_clear_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -1440,6 +1440,42 @@ void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent) {
         dsc.radius = 1;
         lv_canvas_draw_rect(canvas, 2, 3, fill_width, 8, &dsc);
     }
+}
+
+// Mains plug with a cable tail, drawn in place of the gauge when no cell is fitted.
+void draw_plug_icon(lv_obj_t *canvas, uint32_t color) {
+    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.bg_color = lv_color_hex(color);
+    dsc.bg_opa = LV_OPA_COVER;
+    dsc.border_width = 0;
+    dsc.radius = 0;
+
+    // Two prongs pointing left
+    lv_canvas_draw_rect(canvas, 0, 3, 5, 2, &dsc);
+    lv_canvas_draw_rect(canvas, 0, 9, 5, 2, &dsc);
+
+    // Neck between body and cable
+    lv_canvas_draw_rect(canvas, 16, 5, 4, 4, &dsc);
+
+    // Plug body, outlined like the battery gauge
+    dsc.bg_opa = LV_OPA_TRANSP;
+    dsc.border_color = lv_color_hex(color);
+    dsc.border_width = 2;
+    dsc.radius = 3;
+    lv_canvas_draw_rect(canvas, 5, 0, 11, 14, &dsc);
+
+    // Cable tail curving down and away
+    lv_draw_line_dsc_t line;
+    lv_draw_line_dsc_init(&line);
+    line.color = lv_color_hex(color);
+    line.width = 2;
+    line.round_start = 1;
+    line.round_end = 1;
+    lv_point_t tail[] = { {20, 7}, {24, 7}, {27, 9}, {29, 12} };
+    lv_canvas_draw_line(canvas, tail, 4, &line);
 }
 
 // A swipe starting on a clickable child still ends in LV_EVENT_CLICKED on that
@@ -2525,8 +2561,7 @@ void create_home_screen(void) {
     home_temp_label = lv_label_create(left_card);
     char temp_buf[16];
     if (user_temp_celsius) {
-        int temp_c = (current_temp_f - 32) * 5 / 9;
-        snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
+        snprintf(temp_buf, sizeof(temp_buf), "%d C", weather_f_to_c(current_temp_f));
     } else {
         snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
     }
@@ -2543,9 +2578,8 @@ void create_home_screen(void) {
     home_hilo_label = lv_label_create(left_card);
     char hilo_buf[32];
     if (user_temp_celsius) {
-        int high_c = (high_temp_f - 32) * 5 / 9;
-        int low_c = (low_temp_f - 32) * 5 / 9;
-        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
+        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d",
+                 weather_f_to_c(high_temp_f), weather_f_to_c(low_temp_f));
     } else {
         snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
     }
@@ -2610,17 +2644,17 @@ void create_home_screen(void) {
     lv_obj_add_style(right_card, &style_card, 0);
     lv_obj_clear_flag(right_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Battery icon (kept for compatibility - not displayed)
-    battery_icon = lv_label_create(right_card);
-    lv_label_set_text(battery_icon, "");
-    lv_obj_add_flag(battery_icon, LV_OBJ_FLAG_HIDDEN);
-
-    // Battery canvas - tappable to toggle percentage display
+    // Battery canvas - gauge, or the plug icon when no cell is fitted.
+    // Tappable to toggle the percentage display.
     static lv_color_t canvas_buf_battery[LV_CANVAS_BUF_SIZE_TRUE_COLOR(30, 14)];
     battery_canvas = lv_canvas_create(right_card);
     lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 30, 14, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(battery_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
-    draw_battery_icon(battery_canvas, COLOR_GREEN, 100);  // Start full
+    if (battery_present) {
+        draw_battery_icon(battery_canvas, COLOR_GREEN, 100);  // Start full
+    } else {
+        draw_plug_icon(battery_canvas, COLOR_TEXT_GRAY);
+    }
     lv_obj_align(battery_canvas, LV_ALIGN_TOP_LEFT, 2, 0);
     lv_obj_add_flag(battery_canvas, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(battery_canvas, battery_tap_event_cb, LV_EVENT_CLICKED, NULL);
@@ -2632,6 +2666,7 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(battery_percent_label, lv_color_hex(COLOR_GREEN), 0);
     lv_obj_set_style_text_font(battery_percent_label, &lv_font_montserrat_12, 0);
     lv_obj_align_to(battery_percent_label, battery_canvas, LV_ALIGN_OUT_RIGHT_MID, 2, 0);
+    if (!battery_present) lv_obj_add_flag(battery_percent_label, LV_OBJ_FLAG_HIDDEN);
 
     // Brightness icon — custom lightbulb inside a clickable button
     brightness_btn_ref = lv_btn_create(right_card);

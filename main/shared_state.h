@@ -34,13 +34,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
 #define CYGM_VERSION_MINOR 16
-#define CYGM_VERSION_PATCH 0
+#define CYGM_VERSION_PATCH 2
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-08-24"
+#define CYGM_VERSION_DATE "2026-09-04"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.16.0.2026-08-24.Beta"
+#define CYGM_VERSION_STRING "0.16.2.2026-09-04.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -82,6 +82,15 @@ extern "C" {
 #define BATTERY_NOMINAL_VOLTAGE 3.7
 #define BATTERY_LOW_VOLTAGE 3.2
 #define BATTERY_CRITICAL_PERCENT 10
+// No-battery detection. Measured on a JC2432W328 with no cell fitted, USB
+// powered: the charger IC holds the battery node at its open-circuit output,
+// 4.28V by this divider, dead steady. A real LiPo on the same charger never
+// read above 4.10V (charge termination). The low/noisy rules cover boards
+// whose node floats instead.
+#define BATTERY_ABSENT_MIN_VOLTAGE 4.22   // At or above this no cell is clamping the node
+#define BATTERY_ABSENT_MAX_VOLTAGE 3.0    // Below this the cell can't be powering us
+#define BATTERY_ABSENT_NOISE_RAW   120    // Raw-count spread across one read = floating
+#define BATTERY_ABSENT_CONFIRM     2      // Consecutive cycles before switching state
 
 // ==================== Color Palette ====================
 #define COLOR_BG            0x000000  // Pure black background
@@ -199,8 +208,8 @@ extern adc_cali_handle_t adc_cali_handle;
 extern float battery_voltage;
 extern int battery_percent;
 extern bool battery_low_warning_shown;
-extern lv_obj_t *battery_icon;
-extern lv_obj_t *battery_canvas;
+extern bool battery_present;
+extern lv_obj_t *battery_canvas;         // Gauge, or the plug icon when no cell
 extern lv_obj_t *battery_percent_label;
 extern lv_timer_t *battery_flash_timer;
 extern lv_timer_t *battery_charging_fade_timer;

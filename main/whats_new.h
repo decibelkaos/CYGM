@@ -13,8 +13,9 @@
 #define WHATS_NEW_H
 
 static const char *const whats_new_bullets[] = {
-    "Nightscout settings survive reboots",
-    "This card - what changed, each update",
+    "Celsius weather now shows real temps",
+    "Rain showers no longer shown as Snow",
+    "No battery? Plug icon, no fake percent",
 };
 #define WHATS_NEW_COUNT (sizeof(whats_new_bullets) / sizeof(whats_new_bullets[0]))
 

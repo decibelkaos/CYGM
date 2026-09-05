@@ -24,6 +24,7 @@
 #include "esp_lvgl_port.h"
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 static const char *TAG = "WEATHER_SYSTEM";
 
@@ -232,15 +233,21 @@ void update_sunrise_sunset_display(void) {
     }
 }
 
+int weather_f_to_c(int temp_f) {
+    return (int)lroundf((temp_f - 32) * 5.0f / 9.0f);
+}
+
 static int map_weather_code(int wmo_code) {
-    // WMO Weather interpretation codes
+    // WMO 4677 weather interpretation codes as used by Open-Meteo
     if (wmo_code == 0) return 0;  // Clear sky
-    if (wmo_code == 1 || wmo_code == 2) return 1;  // Partly cloudy
-    if (wmo_code == 3) return 2;  // Cloudy
+    if (wmo_code == 1 || wmo_code == 2) return 1;  // Mainly clear / partly cloudy
+    if (wmo_code == 3) return 2;  // Overcast
     if (wmo_code >= 45 && wmo_code <= 48) return 6;  // Fog
-    if ((wmo_code >= 56 && wmo_code <= 57) || (wmo_code >= 66 && wmo_code <= 67)) return 7;  // Freezing rain/drizzle (ice)
-    if (wmo_code >= 51 && wmo_code <= 65) return 3;  // Rain (excluding freezing rain)
-    if (wmo_code >= 71 && wmo_code <= 86) return 4;  // Snow (including snow showers)
+    if ((wmo_code >= 56 && wmo_code <= 57) || (wmo_code >= 66 && wmo_code <= 67)) return 7;  // Freezing drizzle / rain
+    if (wmo_code >= 51 && wmo_code <= 65) return 3;  // Drizzle and rain
+    if (wmo_code >= 71 && wmo_code <= 77) return 4;  // Snow fall, snow grains
+    if (wmo_code >= 80 && wmo_code <= 82) return 3;  // Rain showers (NOT snow)
+    if (wmo_code >= 85 && wmo_code <= 86) return 4;  // Snow showers
     if (wmo_code >= 95 && wmo_code <= 99) return 5;  // Thunderstorm
     return 2;  // Default to cloudy
 }
@@ -252,9 +259,11 @@ esp_err_t fetch_weather(float lat, float lon) {
 
     char url[512];
     // Use HTTP for Open-Meteo (free API, no SSL needed, saves ~20KB memory)
+    // Always fetch Fahrenheit: current_temp_f/high/low are stored in F and the
+    // display converts. Fetching in the user's unit made Celsius get converted twice.
     snprintf(url, sizeof(url),
-             "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=%s&timezone=auto&forecast_days=1",
-             lat, lon, user_temp_celsius ? "celsius" : "fahrenheit");
+             "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1",
+             lat, lon);
 
     http_response_len = 0;
     memset(http_response_buffer, 0, sizeof(http_response_buffer));
@@ -297,12 +306,14 @@ esp_err_t fetch_weather(float lat, float lon) {
                 cJSON *sunrise = cJSON_GetObjectItem(daily, "sunrise");
                 cJSON *sunset = cJSON_GetObjectItem(daily, "sunset");
 
-                if (temp && weather_code && temp_max && temp_min) {
-                    current_temp_f = (int)temp->valuedouble;
+                cJSON *temp_max0 = temp_max ? cJSON_GetArrayItem(temp_max, 0) : NULL;
+                cJSON *temp_min0 = temp_min ? cJSON_GetArrayItem(temp_min, 0) : NULL;
 
-                    // Get first element of daily arrays
-                    high_temp_f = (int)cJSON_GetArrayItem(temp_max, 0)->valuedouble;
-                    low_temp_f = (int)cJSON_GetArrayItem(temp_min, 0)->valuedouble;
+                if (cJSON_IsNumber(temp) && cJSON_IsNumber(weather_code) &&
+                    cJSON_IsNumber(temp_max0) && cJSON_IsNumber(temp_min0)) {
+                    current_temp_f = (int)lround(temp->valuedouble);
+                    high_temp_f = (int)lround(temp_max0->valuedouble);
+                    low_temp_f = (int)lround(temp_min0->valuedouble);
 
                     // Parse sunrise/sunset times (ISO 8601 format)
                     if (sunrise && sunset) {
@@ -358,17 +369,15 @@ void update_weather_display(void) {
     // Prepare text buffers outside lock (minimize lock hold time)
     char temp_buf[16];
     if (user_temp_celsius) {
-        int temp_c = (current_temp_f - 32) * 5 / 9;
-        snprintf(temp_buf, sizeof(temp_buf), "%d C", temp_c);
+        snprintf(temp_buf, sizeof(temp_buf), "%d C", weather_f_to_c(current_temp_f));
     } else {
         snprintf(temp_buf, sizeof(temp_buf), "%d F", current_temp_f);
     }
 
     char hilo_buf[32];
     if (user_temp_celsius) {
-        int high_c = (high_temp_f - 32) * 5 / 9;
-        int low_c = (low_temp_f - 32) * 5 / 9;
-        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_c, low_c);
+        snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d",
+                 weather_f_to_c(high_temp_f), weather_f_to_c(low_temp_f));
     } else {
         snprintf(hilo_buf, sizeof(hilo_buf), "H:%d\nL:%d", high_temp_f, low_temp_f);
     }
