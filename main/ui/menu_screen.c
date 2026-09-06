@@ -300,7 +300,7 @@ static void show_about_overlay(void) {
     lv_obj_align(dev_url, LV_ALIGN_TOP_LEFT, 16, 88);
 
     lv_obj_t *dev_disc = lv_label_create(card);
-    lv_label_set_text(dev_disc, "Not a medical device");
+    lv_label_set_text(dev_disc, "Not FDA-cleared. Secondary display.");
     lv_obj_set_style_text_color(dev_disc, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 16, 104);
 

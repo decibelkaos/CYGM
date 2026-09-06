@@ -19,7 +19,6 @@ temp_*
 
 # Large directories
 Documents/
-.claude/
 
 # Backups
 *.tar.gz

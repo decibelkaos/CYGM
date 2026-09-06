@@ -673,11 +673,11 @@ void show_disclaimer_overlay(void) {
     // Legal text
     lv_obj_t *msg = lv_label_create(card);
     lv_label_set_text(msg,
-        "This device is NOT a medical device.\n"
-        "It is for informational purposes only\n"
-        "and must NOT be used for medical\n"
-        "decisions. Always consult your CGM\n"
-        "and healthcare provider.");
+        "Experimental secondary CGM display.\n"
+        "NOT FDA-cleared and NOT clinically\n"
+        "validated. Never treat from this\n"
+        "screen alone. Always confirm on your\n"
+        "official CGM before you act.");
     lv_obj_set_style_text_font(msg, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);

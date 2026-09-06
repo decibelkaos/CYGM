@@ -20,6 +20,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-CYGM is not a medical device. It is not FDA-cleared or clinically validated.
-Never make treatment decisions from it; always confirm readings on your
-approved CGM receiver or app.
+CYGM is an open-source experimental secondary CGM display. It is not
+FDA-cleared or FDA-approved and has not been clinically validated. Do not use
+it as the sole basis for a treatment decision, or as a replacement for your
+prescribed CGM receiver or app and its alerts. Always confirm glucose
+information on your official CGM system before dosing or treating.

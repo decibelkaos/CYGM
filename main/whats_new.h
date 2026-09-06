@@ -13,14 +13,13 @@
 #define WHATS_NEW_H
 
 static const char *const whats_new_bullets[] = {
-    "Celsius weather now shows real temps",
-    "Rain showers no longer shown as Snow",
-    "No battery? Plug icon, no fake percent",
+    "Clearer wording on the About screen",
+    "Safety notice reworded for accuracy",
 };
 #define WHATS_NEW_COUNT (sizeof(whats_new_bullets) / sizeof(whats_new_bullets[0]))
 
 /* Optional closing line, drawn below the bullets without one of its own and
    dimmed, to set it apart from the list. Comment out when there is none. */
-#define WHATS_NEW_FOOTER "v0.16.3 is a small bug fix"
+#define WHATS_NEW_FOOTER "v0.16.4 is a text-only update"
 
 #endif // WHATS_NEW_H

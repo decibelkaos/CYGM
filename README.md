@@ -1,10 +1,13 @@
 # CYGM — a dedicated CGM display
 
-A ~$40 open-source glucose display you build yourself. CYGM puts live readings
+A ~$40 open-source glucose display you build yourself. CYGM puts shared readings
 from **Dexcom Share**, **LibreLinkUp**, or **Nightscout** on a 2.8" color
-touchscreen — with alarms that actually wake you, trend charts, weather, a
-night face built for 3am, and over-the-air updates. No subscriptions, no app
-in the way, no account with us.
+touchscreen — with configurable bedside alerts, trend charts, weather, a night
+face built for 3am, and over-the-air updates. No CYGM account, no CYGM
+subscription.
+
+CYGM is a **secondary display**. It reads what your CGM system publishes to its
+cloud, so you keep using your official app or receiver and keep its alerts on.
 
 **Website & device guide:** [cygm.me](https://cygm.me) ·
 [cygm.me/guide.html](https://cygm.me/guide.html)
@@ -15,37 +18,59 @@ in the way, no account with us.
 
 | Part | Detail |
 |---|---|
-| Board | JC2432W328 (ESP32-D0WD, 2.4 GHz WiFi) |
+| Board | JC2432W328**C** — the **capacitive** variant (ESP32-D0WD, 2.4 GHz WiFi) |
 | Display | 2.8" 320×240 ST7789 TFT (SPI @ 40 MHz) |
 | Touch | CST820 capacitive (I2C) |
-| Audio | Piezo speaker via 8002A amplifier |
+| Audio | Amplified speaker output (8002A); optional speaker makes alarms louder |
 | Extras | RGB status LED, microSD slot, optional LiPo battery |
 | Case | 3D-printable ([MakerWorld](https://makerworld.com/en/models/2542672-cygm-case)) |
+
+A visually identical **resistive** board is sold under nearly the same name and
+its touch will not work. Check the listing says capacitive.
 
 The easiest install is the **browser flasher at [cygm.me](https://cygm.me)** —
 no toolchain needed.
 
 ## Features (v0.16.x)
 
-- **Three CGM providers**: Dexcom Share, LibreLinkUp, Nightscout — pick one
-  on-device, switch anytime
+- **Three data sources**: Dexcom Share, LibreLinkUp, Nightscout — pick one
+  on-device, switch anytime. Nightscout is a data source rather than a CGM
+  maker, so through it CYGM shows any CGM your Nightscout setup already handles
 - **Glanceable home screen**: big value with signed delta, trend arrow with a
-  sliding two-arrow alert for rapid change, countdown arc to the next reading,
-  stale readings visibly gray out
-- **Charts**: 1/3/6/12/24 h with Low/Avg/High, time-in-range, GMI and CV
-- **Alarm engine**: four threshold tiers, 28 tones (including a random loud
-  sequence your brain can't tune out), escalating volume, quiet hours,
-  predictive low warning, data-gap alert, and a non-disableable urgent-low
-  safety floor with a full-screen takeover
+  sliding two-arrow alert for rapid change, a countdown arc until CYGM next
+  checks for data, and stale readings that visibly gray out
+- **Polling, not magic**: CYGM checks the cloud about every 90 seconds. How
+  often a genuinely new reading appears is set by your CGM system — Dexcom
+  typically every five minutes, Libre 3 and 3 Plus as often as every minute
+- **Charts**: 1/3/6/12/24 h with Low, Average, High and **Configured Range**,
+  the share of readings between *your* configured warning thresholds. That is
+  not clinical Time in Range. GMI and CV are shown as short-window estimates
+  and are not comparable with a standard 14-day report
+- **Alarm engine**: four threshold tiers, 28 tones (including a randomized loud
+  sequence designed to reduce habituation), escalating volume, quiet hours,
+  predictive low warning, a data-gap alert that suggests likely causes, and a
+  non-disableable urgent-low safety floor with a full-screen takeover
 - **Night face**: scheduled dim hands the screen to one huge zone-colored
-  number; the time stays small in the top bar so it can never be misread as
-  a glucose value
+  number; the time stays small in the top bar so it is not misread as a
+  glucose value
 - **Units & locale**: mg/dL and mmol/L, 12/24 h clock, 80+ timezones, weather
-  with sunrise/sunset (Open-Meteo)
+  with sunrise/sunset
 - **OTA updates** over WiFi, with a one-time card after each update listing
   what changed; optional CSV logging to microSD
 - **Runs fine without a battery**: settings survive power loss, so a
   permanently plugged-in build comes back up configured after an outage
+
+## Privacy
+
+There is no CYGM account and no CYGM cloud. CGM credentials are stored locally
+on the device and are sent only to the CGM service you selected, when CYGM signs
+in to it. Readings go from that service straight to your device; none pass
+through a CYGM server. Flash and storage encryption are **not** enabled in this
+build, and firmware images are not separately signed, so install only from a
+source you trust and run **Erase Device** before passing a unit on.
+
+Full detail, including every host the device contacts:
+[cygm.me#privacy](https://cygm.me#privacy).
 
 ## Building from source
 
@@ -68,7 +93,7 @@ Notes:
 
 ```
 main/
-├── hardware/    # display/touch, buzzer, battery, LED
+├── hardware/    # display/touch, audio, battery, LED
 ├── features/    # time/SNTP, weather, geocoding, glucose history, OTA checker
 ├── ui/          # each screen, the chart, and the alarm/night UI
 ├── tasks/       # FreeRTOS background task orchestration
@@ -85,8 +110,8 @@ main/
 
 ## Third-party services
 
-- [Open-Meteo](https://open-meteo.com/) — weather (CC BY 4.0)
-- [OpenStreetMap Nominatim](https://nominatim.org/) — geocoding (ODbL)
+- [Open-Meteo](https://open-meteo.com/) — weather and place-name geocoding (CC BY 4.0)
+- [Zippopotam.us](https://zippopotam.us/) — postal-code lookup
 
 ## License
 
@@ -94,7 +119,9 @@ MIT — built for the diabetes DIY community. #WeAreNotWaiting
 
 ---
 
-**⚠️ Medical disclaimer**: CYGM is not a medical device and is not FDA-cleared
-or clinically validated. It is a second screen, never your source of truth —
-never make treatment decisions from it, and always confirm readings on your
-approved CGM receiver or app.
+**⚠️ Medical disclaimer**: CYGM is an open-source **experimental secondary CGM
+display**. It is **not FDA-cleared or FDA-approved** and has **not been
+clinically validated**. Do not use it as the sole basis for a treatment
+decision, or as a replacement for your prescribed CGM receiver or app and its
+alerts. Always confirm glucose information on your official CGM system before
+dosing or treating.
