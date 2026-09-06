@@ -1159,6 +1159,19 @@ static void whats_new_show(void) {
         lv_obj_align(bullet, LV_ALIGN_TOP_LEFT, 16, 54 + i * 20);
     }
 
+#ifdef WHATS_NEW_FOOTER
+    {
+        int rows = (int)WHATS_NEW_COUNT < 5 ? (int)WHATS_NEW_COUNT : 5;
+        lv_obj_t *foot = lv_label_create(panel);
+        lv_label_set_long_mode(foot, LV_LABEL_LONG_CLIP);  // one line, no wrap
+        lv_obj_set_width(foot, 292 - 32);
+        lv_label_set_text(foot, WHATS_NEW_FOOTER);
+        lv_obj_set_style_text_font(foot, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(foot, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_align(foot, LV_ALIGN_TOP_LEFT, 16, 54 + rows * 20 + 8);
+    }
+#endif
+
     lv_obj_t *ok_btn = lv_btn_create(panel);
     lv_obj_set_size(ok_btn, 120, 36);
     lv_obj_align(ok_btn, LV_ALIGN_BOTTOM_MID, 0, -10);

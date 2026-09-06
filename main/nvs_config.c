@@ -753,6 +753,24 @@ esp_err_t nvs_save_seen_version(const char *version) {
     return ret;
 }
 
+esp_err_t nvs_clear_seen_version(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_erase_key(nvs_handle, NVS_SEEN_VERSION_KEY);
+    if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        ret = ESP_OK;  // already clear
+    }
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+    return ret;
+}
+
 esp_err_t nvs_load_seen_version(char *version, size_t len) {
     nvs_handle_t nvs_handle;
     esp_err_t ret;

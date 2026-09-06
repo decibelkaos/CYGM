@@ -1,16 +1,31 @@
-# ESP-IDF build output
+# Build artifacts
 build/
-sdkconfig
-sdkconfig.old
-dependencies.lock
-managed_components/
+*.tmp
+*.backup
+*.before_*
 
-# Editors / tooling
+# ESP-IDF
 .vscode/
-.clangd
+managed_components/
+dependencies.lock
+
+# Logs
+*.log
+*.txt
+
+# Temporary files
+NUL
+temp_*
+
+# Large directories
+Documents/
+.claude/
+
+# Backups
+*.tar.gz
+savepoints/
 .cache/
 
-# Local files
-*.log
-*.tmp
-*.bak
+# Server-side runtime data, never committed
+website/api/devices.json
+website/api/devices.json.tmp

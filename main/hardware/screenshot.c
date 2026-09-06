@@ -746,11 +746,26 @@ static void screenshot_cmd_task(void *arg)
                     sd_serial_capture_set(false);
                     nvs_save_sd_serial_capture(false);
                     ESP_LOGI(TAG, "Serial capture: OFF (saved — persists across reboots)");
+                } else if (strcmp(cmd_buf, "whatsnew") == 0) {
+                    // The card shows once per version string. Re-flashing the
+                    // same version leaves the stamp in place, so there is no
+                    // way to re-read it without forgetting the stamp first.
+                    esp_err_t wn = nvs_clear_seen_version();
+                    if (wn == ESP_OK) {
+                        ESP_LOGI(TAG, "What's New stamp cleared - rebooting to show the card");
+                        vTaskDelay(pdMS_TO_TICKS(200));
+                        esp_restart();
+                    } else {
+                        ESP_LOGW(TAG, "Could not clear What's New stamp: %s",
+                                 esp_err_to_name(wn));
+                    }
                 } else if (strcmp(cmd_buf, "help") == 0) {
                     ESP_LOGI(TAG, "Commands: ss (SD) | sss (serial b64) | tap x y [ms] | "
                                   "swipe x1 y1 x2 y2 [ms] | status | reboot | "
                                   "hold on | hold off | demo on | demo off | "
-                                  "log on | log off | ship | help");
+                                  "log on | log off | ship | whatsnew | help");
+                    ESP_LOGI(TAG, "  whatsnew = forget the seen-version stamp and "
+                                  "reboot, so the What's New card shows again");
                     ESP_LOGI(TAG, "  demo on = cycle the trend arrow through a random "
                                   "direction every 10s (arrow only, expires in 30 min)");
                 }

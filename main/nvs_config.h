@@ -95,6 +95,9 @@ esp_err_t nvs_load_cgm_type(char *cgm_type, size_t len);
 // Last firmware version whose "What's New" card was shown (full version string)
 esp_err_t nvs_save_seen_version(const char *version);
 esp_err_t nvs_load_seen_version(char *version, size_t len);
+/* Forget which version the What's New card was last shown for, so the next
+   boot shows it again. Serial command "whatsnew"; nothing in the UI calls it. */
+esp_err_t nvs_clear_seen_version(void);
 
 // Dexcom Share API credentials (username/password based)
 esp_err_t nvs_set_dexcom_credentials(const char *username, const char *password);
