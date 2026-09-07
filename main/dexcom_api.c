@@ -46,6 +46,15 @@ static const char *BASE_URL_JP  = "https://share.dexcom.jp/ShareWebServices/Serv
 // HTTP buffer size
 #define HTTP_BUFFER_SIZE 2048
 
+// cJSON recurses once per nesting level; the glucose task's 5 KB stack cannot
+// unwind much more than this before it overflows into adjacent heap.
+#define JSON_MAX_DEPTH 8
+
+// Physiologically possible range; anything outside it is a service artefact.
+// The share service reports 401 as a real HIGH sentinel, so the ceiling sits above it.
+#define GLUCOSE_MIN_MGDL 20
+#define GLUCOSE_MAX_MGDL 600
+
 // Rate limiting and session timeout
 #define RATE_LIMIT_MS       90000ULL    // 90 seconds between glucose requests
 #define SESSION_TIMEOUT_MS  43200000ULL // 12 hours
@@ -188,6 +197,33 @@ static dexcom_trend_t parse_trend(const char *trend_str) {
     return TREND_NONE;
 }
 
+// Counts bracket nesting without recursing, so an adversarial body is refused
+// before cJSON's recursive parser can walk off the task stack.
+static bool json_depth_ok(const char *body) {
+    int depth = 0;
+    bool in_string = false;
+
+    for (const char *p = body; *p != '\0'; p++) {
+        if (in_string) {
+            if (*p == '\\') {
+                if (p[1] == '\0') break;
+                p++;
+            } else if (*p == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (*p == '"') {
+            in_string = true;
+        } else if (*p == '[' || *p == '{') {
+            if (++depth > JSON_MAX_DEPTH) return false;
+        } else if ((*p == ']' || *p == '}') && depth > 0) {
+            depth--;
+        }
+    }
+    return true;
+}
+
 // Parse Dexcom timestamp: "Date(1731645818222)" or "Date(1731645818222+0000)" -> time_t
 static time_t parse_dexcom_timestamp(const char *dt_str) {
     if (dt_str == NULL) return 0;
@@ -266,6 +302,12 @@ static esp_err_t init_persistent_client(void) {
         .keep_alive_idle = 30,
         .keep_alive_interval = 10,
         .keep_alive_count = 3,
+        // Account password and session id cross this connection; authenticate the
+        // server against the bundled roots rather than only encrypting to it.
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        // Following a redirect would re-send the login body, password included,
+        // to whatever host the response names; a 3xx fails as a bad status.
+        .disable_auto_redirect = true,
     };
 
     persistent_client = esp_http_client_init(&config);
@@ -994,6 +1036,12 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         return ESP_FAIL;
     }
 
+    if (!json_depth_ok(http_response)) {
+        ESP_LOGE(TAG, "Response nesting exceeds %d levels — refusing to parse", JSON_MAX_DEPTH);
+        glucose->status = GLUCOSE_STATUS_NO_DATA;
+        return ESP_FAIL;
+    }
+
     // Parse JSON response: [{"WT":"Date(...)","ST":"Date(...)","DT":"Date(...)","Value":155,"Trend":"Flat"}]
     cJSON *root = cJSON_Parse(http_response);
     if (root == NULL) {
@@ -1037,10 +1085,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     }
     
     cJSON *value = cJSON_GetObjectItem(reading, "Value");
-    if (cJSON_IsNumber(value)) {
-        glucose->value = value->valueint;
-    }
-    
+
     cJSON *trend = cJSON_GetObjectItem(reading, "Trend");
     if (cJSON_IsString(trend)) {
         glucose->trend = parse_trend(trend->valuestring);
@@ -1052,10 +1097,32 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
         glucose->timestamp = parse_dexcom_timestamp(wt->valuestring);
     }
 
-    // parse_dexcom_timestamp() returns 0 on failure — reject rather than show it.
-    if (glucose->timestamp == 0) {
-        ESP_LOGW(TAG, "Glucose timestamp invalid (parse failed) - rejecting data");
-        glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+    // A reading is only usable when both halves survive validation. A missing or
+    // out-of-range Value must never reach the caller as a fresh zero, and
+    // parse_dexcom_timestamp() returns 0 on failure.
+    const char *reject_reason = NULL;
+    dexcom_status_t reject_status = GLUCOSE_STATUS_NO_DATA;
+
+    if (!cJSON_IsNumber(value)) {
+        reject_reason = "no numeric Value field";
+    } else {
+        glucose->value = value->valueint;
+        if (glucose->value < GLUCOSE_MIN_MGDL || glucose->value > GLUCOSE_MAX_MGDL) {
+            ESP_LOGW(TAG, "Implausible glucose value %d mg/dL", glucose->value);
+            reject_reason = "value outside the plausible range";
+        }
+    }
+
+    if (reject_reason == NULL && glucose->timestamp == 0) {
+        reject_reason = "timestamp parse failed";
+        reject_status = GLUCOSE_STATUS_SIGNAL_LOSS;
+    }
+
+    if (reject_reason != NULL) {
+        ESP_LOGW(TAG, "Rejecting reading — %s", reject_reason);
+        glucose->value = 0;
+        glucose->timestamp = 0;
+        glucose->status = reject_status;
         glucose->valid = false;
         cJSON_Delete(root);
         dexcom_last_fetch_ms = (uint64_t)(esp_timer_get_time() / 1000);

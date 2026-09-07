@@ -28,3 +28,9 @@ savepoints/
 # Server-side runtime data, never committed
 website/api/devices.json
 website/api/devices.json.tmp
+
+website/api/csp-reports.json
+website/api/csp-reports.json.tmp
+
+# Server-side secrets, kept above the docroot on the host and never in the repo
+.cygm-private/

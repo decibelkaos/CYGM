@@ -215,27 +215,64 @@ esp_err_t screenshot_take(void)
     // Wait for tasks to reach their sleep/delay state
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // Delete non-essential tasks to free ~19KB of stacks (weather 8K, glucose 4K,
+    // Park non-essential tasks to free ~19KB of stacks (weather 8K, glucose 4K,
     // time 4K, battery 3K). Unlike OTA, which reboots, these are recreated after.
-    if (weather_task_handle != NULL) {
-        vTaskDelete(weather_task_handle);
-        weather_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted weather task (8KB)");
-    }
-    if (glucose_task_handle != NULL) {
-        vTaskDelete(glucose_task_handle);
-        glucose_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted glucose task (4KB)");
-    }
-    if (time_task_handle != NULL) {
-        vTaskDelete(time_task_handle);
-        time_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted time task (4KB)");
-    }
+    // The weather, glucose and time tasks take the LVGL lock or network_mutex,
+    // and FreeRTOS never releases a mutex owned by a deleted task, so they park
+    // themselves on request. The battery task only touches LVGL, so it is safe
+    // to delete while this task holds the LVGL lock.
+    bool had_weather = (weather_task_handle != NULL);
+    bool had_time    = (time_task_handle != NULL);
+    bool had_glucose = (glucose_task_handle != NULL);
+    if (had_weather) weather_task_request_stop();
+    if (had_glucose) glucose_task_request_stop();
+    if (had_time)    time_task_request_stop();
+
     if (battery_task_handle != NULL) {
-        vTaskDelete(battery_task_handle);
-        battery_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted battery task (3KB)");
+        bool ui_locked = false;
+        for (int retry = 0; retry < 50 && !ui_locked; retry++) {
+            ui_locked = lvgl_port_lock(1);
+            if (!ui_locked) vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (ui_locked) {
+            vTaskDelete(battery_task_handle);
+            battery_task_handle = NULL;
+            lvgl_port_unlock();
+            ESP_LOGI(TAG, "Deleted battery task (3KB)");
+        } else {
+            ESP_LOGW(TAG, "LVGL lock unavailable; battery task left running");
+        }
+    }
+    if (had_weather) {
+        for (int i = 0; i < 20 && weather_task_handle != NULL; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (weather_task_handle == NULL) {
+            ESP_LOGI(TAG, "Weather task parked (8KB)");
+        } else {
+            weather_task_cancel_stop();
+            ESP_LOGW(TAG, "Weather task did not park; leaving it running");
+        }
+    }
+    if (had_time) {
+        for (int i = 0; i < 20 && !time_task_is_stopped(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (time_task_is_stopped()) {
+            ESP_LOGI(TAG, "Time task parked (4KB)");
+        } else {
+            ESP_LOGW(TAG, "Time task did not park; leaving it running");
+        }
+    }
+    if (had_glucose) {
+        for (int i = 0; i < 150 && !glucose_task_is_stopped(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (glucose_task_is_stopped()) {
+            ESP_LOGI(TAG, "Glucose task parked (4KB)");
+        } else {
+            ESP_LOGW(TAG, "Glucose task did not park; leaving it running");
+        }
     }
 
     // Yield to idle task so it frees deleted task memory (TLSF coalesces)
@@ -759,11 +796,24 @@ static void screenshot_cmd_task(void *arg)
                         ESP_LOGW(TAG, "Could not clear What's New stamp: %s",
                                  esp_err_to_name(wn));
                     }
+                } else if (strcmp(cmd_buf, "disclaimer") == 0) {
+                    // Accepted once, then never shown again, so the card cannot
+                    // be reviewed after a wording change without this.
+                    esp_err_t dc = nvs_clear_disclaimer_accepted();
+                    if (dc == ESP_OK) {
+                        ESP_LOGI(TAG, "Disclaimer acceptance cleared - rebooting to show the card");
+                        vTaskDelay(pdMS_TO_TICKS(200));
+                        esp_restart();
+                    } else {
+                        ESP_LOGW(TAG, "Could not clear disclaimer flag: %s", esp_err_to_name(dc));
+                    }
                 } else if (strcmp(cmd_buf, "help") == 0) {
                     ESP_LOGI(TAG, "Commands: ss (SD) | sss (serial b64) | tap x y [ms] | "
                                   "swipe x1 y1 x2 y2 [ms] | status | reboot | "
                                   "hold on | hold off | demo on | demo off | "
-                                  "log on | log off | ship | whatsnew | help");
+                                  "log on | log off | ship | whatsnew | disclaimer | help");
+                    ESP_LOGI(TAG, "  disclaimer = forget acceptance and reboot, so the "
+                                  "boot disclaimer card shows again");
                     ESP_LOGI(TAG, "  whatsnew = forget the seen-version stamp and "
                                   "reboot, so the What's New card shows again");
                     ESP_LOGI(TAG, "  demo on = cycle the trend arrow through a random "

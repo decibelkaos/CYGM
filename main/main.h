@@ -150,6 +150,23 @@ void date_label_event_cb(lv_event_t *e);
 /** Main menu item tap handler. */
 void menu_item_event_cb(lv_event_t *e);
 
+/**
+ * Cooperative stop for the glucose task.
+ *
+ * The task may hold network_mutex and an open provider client for several
+ * seconds of every cycle, so it must never be vTaskDelete'd from outside:
+ * FreeRTOS does not release a mutex owned by a deleted task, and every later
+ * network user then times out until a power cycle. Callers that need the task
+ * gone (the CGM login screens) request a stop and go on; the task notices at
+ * its next safe point, releases everything it holds, clears
+ * glucose_task_handle and deletes itself. A login task that then takes
+ * network_mutex naturally waits for the in-flight fetch to finish.
+ */
+void glucose_task_request_stop(void);
+
+/** True once a requested stop has completed (glucose_task_handle is NULL). */
+bool glucose_task_is_stopped(void);
+
 #ifdef __cplusplus
 }
 #endif

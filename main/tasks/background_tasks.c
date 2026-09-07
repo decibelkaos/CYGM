@@ -24,6 +24,7 @@
 #include "cgm_types.h"
 #include "sd_logger.h"
 #include "features/heartbeat.h"
+#include "features/glucose_history.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -116,6 +117,39 @@ static void cygm_task_ensure(const cygm_task_def_t *def) {
     } else {
         ESP_LOGI(TAG, "Started %s (stack=%lu prio=%d core=%d)", def->name,
                  (unsigned long)def->stack, (int)def->prio, (int)def->core);
+    }
+}
+
+// Manual WiFi setup drives the same non-reentrant connect path as the
+// auto-reconnect loop (static retry counter, one event group, a driver config
+// rewrite), so the loop stands down while the user is in it. Bounded on purpose:
+// WiFi is life-critical here, and a setup screen whose close is never reported
+// must not suppress reconnection for good.
+#define MANUAL_WIFI_MAX_SKIPS 8   // x 15 s loop tick
+static volatile bool s_manual_wifi_active = false;
+
+void background_set_manual_wifi_active(bool active) {
+    s_manual_wifi_active = active;
+}
+
+// The boot fetch bypasses the periodic path, so it has to repeat that path's
+// two obligations itself: the reading belongs in history, and an alarm may only
+// be raised on data the provider timestamped within the last 10 minutes.
+static void boot_glucose_accepted(const cgm_glucose_t *glucose) {
+    // insert, not add: history is restored from NVS at boot, so the boot fetch
+    // often returns a reading already in the ring. The periodic path filters
+    // duplicates before it adds; this one has no such filter of its own.
+    glucose_history_insert(glucose->value, (int64_t)glucose->timestamp * 1000);
+
+    // Stamped here as well as in the periodic path, or the reading has no
+    // uptime floor and its age is wall-clock-only until the first poll.
+    glucose_stamp_uptime_ms = esp_timer_get_time() / 1000;
+
+    int data_age_mins = cygm_glucose_age_min(NULL);
+    if (data_age_mins <= 10) {
+        check_glucose_alarms(current_glucose);
+    } else {
+        ESP_LOGW(TAG, "Skipping boot alarm check - data is %d mins old", data_age_mins);
     }
 }
 
@@ -319,9 +353,13 @@ static void watchdog_sample_screen(void) {
 static void return_to_home(void) {
     if (screen_home == NULL) return;
 
-    // Resume network work first: a missed LVGL lock must never leave glucose
+    // Resume network work first: no early return below may leave glucose
     // polling paused. The screen swap itself simply retries on the next tick.
     pause_background_tasks = false;
+
+    // The takeover is parented to the active screen, so loading home would
+    // orphan SNOOZE/DISMISS while the tone keeps re-arming.
+    if (visual_alarm_active) return;
 
     if (!lvgl_port_lock(1)) return;
 
@@ -497,7 +535,7 @@ void ui_task_core1(void *pvParameters) {
         // did not ask for; alarms above are untouched and still take the display.
         bool ui_held = cygm_ui_hold_active();
 
-        if (!home_screen_active) {
+        if (!home_screen_active && !visual_alarm_active) {
             watchdog_sample_screen();
             if (inactive_ms >= UI_INACTIVITY_RETURN_MS && !ui_held) {
                 ESP_LOGI(TAG, "UI inactivity timeout (%lu ms) - returning to home", (unsigned long)inactive_ms);
@@ -576,7 +614,7 @@ void wifi_task_core0(void *pvParameters) {
         uint8_t network_count = 0;
         nvs_get_saved_wifi_networks(networks, &network_count);
 
-        char last_ssid[MAX_SSID_LEN] = {0};
+        char last_ssid[CYGM_MAX_SSID_LEN] = {0};
         bool has_last_wifi = (nvs_load_last_wifi_ssid(last_ssid, sizeof(last_ssid)) == ESP_OK);
 
         // Build connection order: last connected first, then others
@@ -759,7 +797,7 @@ void wifi_task_core0(void *pvParameters) {
                                     }
                                 }
 
-                                check_glucose_alarms(current_glucose);
+                                boot_glucose_accepted(&glucose);
                                 update_glucose_display();
                             } else {
                                 glucose_data_valid = false;
@@ -834,7 +872,7 @@ void wifi_task_core0(void *pvParameters) {
                                     }
                                 }
 
-                                check_glucose_alarms(current_glucose);
+                                boot_glucose_accepted(&glucose);
                                 update_glucose_display();
                             } else {
                                 glucose_data_valid = false;
@@ -922,6 +960,7 @@ void wifi_task_core0(void *pvParameters) {
     bool was_connected = wifi_connected;
     bool ever_connected = wifi_connected;  // Only show overlay after a prior successful connection
     bool wifi_overlay_shown = false;
+    int manual_wifi_skips = 0;
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(15000));
 
@@ -933,6 +972,13 @@ void wifi_task_core0(void *pvParameters) {
                 update_wifi_status_display(false);
                 was_connected = false;
             }
+
+            if (s_manual_wifi_active && manual_wifi_skips < MANUAL_WIFI_MAX_SKIPS) {
+                manual_wifi_skips++;
+                ESP_LOGI(TAG, "Auto-reconnect deferred - manual WiFi setup in progress");
+                continue;
+            }
+            manual_wifi_skips = 0;
 
             ESP_LOGI(TAG, "Auto-reconnect: scanning for known networks...");
             esp_err_t ret = wifi_manager_try_reconnect();

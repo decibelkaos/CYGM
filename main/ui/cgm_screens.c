@@ -36,6 +36,30 @@ static lv_obj_t *wifi_required_overlay = NULL;
 static bool dexcom_pwd_visible = false;
 static lv_obj_t *dexcom_pwd_eye_label = NULL;
 
+// A stop request is only a request: the glucose task may still be several
+// seconds into a fetch. Login tasks wait here before touching provider state
+// or recreating the task, so the two never run against the same client.
+// Never call this from an LVGL callback — it blocks.
+#define GLUCOSE_STOP_WAIT_MS 15000
+
+static void cgm_await_glucose_task_stop(void) {
+    for (int waited = 0; waited < GLUCOSE_STOP_WAIT_MS; waited += 100) {
+        if (glucose_task_is_stopped()) return;
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    ESP_LOGW(TAG, "Glucose task did not stop within %d ms", GLUCOSE_STOP_WAIT_MS);
+}
+
+// A cooperative stop NULLs the handle that home_screen.c's task-health check
+// tests, so that net can no longer revive the task: every exit path of a login
+// task owns the restart. Must run with network_mutex released — the parking
+// task needs that mutex to close its client, and ensure_tasks_running() only
+// creates once the parked task has published a NULL handle.
+static void cgm_restart_glucose_task(void) {
+    cgm_await_glucose_task_stop();
+    ensure_tasks_running();
+}
+
 // Canonical back button: same chevron at the same corner on every screen, so
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *cgm_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb, void *user_data) {
@@ -260,6 +284,14 @@ static void dexcom_login_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "Dexcom login task started for user: %s", username);
 
+    // The glucose task reads the provider type once at start, so it has to go
+    // and come back. The request is issued here rather than in the tap callback
+    // because only this task waits for it and restarts the task afterwards — a
+    // failed xTaskCreate must leave polling untouched, not latch a stop nobody
+    // will honour.
+    glucose_task_request_stop();
+    cgm_await_glucose_task_stop();
+
     // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG, "Dexcom login: network mutex timeout");
@@ -267,12 +299,26 @@ static void dexcom_login_task(void *pvParameters) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
+        // The 15 s await above gave up while the fetch still held the mutex, so
+        // the handle is still set and a bare ensure would no-op. No mutex is
+        // held here, so the pending park now completes and the create lands.
+        cgm_restart_glucose_task();
         dexcom_login_in_progress = false;
         vTaskDelete(NULL);
         return;
     }
 
-    bool tasks_deleted = delete_background_tasks_for_ssl("dexcom-login");
+    // Under the mutex, so the outgoing provider's client can no longer be in
+    // use by a fetch.
+    if (libre_is_authenticated()) {
+        ESP_LOGI(TAG, "Closing Libre connection for provider switch");
+        libre_close_persistent_client();
+        libre_logout();
+    }
+    nightscout_close_persistent_client();
+    dexcom_close_persistent_client();
+
+    delete_background_tasks_for_ssl("dexcom-login");
 
     ESP_LOGI(TAG, "Dexcom login: heap free=%lu largest=%lu",
              (unsigned long)esp_get_free_heap_size(),
@@ -286,15 +332,10 @@ static void dexcom_login_task(void *pvParameters) {
 
         dexcom_close_persistent_client();  // Close auth connection; glucose task opens fresh
 
-        if (tasks_deleted) {
-            recreate_background_tasks();
-        }
         xSemaphoreGive(network_mutex);
 
-        if (glucose_task_handle == NULL) {
-            ESP_LOGI(TAG, "Starting glucose update task after Dexcom login...");
-            ensure_tasks_running();  // Canonical stack/prio/core
-        }
+        ESP_LOGI(TAG, "Starting glucose update task after Dexcom login...");
+        cgm_restart_glucose_task();
 
         ESP_LOGI(TAG, "Triggering immediate glucose fetch after successful login");
         glucose_force_fetch_requested = true;
@@ -320,10 +361,11 @@ static void dexcom_login_task(void *pvParameters) {
         ESP_LOGE(TAG, "Dexcom login failed");
         sd_log(TAG, "Dexcom: login FAILED for %s", username);
 
-        if (tasks_deleted) {
-            recreate_background_tasks();
-        }
+        // Mutex first: the outgoing glucose task may still be waiting on it to
+        // close its client, and it has to finish parking before the replacement
+        // can be created.
         xSemaphoreGive(network_mutex);
+        cgm_restart_glucose_task();
 
         if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
@@ -549,22 +591,6 @@ static void dexcom_login_btn_event_cb(lv_event_t *e) {
         dexcom_login_in_progress = true;
         show_connecting_overlay("Dexcom");
 
-        // Stop existing glucose task — it reads provider type at start,
-        // so it must be deleted and recreated after provider switch.
-        if (glucose_task_handle != NULL) {
-            ESP_LOGI(TAG, "Deleting glucose task for provider switch");
-            vTaskDelete(glucose_task_handle);
-            glucose_task_handle = NULL;
-        }
-
-        // Close any existing connections before switching
-        if (libre_is_authenticated()) {
-            ESP_LOGI(TAG, "Closing Libre connection for provider switch");
-            libre_close_persistent_client();
-            libre_logout();
-        }
-        nightscout_close_persistent_client();
-        dexcom_close_persistent_client();
         delete_background_tasks_for_ssl("dexcom-login");
 
         if (xTaskCreate(dexcom_login_task, "dexcom_login", 6144, NULL, 2, NULL) != pdPASS) {
@@ -1578,6 +1604,11 @@ static void libre_login_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "Libre login task started for email: %s", email);
 
+    // See dexcom_login_task: the stop is requested here so a failed task create
+    // cannot leave a request outstanding with nobody to honour or undo it.
+    glucose_task_request_stop();
+    cgm_await_glucose_task_stop();
+
     // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG, "Libre login: network mutex timeout");
@@ -1585,12 +1616,26 @@ static void libre_login_task(void *pvParameters) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
+        // The 15 s await above gave up while the fetch still held the mutex, so
+        // the handle is still set and a bare ensure would no-op. No mutex is
+        // held here, so the pending park now completes and the create lands.
+        cgm_restart_glucose_task();
         libre_login_in_progress = false;
         vTaskDelete(NULL);
         return;
     }
 
-    bool tasks_deleted = delete_background_tasks_for_ssl("libre-login");
+    // Under the mutex, so the outgoing provider's client can no longer be in
+    // use by a fetch.
+    if (dexcom_is_authenticated()) {
+        ESP_LOGI(TAG, "Closing Dexcom connection for provider switch");
+        dexcom_close_persistent_client();
+        dexcom_logout();
+    }
+    nightscout_close_persistent_client();
+    libre_close_persistent_client();
+
+    delete_background_tasks_for_ssl("libre-login");
 
     ESP_LOGI(TAG, "Libre login: heap free=%lu largest=%lu",
              (unsigned long)esp_get_free_heap_size(),
@@ -1604,15 +1649,10 @@ static void libre_login_task(void *pvParameters) {
 
         libre_close_persistent_client();  // Close auth connection; glucose task opens fresh
 
-        if (tasks_deleted) {
-            recreate_background_tasks();
-        }
         xSemaphoreGive(network_mutex);
 
-        if (glucose_task_handle == NULL) {
-            ESP_LOGI(TAG, "Starting glucose update task after Libre login...");
-            ensure_tasks_running();  // Canonical stack/prio/core
-        }
+        ESP_LOGI(TAG, "Starting glucose update task after Libre login...");
+        cgm_restart_glucose_task();
 
         glucose_force_fetch_requested = true;
 
@@ -1630,10 +1670,11 @@ static void libre_login_task(void *pvParameters) {
         ESP_LOGE(TAG, "Libre login failed");
         sd_log(TAG, "Libre: login FAILED for %s", email);
 
-        if (tasks_deleted) {
-            recreate_background_tasks();
-        }
+        // Mutex first: the outgoing glucose task may still be waiting on it to
+        // close its client, and it has to finish parking before the replacement
+        // can be created.
         xSemaphoreGive(network_mutex);
+        cgm_restart_glucose_task();
 
         if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
@@ -1733,22 +1774,6 @@ static void libre_login_btn_event_cb(lv_event_t *e) {
         libre_login_in_progress = true;
         show_connecting_overlay("LibreLinkUp");
 
-        // Stop existing glucose task — it reads provider type at start,
-        // so it must be deleted and recreated after provider switch.
-        if (glucose_task_handle != NULL) {
-            ESP_LOGI(TAG, "Deleting glucose task for provider switch");
-            vTaskDelete(glucose_task_handle);
-            glucose_task_handle = NULL;
-        }
-
-        // Close any existing connections before switching
-        if (dexcom_is_authenticated()) {
-            ESP_LOGI(TAG, "Closing Dexcom connection for provider switch");
-            dexcom_close_persistent_client();
-            dexcom_logout();
-        }
-        nightscout_close_persistent_client();
-        libre_close_persistent_client();
         delete_background_tasks_for_ssl("libre-login");
 
         if (xTaskCreate(libre_login_task, "libre_login", 6144, NULL, 5, NULL) != pdPASS) {
@@ -2612,6 +2637,11 @@ static void nightscout_login_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "Nightscout login task started for URL: %s", url);
 
+    // See dexcom_login_task: the stop is requested here so a failed task create
+    // cannot leave a request outstanding with nobody to honour or undo it.
+    glucose_task_request_stop();
+    cgm_await_glucose_task_stop();
+
     // Free heap for TLS handshake — same pattern as glucose_update_task re-auth
     if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
         ESP_LOGE(TAG, "Nightscout login: network mutex timeout");
@@ -2619,18 +2649,33 @@ static void nightscout_login_task(void *pvParameters) {
             hide_connecting_overlay();
             lvgl_port_unlock();
         }
+        // The 15 s await above gave up while the fetch still held the mutex, so
+        // the handle is still set and a bare ensure would no-op. No mutex is
+        // held here, so the pending park now completes and the create lands.
+        cgm_restart_glucose_task();
         nightscout_login_in_progress = false;
         vTaskDelete(NULL);
         return;
     }
 
+    // Under the mutex, so the outgoing provider's client can no longer be in
+    // use by a fetch.
+    if (dexcom_is_authenticated()) {
+        dexcom_close_persistent_client();
+        dexcom_logout();
+    }
+    if (libre_is_authenticated()) {
+        libre_close_persistent_client();
+        libre_logout();
+    }
+    nightscout_close_persistent_client();
+
     // HTTPS needs the large TLS buffer, so free the background tasks first.
     // nightscout_authenticate() defaults a scheme-less URL to https://, so only
     // an explicit http:// URL skips the deletion.
-    bool tasks_deleted = false;
     bool needs_tls = (strncmp(url, "http://", 7) != 0);  // no scheme or https = TLS
     if (needs_tls) {
-        tasks_deleted = delete_background_tasks_for_ssl("nightscout-login");
+        delete_background_tasks_for_ssl("nightscout-login");
     }
 
     ESP_LOGI(TAG, "Nightscout login: heap free=%lu largest=%lu",
@@ -2645,15 +2690,10 @@ static void nightscout_login_task(void *pvParameters) {
 
         nightscout_close_persistent_client();  // Close auth connection; glucose task opens fresh
 
-        if (tasks_deleted) {
-            recreate_background_tasks();
-        }
         xSemaphoreGive(network_mutex);
 
-        if (glucose_task_handle == NULL) {
-            ESP_LOGI(TAG, "Starting glucose update task after Nightscout login...");
-            ensure_tasks_running();  // Canonical stack/prio/core
-        }
+        ESP_LOGI(TAG, "Starting glucose update task after Nightscout login...");
+        cgm_restart_glucose_task();
 
         glucose_force_fetch_requested = true;
 
@@ -2671,10 +2711,11 @@ static void nightscout_login_task(void *pvParameters) {
         ESP_LOGE(TAG, "Nightscout login failed");
         sd_log(TAG, "Nightscout: login FAILED for %s", url);
 
-        if (tasks_deleted) {
-            recreate_background_tasks();
-        }
+        // Mutex first: the outgoing glucose task may still be waiting on it to
+        // close its client, and it has to finish parking before the replacement
+        // can be created.
         xSemaphoreGive(network_mutex);
+        cgm_restart_glucose_task();
 
         if (lvgl_port_lock(1)) {
             hide_connecting_overlay();
@@ -2790,24 +2831,6 @@ static void nightscout_login_btn_event_cb(lv_event_t *e) {
         nightscout_login_in_progress = true;
         show_connecting_overlay("Nightscout");
 
-        // Stop existing glucose task — it reads provider type at start,
-        // so it must be deleted and recreated after provider switch.
-        if (glucose_task_handle != NULL) {
-            ESP_LOGI(TAG, "Deleting glucose task for provider switch");
-            vTaskDelete(glucose_task_handle);
-            glucose_task_handle = NULL;
-        }
-
-        // Close all connections before switching
-        if (dexcom_is_authenticated()) {
-            dexcom_close_persistent_client();
-            dexcom_logout();
-        }
-        if (libre_is_authenticated()) {
-            libre_close_persistent_client();
-            libre_logout();
-        }
-        nightscout_close_persistent_client();
         delete_background_tasks_for_ssl("nightscout-login");
 
         if (xTaskCreate(nightscout_login_task, "ns_login", 6144, NULL, 5, NULL) != pdPASS) {

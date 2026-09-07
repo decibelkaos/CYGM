@@ -11,6 +11,7 @@
 #include "sd_logger.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -26,6 +27,14 @@ static const char *TAG = "NIGHTSCOUT";
 
 #define HTTP_BUFFER_SIZE 2048
 #define MAX_CONSECUTIVE_FAILURES 3
+
+// cJSON recurses once per nesting level; the glucose task's 5 KB stack cannot
+// unwind much more than this before it overflows into adjacent heap.
+#define JSON_MAX_DEPTH 8
+
+// Physiologically possible range; anything outside it is a server artefact.
+#define GLUCOSE_MIN_MGDL 20
+#define GLUCOSE_MAX_MGDL 600
 
 // ============================================================================
 // State Variables
@@ -82,6 +91,110 @@ static cgm_trend_t map_direction_string(const char *dir) {
     if (strcmp(dir, "NOT COMPUTABLE") == 0)   return TREND_NOT_COMPUTABLE;
     if (strcmp(dir, "RATE OUT OF RANGE") == 0) return TREND_RATE_OUT_OF_RANGE;
     return TREND_NONE;
+}
+
+// Counts bracket nesting without recursing, so an adversarial body is refused
+// before cJSON's recursive parser can walk off the task stack.
+static bool json_depth_ok(const char *body) {
+    int depth = 0;
+    bool in_string = false;
+
+    for (const char *p = body; *p != 0; p++) {
+        if (in_string) {
+            if (*p == '\\') {
+                if (p[1] == '\0') break;
+                p++;
+            } else if (*p == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (*p == '"') {
+            in_string = true;
+        } else if (*p == '[' || *p == '{') {
+            if (++depth > JSON_MAX_DEPTH) return false;
+        } else if ((*p == ']' || *p == '}') && depth > 0) {
+            depth--;
+        }
+    }
+    return true;
+}
+
+// The framework echoes an unparseable URL at ERROR, and ours carries the access
+// token in its query string, so both halves must be known-good before any client
+// is built from them.
+static bool url_is_wellformed(const char *url) {
+    const char *p;
+    if (strncmp(url, "https://", 8) == 0) {
+        p = url + 8;
+    } else if (strncmp(url, "http://", 7) == 0) {
+        p = url + 7;
+    } else {
+        return false;
+    }
+
+    if (*p == 0 || *p == '/' || *p == ':') return false;
+
+    if (*p == '[') {
+        // A bracketed literal is the only place a colon may appear in the host.
+        p++;
+        int addrchars = 0;
+        while (*p != 0 && *p != ']') {
+            unsigned char c = (unsigned char)*p;
+            bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                      (c >= 'A' && c <= 'F') || c == ':' || c == '.';
+            if (!ok) return false;
+            addrchars++;
+            p++;
+        }
+        if (*p != ']' || addrchars == 0) return false;
+        p++;
+    } else {
+        int hostchars = 0;
+        while (*p != 0 && *p != ':' && *p != '/') {
+            unsigned char c = (unsigned char)*p;
+            bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+            if (!ok) return false;
+            hostchars++;
+            p++;
+        }
+        if (hostchars == 0) return false;
+    }
+
+    // The framework's URL parser accepts decimal digits only here, and its way of
+    // rejecting anything else is to echo the whole token-bearing string at ERROR.
+    if (*p == ':') {
+        p++;
+        int digits = 0;
+        long port = 0;
+        while (*p >= '0' && *p <= '9') {
+            port = port * 10 + (*p - '0');
+            digits++;
+            p++;
+        }
+        if (digits < 1 || digits > 5 || port < 1 || port > 65535) return false;
+    }
+
+    if (*p != 0 && *p != '/') return false;
+
+    for (; *p != 0; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c <= 0x20 || c >= 0x7f) return false;
+    }
+    return true;
+}
+
+// A token reaching the query string must not contain anything that would make the
+// framework fail to parse the URL and then echo the whole URL to the log.
+static bool token_is_wellformed(const char *token) {
+    for (const char *p = token; *p != 0; p++) {
+        unsigned char c = (unsigned char)*p;
+        bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~';
+        if (!ok) return false;
+    }
+    return true;
 }
 
 // Build URL with optional token parameter
@@ -153,6 +266,24 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
         stored_token[0] = '\0';
     }
 
+    if (!url_is_wellformed(stored_url)) {
+        ESP_LOGE(TAG, "Server address is not a usable URL — check the address you entered");
+        stored_url[0] = '\0';
+        stored_token[0] = '\0';
+        is_authenticated = false;
+        nightscout_close_persistent_client();
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!token_is_wellformed(stored_token)) {
+        ESP_LOGE(TAG, "API token contains characters that cannot appear in a URL");
+        stored_url[0] = '\0';
+        stored_token[0] = '\0';
+        is_authenticated = false;
+        nightscout_close_persistent_client();
+        return ESP_ERR_INVALID_ARG;
+    }
+
     is_https = (strncmp(stored_url, "https", 5) == 0);
     ESP_LOGI(TAG, "Authenticating with Nightscout (%s): %s", is_https ? "HTTPS" : "HTTP", stored_url);
 
@@ -164,7 +295,9 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
         return ESP_ERR_INVALID_SIZE;
     }
 
-    ESP_LOGI(TAG, "Validating: %s", url);
+    // The full URL carries the access token in its query string; never log it.
+    ESP_LOGI(TAG, "Validating: %s/api/v1/status.json (%s)", stored_url,
+             stored_token[0] != '\0' ? "token attached" : "no token");
 
     // Close any existing client
     nightscout_close_persistent_client();
@@ -178,6 +311,11 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
         // Note: do NOT set skip_cert_common_name_check — it disables SNI, which
         // Cloudflare-fronted instances require.
         .keep_alive_enable = true,
+        // An https:// server is authenticated against the bundled roots; a typed
+        // http:// address stays the escape hatch for a server on the local network.
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        // A redirect would re-send the token to whatever host the server names.
+        .disable_auto_redirect = true,
     };
 
     if (!is_https) {
@@ -198,6 +336,11 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Status request failed: %s", esp_err_to_name(err));
+        if (is_https && err == ESP_ERR_HTTP_CONNECT) {
+            ESP_LOGE(TAG, "Could not reach the server. A self-signed certificate is one "
+                          "possible cause and is not supported; an unsynced clock and an "
+                          "unreachable address look the same from here");
+        }
         nightscout_close_persistent_client();
         return err;
     }
@@ -206,6 +349,13 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
         ESP_LOGE(TAG, "Authentication failed (401 Unauthorized) — check API token");
         nightscout_close_persistent_client();
         return ESP_ERR_INVALID_STATE;
+    }
+
+    if (status >= 300 && status < 400) {
+        ESP_LOGE(TAG, "Server redirected (HTTP %d) — enter the final address of your "
+                      "server instead", status);
+        nightscout_close_persistent_client();
+        return ESP_FAIL;
     }
 
     if (status != 200) {
@@ -271,6 +421,8 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
             // Note: do NOT set skip_cert_common_name_check — it disables SNI, which
             // Cloudflare-fronted instances require.
             .keep_alive_enable = true,
+            .crt_bundle_attach = esp_crt_bundle_attach,
+            .disable_auto_redirect = true,
         };
         if (!is_https) {
             config.transport_type = HTTP_TRANSPORT_OVER_TCP;
@@ -295,6 +447,11 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
+        if (is_https && err == ESP_ERR_HTTP_CONNECT) {
+            ESP_LOGE(TAG, "Could not reach the server. A self-signed certificate is one "
+                          "possible cause and is not supported; an unsynced clock and an "
+                          "unreachable address look the same from here");
+        }
         consecutive_failures++;
         if (consecutive_failures >= MAX_CONSECUTIVE_FAILURES) {
             ESP_LOGW(TAG, "Connection error — closing client for fresh retry");
@@ -312,6 +469,13 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    if (status_code >= 300 && status_code < 400) {
+        ESP_LOGE(TAG, "Server redirected (HTTP %d) — enter the final address of your "
+                      "server instead", status_code);
+        glucose->status = GLUCOSE_STATUS_NO_DATA;
+        return ESP_FAIL;
+    }
+
     if (status_code != 200) {
         ESP_LOGE(TAG, "Unexpected HTTP status: %d", status_code);
         glucose->status = GLUCOSE_STATUS_NO_DATA;
@@ -321,6 +485,12 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
     consecutive_failures = 0;
 
     ESP_LOGI(TAG, "Response: HTTP %d, len=%d", status_code, http_response_len);
+
+    if (!json_depth_ok(http_response)) {
+        ESP_LOGE(TAG, "Response nesting exceeds %d levels — refusing to parse", JSON_MAX_DEPTH);
+        glucose->status = GLUCOSE_STATUS_NO_DATA;
+        return ESP_FAIL;
+    }
 
     // Parse JSON array: [{"sgv": 142, "date": 1711300200000, "trend": 4, "direction": "Flat"}]
     cJSON *root = cJSON_Parse(http_response);
@@ -353,10 +523,20 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
     }
 
     glucose->value = sgv->valueint;
+    if (glucose->value < GLUCOSE_MIN_MGDL || glucose->value > GLUCOSE_MAX_MGDL) {
+        ESP_LOGW(TAG, "Implausible sgv %d mg/dL — rejecting", glucose->value);
+        cJSON_Delete(root);
+        glucose->value = 0;
+        glucose->valid = false;
+        glucose->status = GLUCOSE_STATUS_NO_DATA;
+        return ESP_OK;  // Server answered, but the reading is unusable
+    }
 
     // Extract timestamp (milliseconds → seconds)
+    // Converting an out-of-range double to time_t is undefined, so bound it first.
     cJSON *date = cJSON_GetObjectItem(entry, "date");
-    if (date && cJSON_IsNumber(date)) {
+    if (date && cJSON_IsNumber(date) &&
+        date->valuedouble >= 0.0 && date->valuedouble < 4e12) {
         glucose->timestamp = (time_t)(date->valuedouble / 1000.0);
     }
 
@@ -381,6 +561,26 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
     cJSON_Delete(root);
 
     time_t now = time(NULL);
+
+    // A reading with no usable date, or one dated ahead of the device clock, means
+    // the two clocks disagree; showing it would present it as current.
+    if (glucose->timestamp <= 0) {
+        ESP_LOGW(TAG, "Entry carries no usable 'date' — rejecting reading");
+        glucose->timestamp = 0;
+        glucose->valid = false;
+        glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+        return ESP_OK;
+    }
+
+    if (glucose->timestamp > now + 300) {  // Allow 5 min clock skew
+        ESP_LOGW(TAG, "Reading dated %ld s ahead of the device clock — rejecting",
+                 (long)(glucose->timestamp - now));
+        glucose->timestamp = 0;
+        glucose->valid = false;
+        glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+        return ESP_OK;
+    }
+
     int age_sec = (int)difftime(now, glucose->timestamp);
     int age_min = age_sec / 60;
 

@@ -2,8 +2,18 @@
  * update_checker.c
  *
  * Checks version.json for newer firmware and, when a firmware_url is present,
- * downloads and flashes it over OTA. HTTPS runs without the cert bundle because
- * the server CA is not in the ESP-IDF bundle.
+ * downloads and flashes it over OTA.
+ *
+ * The manifest is fetched over plain HTTP — a second TLS session alongside the
+ * provider client does not fit in contiguous heap — so everything in it is
+ * attacker-controlled, and the document must stay inside HTTP_BUF_SIZE or it is
+ * cut and never parses. firmware_url is therefore pinned to FIRMWARE_URL_PREFIX
+ * (traversal rejected, since the origin server would normalise it away) and the
+ * download itself runs over TLS with the ESP-IDF root bundle attached and
+ * redirects refused, so a rewritten manifest cannot substitute an image that is
+ * not ours. It could still name an OLDER image of ours, so the version baked
+ * into the downloaded app descriptor is checked against this build before the
+ * boot partition is switched.
  */
 
 #include "update_checker.h"
@@ -12,8 +22,11 @@
 #include "sd_logger.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
+#include "time_system.h"
+#include "weather_system.h"
 #include "esp_http_client.h"
 #include "esp_ota_ops.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "cJSON.h"
@@ -29,15 +42,22 @@
 static const char *TAG = "UPDATE";
 
 #define UPDATE_CHECK_URL "http://cygm.me/version.json"
+// Firmware may only ever be fetched from our own origin, over TLS.
+#define FIRMWARE_URL_PREFIX "https://cygm.me/firmware/"
 #define UPDATE_INTERVAL_MS (24LL * 60 * 60 * 1000)  // 24 hours
-#define HTTP_BUF_SIZE 384
+// version.json is the four contract fields, ~140 bytes. The server side is held
+// to that (sync-site-version.ps1 refuses a larger file) because a document that
+// does not fit here is silently cut and never parses: on 2026-09-06 a 555-byte
+// version.json left every fielded device unable to see updates. Room to grow,
+// and the truncation is reported instead of hidden.
+#define HTTP_BUF_SIZE 768
 
 static update_info_t update_info = {0};
 static int64_t last_check_ms = 0;
 
-// HTTP response buffer (version.json is <200 bytes)
 static char http_buf[HTTP_BUF_SIZE];
 static int http_buf_len = 0;
+static bool http_buf_truncated = false;
 
 // Set true by manual check task while polling for Install button.
 // Prevents fallback task creation (its 4KB stack fragments the contiguous block).
@@ -61,8 +81,10 @@ static lv_obj_t *ota_status_label = NULL;
 static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     if (evt->event_id == HTTP_EVENT_ON_DATA) {
         int copy = evt->data_len;
-        if (http_buf_len + copy >= HTTP_BUF_SIZE - 1)
+        if (http_buf_len + copy >= HTTP_BUF_SIZE - 1) {
             copy = HTTP_BUF_SIZE - 1 - http_buf_len;
+            http_buf_truncated = true;
+        }
         if (copy > 0) {
             memcpy(http_buf + http_buf_len, evt->data, copy);
             http_buf_len += copy;
@@ -93,6 +115,7 @@ bool update_should_check(void) {
 esp_err_t update_check_now(void) {
     http_buf_len = 0;
     http_buf[0] = '\0';
+    http_buf_truncated = false;
 
     ESP_LOGI(TAG, "Checking %s ...", UPDATE_CHECK_URL);
 
@@ -101,8 +124,18 @@ esp_err_t update_check_now(void) {
         .event_handler = http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 512,
-        // Plain HTTP — version.json is non-sensitive (just version numbers).
-        // Avoids 6.7KB TLS buffer allocation that fails under heap fragmentation.
+        // Plain HTTP, to avoid a 6.7KB TLS buffer allocation that fails under
+        // heap fragmentation. This document is NOT merely version numbers: it
+        // carries firmware_url, which decides what gets installed. That field is
+        // pinned to FIRMWARE_URL_PREFIX below, and the download itself verifies
+        // the certificate, so a tampered manifest cannot substitute firmware.
+        //
+        // Redirects are refused rather than followed. http_buf is filled by the
+        // event handler across a whole perform, so a followed 3xx would prepend
+        // its body to the JSON and every device would report a parse failure
+        // with no hint why; refusing turns that into a plain HTTP-status error.
+        // cygm.me must keep serving this path without a redirect.
+        .disable_auto_redirect = true,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -130,7 +163,10 @@ esp_err_t update_check_now(void) {
 
     cJSON *json = cJSON_Parse(http_buf);
     if (!json) {
-        ESP_LOGE(TAG, "JSON parse failed");
+        ESP_LOGE(TAG, "JSON parse failed (%d bytes%s)", http_buf_len,
+                 http_buf_truncated ? ", response truncated to buffer size" : "");
+        sd_log(TAG, "JSON parse failed (%d bytes%s)", http_buf_len,
+               http_buf_truncated ? ", truncated" : "");
         update_info.check_failed = true;
         update_info.checked = true;
         return ESP_FAIL;
@@ -157,10 +193,23 @@ esp_err_t update_check_now(void) {
         snprintf(update_info.date, sizeof(update_info.date), "%s", date->valuestring);
     else
         update_info.date[0] = '\0';
-    if (fw_url && cJSON_IsString(fw_url))
+    // version.json arrives over plain HTTP, so every field in it is
+    // attacker-controlled. This one decides which bytes get executed, so pin it
+    // to our own origin: a rewritten manifest can then lie about the version
+    // number but cannot point the device at somebody else's firmware. A prefix
+    // test alone does not confine the fetch to /firmware/, because the origin
+    // server resolves "../" before it looks at the path, so traversal is a
+    // separate rejection.
+    if (fw_url && cJSON_IsString(fw_url) &&
+        strncmp(fw_url->valuestring, FIRMWARE_URL_PREFIX, strlen(FIRMWARE_URL_PREFIX)) == 0 &&
+        strstr(fw_url->valuestring, "..") == NULL) {
         snprintf(update_info.firmware_url, sizeof(update_info.firmware_url), "%s", fw_url->valuestring);
-    else
+    } else {
+        if (fw_url && cJSON_IsString(fw_url)) {
+            ESP_LOGW(TAG, "Rejecting firmware_url outside %s", FIRMWARE_URL_PREFIX);
+        }
         update_info.firmware_url[0] = '\0';
+    }
 
     int rmaj = 0, rmin = 0, rpat = 0;
     sscanf(ver->valuestring, "%d.%d.%d", &rmaj, &rmin, &rpat);
@@ -409,40 +458,103 @@ void update_stop_all_tasks(void) {
     // 4. Wait for tasks to reach their sleep state
     vTaskDelay(pdMS_TO_TICKS(3000));
 
-    // 5. Delete ALL non-essential tasks to maximise contiguous heap. Apache sends
+    // 5. Stop ALL non-essential tasks to maximise contiguous heap. Apache sends
     //    16384-byte TLS records, so the dynamic SSL IN buffer needs ~17KB
     //    contiguous, and each freed stack can coalesce with its neighbours
     //    (weather 8K + glucose 4K + time 4K + battery 3K + wifi 8K + ui 8K ~ 35KB).
-    //    Safe because the WiFi driver and the LVGL port each run their own task.
-    if (weather_task_handle != NULL) {
-        vTaskDelete(weather_task_handle);
-        weather_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted weather task (8KB stack freed)");
+    //    Safe to lose them all because the WiFi driver and the LVGL port each run
+    //    their own task.
+    //
+    //    Every one of these six takes the LVGL lock, and glucose additionally
+    //    holds network_mutex across a whole fetch. FreeRTOS does not release a
+    //    mutex owned by a deleted task, so a delete landing inside one of those
+    //    windows freezes the display or the network permanently. The three tasks
+    //    that have a cooperative park park themselves; the remaining three are
+    //    deleted while this function holds the LVGL lock, which is what proves
+    //    they are not inside theirs. If a stop or the lock does not come through,
+    //    the task is left running: less contiguous heap means the OTA fails and
+    //    the device reboots, which is recoverable, and a freeze is not.
+    //
+    //    weather_task_request_stop() latches its flag with no handle guard, and
+    //    the weather task does not clear it at entry, so asking a task that is
+    //    already gone to stop would park the next one created. Every caller has
+    //    already parked weather via delete_background_tasks_for_ssl(), so that
+    //    is the common case, not the rare one.
+    bool had_weather = (weather_task_handle != NULL);
+    bool had_time    = (time_task_handle != NULL);
+    bool had_glucose = (glucose_task_handle != NULL);
+
+    if (had_weather) weather_task_request_stop();
+    glucose_task_request_stop();
+    time_task_request_stop();
+
+    // wifi_task_core0 calls ensure_tasks_running() on its reconnect path, and
+    // that recreates any task whose handle is NULL with no knowledge that a
+    // teardown is in progress. Deleting it before the park polls below keeps a
+    // reconnect inside those seconds from resurrecting everything just parked.
+    //
+    // battery, wifi and ui have no park of their own yet. Holding the LVGL lock
+    // is what makes deleting them safe: a task inside its own lock window cannot
+    // be here, and one blocked on the 1 ms try-lock owns nothing.
+    bool ui_locked = false;
+    for (int retry = 0; retry < 50 && !ui_locked; retry++) {
+        ui_locked = lvgl_port_lock(1);
+        if (!ui_locked) vTaskDelay(pdMS_TO_TICKS(10));
     }
-    if (glucose_task_handle != NULL) {
-        vTaskDelete(glucose_task_handle);
-        glucose_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted glucose task (4KB stack freed)");
+    if (ui_locked) {
+        if (battery_task_handle != NULL) {
+            vTaskDelete(battery_task_handle);
+            battery_task_handle = NULL;
+            ESP_LOGI(TAG, "Deleted battery task (3KB stack freed)");
+        }
+        if (wifi_task_handle != NULL) {
+            vTaskDelete(wifi_task_handle);
+            wifi_task_handle = NULL;
+            ESP_LOGI(TAG, "Deleted wifi task (8KB stack freed)");
+        }
+        if (ui_task_handle != NULL) {
+            vTaskDelete(ui_task_handle);
+            ui_task_handle = NULL;
+            ESP_LOGI(TAG, "Deleted ui task (8KB stack freed)");
+        }
+        lvgl_port_unlock();
+    } else {
+        ESP_LOGW(TAG, "LVGL lock unavailable; battery/wifi/ui tasks left running");
     }
-    if (time_task_handle != NULL) {
-        vTaskDelete(time_task_handle);
-        time_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted time task (4KB stack freed)");
+
+    if (had_weather) {
+        for (int i = 0; i < 20 && weather_task_handle != NULL; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (weather_task_handle == NULL) {
+            ESP_LOGI(TAG, "Weather task parked (8KB stack freed)");
+        } else {
+            ESP_LOGW(TAG, "Weather task did not park; leaving it running");
+        }
     }
-    if (battery_task_handle != NULL) {
-        vTaskDelete(battery_task_handle);
-        battery_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted battery task (3KB stack freed)");
+
+    if (had_time) {
+        for (int i = 0; i < 20 && !time_task_is_stopped(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (time_task_is_stopped()) {
+            ESP_LOGI(TAG, "Time task parked (4KB stack freed)");
+        } else {
+            ESP_LOGW(TAG, "Time task did not park; leaving it running");
+        }
     }
-    if (wifi_task_handle != NULL) {
-        vTaskDelete(wifi_task_handle);
-        wifi_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted wifi task (8KB stack freed)");
-    }
-    if (ui_task_handle != NULL) {
-        vTaskDelete(ui_task_handle);
-        ui_task_handle = NULL;
-        ESP_LOGI(TAG, "Deleted ui task (8KB stack freed)");
+
+    // The glucose task can be most of a 90 s cycle deep in a provider fetch, so
+    // it gets the long wait.
+    if (had_glucose) {
+        for (int i = 0; i < 150 && !glucose_task_is_stopped(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (glucose_task_is_stopped()) {
+            ESP_LOGI(TAG, "Glucose task parked (4KB stack freed)");
+        } else {
+            ESP_LOGW(TAG, "Glucose task did not park; leaving it running");
+        }
     }
 
     // 6. Unmount SD card (persistent mount) — frees ~1.5KB, helps coalesce heap
@@ -475,6 +587,7 @@ static volatile bool ota_install_requested = false;
 typedef struct {
     esp_ota_handle_t ota_handle;
     int bytes_written;
+    int chunk_offset;
     bool write_error;
 } ota_range_ctx_t;
 
@@ -482,6 +595,17 @@ typedef struct {
 static esp_err_t ota_range_http_handler(esp_http_client_event_t *evt) {
     ota_range_ctx_t *ctx = (ota_range_ctx_t *)evt->user_data;
     if (evt->event_id == HTTP_EVENT_ON_DATA && ctx && !ctx->write_error) {
+        // Only a 206 body is firmware, except at offset 0 where a server that
+        // ignores the Range header legitimately answers 200 with the whole file.
+        // A 200 anywhere else is that same whole file starting at byte 0, and
+        // esp_ota_write is sequential, so admitting it would shift every chunk
+        // after it. A redirect or error page carries a body too.
+        int status = esp_http_client_get_status_code(evt->client);
+        if (status != 206 && !(status == 200 && ctx->chunk_offset == 0)) {
+            ESP_LOGE(TAG, "Refusing body from HTTP %d at offset %d", status, ctx->chunk_offset);
+            ctx->write_error = true;
+            return ESP_OK;
+        }
         esp_err_t err = esp_ota_write(ctx->ota_handle, evt->data, evt->data_len);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
@@ -498,6 +622,25 @@ static esp_err_t ota_range_http_handler(esp_http_client_event_t *evt) {
 
 void update_do_ota_download(void) {
     ota_active = true;
+
+    // The download is the one client that verifies certificates, and with
+    // MBEDTLS_HAVE_TIME_DATE every certificate is checked against the clock, so
+    // an unsynced clock makes every chain read as not-yet-valid. Caught here the
+    // cause is in the log; left to mbedTLS it is an opaque handshake error on
+    // the one path that could have shipped a fix.
+    time_t clock_now;
+    time(&clock_now);
+    if (clock_now < 1700000000) {
+        ESP_LOGE(TAG, "Clock not set (%lld); TLS would reject every certificate",
+                 (long long)clock_now);
+        sd_log(TAG, "OTA aborted: clock not set (%lld)", (long long)clock_now);
+        ota_show_result(false, "Clock not set.\nRestarting device...");
+        sd_logger_flush();
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
+        return;
+    }
+
     ESP_LOGI(TAG, "OTA Range download: %s", update_info.firmware_url);
     sd_log(TAG, "OTA started (Range): %s", update_info.firmware_url);
     ota_update_progress(0, "Connecting...");
@@ -517,6 +660,15 @@ void update_do_ota_download(void) {
         .buffer_size = 1536,
         .buffer_size_tx = 512,
         .keep_alive_enable = true,
+        // Verify the server against the ESP-IDF root bundle. Without this,
+        // CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY leaves the download encrypted
+        // but unauthenticated: anything able to intercept the connection can
+        // serve firmware. cygm.me chains to USERTrust RSA, which is in the
+        // bundle, so verification succeeds.
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        // A followed redirect would land outside FIRMWARE_URL_PREFIX and defeat
+        // the pin, so refuse them and let the 3xx surface as a failure.
+        .disable_auto_redirect = true,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&http_config);
@@ -533,14 +685,16 @@ void update_do_ota_download(void) {
     esp_http_client_set_method(client, HTTP_METHOD_HEAD);
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
-    int firmware_size = (int)esp_http_client_get_content_length(client);
+    // Content-Length is int64_t; narrowing it before the range check would let
+    // a value whose low 32 bits are small pass as a plausible size.
+    int64_t content_len = esp_http_client_get_content_length(client);
 
-    ESP_LOGI(TAG, "HEAD: status=%d, size=%d", status, firmware_size);
+    ESP_LOGI(TAG, "HEAD: status=%d, size=%lld", status, (long long)content_len);
 
-    if (err != ESP_OK || status != 200 || firmware_size <= 0) {
-        ESP_LOGE(TAG, "HEAD failed: %s (HTTP %d, size=%d)",
-                 esp_err_to_name(err), status, firmware_size);
-        sd_log(TAG, "OTA HEAD failed: HTTP %d, size=%d", status, firmware_size);
+    if (err != ESP_OK || status != 200 || content_len <= 0) {
+        ESP_LOGE(TAG, "HEAD failed: %s (HTTP %d, size=%lld)",
+                 esp_err_to_name(err), status, (long long)content_len);
+        sd_log(TAG, "OTA HEAD failed: HTTP %d, size=%lld", status, (long long)content_len);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         ota_show_result(false, "Connection failed.\nRestarting device...");
@@ -549,8 +703,6 @@ void update_do_ota_download(void) {
         esp_restart();
         return;
     }
-
-    sd_log(TAG, "Firmware: %d bytes", firmware_size);
 
     // ---- Prepare flash partition ----
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
@@ -566,6 +718,22 @@ void update_do_ota_download(void) {
     }
     ESP_LOGI(TAG, "Target: %s (size=%lu)",
              update_partition->label, (unsigned long)update_partition->size);
+
+    if (content_len > (int64_t)update_partition->size) {
+        ESP_LOGE(TAG, "Firmware %lld bytes exceeds partition %lu",
+                 (long long)content_len, (unsigned long)update_partition->size);
+        sd_log(TAG, "OTA rejected: %lld bytes > partition", (long long)content_len);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        ota_show_result(false, "Image too large.\nRestarting device...");
+        sd_logger_flush();
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
+        return;
+    }
+
+    int firmware_size = (int)content_len;
+    sd_log(TAG, "Firmware: %d bytes", firmware_size);
 
     esp_ota_handle_t ota_handle;
     err = esp_ota_begin(update_partition, (size_t)firmware_size, &ota_handle);
@@ -608,12 +776,14 @@ void update_do_ota_download(void) {
         esp_http_client_set_header(client, "Range", range_hdr);
 
         ctx.bytes_written = 0;
+        ctx.chunk_offset = offset;
         ctx.write_error = false;
 
         err = esp_http_client_perform(client);
         status = esp_http_client_get_status_code(client);
 
-        if (err != ESP_OK || ctx.write_error || ctx.bytes_written == 0) {
+        if (err != ESP_OK || (status != 206 && !(status == 200 && offset == 0)) ||
+            ctx.write_error || ctx.bytes_written == 0) {
             retries++;
             ESP_LOGW(TAG, "Chunk fail @%d: err=%s status=%d written=%d (%d/%d)",
                      offset, esp_err_to_name(err), status, ctx.bytes_written,
@@ -668,7 +838,32 @@ void update_do_ota_download(void) {
         ota_update_progress(100, "Verifying...");
         err = esp_ota_end(ota_handle);
         if (err == ESP_OK) {
-            err = esp_ota_set_boot_partition(update_partition);
+            // The manifest is plain HTTP, so the version it advertised proves
+            // nothing. The descriptor now on flash is what will actually run, so
+            // that is what has to be newer — otherwise a rewritten manifest could
+            // name a genuine older image of ours and roll the device back onto
+            // whatever that build's defects were.
+            esp_app_desc_t new_desc;
+            esp_err_t desc_err = esp_ota_get_partition_description(update_partition, &new_desc);
+            int nmaj = 0, nmin = 0, npat = 0;
+            if (desc_err != ESP_OK ||
+                sscanf(new_desc.version, "%d.%d.%d", &nmaj, &nmin, &npat) != 3) {
+                ESP_LOGE(TAG, "Unreadable version in downloaded image (%s)",
+                         esp_err_to_name(desc_err));
+                sd_log(TAG, "OTA rejected: unreadable image version");
+                err = ESP_FAIL;
+            } else if (!((nmaj > CYGM_VERSION_MAJOR) ||
+                         (nmaj == CYGM_VERSION_MAJOR && nmin > CYGM_VERSION_MINOR) ||
+                         (nmaj == CYGM_VERSION_MAJOR && nmin == CYGM_VERSION_MINOR &&
+                          npat > CYGM_VERSION_PATCH))) {
+                ESP_LOGE(TAG, "Refusing downgrade: image v%d.%d.%d, running v%d.%d.%d",
+                         nmaj, nmin, npat,
+                         CYGM_VERSION_MAJOR, CYGM_VERSION_MINOR, CYGM_VERSION_PATCH);
+                sd_log(TAG, "OTA rejected: downgrade to v%d.%d.%d", nmaj, nmin, npat);
+                err = ESP_FAIL;
+            } else {
+                err = esp_ota_set_boot_partition(update_partition);
+            }
         }
     } else {
         esp_ota_abort(ota_handle);

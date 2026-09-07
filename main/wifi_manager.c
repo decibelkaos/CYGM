@@ -237,6 +237,10 @@ uint8_t wifi_manager_last_disconnect_reason(void) {
 }
 
 void wifi_manager_disconnect(void) {
+    // The disconnect event handler re-issues esp_wifi_connect() until the retry
+    // budget is spent, so without this the link comes straight back and "forget
+    // network" does nothing.
+    retry_count = MAX_RETRY;
     esp_wifi_disconnect();
     current_status = WIFI_STATUS_DISCONNECTED;
     ESP_LOGI(TAG, "WiFi disconnected");

@@ -15,6 +15,7 @@
 #include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_vfs_fat.h"
+#include "esp_timer.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
@@ -23,6 +24,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <errno.h>
 #include <time.h>
 #include <sys/time.h>
 
@@ -55,6 +57,9 @@ static volatile bool serial_capture_paused = false;
 static bool sd_suspended = false;           // True when SD logging is suspended due to persistent failures
 static int  sd_flush_fail_count = 0;        // Consecutive flush failures
 #define SD_SUSPEND_AFTER_FAILURES  5        // Suspend after this many consecutive failures
+static bool sd_write_error_logged = false;  // Write-error detail is logged once per failure run
+static int64_t sd_resume_probe_us = 0;      // esp_timer stamp of the last resume probe
+#define SD_RESUME_PROBE_INTERVAL_US  (3600LL * 1000000LL)  // At most one resume probe per hour
 static sdmmc_host_t host;
 static sdspi_device_config_t slot_config;
 static sdmmc_card_t *mounted_card = NULL;   // Persistent mount — stays mounted for device lifetime
@@ -192,6 +197,18 @@ void sd_log(const char *tag, const char *fmt, ...)
     va_end(args);
 }
 
+// One line per failure run, not per flush: a full card fails every flush forever
+// and the log itself is one of the things being written.
+static void sd_report_write_error(const char *what, int err)
+{
+    if (sd_write_error_logged) return;
+    sd_write_error_logged = true;
+    // FATFS can short-write without setting errno, so the cause is not always
+    // available and the message must not claim one it does not have.
+    ESP_LOGW(TAG, "SD write failed (%s): %s — card may be full or write-protected",
+             what, err ? strerror(err) : "short write, no errno reported");
+}
+
 esp_err_t sd_logger_flush(void)
 {
     if (!mounted_card || sd_suspended) return ESP_ERR_NOT_FOUND;
@@ -206,13 +223,14 @@ esp_err_t sd_logger_flush(void)
         return ESP_ERR_NO_MEM;
     }
 
-    // Pause serial capture to prevent re-entrancy from file I/O ESP_LOG calls
-    serial_capture_paused = true;
-
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        serial_capture_paused = false;
         return ESP_ERR_TIMEOUT;
     }
+
+    // Pause serial capture to prevent re-entrancy from file I/O ESP_LOG calls.
+    // Only the mutex holder may write this flag: a caller that gave up waiting
+    // must not un-pause capture while another flush is still writing.
+    serial_capture_paused = true;
 
     // Snapshot serial buffer (separate mutex, brief hold)
     int serial_flush_len = 0;
@@ -226,8 +244,8 @@ esp_err_t sd_logger_flush(void)
     }
 
     if (glucose_buffer_pos == 0 && serial_flush_len == 0) {
-        xSemaphoreGive(log_mutex);
         serial_capture_paused = false;
+        xSemaphoreGive(log_mutex);
         return ESP_OK;
     }
 
@@ -245,8 +263,8 @@ esp_err_t sd_logger_flush(void)
                 xSemaphoreGive(serial_mutex);
             }
         }
-        xSemaphoreGive(log_mutex);
         serial_capture_paused = false;
+        xSemaphoreGive(log_mutex);
         return ESP_OK;
     }
 
@@ -259,11 +277,21 @@ esp_err_t sd_logger_flush(void)
         char gpath[32];
         snprintf(gpath, sizeof(gpath), MOUNT_POINT "/G%02d%02d%02d.CSV",
                  ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
+        errno = 0;
         FILE *gf = fopen(gpath, "a");
         if (gf) {
-            fwrite(glucose_buffer, 1, glucose_buffer_pos, gf);
-            fclose(gf);
+            errno = 0;
+            // A full volume shows up as a short write or a failing close, never
+            // as a failed open — the day-file already exists and needs no cluster.
+            size_t written = fwrite(glucose_buffer, 1, glucose_buffer_pos, gf);
+            int write_errno = errno;
+            bool closed_ok = (fclose(gf) == 0);
+            if (written != (size_t)glucose_buffer_pos || !closed_ok) {
+                sd_report_write_error("glucose CSV", write_errno ? write_errno : errno);
+                any_write_failed = true;
+            }
         } else {
+            sd_report_write_error("glucose CSV open", errno);
             any_write_failed = true;
         }
         glucose_buffer_pos = 0;
@@ -274,11 +302,19 @@ esp_err_t sd_logger_flush(void)
         char spath[32];
         snprintf(spath, sizeof(spath), MOUNT_POINT "/S%02d%02d%02d.LOG",
                  ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
+        errno = 0;
         FILE *sf = fopen(spath, "a");
         if (sf) {
-            fwrite(serial_buffer, 1, serial_flush_len, sf);
-            fclose(sf);
+            errno = 0;
+            size_t written = fwrite(serial_buffer, 1, serial_flush_len, sf);
+            int write_errno = errno;
+            bool closed_ok = (fclose(sf) == 0);
+            if (written != (size_t)serial_flush_len || !closed_ok) {
+                sd_report_write_error("serial log", write_errno ? write_errno : errno);
+                any_write_failed = true;
+            }
         } else {
+            sd_report_write_error("serial log open", errno);
             any_write_failed = true;
         }
     }
@@ -288,6 +324,7 @@ esp_err_t sd_logger_flush(void)
         sd_flush_fail_count++;
         if (sd_flush_fail_count >= SD_SUSPEND_AFTER_FAILURES) {
             sd_suspended = true;
+            sd_resume_probe_us = 0;  // Each suspension earns one immediate probe
             serial_capture_enabled = false;
             glucose_buffer_pos = 0;
             if (serial_mutex && xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -300,10 +337,11 @@ esp_err_t sd_logger_flush(void)
         ret = ESP_FAIL;
     } else {
         sd_flush_fail_count = 0;
+        sd_write_error_logged = false;
     }
 
-    xSemaphoreGive(log_mutex);
     serial_capture_paused = false;
+    xSemaphoreGive(log_mutex);
     return ret;
 }
 
@@ -348,14 +386,43 @@ bool sd_logger_available(void)
 
 void sd_logger_resume(void)
 {
-    if (!mounted_card) return;
+    if (!mounted_card || !log_mutex) return;
     if (!sd_suspended) return;
 
-    sd_suspended = false;
-    sd_flush_fail_count = 0;
-    serial_capture_enabled = true;
+    // Callers reach here from the failed-fetch path, which can run every 90
+    // seconds. A suspension only lifts on evidence that the card answers again,
+    // and the probe that gathers it costs an SD command, so it is rate-limited.
+    int64_t now_us = esp_timer_get_time();
+    if (sd_resume_probe_us != 0 && (now_us - sd_resume_probe_us) < SD_RESUME_PROBE_INTERVAL_US) {
+        return;
+    }
 
-    ESP_LOGI(TAG, "SD logging RESUMED (suspension cleared)");
+    // Same floor the flush uses: SD I/O needs contiguous DMA memory, and a
+    // command that fails for want of heap says nothing about the card.
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) < 4096) return;
+
+    // Every other card access in this module is serialised by log_mutex, and a
+    // screenshot can be part-way through writing to the same card.
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+
+    sd_resume_probe_us = now_us;
+    esp_err_t probe = sdmmc_get_status(mounted_card);
+    if (probe == ESP_OK) {
+        sd_suspended = false;
+        sd_flush_fail_count = 0;
+        sd_write_error_logged = false;
+        // Restore the saved choice; a suspension must not turn capture on.
+        serial_capture_enabled = nvs_get_sd_serial_capture();
+    }
+    xSemaphoreGive(log_mutex);
+
+    if (probe != ESP_OK) {
+        ESP_LOGD(TAG, "SD card still not responding — logging stays suspended");
+        return;
+    }
+
+    ESP_LOGI(TAG, "SD logging RESUMED (card responded to probe, serial capture %s)",
+             serial_capture_enabled ? "ON" : "OFF");
 }
 
 esp_err_t sd_card_mount(sdmmc_card_t **out_card)

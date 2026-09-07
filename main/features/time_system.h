@@ -39,10 +39,28 @@ void cygm_format_clock(char *buf, size_t len, uint8_t hour, uint8_t minute);
 /** Time task: refreshes the display every 10 seconds. */
 void time_update_task(void *pvParameters);
 
+/**
+ * Cooperative stop for the time task.
+ *
+ * Both halves of its cycle take the LVGL lock, so it must never be
+ * vTaskDelete'd from outside: FreeRTOS keeps the mutex owned by the deleted
+ * task and the display freezes for good. Callers request a stop and poll
+ * time_task_is_stopped(); the task notices between cycles, clears
+ * time_task_handle and deletes itself.
+ */
+void time_task_request_stop(void);
+
+/** True once a requested stop has completed (time_task_handle is NULL). */
+bool time_task_is_stopped(void);
+
 /** Load timezone, DST and 12/24-hour format from NVS. */
 void load_time_settings(void);
 
-/** Map an IANA timezone ("America/New_York") to POSIX TZ ("EST5EDT,M3.2.0,M11.1.0"). */
+/**
+ * Map an IANA timezone ("America/New_York") to POSIX TZ ("EST5EDT,M3.2.0,M11.1.0").
+ * The result always has static storage duration, so it stays valid after a call
+ * from another task.
+ */
 const char* get_posix_timezone(const char *iana_tz);
 
 /**

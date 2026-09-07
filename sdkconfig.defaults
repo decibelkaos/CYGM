@@ -51,11 +51,14 @@ CONFIG_LV_INDEV_DEF_READ_PERIOD=30
 # LVGL QR Code library (for About screen)
 CONFIG_LV_USE_QRCODE=y
 
-# ESP-TLS - Allow insecure connections for geocoding (non-critical data)
-CONFIG_ESP_TLS_INSECURE=y
-CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+# ESP-TLS - every HTTPS client in main/ attaches the ESP-IDF root bundle, so
+# nothing needs the unauthenticated path. With these off, a client that omits
+# a CA source fails setup outright instead of silently accepting any peer.
+CONFIG_ESP_TLS_INSECURE=n
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=n
 
-# ESP HTTPS OTA - Allow without cert verification (cygm.me CA not in bundle)
+# ESP HTTPS OTA - unused: the updater drives esp_http_client and esp_ota_ops
+# directly, and its URL is pinned to https://cygm.me/firmware/.
 CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
 
 # mbedTLS - TLS buffer sizes (tuned for ESP32 memory constraints)
@@ -145,3 +148,11 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
 # A hung task (e.g. LVGL stuck in an assert loop) must reboot the display,
 # never freeze it: task-watchdog trigger -> panic -> silent reboot.
 CONFIG_ESP_TASK_WDT_PANIC=y
+
+# SNTP - three servers, so a single unreachable pool does not leave the clock
+# at 1970. lwIP only arms as many as this allows.
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+
+# mbedTLS - check certificate validity dates. This makes TLS fail until SNTP
+# has set the clock, which is the intended fail-closed order.
+CONFIG_MBEDTLS_HAVE_TIME_DATE=y

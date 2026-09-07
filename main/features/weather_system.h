@@ -46,6 +46,25 @@ int weather_f_to_c(int temp_f);
 /** Weather task: fetches at the configured interval. */
 void weather_update_task(void *pvParameters);
 
+/**
+ * Ask the weather task to stop.
+ *
+ * It must never be vTaskDelete'd from outside: it takes the LVGL lock while
+ * drawing and the network mutex while fetching, and FreeRTOS releases neither
+ * for a deleted task. The task notices this request at its next safe point,
+ * clears weather_task_handle and deletes itself; poll that handle to know when
+ * it is gone, and carry on without it if it does not stop in time.
+ */
+void weather_task_request_stop(void);
+
+/**
+ * Withdraw a stop request the task has not acted on yet.
+ *
+ * A latched request would park the task moments after the caller gave up
+ * waiting, with nothing left to recreate it.
+ */
+void weather_task_cancel_stop(void);
+
 /** True between sunset and sunrise — selects the night weather icons. */
 bool is_night_time(void);
 

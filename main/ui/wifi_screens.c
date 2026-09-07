@@ -21,6 +21,10 @@
 
 static const char *TAG = "WIFI_SCREENS";
 
+// Defined in tasks/background_tasks.c. Declared here rather than in its header
+// so the task module keeps its published surface unchanged.
+void background_set_manual_wifi_active(bool active);
+
 // LVGL pool bytes kept free while building the network list, so the password
 // screen plus its keyboard (~5KB) can still be created afterwards.
 #define WIFI_LIST_POOL_RESERVE 8192
@@ -54,7 +58,7 @@ static lv_obj_t *wifi_removal_overlay = NULL;
 static lv_obj_t *wifi_removal_hold_bar = NULL;
 static uint32_t wifi_removal_hold_start_ms = 0;
 static bool wifi_removal_initiated = false;
-static char wifi_removal_ssid[MAX_SSID_LEN] = {0};
+static char wifi_removal_ssid[CYGM_MAX_SSID_LEN] = {0};
 
 // WiFi connecting status overlay
 static lv_obj_t *wifi_connecting_overlay = NULL;
@@ -805,6 +809,15 @@ static void wifi_list_add_header(lv_obj_t *parent) {
     lv_obj_add_event_cb(refresh_btn, wifi_refresh_btn_event_cb, LV_EVENT_CLICKED, NULL);
 }
 
+// Every teardown path lands here — back button, connect success, and the
+// inactivity watchdog reclaiming the screen — so the auto-reconnect loop is
+// released exactly once, whoever closed the flow. A superseded screen still
+// awaiting its async delete must not disown the live one.
+static void wifi_list_screen_delete_cb(lv_event_t *e) {
+    if (lv_event_get_target(e) != screen_wifi_list) return;
+    background_set_manual_wifi_active(false);
+}
+
 // Create WiFi list screen
 void create_wifi_list_screen(void) {
     // The inactivity watchdog can reclaim a screen mid-flow, so rebuilding
@@ -823,6 +836,9 @@ void create_wifi_list_screen(void) {
     lv_obj_add_style(screen_wifi_list, &style_bg, 0);
     // Outer screen only — the network list built inside it stays scrollable.
     lv_obj_clear_flag(screen_wifi_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(screen_wifi_list, wifi_list_screen_delete_cb, LV_EVENT_DELETE, NULL);
+
+    background_set_manual_wifi_active(true);
 
     wifi_list_add_header(screen_wifi_list);
 
@@ -1594,7 +1610,7 @@ static void wifi_password_ok_btn_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         // OK button pressed - start connection in background task
-        ESP_LOGI(TAG, "Connecting to WiFi: %s with password: %s", selected_ssid, wifi_password);
+        ESP_LOGI(TAG, "Connecting to WiFi: %s (password %d chars)", selected_ssid, (int)strlen(wifi_password));
 
         // Start WiFi connection in background task (don't block UI)
         xTaskCreate(wifi_connect_task, "wifi_connect", 8192, NULL, 5, NULL);
@@ -1624,7 +1640,7 @@ static void keyboard_event_cb(lv_event_t *e) {
     // Handle OK/Ready button
     if (code == LV_EVENT_READY) {
         // Keyboard ready button pressed - start connection in background task
-        ESP_LOGI(TAG, "Connecting to WiFi: %s with password: %s", selected_ssid, wifi_password);
+        ESP_LOGI(TAG, "Connecting to WiFi: %s (password %d chars)", selected_ssid, (int)strlen(wifi_password));
 
         // Start WiFi connection in background task (don't block UI)
         xTaskCreate(wifi_connect_task, "wifi_connect", 8192, NULL, 5, NULL);

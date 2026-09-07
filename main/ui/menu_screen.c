@@ -129,10 +129,40 @@ static void erase_confirm_cb(lv_event_t *e) {
 
 static void show_erase_overlay(void);  // forward decl
 
-static void erase_device_btn_cb(lv_event_t *e) {
-    (void)e;
-    dismiss_about_overlay();
-    show_erase_overlay();
+// Erase is as irreversible as Power Off, so it is gated the same way rather than
+// sitting one stray tap from the confirm card. The bar is passed as user_data
+// instead of held in a static: it is a child of the button the event fires on,
+// so it cannot outlive or predecease the callback.
+#define ERASE_HOLD_DURATION_MS 2000
+
+static uint32_t erase_hold_start_ms = 0;
+static bool erase_hold_initiated = false;
+
+static void erase_hold_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *bar = (lv_obj_t *)lv_event_get_user_data(e);
+    if (bar == NULL) return;
+
+    if (code == LV_EVENT_PRESSED) {
+        erase_hold_start_ms = lv_tick_get();
+        erase_hold_initiated = false;
+    } else if (code == LV_EVENT_PRESSING) {
+        uint32_t elapsed = lv_tick_elaps(erase_hold_start_ms);
+        int progress = (elapsed * 100) / ERASE_HOLD_DURATION_MS;
+        if (progress > 100) progress = 100;
+        lv_bar_set_value(bar, progress, LV_ANIM_OFF);
+
+        if (progress >= 100 && !erase_hold_initiated) {
+            erase_hold_initiated = true;
+            ESP_LOGI(TAG, "Erase requested via hold button");
+            dismiss_about_overlay();
+            show_erase_overlay();
+        }
+    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        if (!erase_hold_initiated) {
+            lv_bar_set_value(bar, 0, LV_ANIM_OFF);  // LV_ANIM_ON triggers lv_anim_start (freeze risk)
+        }
+    }
 }
 
 static void show_erase_overlay(void) {
@@ -177,10 +207,12 @@ static void show_erase_overlay(void) {
 
     // Warning message
     lv_obj_t *msg = lv_label_create(card);
+    // Nothing in the firmware deletes SD files, so the card outlives the reset.
     lv_label_set_text(msg,
         "All settings, WiFi networks,\n"
-        "Dexcom credentials, and alarms\n"
-        "will be permanently deleted.\n\n"
+        "CGM credentials and alarms\n"
+        "will be permanently deleted.\n"
+        "SD card files are not erased.\n"
         "Device will restart.");
     lv_obj_set_style_text_font(msg, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
@@ -299,8 +331,14 @@ static void show_about_overlay(void) {
     lv_obj_set_style_text_color(dev_url, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_align(dev_url, LV_ALIGN_TOP_LEFT, 16, 88);
 
+    // The QR sits at x=199 (card 290, 75 wide, -16 inset), so this column is
+    // only ~175px and there are 18px before the Device Guide button: one line.
+    // Bound the width and clip, so a longer string can never paint under the
+    // code the way "Not FDA-cleared. Secondary display." did.
     lv_obj_t *dev_disc = lv_label_create(card);
-    lv_label_set_text(dev_disc, "Not FDA-cleared. Secondary display.");
+    lv_label_set_long_mode(dev_disc, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(dev_disc, 175);
+    lv_label_set_text(dev_disc, "Not FDA-cleared");
     lv_obj_set_style_text_color(dev_disc, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(dev_disc, LV_ALIGN_TOP_LEFT, 16, 104);
 
@@ -362,11 +400,30 @@ static void show_about_overlay(void) {
     // Destructive accent: red outline, red press fill
     lv_obj_set_style_border_color(erase_btn, lv_color_hex(COLOR_RED), 0);
     lv_obj_set_style_bg_color(erase_btn, lv_color_hex(COLOR_PRESSED_RED), LV_STATE_PRESSED);
+    // Fill bar first so the label, created after it, draws on top.
+    lv_obj_t *erase_bar = lv_bar_create(erase_btn);
+    lv_obj_set_size(erase_bar, 124, 24);
+    lv_obj_center(erase_bar);
+    lv_bar_set_range(erase_bar, 0, 100);
+    lv_bar_set_value(erase_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_opa(erase_bar, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(erase_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(erase_bar, LV_OPA_80, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(erase_bar, 12, LV_PART_MAIN);
+    lv_obj_set_style_radius(erase_bar, 12, LV_PART_INDICATOR);
+    lv_obj_set_style_anim_time(erase_bar, 300, LV_PART_MAIN);  // Snap-back speed
+    lv_obj_clear_flag(erase_bar, LV_OBJ_FLAG_CLICKABLE);  // Pass presses to the button
+
     lv_obj_t *erase_lbl = lv_label_create(erase_btn);
-    lv_label_set_text(erase_lbl, LV_SYMBOL_TRASH " Erase Device");
+    lv_label_set_text(erase_lbl, LV_SYMBOL_TRASH " Hold to Erase");
     lv_obj_set_style_text_color(erase_lbl, lv_color_hex(COLOR_RED), 0);
     lv_obj_center(erase_lbl);
-    lv_obj_add_event_cb(erase_btn, erase_device_btn_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_clear_flag(erase_lbl, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_add_event_cb(erase_btn, erase_hold_event_cb, LV_EVENT_PRESSED, erase_bar);
+    lv_obj_add_event_cb(erase_btn, erase_hold_event_cb, LV_EVENT_PRESSING, erase_bar);
+    lv_obj_add_event_cb(erase_btn, erase_hold_event_cb, LV_EVENT_RELEASED, erase_bar);
+    lv_obj_add_event_cb(erase_btn, erase_hold_event_cb, LV_EVENT_PRESS_LOST, erase_bar);
 
     // QR code — links to CYGM.me
     static const char *qr_url = "http://cygm.me";

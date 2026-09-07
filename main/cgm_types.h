@@ -45,6 +45,17 @@ typedef enum {
 #define CYGM_ALARM_EXT_VERSION   1
 #define CYGM_ALARM_EXT_NVS_KEY   "alarm_ext"   // <= 15 chars (NVS key limit)
 
+// Per-tier "keep sounding" bits for persistent_mask. A set bit means that tier
+// ignores both stand-downs: the three-minute tone cap and the thirty-minute
+// unattended auto-snooze. The urgent-low guard is not in the mask because it
+// borrows the Low Alarm tier's config; its flag is stored inverted beside the
+// mask so a blob written by an older build reads as persistent, which is the
+// default this tier ships with.
+#define CYGM_PERSIST_HIGH_ALARM    0x01
+#define CYGM_PERSIST_HIGH_WARNING  0x02
+#define CYGM_PERSIST_LOW_WARNING   0x04
+#define CYGM_PERSIST_LOW_ALARM     0x08
+
 typedef struct __attribute__((packed)) {
     uint16_t version;              // +0   CYGM_ALARM_EXT_VERSION at write time
     uint16_t size;                 // +2   sizeof(cygm_alarm_ext_t) at write time
@@ -70,7 +81,9 @@ typedef struct __attribute__((packed)) {
     uint8_t  urgent_low_floor;     // +22  40-90 mg/dL    default 55
     /* ---- appended (zero default keeps older blobs on shipped behavior) ---- */
     uint8_t  auto_snooze_disabled; // +23  0/1            default 0 (unattended auto-snooze ON)
-    uint8_t  reserved[8];          // +24..+31 zero-filled — consume from the front
+    uint8_t  persistent_mask;      // +24  CYGM_PERSIST_* bits, default 0 (every tier caps)
+    uint8_t  urgent_low_not_persist; // +25 0/1, INVERTED — default 0 means urgent low IS persistent
+    uint8_t  reserved[6];          // +26..+31 zero-filled — consume from the front
 } cygm_alarm_ext_t;                // 32 bytes
 
 _Static_assert(sizeof(cygm_alarm_ext_t) == 32,

@@ -179,6 +179,18 @@ static lv_obj_t *visual_alarm_snooze_btn = NULL;  // Giant SNOOZE button on the 
 static int64_t disarm_press_start_ms = 0;      // Timestamp when button was pressed
 #define DISARM_HOLD_MS 1500                     // Hold duration to disarm (1.5s)
 #define ALARM_UNATTENDED_MS (30 * 60 * 1000)    // Untouched takeover auto-snoozes after 30 min
+
+// An alarm nobody silences stops being information and becomes noise, so the
+// tone is capped. The screen keeps flashing throughout: the alert is quietened,
+// never withdrawn. Audio comes back on its own after ALARM_AUDIO_REARM_READINGS
+// further readings if the glucose is still out of range, which is counted in
+// readings rather than minutes so the pause tracks the sensor's own cadence
+// instead of drifting against it.
+#define ALARM_AUDIO_MAX_MS         (3 * 60 * 1000)
+#define ALARM_AUDIO_REARM_READINGS 2
+
+static volatile bool alarm_audio_capped = false;   // tone stopped by the cap, alert still up
+static volatile int  alarm_audio_cap_readings = 0; // readings seen since the cap
 lv_timer_t *visual_alarm_timer = NULL;      // Timer for pulsing effect
 volatile bool visual_alarm_active = false;
 static uint32_t visual_alarm_shown_tick = 0;   // lv_tick when the takeover appeared
@@ -304,6 +316,7 @@ bool glucose_data_fresh = false;       // True only if last fetch succeeded
 dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
 bool first_glucose_received = false;  // Track if we've received first reading
 bool sensor_change_mode = false;      // User confirmed CGM sensor change in progress
+volatile int64_t glucose_stamp_uptime_ms = 0;  // Uptime when glucose_timestamp last changed
 bool sd_glucose_logging_enabled = true;  // SD card glucose CSV logging (NVS-persisted)
 
 // Entry screen UI elements
@@ -1405,6 +1418,36 @@ static void alarm_snooze_and_close(void);
 static bool raise_alert(cygm_alert_kind_t kind, alarm_config_t *cfg,
                         const char *title, const char *reason, uint32_t color);
 
+// ==================== Reading Freshness ====================
+
+// Age of the stored reading in minutes. See shared_state.h for the contract.
+int cygm_glucose_age_min(bool *age_known) {
+    bool known = false;
+    int wall_min = 0;
+
+    if (glucose_timestamp > 0 && is_time_synced()) {
+        time_t now;
+        time(&now);
+        wall_min = (int)difftime(now, glucose_timestamp) / 60;
+        // A reading more than five minutes ahead of the clock means one of the
+        // two is wrong; neither number may be presented as an age.
+        known = (wall_min >= -5);
+    }
+
+    int uptime_min = 0;
+    if (glucose_stamp_uptime_ms > 0) {
+        int64_t elapsed_ms = (esp_timer_get_time() / 1000) - glucose_stamp_uptime_ms;
+        if (elapsed_ms > 0) uptime_min = (int)(elapsed_ms / 60000);
+    }
+
+    int age = known ? wall_min : 0;
+    if (uptime_min > age) age = uptime_min;
+    if (age < 0) age = 0;
+
+    if (age_known != NULL) *age_known = known;
+    return age;
+}
+
 // ==================== Alarm Engine Settings ====================
 
 // Factory defaults for the versioned extension blob. nvs_config.c starts from
@@ -1435,6 +1478,31 @@ void cygm_alarm_ext_defaults(cygm_alarm_ext_t *ext) {
     ext->snooze_default_min  = 30;
     ext->urgent_low_floor    = 55;
     ext->auto_snooze_disabled = 0;  // stored inverted so zero-filled old blobs stay ON
+    ext->persistent_mask      = 0;  // opt-in per tier: an endless alarm is a choice
+    ext->urgent_low_not_persist = 0;  // inverted: the safety floor keeps sounding by default
+}
+
+// Whether the alarm sounding right now is set to keep sounding: no three-minute
+// tone cap and no thirty-minute unattended stand-down. Checked from both alarm
+// timers, so it reads the live state rather than taking an argument that could
+// be stale by the time a timer fires.
+static bool alarm_current_is_persistent(void) {
+    // The urgent-low guard borrows the Low Alarm tier's config, so a mask bit
+    // could not tell the two apart. Its own flag is stored inverted.
+    if (glucose_data_valid && current_glucose > 0 &&
+        current_glucose <= cygm_urgent_low_threshold()) {
+        return !alarm_ext_settings.urgent_low_not_persist;
+    }
+
+    uint8_t bit = 0;
+    switch (current_alarm_state) {
+        case ALARM_STATE_HIGH_ALARM:   bit = CYGM_PERSIST_HIGH_ALARM;   break;
+        case ALARM_STATE_HIGH_WARNING: bit = CYGM_PERSIST_HIGH_WARNING; break;
+        case ALARM_STATE_LOW_WARNING:  bit = CYGM_PERSIST_LOW_WARNING;  break;
+        case ALARM_STATE_LOW_ALARM:    bit = CYGM_PERSIST_LOW_ALARM;    break;
+        default: return false;
+    }
+    return (alarm_ext_settings.persistent_mask & bit) != 0;
 }
 
 // Quiet hours. The window may wrap midnight. Returns false while the clock is
@@ -1457,13 +1525,22 @@ bool cygm_quiet_hours_active(void) {
     return (cur >= start || cur < end);                // wraps midnight
 }
 
+// The configured safety floor, validated. The threshold slider reaches below it,
+// so it is a floor on the user's own low-alarm threshold as well as the value
+// that applies when the tier is switched off.
+static int urgent_low_floor_mgdl(void) {
+    int floor_mgdl = alarm_ext_settings.urgent_low_floor;
+    if (floor_mgdl < 40 || floor_mgdl > 90) floor_mgdl = 55;
+    return floor_mgdl;
+}
+
 // The urgent low tier is non-disableable: when the user has switched the low
 // alarm off entirely, the configured safety floor still applies.
 int cygm_urgent_low_threshold(void) {
-    int floor_mgdl = alarm_ext_settings.urgent_low_floor;
-    if (floor_mgdl < 40 || floor_mgdl > 90) floor_mgdl = 55;
+    int floor_mgdl = urgent_low_floor_mgdl();
     if (!current_alarm_settings.low_alarm.enabled) return floor_mgdl;
-    return current_alarm_settings.low_alarm.threshold;
+    int thr = current_alarm_settings.low_alarm.threshold;
+    return (thr > floor_mgdl) ? thr : floor_mgdl;
 }
 
 // Volume actually handed to the buzzer for this repeat. Urgent low is pinned at
@@ -1619,10 +1696,13 @@ static void trigger_alarm(active_alarm_state_t state) {
     // the per-alarm audio toggle and the configured volume.
     bool urgent = (state == ALARM_STATE_LOW_ALARM);
 
+    // With the tier switched off its stored threshold is not the one that fired.
+    int effective_threshold = urgent ? cygm_urgent_low_threshold() : alarm->threshold;
+
     ESP_LOGW(TAG, "ALARM TRIGGERED: %s (threshold: %d mg/dL)",
-             alarm_name, alarm->threshold);
+             alarm_name, effective_threshold);
     sd_log(TAG, "ALARM: %s triggered, glucose=%d threshold=%d audio=%d visual=%d urgent=%d",
-           alarm_name, current_glucose, alarm->threshold,
+           alarm_name, current_glucose, effective_threshold,
            alarm->audio_enabled, alarm->visual_enabled, urgent);
 
     // Check if snooze is active
@@ -1656,10 +1736,41 @@ static void trigger_alarm(active_alarm_state_t state) {
     }
 }
 
+// Severity order of the four tiers. A snooze silences its own tier and anything
+// below it; crossing into a higher one is a new event and must be heard.
+static int alarm_tier_rank(active_alarm_state_t state) {
+    switch (state) {
+        case ALARM_STATE_LOW_ALARM:    return 3;   // urgent, non-disableable
+        case ALARM_STATE_HIGH_ALARM:   return 2;
+        case ALARM_STATE_HIGH_WARNING:
+        case ALARM_STATE_LOW_WARNING:  return 1;
+        default:                       return 0;
+    }
+}
+
+// The tier alarm_snooze_until was armed on. Cleared wherever the snooze is.
+static volatile active_alarm_state_t alarm_snooze_state = ALARM_STATE_NONE;
+
 // Check glucose against alarm thresholds and trigger if needed
 void check_glucose_alarms(int glucose_mg_dl) {
     if (!glucose_data_valid) {
         return;  // Don't check alarms without valid data
+    }
+
+    // Count readings while the tone is capped. Only every second one re-arms it,
+    // so a glucose that stays out of range is announced again roughly ten
+    // minutes later rather than at the very next sample.
+    bool rearm_audio = false;
+    if (alarm_audio_capped) {
+        alarm_audio_cap_readings++;
+        if (alarm_audio_cap_readings >= ALARM_AUDIO_REARM_READINGS) {
+            alarm_audio_capped = false;
+            alarm_audio_cap_readings = 0;
+            rearm_audio = true;
+        } else {
+            ESP_LOGI(TAG, "Alarm tone capped — %d of %d readings before it sounds again",
+                     alarm_audio_cap_readings, ALARM_AUDIO_REARM_READINGS);
+        }
     }
 
     // Determine which alarm should trigger (urgent takes priority over warnings)
@@ -1679,15 +1790,32 @@ void check_glucose_alarms(int glucose_mg_dl) {
         new_state = ALARM_STATE_LOW_WARNING;
     }
 
-    // The urgent low tier breaks through an active snooze (non-disableable).
+    // The urgent low floor is evaluated last and independently of the Low Alarm
+    // enable flag: switching that tier off must not delete the tier the guide
+    // says cannot be turned off.
+    if (glucose_mg_dl <= cygm_urgent_low_threshold()) {
+        new_state = ALARM_STATE_LOW_ALARM;
+    }
+
+    // The urgent low tier breaks through an active snooze (non-disableable), and
+    // so does entry into any tier more severe than the one the snooze was taken
+    // on — silencing a warning must never silence the alarm above it.
     bool urgent_low = (new_state == ALARM_STATE_LOW_ALARM);
+    bool escalated = alarm_tier_rank(new_state) > alarm_tier_rank(alarm_snooze_state);
 
     // Check snooze status
     if (alarm_snooze_until > 0) {
         time_t now;
         time(&now);
 
-        if (now < alarm_snooze_until && !urgent_low) {
+        // A snooze armed outside this file (the hardware button) carries no tier
+        // of its own; without one every tier would read as an escalation.
+        if (alarm_snooze_state == ALARM_STATE_NONE && current_alarm_state != ALARM_STATE_NONE) {
+            alarm_snooze_state = current_alarm_state;
+            escalated = alarm_tier_rank(new_state) > alarm_tier_rank(alarm_snooze_state);
+        }
+
+        if (now < alarm_snooze_until && !urgent_low && !escalated) {
             // Still snoozed. Keep tracking the tier anyway: a frozen
             // current_alarm_state would make recovery-then-recrash look like "no
             // change", and the urgent-low gate below would swallow the new alarm.
@@ -1698,11 +1826,23 @@ void check_glucose_alarms(int glucose_mg_dl) {
                      minutes_remaining, seconds_remaining, (long)alarm_snooze_until, (long)now);
             return;  // Exit early - alarm is snoozed
         } else if (now < alarm_snooze_until) {
-            // Urgent low during a snooze. Sound it, but only on ENTRY into the
-            // urgent tier so the snooze still damps repeats of the same alarm.
+            // Urgent low or an escalation during a snooze. Sound it, but only on
+            // ENTRY into the tier so the snooze still damps repeats of the same
+            // alarm.
             if (current_alarm_state != new_state) {
-                ESP_LOGW(TAG, "Urgent low overrides active snooze (glucose=%d)", glucose_mg_dl);
-                sd_log(TAG, "ALARM: urgent low overrides snooze, glucose=%d", glucose_mg_dl);
+                ESP_LOGW(TAG, "%s overrides active snooze (glucose=%d, snoozed on tier %d)",
+                         urgent_low ? "Urgent low" : "Alarm escalation",
+                         glucose_mg_dl, (int)alarm_snooze_state);
+                sd_log(TAG, "ALARM: %s overrides snooze, glucose=%d snooze_tier=%d",
+                       urgent_low ? "urgent low" : "escalation",
+                       glucose_mg_dl, (int)alarm_snooze_state);
+                // trigger_alarm() re-checks the snooze itself and only exempts
+                // the urgent low, so an escalation has to retire the snooze it
+                // outranks or it would be silenced there instead.
+                if (!urgent_low) {
+                    alarm_snooze_until = 0;
+                    alarm_snooze_state = ALARM_STATE_NONE;
+                }
                 current_alarm_state = new_state;
                 alarm_acknowledged = false;
                 trigger_alarm(new_state);
@@ -1713,6 +1853,7 @@ void check_glucose_alarms(int glucose_mg_dl) {
             ESP_LOGI(TAG, "Snooze expired! Re-triggering alarm (state: %d)", new_state);
             sd_log(TAG, "ALARM: snooze expired, re-trigger state=%d glucose=%d", new_state, glucose_mg_dl);
             alarm_snooze_until = 0;  // Clear snooze
+            alarm_snooze_state = ALARM_STATE_NONE;
             alarm_acknowledged = false;  // Reset acknowledgment
             current_alarm_state = new_state;  // Update state
             trigger_alarm(new_state);
@@ -1722,9 +1863,22 @@ void check_glucose_alarms(int glucose_mg_dl) {
             ESP_LOGI(TAG, "Snooze expired but glucose returned to normal");
             sd_log(TAG, "ALARM: snooze expired, glucose normal (%d)", glucose_mg_dl);
             alarm_snooze_until = 0;  // Clear snooze
+            alarm_snooze_state = ALARM_STATE_NONE;
             current_alarm_state = ALARM_STATE_NONE;
             return;
         }
+    }
+
+    // The cap has run its course. The tier has not changed, so the block below
+    // would say nothing; sounding it again here is the whole point of capping.
+    if (rearm_audio && new_state != ALARM_STATE_NONE) {
+        ESP_LOGW(TAG, "Alarm still active after the quiet period — sounding again (state %d, glucose %d)",
+                 new_state, glucose_mg_dl);
+        sd_log(TAG, "ALARM: re-arming tone after cap, state=%d glucose=%d", new_state, glucose_mg_dl);
+        current_alarm_state = new_state;
+        alarm_acknowledged = false;
+        trigger_alarm(new_state);
+        return;
     }
 
     // State changed?
@@ -1740,6 +1894,9 @@ void check_glucose_alarms(int glucose_mg_dl) {
             ESP_LOGI(TAG, "Glucose returned to normal range");
             sd_log(TAG, "ALARM: glucose returned to normal (%d)", glucose_mg_dl);
             alarm_snooze_until = 0;  // Clear stale snooze to prevent suppressing future alarms
+            alarm_snooze_state = ALARM_STATE_NONE;
+            alarm_audio_capped = false;
+            alarm_audio_cap_readings = 0;
             stop_visual_alarm();
             stop_audio_alarm();
         }
@@ -1802,9 +1959,7 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
     // Auto-clear if glucose data has gone stale (e.g., Dexcom session expired overnight).
     // Skipped for the data-gap alert, which exists precisely BECAUSE data is stale.
     if (active_alert_kind != CYGM_ALERT_DATA_GAP && glucose_data_valid && glucose_timestamp > 0) {
-        time_t now;
-        time(&now);
-        int data_age_min = (int)difftime(now, glucose_timestamp) / 60;
+        int data_age_min = cygm_glucose_age_min(NULL);
         if (data_age_min > 15) {
             ESP_LOGI(TAG, "Alarm auto-clear: data stale (%d min old)", data_age_min);
             sd_log(TAG, "ALARM: auto-clear, data stale %d min", data_age_min);
@@ -1820,7 +1975,7 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
     // action, since it re-arms and re-fires if the reading is still out of
     // range — and give the display back to the home screen instead of pulsing
     // at an empty room all night. Opt-out lives behind a hold in Alert Options.
-    if (!alarm_ext_settings.auto_snooze_disabled &&
+    if (!alarm_ext_settings.auto_snooze_disabled && !alarm_current_is_persistent() &&
         lv_tick_elaps(visual_alarm_shown_tick) >= ALARM_UNATTENDED_MS &&
         lv_disp_get_inactive_time(NULL) >= ALARM_UNATTENDED_MS) {
         ESP_LOGW(TAG, "Alarm unattended for 30 min - auto-snoozing, returning home");
@@ -1865,7 +2020,7 @@ static void audio_alarm_repeat_timer_cb(lv_timer_t *timer) {
     // takeover and no pulse timer to host the timeout) — same 30-min stand-down
     // as the takeover path, riding this timer instead.
     if (!visual_alarm_active && active_alarm_config != NULL &&
-        !alarm_ext_settings.auto_snooze_disabled &&
+        !alarm_ext_settings.auto_snooze_disabled && !alarm_current_is_persistent() &&
         alarm_audio_start_ms > 0 &&
         (esp_timer_get_time() / 1000) - alarm_audio_start_ms >= ALARM_UNATTENDED_MS &&
         lv_disp_get_inactive_time(NULL) >= ALARM_UNATTENDED_MS) {
@@ -1873,6 +2028,21 @@ static void audio_alarm_repeat_timer_cb(lv_timer_t *timer) {
         sd_log(TAG, "ALARM: tone-only unattended 30min, auto-snooze glucose=%d state=%d",
                current_glucose, current_alarm_state);
         alarm_snooze_and_close();  // Deletes this timer — must return immediately
+        return;
+    }
+
+    // Audible cap. The tone stops, the takeover stays up and keeps flashing, and
+    // check_glucose_alarms() sounds it again after two more readings if the
+    // glucose has not recovered. Deletes this timer, so it must return at once.
+    if (active_alarm_config != NULL && !alarm_audio_capped &&
+        !alarm_current_is_persistent() && alarm_audio_start_ms > 0 &&
+        (esp_timer_get_time() / 1000) - alarm_audio_start_ms >= ALARM_AUDIO_MAX_MS) {
+        ESP_LOGW(TAG, "Alarm audible for 3 min without acknowledgement — silencing tone, alert stays up");
+        sd_log(TAG, "ALARM: audio capped at 3min, visual continues, glucose=%d state=%d",
+               current_glucose, current_alarm_state);
+        alarm_audio_capped = true;
+        alarm_audio_cap_readings = 0;
+        stop_audio_alarm();
         return;
     }
 
@@ -1913,6 +2083,11 @@ static void start_audio_alarm(alarm_config_t *alarm, bool urgent) {
     alarm_audio_urgent   = urgent;
     alarm_base_volume    = alarm->volume;
     alarm_audio_start_ms = esp_timer_get_time() / 1000;
+
+    // A tone starting is always a fresh three-minute window, whether this is a
+    // new alarm or the re-arm after a cap.
+    alarm_audio_capped = false;
+    alarm_audio_cap_readings = 0;
 
     ESP_LOGI(TAG, "Scheduling alarm tone: %d at volume %d%%%s (via LVGL timer)",
              alarm->tone, urgent ? 100 : alarm->volume, urgent ? " URGENT" : "");
@@ -1993,6 +2168,11 @@ static void visual_alarm_disarm_event_cb(lv_event_t *e) {
             stop_visual_alarm();
             stop_audio_alarm();
 
+            // Dismissing by hand ends the alert outright, so the audible cap has
+            // nothing left to re-arm.
+            alarm_audio_capped = false;
+            alarm_audio_cap_readings = 0;
+
             // SAFETY: only acknowledge a threshold alarm that is still standing.
             // If it auto-cancelled while the overlay was stuck (failed LVGL lock),
             // acknowledging would suppress the next real alarm.
@@ -2035,6 +2215,11 @@ static void alarm_snooze_and_close(void) {
     int snooze_min = alarm_ext_settings.snooze_default_min;
     if (snooze_min < 5 || snooze_min > 120) snooze_min = 30;
 
+    // A snooze is a longer, deliberate silence that supersedes the audible cap;
+    // leaving the cap armed would re-arm the tone in the middle of it.
+    alarm_audio_capped = false;
+    alarm_audio_cap_readings = 0;
+
     cygm_alert_kind_t kind = active_alert_kind;
     int64_t now_ms = esp_timer_get_time() / 1000;
 
@@ -2045,6 +2230,7 @@ static void alarm_snooze_and_close(void) {
             time_t now;
             time(&now);
             alarm_snooze_until = now + (snooze_min * 60);
+            alarm_snooze_state = current_alarm_state;
             alarm_acknowledged = true;
             ESP_LOGI(TAG, "Alarm snoozed %d min (until %ld)", snooze_min, (long)alarm_snooze_until);
             sd_log(TAG, "ALARM: snoozed %dmin, glucose=%d state=%d",
@@ -2138,14 +2324,11 @@ static void start_visual_alarm(void) {
         }
         if (active_cfg != NULL) {
             char thr[24];
-            cygm_format_threshold(active_cfg->threshold, thr, sizeof(thr));
-            int age_min = 0;
-            if (glucose_timestamp > 0) {
-                time_t now;
-                time(&now);
-                age_min = (int)difftime(now, glucose_timestamp) / 60;
-                if (age_min < 0) age_min = 0;
-            }
+            int shown_threshold = (current_alarm_state == ALARM_STATE_LOW_ALARM)
+                                      ? cygm_urgent_low_threshold()
+                                      : active_cfg->threshold;
+            cygm_format_threshold(shown_threshold, thr, sizeof(thr));
+            int age_min = (glucose_timestamp > 0) ? cygm_glucose_age_min(NULL) : 0;
             snprintf(reason_text, sizeof(reason_text), "%s %s - reading %d min old",
                      direction, thr, age_min);
         }
@@ -2538,14 +2721,14 @@ void check_data_gap_alert(void) {
     if (!alarm_ext_settings.gap_enabled) return;
     if (sensor_change_mode) return;        // user already told us the sensor is out
     if (!first_glucose_received || glucose_timestamp <= 0) return;
-    if (!is_time_synced()) return;         // age is meaningless without a real clock
 
     int gap_min = alarm_ext_settings.gap_minutes;
     if (gap_min < 10 || gap_min > 60) gap_min = 20;
 
-    time_t now;
-    time(&now);
-    int age_min = (int)difftime(now, glucose_timestamp) / 60;
+    // Without a synced clock the age falls back to the uptime elapsed since the
+    // last stored reading, which is exactly what this watchdog needs: a dead
+    // feed must still be reported when NTP never came up.
+    int age_min = cygm_glucose_age_min(NULL);
 
     // Gap closed — clear a standing gap alert and re-arm for the next one
     if (age_min < gap_min) {
@@ -2679,10 +2862,11 @@ void update_glucose_display(void) {
 
     if (lvgl_port_lock_retry(15)) {  // Life-safety: 15 attempts (~15ms patience)
         if (glucose_data_valid) {
-            // Calculate data age first - this determines display behavior
-            time_t now;
-            time(&now);
-            int minutes_ago = (int)difftime(now, glucose_timestamp) / 60;
+            // Data age drives everything below. With no synced clock, or a
+            // provider timestamp ahead of it, this is the uptime floor only and
+            // the label must say the age is unknown rather than imply freshness.
+            bool age_known = false;
+            int minutes_ago = cygm_glucose_age_min(&age_known);
 
             // SAFETY CRITICAL: data older than 15 min must not show a number — a
             // stale reading (181 when the truth is 52) can be life-threatening.
@@ -2693,7 +2877,9 @@ void update_glucose_display(void) {
                 lv_obj_set_style_text_color(label_glucose, lv_color_hex(COLOR_RED), 0);
 
                 char stale_str[32];
-                if (minutes_ago >= 60) {
+                if (!age_known) {
+                    snprintf(stale_str, sizeof(stale_str), "STALE - clock not set");
+                } else if (minutes_ago >= 60) {
                     snprintf(stale_str, sizeof(stale_str), "STALE %dh %dm ago", minutes_ago / 60, minutes_ago % 60);
                 } else {
                     snprintf(stale_str, sizeof(stale_str), "STALE %d mins ago", minutes_ago);
@@ -2735,7 +2921,10 @@ void update_glucose_display(void) {
                 update_ambient_tint();
 
                 char time_ago_str[32];
-                if (minutes_ago < 1) {
+                if (!age_known) {
+                    snprintf(time_ago_str, sizeof(time_ago_str), "Age unknown");
+                    lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_ORANGE), 0);
+                } else if (minutes_ago < 1) {
                     snprintf(time_ago_str, sizeof(time_ago_str), "Just now");
                     lv_obj_set_style_text_color(label_time_ago, lv_color_hex(COLOR_TEXT_GRAY), 0);
                 } else if (minutes_ago == 1) {
@@ -2814,10 +3003,28 @@ bool delete_background_tasks_for_ssl(const char *reason) {
     // Only weather_task (~3KB) goes. time_task and battery_task stay so the clock
     // and battery monitoring keep running even if the handshake hangs, and the
     // largest free block is already well past the ~17KB TLS needs.
+    // Cooperative park, never vTaskDelete: the weather task takes the LVGL lock
+    // and the network mutex, and FreeRTOS does not release either for a task
+    // deleted from outside — the display and every alarm would freeze for good.
     if (weather_task_handle != NULL) {
-        vTaskDelete(weather_task_handle);
-        weather_task_handle = NULL;
-        deleted_any = true;
+        weather_task_request_stop();
+        // Budget deliberately short: two of the callers are LVGL button
+        // callbacks, so this wait is UI stall time.
+        for (int i = 0; i < 80 && weather_task_handle != NULL; i++) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (weather_task_handle == NULL) {
+            deleted_any = true;
+        } else {
+            // Withdraw the request rather than leaving it latched, or the task
+            // parks moments from now with nobody left to recreate it. The park
+            // point it is already past cannot be recalled, so the caller still
+            // has to run the recreate.
+            weather_task_cancel_stop();
+            deleted_any = true;
+            ESP_LOGW(TAG, "Weather task did not park in 800ms (%s) — request withdrawn", reason);
+            sd_log(TAG, "Weather park timeout: %s", reason);
+        }
     }
 
     if (deleted_any) {
@@ -2899,8 +3106,53 @@ static inline bool cgm_needs_tls(cgm_provider_t p) {
     return true;  // Dexcom and Libre always use HTTPS
 }
 
+// Cooperative stop for the glucose task. See main.h for why the task is never
+// deleted from outside.
+static volatile bool glucose_stop_requested = false;
+
+void glucose_task_request_stop(void) {
+    if (glucose_task_handle == NULL) return;
+    glucose_stop_requested = true;
+    ESP_LOGI(TAG, "Glucose task stop requested");
+}
+
+bool glucose_task_is_stopped(void) {
+    return (glucose_task_handle == NULL);
+}
+
+// Reached only from points where the task owns no LVGL lock and no mutex. Takes
+// network_mutex purely to close the provider client without racing another user
+// of it, then releases it before deleting itself.
+static void glucose_task_park(cgm_provider_t provider) {
+    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+        cgm_close_client(provider);
+        xSemaphoreGive(network_mutex);
+    } else {
+        // The requester is about to run a handshake needing ~17KB contiguous, and
+        // the provider client it wanted freed is still holding ~15-20KB of it.
+        ESP_LOGW(TAG, "Glucose park: mutex busy — client left to its next owner");
+        sd_log(TAG, "Glucose park: mutex busy, provider client still open");
+    }
+
+    glucose_fetch_in_progress = false;
+    glucose_fetch_active = false;
+
+    ESP_LOGI(TAG, "Glucose task parked");
+    sd_log(TAG, "Glucose task parked on request");
+
+    // Published last: glucose_task_is_stopped() must not report a stack that is
+    // still allocated, or the caller creates a second task against it.
+    glucose_stop_requested = false;
+    glucose_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
 // Glucose update task - fetches glucose periodically (every 90 seconds)
 void glucose_update_task(void *pvParameters) {
+    // A request that landed after the previous instance parked must not stop
+    // this one before it has fetched anything.
+    glucose_stop_requested = false;
+
     // Determine active CGM provider once at task start
     char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
     nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
@@ -2942,6 +3194,7 @@ void glucose_update_task(void *pvParameters) {
         glucose_next_fetch_ms = esp_timer_get_time() / 1000 + wait_time_ms;
         glucose_fetch_period_s = (wait_seconds > 0) ? wait_seconds : 1;
         for (int i = 0; i < wait_seconds; i++) {
+            if (glucose_stop_requested) glucose_task_park(provider);
             if (glucose_force_fetch_requested) {
                 ESP_LOGI(TAG, "Force-fetch requested during initial wait, breaking early");
                 glucose_force_fetch_requested = false;
@@ -2952,11 +3205,15 @@ void glucose_update_task(void *pvParameters) {
     }
 
     while (1) {
+        // Top of the cycle: nothing is held here, so it is a safe stop point.
+        if (glucose_stop_requested) glucose_task_park(provider);
+
         // Wait for poll_interval_sec OR until force-fetch is requested
         // Check every 1 second to allow responsive force-fetch
         glucose_next_fetch_ms = esp_timer_get_time() / 1000 + (int64_t)poll_interval_sec * 1000;
         glucose_fetch_period_s = poll_interval_sec;
         for (int i = 0; i < poll_interval_sec; i++) {
+            if (glucose_stop_requested) glucose_task_park(provider);
             if (glucose_force_fetch_requested) {
                 ESP_LOGI(TAG, "Force-fetch requested, breaking wait loop early");
                 glucose_force_fetch_requested = false;
@@ -2975,7 +3232,12 @@ void glucose_update_task(void *pvParameters) {
         // gated on home_screen_active.
         if (!wifi_connected) {
             ESP_LOGI(TAG, "[Glucose Task] WiFi not connected - waiting 10s");
-            vTaskDelay(pdMS_TO_TICKS(10000));
+            // Sliced: an unbroken 10s wait would dominate the stop latency the
+            // contract promises its callers.
+            for (int i = 0; i < 10; i++) {
+                if (glucose_stop_requested) glucose_task_park(provider);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
             continue;
         }
 
@@ -3144,10 +3406,47 @@ void glucose_update_task(void *pvParameters) {
                     ret = cgm_fetch(provider, &glucose);
                 }
 
+                // Central plausibility clamp, belt and braces over the per-provider
+                // check: a value outside the physiological range is not a reading,
+                // and 0 in particular would land in the urgent low tier.
+                if (ret == ESP_OK && glucose.valid &&
+                    (glucose.value < CYGM_GLUCOSE_MIN_MGDL || glucose.value > CYGM_GLUCOSE_MAX_MGDL)) {
+                    ESP_LOGW(TAG, "Implausible reading %d mg/dL — rejecting", glucose.value);
+                    sd_log(TAG, "REJECT: implausible %d mg/dL", glucose.value);
+                    glucose.valid = false;
+                    glucose.status = GLUCOSE_STATUS_NO_DATA;
+                }
+
+                // A reading dated in the future is no more a reading than one
+                // outside the physiological range, and storing one would wedge the
+                // out-of-order rule below against every genuine reading after it.
+                if (ret == ESP_OK && glucose.valid && is_time_synced()) {
+                    time_t wall_now;
+                    time(&wall_now);
+                    if (glucose.timestamp > wall_now + 300) {
+                        ESP_LOGW(TAG, "Reading dated %lld ahead of clock %lld — rejecting",
+                                 (long long)glucose.timestamp, (long long)wall_now);
+                        sd_log(TAG, "REJECT: future timestamp %lld (now %lld)",
+                               (long long)glucose.timestamp, (long long)wall_now);
+                        glucose.valid = false;
+                        glucose.status = GLUCOSE_STATUS_NO_DATA;
+                    }
+                }
+
             if (ret == ESP_OK && glucose.valid) {
-                // Duplicate detection: skip if same timestamp as last stored reading
-                if (glucose.timestamp == glucose_timestamp && glucose_data_valid) {
-                    ESP_LOGI(TAG, "Duplicate reading (same timestamp) — skipping storage");
+                // Skip storage for a repeat of the stored reading, and for one that
+                // predates it: a superseded value must not regress the live number,
+                // the history order or the slope.
+                bool duplicate_reading = (glucose.timestamp == glucose_timestamp && glucose_data_valid);
+                bool out_of_order = (!duplicate_reading && glucose_timestamp > 0 &&
+                                     glucose.timestamp < glucose_timestamp);
+                if (duplicate_reading || out_of_order) {
+                    if (out_of_order) {
+                        ESP_LOGI(TAG, "Out-of-order reading (%lld older than stored %lld) — skipping storage",
+                                 (long long)glucose.timestamp, (long long)glucose_timestamp);
+                    } else {
+                        ESP_LOGI(TAG, "Duplicate reading (same timestamp) — skipping storage");
+                    }
                     glucose_fetch_failed = false;
                     glucose_fetch_in_progress = false;
                     glucose_fetch_active = false;
@@ -3160,6 +3459,7 @@ void glucose_update_task(void *pvParameters) {
                 current_glucose = glucose.value;
                 current_trend = glucose.trend;
                 glucose_timestamp = glucose.timestamp;
+                glucose_stamp_uptime_ms = esp_timer_get_time() / 1000;
                 glucose_data_valid = true;    // We've received valid data at least once
                 glucose_data_fresh = true;    // This fetch succeeded
                 glucose_status = glucose.status;
@@ -3229,9 +3529,9 @@ void glucose_update_task(void *pvParameters) {
 
                 // Alarms ALWAYS run regardless of active screen (life-safety)
                 if (glucose_data_fresh) {
-                    time_t alarm_now;
-                    time(&alarm_now);
-                    int data_age_mins = (int)difftime(alarm_now, glucose_timestamp) / 60;
+                    // Uptime-floored, so an unsynced clock can no longer make a
+                    // reading look fresh — nor silently suppress the alarm check.
+                    int data_age_mins = cygm_glucose_age_min(NULL);
                     if (data_age_mins <= 10) {
                         check_glucose_alarms(current_glucose);
                         update_visual_alarm_glucose(current_glucose);
@@ -3260,9 +3560,7 @@ void glucose_update_task(void *pvParameters) {
 
                 // Safety net: if data is >30 minutes old, force invalid display
                 if (glucose_data_valid && glucose_timestamp > 0) {
-                    time_t stale_now;
-                    time(&stale_now);
-                    int stale_mins = (int)difftime(stale_now, glucose_timestamp) / 60;
+                    int stale_mins = cygm_glucose_age_min(NULL);
                     if (stale_mins > 30) {
                         ESP_LOGW(TAG, "SAFETY: Data is %d mins old - forcing display to ---", stale_mins);
                         glucose_data_valid = false;
@@ -3319,9 +3617,7 @@ void glucose_update_task(void *pvParameters) {
                 }
                 // Safety net: if data is >30 minutes old, force invalid
                 if (glucose_data_valid && glucose_timestamp > 0) {
-                    time_t stale_now;
-                    time(&stale_now);
-                    int stale_mins = (int)difftime(stale_now, glucose_timestamp) / 60;
+                    int stale_mins = cygm_glucose_age_min(NULL);
                     if (stale_mins > 30) {
                         ESP_LOGW(TAG, "SAFETY: Data is %d mins old - forcing display to ---", stale_mins);
                         glucose_data_valid = false;
@@ -3436,6 +3732,10 @@ void glucose_update_task(void *pvParameters) {
                 // Release network mutex
                 xSemaphoreGive(network_mutex);
                 ESP_LOGI(TAG, "Network mutex released after glucose fetch");
+
+                // The mutex and the client are both released here, so a stop
+                // requested during the fetch is honoured before anything else.
+                if (glucose_stop_requested) glucose_task_park(provider);
 
                 // Deferred error LED blink — runs AFTER mutex release to avoid
                 // blocking weather/time tasks for 5 seconds during the delay.

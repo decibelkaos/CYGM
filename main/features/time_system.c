@@ -17,6 +17,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <string.h>
+#include <stdio.h>
 
 static const char *TAG = "TIME_SYSTEM";
 
@@ -141,10 +142,25 @@ static const tz_map_t timezone_map[] = {
 
 static const int timezone_count = sizeof(timezone_map) / sizeof(timezone_map[0]);
 
-// POSIX timezone string for an IANA identifier. The fallback is UTC, NOT US
-// Pacific: a silent PST fallback let setup succeed with correct weather but a
-// clock hours wrong for any unlisted zone. UTC makes a mapping gap obvious
-// instead of shipping a plausible-but-wrong local time.
+// Every whole-hour POSIX rule the longitude fallback can produce, indexed by
+// (hours east of Greenwich + 12). A table rather than a formatted buffer because
+// this function is called from the WiFi, weather and UI tasks with nothing
+// serialising them, and a shared buffer can be rewritten mid-setenv().
+static const char *const fallback_posix_tz[] = {
+    "LOC12",  "LOC11",  "LOC10", "LOC9",  "LOC8",  "LOC7",  "LOC6",
+    "LOC5",   "LOC4",   "LOC3",  "LOC2",  "LOC1",  "LOC0",  "LOC-1",
+    "LOC-2",  "LOC-3",  "LOC-4", "LOC-5", "LOC-6", "LOC-7", "LOC-8",
+    "LOC-9",  "LOC-10", "LOC-11", "LOC-12", "LOC-13", "LOC-14",
+};
+
+// POSIX timezone string for an IANA identifier.
+//
+// An unlisted zone falls back to the whole-hour offset implied by the user's
+// longitude, never to a named zone from elsewhere: a silent US-Pacific fallback
+// once let setup succeed with correct weather and a clock hours wrong. The
+// longitude rule carries no DST, so it can sit an hour off in summer, but that
+// replaces the 5-8 hour error a plain UTC fallback produces for an unmapped
+// capital. Without coordinates there is nothing to derive from, so UTC stands.
 const char* get_posix_timezone(const char *iana_tz) {
     if (iana_tz == NULL || iana_tz[0] == '\0') {
         ESP_LOGW(TAG, "Empty timezone, defaulting to UTC");
@@ -155,7 +171,24 @@ const char* get_posix_timezone(const char *iana_tz) {
             return timezone_map[i].posix;
         }
     }
-    ESP_LOGW(TAG, "Timezone '%s' not in map, defaulting to UTC", iana_tz);
+
+    if (user_latitude != 0.0f || user_longitude != 0.0f) {
+        // Clamp before the cast, not after: user_longitude comes from the
+        // geocoding response, and converting an out-of-range float to int is
+        // undefined rather than merely wrong.
+        float lon = user_longitude;
+        if (lon > 180.0f) lon = 180.0f;
+        else if (lon < -180.0f) lon = -180.0f;
+
+        int east = (int)((lon / 15.0f) + (lon >= 0.0f ? 0.5f : -0.5f));
+        if (east > 14) east = 14;
+        if (east < -12) east = -12;
+        ESP_LOGW(TAG, "Timezone '%s' not in map; using longitude %.2f -> UTC%+d (no DST)",
+                 iana_tz, (double)user_longitude, east);
+        return fallback_posix_tz[east + 12];
+    }
+
+    ESP_LOGW(TAG, "Timezone '%s' not in map and no coordinates known, defaulting to UTC", iana_tz);
     return "GMT0";
 }
 
@@ -232,9 +265,20 @@ void initialize_sntp(void) {
     }
 
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_setservername(1, "time.google.com");
-    esp_sntp_setservername(2, "time.nist.gov");  // Add third server for redundancy
+
+    // lwIP only keeps CONFIG_LWIP_SNTP_MAX_SERVERS slots; anything set past that
+    // is dropped, so the log has to report what was actually armed rather than
+    // how many names are listed here.
+    static const char *const sntp_servers[] = {
+        "pool.ntp.org", "time.google.com", "time.nist.gov"
+    };
+    int sntp_configured = 0;
+    for (int i = 0; i < (int)(sizeof(sntp_servers) / sizeof(sntp_servers[0])); i++) {
+        if (i >= CONFIG_LWIP_SNTP_MAX_SERVERS) break;
+        esp_sntp_setservername(i, sntp_servers[i]);
+        sntp_configured++;
+    }
+
     esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     esp_sntp_init();
 
@@ -244,7 +288,8 @@ void initialize_sntp(void) {
     tzset();
     ESP_LOGI(TAG, "Timezone set: %s -> %s", user_timezone, posix_tz);
 
-    ESP_LOGI(TAG, "SNTP initialized with 3 servers. Waiting for system time to be set...");
+    ESP_LOGI(TAG, "SNTP initialized with %d server%s (max %d). Waiting for system time to be set...",
+             sntp_configured, sntp_configured == 1 ? "" : "s", CONFIG_LWIP_SNTP_MAX_SERVERS);
 
     time_t now;
     struct tm timeinfo;
@@ -452,12 +497,35 @@ static void night_dim_tick(void) {
     s_night_applied = want_night;
 }
 
+static volatile bool time_task_stop_requested = false;
+
+void time_task_request_stop(void) {
+    time_task_stop_requested = true;
+}
+
+bool time_task_is_stopped(void) {
+    return time_task_handle == NULL;
+}
+
 void time_update_task(void *pvParameters) {
-    while (1) {
+    // A stop requested while no task existed must not park the next one.
+    time_task_stop_requested = false;
+
+    while (!time_task_stop_requested) {
         update_time_display();
         night_dim_tick();
-        vTaskDelay(pdMS_TO_TICKS(10000));  // Update every 10 seconds
+        // Sliced so a stop request is noticed within ~100 ms instead of 10 s,
+        // and only ever between the two calls above — never inside the LVGL
+        // lock either of them takes.
+        for (int i = 0; i < 100 && !time_task_stop_requested; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
     }
+
+    ESP_LOGI(TAG, "Time task parked");
+    time_task_stop_requested = false;
+    time_task_handle = NULL;
+    vTaskDelete(NULL);
 }
 
 void load_time_settings(void) {

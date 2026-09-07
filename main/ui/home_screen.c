@@ -38,6 +38,7 @@ static lv_obj_t *serial_log_indicator = NULL;   // "Log On" indicator below righ
 static lv_obj_t *menu_icon_ref = NULL;          // Gear glyph (recoloured by the night face)
 static lv_obj_t *label_glucose_delta = NULL;    // Signed change vs the previous reading
 static lv_obj_t *label_glucose_age = NULL;      // Age stamp shown once the value goes stale
+static lv_obj_t *label_demo_badge = NULL;       // Marks a trend arrow driven by the serial demo
 static lv_color_t canvas_buf_trend[LV_CANVAS_BUF_SIZE_TRUE_COLOR(80, 80)];  // Sized for expanded 80x80
 
 #define HOME_NIGHT_RED          0x8B0000  // Dim red: readable in the dark, few lit pixels
@@ -833,7 +834,7 @@ void show_welcome_overlay(void) {
 // destroyed — the same widgets are hidden and recoloured, so the swap costs no
 // heap and survives repeated entry and exit.
 
-#define HOME_NIGHT_HIDE_MAX 23
+#define HOME_NIGHT_HIDE_MAX 24
 
 static bool night_prev_expanded = false;  // layout to give back at dawn
 
@@ -890,6 +891,7 @@ static unsigned home_night_hide_set(lv_obj_t **objs) {
     objs[n++] = label_glucose_delta;
     objs[n++] = label_glucose_age;
     objs[n++] = serial_log_indicator;
+    objs[n++] = label_demo_badge;
     return n;
 }
 
@@ -1030,12 +1032,14 @@ static void home_update_stale_visuals(bool night) {
     if (label_glucose == NULL) return;
 
     int age_min = -1;
+    bool age_known = true;
     if (glucose_data_valid && glucose_timestamp > 0) {
-        time_t now;
-        time(&now);
-        age_min = (int)difftime(now, glucose_timestamp) / 60;
+        age_min = cygm_glucose_age_min(&age_known);
     }
-    bool stale = (age_min >= HOME_STALE_MIN && age_min <= HOME_STALE_HIDE_MIN);
+    // An age that cannot be verified counts as stale: the number stays readable
+    // until the hide cutoff, but it must never read as current.
+    bool stale = (age_min >= 0 && age_min <= HOME_STALE_HIDE_MIN) &&
+                 (!age_known || age_min >= HOME_STALE_MIN);
 
     // The strikethrough is applied on the night face too: a number nobody can
     // trust must not read as current, whatever the hour.
@@ -1058,7 +1062,11 @@ static void home_update_stale_visuals(bool night) {
     if (label_glucose_age != NULL) {
         if (stale) {
             char buf[20];
-            snprintf(buf, sizeof(buf), "%d min", age_min);
+            if (age_known) {
+                snprintf(buf, sizeof(buf), "%d min", age_min);
+            } else {
+                snprintf(buf, sizeof(buf), "age ?");
+            }
             home_set_label_text(label_glucose_age, buf);
         }
         home_set_hidden(label_glucose_age, !stale);
@@ -1147,7 +1155,17 @@ static void whats_new_show(void) {
     lv_obj_set_style_text_letter_space(caption, 2, 0);
     lv_obj_align(caption, LV_ALIGN_TOP_MID, 0, 34);
 
-    for (int i = 0; i < (int)WHATS_NEW_COUNT && i < 5; i++) {
+    // The OK button's top edge sits at 160 (panel 206, aligned bottom -10, 36
+    // tall) and each row is 20 with the footer 8 below the last. Five rows plus
+    // a footer puts the footer at 162, drawn straight through the button, so the
+    // row budget is one smaller whenever a footer is defined.
+#ifdef WHATS_NEW_FOOTER
+    const int whats_new_max_rows = 4;
+#else
+    const int whats_new_max_rows = 5;
+#endif
+
+    for (int i = 0; i < (int)WHATS_NEW_COUNT && i < whats_new_max_rows; i++) {
         char line[64];
         snprintf(line, sizeof(line), "\xE2\x80\xA2  %s", whats_new_bullets[i]);
         lv_obj_t *bullet = lv_label_create(panel);
@@ -1161,7 +1179,8 @@ static void whats_new_show(void) {
 
 #ifdef WHATS_NEW_FOOTER
     {
-        int rows = (int)WHATS_NEW_COUNT < 5 ? (int)WHATS_NEW_COUNT : 5;
+        int rows = (int)WHATS_NEW_COUNT < whats_new_max_rows
+                       ? (int)WHATS_NEW_COUNT : whats_new_max_rows;
         lv_obj_t *foot = lv_label_create(panel);
         lv_label_set_long_mode(foot, LV_LABEL_LONG_CLIP);  // one line, no wrap
         lv_obj_set_width(foot, 292 - 32);
@@ -1309,9 +1328,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     // the glucose task is alive. Last line of defence against a stale reading
     // being displayed as current.
     if (glucose_data_valid && glucose_timestamp > 0) {
-        time_t stale_now;
-        time(&stale_now);
-        int stale_minutes = (int)difftime(stale_now, glucose_timestamp) / 60;
+        int stale_minutes = cygm_glucose_age_min(NULL);
 
         if (stale_minutes > 15) {
             // Catches a glucose task that died or hung.
@@ -1338,6 +1355,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     // The night face owns this widget's visibility while it is up.
     if (!night_face_active) {
         home_set_hidden(serial_log_indicator, !sd_serial_capture_get());
+        home_set_hidden(label_demo_badge, !cygm_demo_trend_active());
     }
 }
 
@@ -2760,6 +2778,15 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_glucose_delta, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_align(label_glucose_delta, LV_ALIGN_BOTTOM_MID, 0, -26);  // 6px above "x min ago"
     lv_obj_add_flag(label_glucose_delta, LV_OBJ_FLAG_HIDDEN);
+
+    // The serial trend demo rewrites the arrow, so it gets a visible marker: a
+    // fake direction must never be mistaken for the sensor's own.
+    label_demo_badge = lv_label_create(right_card);
+    lv_label_set_text(label_demo_badge, "DEMO");
+    lv_obj_set_style_text_font(label_demo_badge, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(label_demo_badge, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_align(label_demo_badge, LV_ALIGN_BOTTOM_LEFT, 2, -4);
+    lv_obj_add_flag(label_demo_badge, LV_OBJ_FLAG_HIDDEN);
 
     label_glucose_age = lv_label_create(right_card);
     lv_label_set_text(label_glucose_age, "");

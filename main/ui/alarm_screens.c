@@ -1118,7 +1118,7 @@ void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_
 // Paged rather than scrolled: scroll momentum can schedule style transitions,
 // and animations freeze this hardware.
 
-#define ALARM_OPT_PAGES     6
+#define ALARM_OPT_PAGES     7
 #define ALARM_OPT_ROW_H     36
 #define ALARM_OPT_ROW_STEP  40
 #define ALARM_OPT_ROW_W    290
@@ -1191,6 +1191,8 @@ static opt_stepper_t opt_steppers[OPT_STEPPER_COUNT] = {
 
 static void opt_stepper_event_cb(lv_event_t *e);
 static void opt_switch_event_cb(lv_event_t *e);
+static void opt_inverted_switch_event_cb(lv_event_t *e);
+static void opt_mask_switch_event_cb(lv_event_t *e);
 static void alarm_options_back_event_cb(lv_event_t *e);
 static void alarm_options_prev_page_event_cb(lv_event_t *e);
 static void alarm_options_next_page_event_cb(lv_event_t *e);
@@ -1293,6 +1295,27 @@ static void opt_row_add_switch(lv_obj_t *row, uint8_t *field) {
 }
 
 // Minus and plus sit 82px apart so their enlarged touch boxes cannot overlap.
+// Some flags are stored inverted so a blob written by an older build reads as
+// the new default. The switch still shows the user-facing sense.
+static void opt_row_add_inverted_switch(lv_obj_t *row, uint8_t *field) {
+    lv_obj_t *sw = lv_switch_create(row);
+    alarm_style_switch(sw, 40, 20);
+    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -14, 0);
+    if (!*field) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(sw, opt_inverted_switch_event_cb, LV_EVENT_VALUE_CHANGED, field);
+}
+
+// One bit of persistent_mask, so each tier gets its own switch without spending
+// a byte of the blob's reserved space per tier.
+static void opt_row_add_mask_switch(lv_obj_t *row, uint8_t bit) {
+    lv_obj_t *sw = lv_switch_create(row);
+    alarm_style_switch(sw, 40, 20);
+    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -14, 0);
+    if (alarm_ext_settings.persistent_mask & bit) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(sw, opt_mask_switch_event_cb, LV_EVENT_VALUE_CHANGED,
+                        (void *)(intptr_t)bit);
+}
+
 static void opt_row_add_stepper(lv_obj_t *row, int idx) {
     opt_stepper_t *s = &opt_steppers[idx];
 
@@ -1396,6 +1419,7 @@ static const char *alarm_options_page_title(int page) {
         case 2:  return "DATA GAP";
         case 3:  return "PREDICTIVE";
         case 4:  return "SAFETY FLOOR";
+        case 5:  return "KEEP SOUNDING";
         default: return "UNATTENDED";
     }
 }
@@ -1475,16 +1499,20 @@ static void alarm_options_build_page(void) {
             lv_obj_t *r = opt_row_create(0, "Urgent Low", "always-on safety floor");
             opt_row_add_stepper(r, OPT_URGENT_FLOOR);
 
+            lv_obj_t *kr = opt_row_create(1, "Keep Sounding", "no 3-min pause");
+            opt_row_add_inverted_switch(kr, &alarm_ext_settings.urgent_low_not_persist);
+
             // No switch here by design: the urgent-low guard cannot be disabled.
             lv_obj_t *note = lv_label_create(alarm_options_page_body);
             lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
             lv_obj_set_width(note, 274);
             lv_label_set_text(note,
-                "The urgent low alert always sounds at full volume - through snooze, "
-                "quiet hours and muted alarms. It cannot be turned off.");
+                "Sounds at full volume through snooze, quiet hours and mute, and "
+                "the tier cannot be switched off. Keep Sounding is ON here by "
+                "default, so unlike the other tiers its tone never pauses.");
             lv_obj_set_style_text_font(note, &lv_font_montserrat_10, 0);
             lv_obj_set_style_text_color(note, lv_color_hex(COLOR_TEXT_GRAY), 0);
-            lv_obj_align(note, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP + 6);
+            lv_obj_align(note, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP * 2 + 2);
 
             char eff[32];
             cygm_format_threshold(cygm_urgent_low_threshold(), eff, sizeof(eff));
@@ -1494,7 +1522,21 @@ static void alarm_options_build_page(void) {
             lv_label_set_text(eff_lbl, eff_text);
             lv_obj_set_style_text_font(eff_lbl, &lv_font_montserrat_12, 0);
             lv_obj_set_style_text_color(eff_lbl, lv_color_hex(COLOR_ORANGE), 0);
-            lv_obj_align(eff_lbl, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP + 62);
+            lv_obj_align(eff_lbl, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP * 2 + 54);
+            break;
+        }
+        case 5: {
+            lv_obj_t *r = opt_row_create(0, "High Alarm", "keep sounding");
+            opt_row_add_mask_switch(r, CYGM_PERSIST_HIGH_ALARM);
+
+            r = opt_row_create(1, "High Warning", "keep sounding");
+            opt_row_add_mask_switch(r, CYGM_PERSIST_HIGH_WARNING);
+
+            r = opt_row_create(2, "Low Warning", "keep sounding");
+            opt_row_add_mask_switch(r, CYGM_PERSIST_LOW_WARNING);
+
+            r = opt_row_create(3, "Low Alarm", "keep sounding");
+            opt_row_add_mask_switch(r, CYGM_PERSIST_LOW_ALARM);
             break;
         }
         default: {
@@ -1538,7 +1580,8 @@ static void alarm_options_build_page(void) {
                 "An alarm nobody touches for 30 minutes snoozes itself and the "
                 "display returns home. It re-fires when the snooze ends if glucose "
                 "is still out of range. Turning this OFF means an unattended alarm "
-                "sounds until someone responds.");
+                "sounds until someone responds. Tiers set to Keep Sounding ignore "
+                "it either way.");
             lv_obj_set_style_text_font(note, &lv_font_montserrat_10, 0);
             lv_obj_set_style_text_color(note, lv_color_hex(COLOR_TEXT_GRAY), 0);
             lv_obj_align(note, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP + 6);
@@ -1844,6 +1887,24 @@ static void opt_switch_event_cb(lv_event_t *e) {
     uint8_t *field = (uint8_t *)lv_event_get_user_data(e);
     if (field == NULL) return;
     *field = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED) ? 1 : 0;
+    alarm_ext_dirty = true;
+}
+
+static void opt_inverted_switch_event_cb(lv_event_t *e) {
+    uint8_t *field = (uint8_t *)lv_event_get_user_data(e);
+    if (field == NULL) return;
+    *field = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED) ? 0 : 1;
+    alarm_ext_dirty = true;
+}
+
+static void opt_mask_switch_event_cb(lv_event_t *e) {
+    uint8_t bit = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+    if (bit == 0) return;
+    if (lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED)) {
+        alarm_ext_settings.persistent_mask |= bit;
+    } else {
+        alarm_ext_settings.persistent_mask &= (uint8_t)~bit;
+    }
     alarm_ext_dirty = true;
 }
 

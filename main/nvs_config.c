@@ -137,8 +137,8 @@ bool nvs_is_wifi_saved(const char *ssid) {
 
     for (int i = 0; i < count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
         char ssid_key[16];
-        char saved_ssid[MAX_SSID_LEN];
-        size_t ssid_len = MAX_SSID_LEN;
+        char saved_ssid[CYGM_MAX_SSID_LEN];
+        size_t ssid_len = CYGM_MAX_SSID_LEN;
 
         snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
         ret = nvs_get_str(nvs_handle, ssid_key, saved_ssid, &ssid_len);
@@ -225,7 +225,7 @@ esp_err_t nvs_get_saved_wifi_networks(wifi_credentials_t *networks, uint8_t *cou
     // Load each saved network (pack contiguously — skip failed slots)
     for (int i = 0; i < saved_count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
         char ssid_key[16], pass_key[16];
-        size_t ssid_len = MAX_SSID_LEN;
+        size_t ssid_len = CYGM_MAX_SSID_LEN;
         size_t pass_len = MAX_PASSWORD_LEN;
 
         snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
@@ -265,8 +265,8 @@ esp_err_t nvs_add_wifi_network(const char *ssid, const char *password) {
     int existing_index = -1;
     for (int i = 0; i < count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
         char ssid_key[16];
-        char saved_ssid[MAX_SSID_LEN];
-        size_t ssid_len = MAX_SSID_LEN;
+        char saved_ssid[CYGM_MAX_SSID_LEN];
+        size_t ssid_len = CYGM_MAX_SSID_LEN;
 
         snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
         ret = nvs_get_str(nvs_handle, ssid_key, saved_ssid, &ssid_len);
@@ -353,8 +353,8 @@ esp_err_t nvs_remove_wifi_network(const char *ssid) {
     int remove_index = -1;
     for (int i = 0; i < count && i < MAX_SAVED_WIFI_NETWORKS; i++) {
         char ssid_key[16];
-        char saved_ssid[MAX_SSID_LEN];
-        size_t ssid_len = MAX_SSID_LEN;
+        char saved_ssid[CYGM_MAX_SSID_LEN];
+        size_t ssid_len = CYGM_MAX_SSID_LEN;
 
         snprintf(ssid_key, sizeof(ssid_key), "wifi_%d_ssid", i);
         ret = nvs_get_str(nvs_handle, ssid_key, saved_ssid, &ssid_len);
@@ -374,18 +374,27 @@ esp_err_t nvs_remove_wifi_network(const char *ssid) {
     for (int i = remove_index; i < count - 1; i++) {
         char src_ssid_key[16], src_pass_key[16];
         char dst_ssid_key[16], dst_pass_key[16];
-        char temp_ssid[MAX_SSID_LEN], temp_pass[MAX_PASSWORD_LEN];
-        size_t ssid_len = MAX_SSID_LEN;
+        char temp_ssid[CYGM_MAX_SSID_LEN] = {0}, temp_pass[MAX_PASSWORD_LEN] = {0};
+        size_t ssid_len = CYGM_MAX_SSID_LEN;
         size_t pass_len = MAX_PASSWORD_LEN;
 
         snprintf(src_ssid_key, sizeof(src_ssid_key), "wifi_%d_ssid", i + 1);
         snprintf(src_pass_key, sizeof(src_pass_key), "wifi_%d_pass", i + 1);
 
-        nvs_get_str(nvs_handle, src_ssid_key, temp_ssid, &ssid_len);
-        nvs_get_str(nvs_handle, src_pass_key, temp_pass, &pass_len);
+        esp_err_t src_ssid_ret = nvs_get_str(nvs_handle, src_ssid_key, temp_ssid, &ssid_len);
+        esp_err_t src_pass_ret = nvs_get_str(nvs_handle, src_pass_key, temp_pass, &pass_len);
 
         snprintf(dst_ssid_key, sizeof(dst_ssid_key), "wifi_%d_ssid", i);
         snprintf(dst_pass_key, sizeof(dst_pass_key), "wifi_%d_pass", i);
+
+        // An unreadable source slot has nothing to shift down; persisting the
+        // scratch buffers instead would write whatever the stack held.
+        if (src_ssid_ret != ESP_OK || src_pass_ret != ESP_OK) {
+            ESP_LOGW(TAG, "WiFi slot %d unreadable, erasing slot %d instead of shifting", i + 1, i);
+            nvs_erase_key(nvs_handle, dst_ssid_key);
+            nvs_erase_key(nvs_handle, dst_pass_key);
+            continue;
+        }
 
         nvs_set_str(nvs_handle, dst_ssid_key, temp_ssid);
         nvs_set_str(nvs_handle, dst_pass_key, temp_pass);
@@ -1262,6 +1271,56 @@ esp_err_t nvs_save_alarm_settings(const cgm_alarms_t *alarms) {
     return ret;
 }
 
+// Plausibility bounds, the same range the history buffer accepts: no CGM reports
+// outside it, so a threshold beyond it can only have come from a bad blob.
+#define ALARM_THRESHOLD_MIN 20
+#define ALARM_THRESHOLD_MAX 600
+
+// A stored byte is arbitrary; reading it as bool without normalising leaves a
+// value the compiler is entitled to assume is 0 or 1.
+static bool alarm_norm_bool(const bool *stored) {
+    uint8_t raw;
+    memcpy(&raw, stored, 1);
+    return raw != 0;
+}
+
+// Repair one alarm entry against its factory default, field by field, so one bad
+// byte cannot cost the rest of the user's configuration.
+static void sanitize_alarm_entry(alarm_config_t *cfg, const alarm_config_t *def) {
+    cfg->enabled        = alarm_norm_bool(&cfg->enabled);
+    cfg->audio_enabled  = alarm_norm_bool(&cfg->audio_enabled);
+    cfg->visual_enabled = alarm_norm_bool(&cfg->visual_enabled);
+    cfg->led_enabled    = alarm_norm_bool(&cfg->led_enabled);
+    cfg->audio_repeat   = alarm_norm_bool(&cfg->audio_repeat);
+
+    if (cfg->threshold < ALARM_THRESHOLD_MIN || cfg->threshold > ALARM_THRESHOLD_MAX) {
+        ESP_LOGW(TAG, "Alarm threshold %d out of range, using default %d",
+                 cfg->threshold, def->threshold);
+        cfg->threshold = def->threshold;
+    }
+    if ((int)cfg->tone < 0 || (int)cfg->tone >= ALARM_TONE_COUNT) {
+        cfg->tone = def->tone;
+    }
+    if (cfg->volume > 100) {
+        cfg->volume = def->volume;
+    }
+    cfg->text_color &= 0x00FFFFFFu;
+}
+
+static void sanitize_alarm_settings(cgm_alarms_t *alarms) {
+    cgm_alarms_t def;
+    nvs_get_default_alarm_settings(&def);
+
+    sanitize_alarm_entry(&alarms->high_alarm,   &def.high_alarm);
+    sanitize_alarm_entry(&alarms->high_warning, &def.high_warning);
+    sanitize_alarm_entry(&alarms->low_warning,  &def.low_warning);
+    sanitize_alarm_entry(&alarms->low_alarm,    &def.low_alarm);
+
+    // Deliberately no cross-tier ordering check: the editor lets every threshold
+    // move independently over the same range, so an inverted pair is a choice the
+    // user is allowed to make and must not be reverted behind their back.
+}
+
 esp_err_t nvs_load_alarm_settings(cgm_alarms_t *alarms) {
     if (alarms == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -1284,6 +1343,8 @@ esp_err_t nvs_load_alarm_settings(cgm_alarms_t *alarms) {
         nvs_close(nvs_handle);
         return ESP_ERR_NOT_FOUND;
     }
+
+    sanitize_alarm_settings(alarms);
 
     ESP_LOGI(TAG, "Alarm settings loaded from NVS");
     nvs_close(nvs_handle);
@@ -1383,6 +1444,24 @@ bool nvs_load_dim_while_charging(void) {
 }
 
 // ========== Legal Disclaimer Acceptance ==========
+
+esp_err_t nvs_clear_disclaimer_accepted(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = nvs_erase_key(nvs_handle, "disclaim_ok");
+    if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        ret = ESP_OK;  // never accepted; nothing to clear
+    }
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+    return ret;
+}
 
 esp_err_t nvs_set_disclaimer_accepted(void) {
     nvs_handle_t nvs_handle;
@@ -1728,6 +1807,9 @@ esp_err_t nvs_load_alarm_ext(cygm_alarm_ext_t *ext) {
     // Life safety: the urgent-low guard has a floor and a ceiling, never "off".
     ext->urgent_low_floor    = clamp_u8(ext->urgent_low_floor, 40, 90);
     ext->auto_snooze_disabled = ext->auto_snooze_disabled ? 1 : 0;
+    ext->persistent_mask      &= (CYGM_PERSIST_HIGH_ALARM | CYGM_PERSIST_HIGH_WARNING |
+                                  CYGM_PERSIST_LOW_WARNING | CYGM_PERSIST_LOW_ALARM);
+    ext->urgent_low_not_persist = ext->urgent_low_not_persist ? 1 : 0;
 
     return ret;
 }

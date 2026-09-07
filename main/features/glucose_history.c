@@ -20,16 +20,29 @@ static const char *TAG = "GLUCOSE_HISTORY";
 #define NVS_HISTORY_KEY "glucose_hist"
 
 // Compact NVS serialization format (1,448 bytes max vs 4,616 raw)
-// Delta-encodes timestamps as minutes-ago from newest reading
-#define NVS_FORMAT_VERSION   1
+// Delta-encodes timestamps as minutes-ago from newest reading.
+// Version 2 widened entry_count to cover the whole 288-slot ring and dropped
+// the stored ring head: entries are written oldest-first, so the head is always
+// the entry count. Version 1 blobs still load — same entry layout, one byte
+// more header — and are rewritten as version 2 by the next save.
+#define NVS_FORMAT_VERSION   2
 #define NVS_HISTORY_MAX_SIZE (8 + GLUCOSE_HISTORY_MAX_POINTS * 5)  // 1,448 bytes
 
 typedef struct __attribute__((packed)) {
-    uint8_t  version;       // Format version (1)
-    uint8_t  entry_count;   // Number of valid entries stored (0-255)
-    uint16_t head;          // Circular buffer head index
+    uint8_t  version;       // Format version (2)
+    uint16_t entry_count;   // Number of valid entries stored (0-288)
     int32_t  base_ts;       // Unix SECONDS of newest reading
 } nvs_history_header_t;
+
+// The header shipped firmware wrote. Its entry_count silently truncated past
+// 255, so the blob length is the only trustworthy record of how many entries it
+// actually holds.
+typedef struct __attribute__((packed)) {
+    uint8_t  version;
+    uint8_t  entry_count;
+    uint16_t head;
+    int32_t  base_ts;
+} nvs_history_header_v1_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t minutes_ago;   // Minutes before base_ts (0-65535 ≈ 45 days)
@@ -47,6 +60,11 @@ static bool g_initialized = false;
 // Readings arrive ~5 minutes apart, so anything within 2 minutes of an existing
 // entry is the same reading arriving by a second route (backfill vs live fetch).
 #define HISTORY_DEDUPE_MS 120000
+
+// Physiological range no CGM reports outside of. Anything else is a sentinel or
+// a parse artefact, and must never reach the chart, the statistics or NVS.
+#define HISTORY_GLUCOSE_MIN 20
+#define HISTORY_GLUCOSE_MAX 600
 
 // Flash-wear counter: a save runs every 4 additions. File-scope so a backfill
 // can ask for the next addition to flush the readings it inserted.
@@ -85,6 +103,13 @@ void glucose_history_add(int glucose_value, int64_t timestamp) {
     if (!g_initialized) {
         ESP_LOGW(TAG, "Not initialized, initializing now");
         glucose_history_init();
+    }
+
+    if (glucose_value < HISTORY_GLUCOSE_MIN || glucose_value > HISTORY_GLUCOSE_MAX ||
+        timestamp <= 0) {
+        ESP_LOGW(TAG, "Rejected implausible reading: %d mg/dL at %lld",
+                 glucose_value, (long long)timestamp);
+        return;
     }
 
     g_history.readings[g_history.head].timestamp = timestamp;
@@ -126,7 +151,8 @@ bool glucose_history_insert(int glucose_value, int64_t timestamp) {
     if (!g_initialized) {
         glucose_history_init();
     }
-    if (timestamp <= 0 || glucose_value <= 0) {
+    if (timestamp <= 0 ||
+        glucose_value < HISTORY_GLUCOSE_MIN || glucose_value > HISTORY_GLUCOSE_MAX) {
         return false;
     }
 
@@ -291,7 +317,6 @@ esp_err_t glucose_history_save_to_nvs(void) {
     nvs_history_header_t *hdr = (nvs_history_header_t *)buf;
     hdr->version = NVS_FORMAT_VERSION;
     hdr->entry_count = 0;
-    hdr->head = (uint16_t)g_history.head;
     hdr->base_ts = base_ts;
 
     nvs_history_entry_t *entries = (nvs_history_entry_t *)(buf + sizeof(nvs_history_header_t));
@@ -299,7 +324,8 @@ esp_err_t glucose_history_save_to_nvs(void) {
 
     for (int i = 0; i < g_history.count; i++) {
         const glucose_history_point_t *pt = glucose_history_get_at(i);
-        if (pt && pt->valid) {
+        if (pt && pt->valid &&
+            pt->glucose >= HISTORY_GLUCOSE_MIN && pt->glucose <= HISTORY_GLUCOSE_MAX) {
             int32_t ts_sec = (int32_t)(pt->timestamp / 1000);
             int32_t diff_sec = base_ts - ts_sec;
             int32_t diff_min = (diff_sec > 0) ? (diff_sec / 60) : 0;
@@ -311,7 +337,7 @@ esp_err_t glucose_history_save_to_nvs(void) {
             count++;
         }
     }
-    hdr->entry_count = (uint8_t)((count > 255) ? 255 : count);
+    hdr->entry_count = (uint16_t)count;
 
     size_t blob_size = sizeof(nvs_history_header_t) + count * sizeof(nvs_history_entry_t);
 
@@ -367,42 +393,64 @@ esp_err_t glucose_history_load_from_nvs(void) {
         return ret;
     }
 
-    nvs_history_header_t *hdr = (nvs_history_header_t *)buf;
-    if (hdr->version != NVS_FORMAT_VERSION) {
-        ESP_LOGW(TAG, "Unknown NVS format version %d, starting fresh", hdr->version);
+    size_t  header_size;
+    int     entry_count;
+    int32_t base_ts;
+
+    if (buf[0] == NVS_FORMAT_VERSION) {
+        const nvs_history_header_t *hdr = (const nvs_history_header_t *)buf;
+        header_size = sizeof(nvs_history_header_t);
+        entry_count = hdr->entry_count;
+        base_ts     = hdr->base_ts;
+    } else if (buf[0] == 1) {
+        if (blob_size < sizeof(nvs_history_header_v1_t)) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        const nvs_history_header_v1_t *hdr = (const nvs_history_header_v1_t *)buf;
+        header_size = sizeof(nvs_history_header_v1_t);
+        base_ts     = hdr->base_ts;
+        entry_count = (int)((blob_size - header_size) / sizeof(nvs_history_entry_t));
+    } else {
+        ESP_LOGW(TAG, "History blob is format version %d, not %d — starting fresh",
+                 buf[0], NVS_FORMAT_VERSION);
         return ESP_ERR_NOT_FOUND;
     }
 
-    int entry_count = hdr->entry_count;
-    size_t expected_size = sizeof(nvs_history_header_t) + entry_count * sizeof(nvs_history_entry_t);
-    if (blob_size < expected_size || entry_count > GLUCOSE_HISTORY_MAX_POINTS) {
+    size_t expected_size = header_size + (size_t)entry_count * sizeof(nvs_history_entry_t);
+    if (entry_count < 0 || entry_count > GLUCOSE_HISTORY_MAX_POINTS || blob_size < expected_size) {
         ESP_LOGE(TAG, "NVS history corrupted (entries=%d, blob=%u, expected=%u)",
                  entry_count, (unsigned)blob_size, (unsigned)expected_size);
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (hdr->head >= GLUCOSE_HISTORY_MAX_POINTS) {
-        ESP_LOGE(TAG, "NVS history corrupted (head=%d)", hdr->head);
-        return ESP_ERR_INVALID_STATE;
-    }
-
     memset(&g_history, 0, sizeof(glucose_history_t));
-    nvs_history_entry_t *entries = (nvs_history_entry_t *)(buf + sizeof(nvs_history_header_t));
-    int64_t base_ts_ms = (int64_t)hdr->base_ts * 1000;
+    const nvs_history_entry_t *entries = (const nvs_history_entry_t *)(buf + header_size);
+    int64_t base_ts_ms = (int64_t)base_ts * 1000;
 
+    // Entries were written oldest-first, so restoring them into slots 0..n-1 with
+    // head == count makes the logical-to-physical mapping an identity again.
+    // Skipped entries are compacted out rather than left as holes.
+    int restored = 0;
     for (int i = 0; i < entry_count; i++) {
         if (!(entries[i].flags & 0x01)) continue;  // Skip invalid entries
 
+        int glucose = (int)entries[i].glucose;
+        if (glucose < HISTORY_GLUCOSE_MIN || glucose > HISTORY_GLUCOSE_MAX) continue;
+
         int64_t ts_ms = base_ts_ms - ((int64_t)entries[i].minutes_ago * 60 * 1000);
-        g_history.readings[i].timestamp = ts_ms;
-        g_history.readings[i].glucose = (int)entries[i].glucose;
-        g_history.readings[i].valid = true;
+        if (ts_ms <= 0) continue;
+
+        g_history.readings[restored].timestamp = ts_ms;
+        g_history.readings[restored].glucose = glucose;
+        g_history.readings[restored].valid = true;
+        restored++;
     }
 
-    g_history.count = entry_count;
-    g_history.head = (int)hdr->head;
+    g_history.count = restored;
+    g_history.head = restored % GLUCOSE_HISTORY_MAX_POINTS;
 
-    ESP_LOGI(TAG, "Loaded %d readings from NVS (compact format, %u bytes)", entry_count, (unsigned)blob_size);
+    ESP_LOGI(TAG, "Loaded %d readings from NVS (format v%d, %u bytes)",
+             restored, buf[0], (unsigned)blob_size);
     return ESP_OK;
 }
 

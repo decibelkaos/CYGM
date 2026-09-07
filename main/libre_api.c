@@ -10,13 +10,16 @@
 #include "sd_logger.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_tls.h"
 #include "cJSON.h"
+#include "features/time_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdint.h>
 #include "esp_timer.h"
 #include "mbedtls/sha256.h"
 
@@ -40,6 +43,16 @@ static const char *TAG = "LIBRE";
 // HTTP buffer size
 #define HTTP_BUFFER_SIZE 2048
 
+// cJSON recurses once per nesting level; the glucose task's 5 KB stack cannot
+// unwind much more than this before it overflows into adjacent heap. The service
+// controls this body's shape, so the limit sits well above its observed depth
+// rather than close to it: a false reject here blocks every reading.
+#define JSON_MAX_DEPTH 16
+
+// Physiologically possible range; anything outside it is a service artefact.
+#define GLUCOSE_MIN_MGDL 20
+#define GLUCOSE_MAX_MGDL 600
+
 // ============================================================================
 // State Variables
 // ============================================================================
@@ -60,6 +73,7 @@ static int http_response_len = 0;
 // Persistent HTTP client for connection reuse
 static esp_http_client_handle_t persistent_client = NULL;
 static int consecutive_failures = 0;
+static bool warned_no_factory_timestamp = false;
 #define MAX_CONSECUTIVE_FAILURES 3
 
 // ============================================================================
@@ -114,10 +128,10 @@ static void sha256_hex(const char *input, char *output, size_t output_len) {
     output[64] = '\0';
 }
 
-// Parse LibreLinkUp timestamp: "M/d/yyyy h:mm:ss tt" -> time_t
-// Example: "3/17/2026 2:30:45 PM"
-static time_t parse_libre_timestamp(const char *ts_str) {
-    if (ts_str == NULL) return 0;
+// Split "M/d/yyyy h:mm:ss tt" into its fields, normalised to a 24-hour clock.
+// Example: "3/17/2026 2:30:45 PM". Returns false if the string does not match.
+static bool split_libre_timestamp(const char *ts_str, struct tm *out) {
+    if (ts_str == NULL || out == NULL) return false;
 
     int month = 0, day = 0, year = 0;
     int hour = 0, min = 0, sec = 0;
@@ -125,13 +139,8 @@ static time_t parse_libre_timestamp(const char *ts_str) {
 
     int parsed = sscanf(ts_str, "%d/%d/%d %d:%d:%d %3s",
                         &month, &day, &year, &hour, &min, &sec, ampm);
+    if (parsed < 6) return false;
 
-    if (parsed < 6) {
-        ESP_LOGW(TAG, "Failed to parse timestamp: %s (fields=%d)", ts_str, parsed);
-        return 0;
-    }
-
-    // 12h to 24h conversion (only if AM/PM was parsed)
     if (parsed >= 7) {
         if ((ampm[0] == 'P' || ampm[0] == 'p') && hour != 12) {
             hour += 12;
@@ -140,24 +149,136 @@ static time_t parse_libre_timestamp(const char *ts_str) {
         }
     }
 
-    struct tm tm_time = {0};
-    tm_time.tm_year = year - 1900;
-    tm_time.tm_mon = month - 1;
-    tm_time.tm_mday = day;
-    tm_time.tm_hour = hour;
-    tm_time.tm_min = min;
-    tm_time.tm_sec = sec;
-    tm_time.tm_isdst = -1;  // Let mktime determine DST
-
-    time_t result = mktime(&tm_time);
-
-    time_t now = time(NULL);
-    if (result <= 0 || result > now + 86400) {
-        ESP_LOGW(TAG, "Parsed timestamp %ld seems invalid (now=%ld)", (long)result, (long)now);
-        return 0;
+    if (year < 1970 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 ||
+        hour < 0 || hour > 23 || min < 0 || min > 59 || sec < 0 || sec > 60) {
+        return false;
     }
 
-    return result;
+    memset(out, 0, sizeof(*out));
+    out->tm_year = year - 1900;
+    out->tm_mon = month - 1;
+    out->tm_mday = day;
+    out->tm_hour = hour;
+    out->tm_min = min;
+    out->tm_sec = sec;
+    return true;
+}
+
+// Days from 1970-01-01 to a proleptic-Gregorian civil date. The toolchain offers
+// no timegm, and mktime would apply the device's zone to a field that is UTC.
+static long days_from_civil(int y, int m, int d) {
+    y -= (m <= 2);
+    long era = (long)((y >= 0 ? y : y - 399) / 400);
+    long yoe = (long)y - era * 400;                                   // [0, 399]
+    long doy = (153L * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;       // [0, 365]
+    long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                 // [0, 146096]
+    return era * 146097 + doe - 719468;
+}
+
+// FactoryTimestamp is the same string format but expressed in UTC.
+static time_t parse_libre_timestamp_utc(const char *ts_str) {
+    struct tm t;
+    if (!split_libre_timestamp(ts_str, &t)) return 0;
+
+    // Accumulate wider than time_t: a date the service controls must not be able
+    // to wrap into the window the staleness checks accept.
+    long days = days_from_civil(t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+    int64_t secs = (int64_t)days * 86400 + t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec;
+    if (secs <= 0 || secs > (int64_t)INT32_MAX) return 0;
+    return (time_t)secs;
+}
+
+// Timestamp carries a local zone the service never names, so it can only be read
+// as the device's own zone. Used when the UTC sibling field is absent.
+static time_t parse_libre_timestamp_local(const char *ts_str) {
+    struct tm t;
+    if (!split_libre_timestamp(ts_str, &t)) return 0;
+
+    t.tm_isdst = -1;  // Let mktime determine DST
+    time_t result = mktime(&t);
+    return (result > 0) ? result : 0;
+}
+
+// Returns 0 for anything the staleness and alarm logic must not treat as a reading.
+static time_t bound_libre_timestamp(time_t t) {
+    // Before SNTP lands, now sits in 1970 and every real reading looks like a
+    // decades-ahead skew; the caller reports the unsynced clock instead.
+    if (!is_time_synced()) return 0;
+
+    time_t now = time(NULL);
+
+    if (t <= 0) return 0;
+    if (t > now + 300) {  // Allow 5 min clock skew
+        ESP_LOGW(TAG, "Reading dated %ld s ahead of the device clock — rejecting",
+                 (long)(t - now));
+        return 0;
+    }
+    return t;
+}
+
+// The region code is interpolated into a hostname and persisted to NVS, so the
+// server may only steer us within the vendor's own namespace. Real codes are
+// two- and three-letter lowercase ("eu2", "ap", "au").
+static bool region_code_is_valid(const char *region) {
+    size_t len = strlen(region);
+    if (len == 0 || len > 8) return false;
+
+    for (size_t i = 0; i < len; i++) {
+        char c = region[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) return false;
+    }
+    return true;
+}
+
+// A base URL restored from NVS may have been written by a build that verified
+// neither the TLS peer nor the region code, so it is held to the same namespace
+// before it is allowed to steer a request.
+static bool region_base_url_is_valid(const char *url) {
+    if (strcmp(url, DEFAULT_BASE_URL) == 0) return true;
+    if (strcmp(url, "https://api.libreview.ru") == 0) return true;
+
+    static const char prefix[] = "https://api-";
+    static const char suffix[] = ".libreview.io";
+    if (strncmp(url, prefix, sizeof(prefix) - 1) != 0) return false;
+
+    const char *code = url + sizeof(prefix) - 1;
+    const char *tail = strstr(code, suffix);
+    if (tail == NULL || tail[sizeof(suffix) - 1] != '\0') return false;
+
+    size_t len = (size_t)(tail - code);
+    if (len == 0 || len > 8) return false;
+    for (size_t i = 0; i < len; i++) {
+        char c = code[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) return false;
+    }
+    return true;
+}
+
+// Counts bracket nesting without recursing, so an adversarial body is refused
+// before cJSON's recursive parser can walk off the task stack.
+static bool json_depth_ok(const char *body) {
+    int depth = 0;
+    bool in_string = false;
+
+    for (const char *p = body; *p != '\0'; p++) {
+        if (in_string) {
+            if (*p == '\\') {
+                if (p[1] == '\0') break;
+                p++;
+            } else if (*p == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (*p == '"') {
+            in_string = true;
+        } else if (*p == '[' || *p == '{') {
+            if (++depth > JSON_MAX_DEPTH) return false;
+        } else if ((*p == ']' || *p == '}') && depth > 0) {
+            depth--;
+        }
+    }
+    return true;
 }
 
 // ============================================================================
@@ -199,6 +320,12 @@ esp_err_t libre_reopen_persistent_client(void) {
         .keep_alive_enable = true,
         .buffer_size = HTTP_BUFFER_SIZE,
         .buffer_size_tx = 2048,  // JWT Bearer header is ~1500 bytes
+        // The bearer token rides on this connection; authenticate the server
+        // against the bundled roots rather than only encrypting to it.
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        // Following a redirect would re-send the bearer header, and the request
+        // body on the login path, to whatever host the response names.
+        .disable_auto_redirect = true,
     };
 
     persistent_client = esp_http_client_init(&config);
@@ -236,6 +363,8 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
             .keep_alive_enable = true,
             .buffer_size = HTTP_BUFFER_SIZE,
             .buffer_size_tx = 2048,  // JWT Bearer header is ~1500 bytes
+            .crt_bundle_attach = esp_crt_bundle_attach,
+            .disable_auto_redirect = true,
         };
         client = esp_http_client_init(&config);
         if (client == NULL) {
@@ -289,7 +418,13 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
     }
 
     if (status != 200) {
-        ESP_LOGE(TAG, "Connections failed: HTTP %d — %s", status, http_response);
+        ESP_LOGE(TAG, "Connections failed: HTTP %d", status);
+        ESP_LOGD(TAG, "body: %.120s", http_response);
+        return ESP_FAIL;
+    }
+
+    if (!json_depth_ok(http_response)) {
+        ESP_LOGE(TAG, "Response nesting exceeds %d levels — refusing to parse", JSON_MAX_DEPTH);
         return ESP_FAIL;
     }
 
@@ -327,6 +462,7 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
             cJSON *value = cJSON_GetObjectItem(gm, "ValueInMgPerDl");
             cJSON *trend = cJSON_GetObjectItem(gm, "TrendArrow");
             cJSON *ts = cJSON_GetObjectItem(gm, "Timestamp");
+            cJSON *fts = cJSON_GetObjectItem(gm, "FactoryTimestamp");
 
             if (cJSON_IsNumber(value)) {
                 glucose_out->value = value->valueint;
@@ -339,18 +475,52 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
                     glucose_out->trend = TREND_NONE;
                 }
 
-                if (cJSON_IsString(ts) && ts->valuestring != NULL) {
-                    glucose_out->timestamp = parse_libre_timestamp(ts->valuestring);
-                    if (glucose_out->timestamp == 0) {
-                        ESP_LOGW(TAG, "Timestamp parse failed — using current time as fallback");
-                        glucose_out->timestamp = time(NULL);
-                    }
-                } else {
-                    glucose_out->timestamp = time(NULL);
+                // FactoryTimestamp is UTC; Timestamp is a local zone the service
+                // never names, so it can only be read as the device's own.
+                const char *raw_ts = NULL;
+                time_t parsed = 0;
+                if (cJSON_IsString(fts) && fts->valuestring != NULL) {
+                    raw_ts = fts->valuestring;
+                    parsed = parse_libre_timestamp_utc(raw_ts);
                 }
+                // The service owns both formats; falling through keeps a change to
+                // the UTC field from taking every reading with it.
+                if (parsed == 0 && cJSON_IsString(ts) && ts->valuestring != NULL) {
+                    if (!warned_no_factory_timestamp) {
+                        warned_no_factory_timestamp = true;
+                        ESP_LOGW(TAG, "No usable FactoryTimestamp in reading — reading "
+                                      "Timestamp as device-local time, which is wrong if "
+                                      "the sensor is in another zone");
+                    }
+                    raw_ts = ts->valuestring;
+                    parsed = parse_libre_timestamp_local(raw_ts);
+                }
+                glucose_out->timestamp = bound_libre_timestamp(parsed);
 
-                ESP_LOGI(TAG, "Glucose from connections: %d mg/dL, trend=%d",
-                         glucose_out->value, glucose_out->trend);
+                if (!is_time_synced()) {
+                    ESP_LOGW(TAG, "Device clock not synced — rejecting reading");
+                    glucose_out->timestamp = 0;
+                    glucose_out->valid = false;
+                    glucose_out->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+                } else if (glucose_out->timestamp == 0) {
+                    // No usable time means every staleness and alarm-age gate would
+                    // be measured against a fabricated "now".
+                    ESP_LOGW(TAG, "Unusable reading timestamp \"%s\" — rejecting reading",
+                             raw_ts != NULL ? raw_ts : "(absent)");
+                    glucose_out->valid = false;
+                    glucose_out->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+                } else if (glucose_out->value < GLUCOSE_MIN_MGDL ||
+                           glucose_out->value > GLUCOSE_MAX_MGDL) {
+                    ESP_LOGW(TAG, "Implausible glucose value %d mg/dL — rejecting",
+                             glucose_out->value);
+                    glucose_out->value = 0;
+                    glucose_out->timestamp = 0;
+                    glucose_out->valid = false;
+                    glucose_out->status = GLUCOSE_STATUS_NO_DATA;
+                } else {
+                    ESP_LOGI(TAG, "Glucose from connections: %d mg/dL, trend=%d",
+                             glucose_out->value, glucose_out->trend);
+                }
             }
         }
     }
@@ -384,6 +554,11 @@ esp_err_t libre_restore_session(void) {
 
     if (saved_token[0] == '\0') {
         ESP_LOGW(TAG, "Saved token is empty");
+        return ESP_FAIL;
+    }
+
+    if (saved_region[0] != '\0' && !region_base_url_is_valid(saved_region)) {
+        ESP_LOGW(TAG, "Saved server address is outside the service namespace — forcing re-login");
         return ESP_FAIL;
     }
 
@@ -487,6 +662,9 @@ auth_attempt:
         .timeout_ms = 15000,
         .buffer_size = HTTP_BUFFER_SIZE,
         .buffer_size_tx = 512,
+        // The account email and password are in this request body.
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .disable_auto_redirect = true,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -527,6 +705,11 @@ auth_attempt:
         return ESP_FAIL;
     }
 
+    if (!json_depth_ok(http_response)) {
+        ESP_LOGE(TAG, "Response nesting exceeds %d levels — refusing to parse", JSON_MAX_DEPTH);
+        return ESP_FAIL;
+    }
+
     cJSON *root = cJSON_Parse(http_response);
     if (root == NULL) {
         ESP_LOGE(TAG, "Failed to parse login JSON");
@@ -544,7 +727,8 @@ auth_attempt:
     cJSON *redirect = cJSON_GetObjectItem(data, "redirect");
     if (cJSON_IsTrue(redirect) && !redirected) {
         cJSON *region = cJSON_GetObjectItem(data, "region");
-        if (cJSON_IsString(region) && region->valuestring != NULL) {
+        if (cJSON_IsString(region) && region->valuestring != NULL &&
+            region_code_is_valid(region->valuestring)) {
             ESP_LOGI(TAG, "Redirecting to region: %s", region->valuestring);
 
             if (strcmp(region->valuestring, "ru") == 0) {
@@ -563,6 +747,11 @@ auth_attempt:
             http_response_len = 0;
             http_response[0] = '\0';
             goto auth_attempt;
+        }
+        if (cJSON_IsString(region) && region->valuestring != NULL) {
+            ESP_LOGE(TAG, "Server asked to redirect to an unrecognised region code");
+            cJSON_Delete(root);
+            return ESP_FAIL;
         }
     }
 
@@ -692,7 +881,10 @@ esp_err_t libre_fetch_glucose(cgm_glucose_t *glucose) {
         consecutive_failures = 0;
 
         if (!glucose->valid) {
-            glucose->status = GLUCOSE_STATUS_NO_DATA;
+            // A reading rejected during parsing already carries its own reason.
+            if (glucose->status != GLUCOSE_STATUS_SIGNAL_LOSS) {
+                glucose->status = GLUCOSE_STATUS_NO_DATA;
+            }
         } else {
             // Check staleness (>10 minutes old)
             time_t now = time(NULL);
@@ -700,6 +892,7 @@ esp_err_t libre_fetch_glucose(cgm_glucose_t *glucose) {
                 ESP_LOGW(TAG, "Data is %ld seconds old (>10min)",
                          (long)(now - glucose->timestamp));
                 glucose->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+                glucose->valid = false;
             }
         }
     } else {

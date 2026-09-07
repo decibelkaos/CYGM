@@ -4,14 +4,18 @@
 #include "esp_err.h"
 #include <stdbool.h>
 
-#define MAX_SSID_LEN 32
+// 802.11 caps an SSID at 32 octets; a buffer holding one as a C string needs the
+// terminator too, or a maximum-length SSID is stored and can never be read back.
+// Deliberately not named MAX_SSID_LEN: the Wi-Fi driver defines that as 32 for
+// its own non-terminated arrays, and the winner would depend on include order.
+#define CYGM_MAX_SSID_LEN 33
 #define MAX_PASSWORD_LEN 64
 #define MAX_TIMEZONE_LEN 64
 #define MAX_ZIPCODE_LEN 11
 
 // WiFi credentials structure
 typedef struct {
-    char ssid[MAX_SSID_LEN];
+    char ssid[CYGM_MAX_SSID_LEN];
     char password[MAX_PASSWORD_LEN];
 } wifi_credentials_t;
 
@@ -216,6 +220,9 @@ esp_err_t nvs_load_night_cfg(cygm_night_cfg_t *cfg);
 // Legal disclaimer acceptance
 esp_err_t nvs_set_disclaimer_accepted(void);
 bool nvs_get_disclaimer_accepted(void);
+/* Forget the acceptance so the boot disclaimer shows again. Serial command
+   "disclaimer"; the card is otherwise unreviewable once accepted. */
+esp_err_t nvs_clear_disclaimer_accepted(void);
 
 // SD card glucose logging toggle (persisted)
 esp_err_t nvs_save_sd_glucose_logging(bool enabled);

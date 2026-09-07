@@ -33,14 +33,14 @@ extern "C" {
 // ==================== Version Information ====================
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
-#define CYGM_VERSION_MINOR 16
-#define CYGM_VERSION_PATCH 4
+#define CYGM_VERSION_MINOR 17
+#define CYGM_VERSION_PATCH 0
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-09-05"
+#define CYGM_VERSION_DATE "2026-09-06"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.16.4.2026-09-05.Beta"
+#define CYGM_VERSION_STRING "0.17.0.2026-09-06.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -269,6 +269,11 @@ extern char nightscout_token_buf[64];
 
 // ==================== Glucose Data ====================
 
+// Physiological range a reading must fall in to be accepted. The upper bound is
+// deliberately above the 401 the share service emits as a genuine HIGH sentinel.
+#define CYGM_GLUCOSE_MIN_MGDL  20
+#define CYGM_GLUCOSE_MAX_MGDL 600
+
 extern int current_glucose;
 extern dexcom_trend_t current_trend;
 extern time_t glucose_timestamp;
@@ -277,6 +282,25 @@ extern bool glucose_data_fresh;
 extern dexcom_status_t glucose_status;
 extern bool first_glucose_received;
 extern bool sensor_change_mode;        // User confirmed CGM sensor change in progress
+
+// Uptime (esp_timer ms) stamped whenever glucose_timestamp changes. Survives an
+// unsynced or stepped wall clock, so it floors every age calculation.
+// A 64-bit load is not atomic on this core, so a read straddling the once-per-poll
+// write can tear; the torn value always reads older, never fresher, so the age it
+// produces is safe in the only direction that matters.
+extern volatile int64_t glucose_stamp_uptime_ms;
+
+/**
+ * Age of the stored reading in minutes, never negative.
+ *
+ * The result is max(wall-clock age, uptime age): a clock that jumps backwards,
+ * or a provider timestamp in the future, can only ever make a reading look
+ * younger, and the uptime floor is what stops that. *age_known is false when
+ * the wall clock is unsynced or the provider timestamp leads it by more than
+ * five minutes — the returned age is then the uptime floor alone and must be
+ * presented as unknown, never as a real age.
+ */
+int cygm_glucose_age_min(bool *age_known);
 
 // ==================== Home Screen Widgets ====================
 

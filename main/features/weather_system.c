@@ -410,7 +410,42 @@ void update_weather_display(void) {
     // Update sunrise/sunset times (separate function with its own lock)
     update_sunrise_sunset_display();
 }
+// Cooperative stop flag. Set by weather_task_request_stop(), cleared by the task
+// itself as it parks.
+static volatile bool weather_park_requested = false;
+
+void weather_task_request_stop(void) {
+    weather_park_requested = true;
+}
+
+void weather_task_cancel_stop(void) {
+    weather_park_requested = false;
+}
+
+// Interruptible sleep: ends as soon as a park has been requested, so no wait in
+// this task can hold the caller past its two-second budget.
+static void weather_sleep_ms(int ms) {
+    while (ms > 0 && !weather_park_requested) {
+        int step = (ms < 250) ? ms : 250;
+        vTaskDelay(pdMS_TO_TICKS(step));
+        ms -= step;
+    }
+}
+
+// Called only from points holding no LVGL lock, no network mutex, no HTTP client
+// and no open NVS handle.
+static void weather_task_park(void) {
+    ESP_LOGI(TAG, "Weather task parked on request");
+    weather_park_requested = false;
+    weather_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
 void weather_update_task(void *pvParameters) {
+    // A request that arrived after the previous instance parked must not stop
+    // this one before it has fetched anything.
+    weather_park_requested = false;
+
     ESP_LOGI(TAG, "Weather update task started");
 
     // Check if we were recently recreated (glucose task deletes/recreates us for SSL).
@@ -424,25 +459,28 @@ void weather_update_task(void *pvParameters) {
         int64_t remaining_ms = interval_ms - elapsed_ms;
         ESP_LOGI(TAG, "Recent fetch %ds ago — sleeping %ds until next",
                  (int)(elapsed_ms / 1000), (int)(remaining_ms / 1000));
-        vTaskDelay(pdMS_TO_TICKS(remaining_ms > 0 ? (uint32_t)remaining_ms : 1000));
+        weather_sleep_ms(remaining_ms > 0 ? (int)remaining_ms : 1000);
     } else {
         // First boot or interval elapsed — short delay for network stability
         ESP_LOGI(TAG, "Waiting 15 seconds before first weather attempt...");
-        vTaskDelay(pdMS_TO_TICKS(15000));
+        weather_sleep_ms(15000);
     }
     ESP_LOGI(TAG, "Free heap before weather geocoding: %lu bytes", esp_get_free_heap_size());
 
     while (1) {
+        // Top of the cycle: nothing is held here, so it is a safe stop point.
+        if (weather_park_requested) weather_task_park();
+
         // STRICT runtime policy: never fetch off-home
         if (pause_background_tasks || !home_screen_active) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            weather_sleep_ms(5000);
             continue;
         }
 
         extern bool wifi_connected;
         if (!wifi_connected) {
             ESP_LOGI(TAG, "[Weather Task] WiFi not connected - pausing (waiting 10s)");
-            vTaskDelay(pdMS_TO_TICKS(10000));  // Check every 10 seconds
+            weather_sleep_ms(10000);  // Check every 10 seconds
             continue;
         }
 
@@ -497,7 +535,20 @@ void weather_update_task(void *pvParameters) {
                 // Retry with short critical sections: never sleep while holding network mutex
                 for (int attempt = 1; attempt <= 3; attempt++) {
                     ESP_LOGI(TAG, "Waiting for network mutex (attempt %d/3)...", attempt);
-                    if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+                    // Same 5s budget, taken in slices: blocking the whole time
+                    // would hold a park request past the caller's patience.
+                    bool got_mutex = false;
+                    for (int w = 0; w < 10 && !weather_park_requested; w++) {
+                        if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+                            got_mutex = true;
+                            break;
+                        }
+                    }
+                    // The request may only abort the attempt when nothing was
+                    // acquired: breaking out with the mutex held would orphan it
+                    // in a task that is about to delete itself.
+                    if (!got_mutex) {
+                        if (weather_park_requested) break;
                         ESP_LOGW(TAG, "Weather mutex timeout (attempt %d/3)", attempt);
                         continue;
                     }
@@ -535,14 +586,18 @@ void weather_update_task(void *pvParameters) {
                         last_weather_fetch_ms = esp_timer_get_time() / 1000;
                         ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
                         update_weather_display();
+                        // The display call is the last holder of the LVGL lock in
+                        // this cycle, so a pending park is safe to take here.
+                        if (weather_park_requested) weather_task_park();
                         break;
                     }
 
                     ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
                     ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
+                    if (weather_park_requested) break;
                     if (attempt < 3) {
                         ESP_LOGI(TAG, "Retrying in 5 seconds...");
-                        vTaskDelay(pdMS_TO_TICKS(5000));
+                        weather_sleep_ms(5000);
                     }
                 }
             }
@@ -553,7 +608,14 @@ void weather_update_task(void *pvParameters) {
                     wifi_manager_is_connected(), user_zipcode);
         }
 
-        // Wait out the configured interval, or return at once if notified to update.
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(user_weather_interval_min * 60 * 1000));
+        // Wait out the configured interval, or return at once if notified to
+        // update. Sliced into seconds so a park request is never held for the
+        // whole interval.
+        int wait_s = user_weather_interval_min * 60;
+        if (wait_s < 1) wait_s = 1;
+        for (int i = 0; i < wait_s; i++) {
+            if (weather_park_requested) break;
+            if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) > 0) break;
+        }
     }
 }
