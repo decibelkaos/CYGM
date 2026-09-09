@@ -34,13 +34,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 0
 #define CYGM_VERSION_MINOR 17
-#define CYGM_VERSION_PATCH 0
+#define CYGM_VERSION_PATCH 5
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-09-06"
+#define CYGM_VERSION_DATE "2026-09-09"
 #define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.17.0.2026-09-06.Beta"
+#define CYGM_VERSION_STRING "0.17.5.2026-09-09.Beta"
 
 // ==================== Hardware Configuration ====================
 
@@ -279,6 +279,7 @@ extern dexcom_trend_t current_trend;
 extern time_t glucose_timestamp;
 extern bool glucose_data_valid;
 extern bool glucose_data_fresh;
+extern volatile bool glucose_display_dirty;
 extern dexcom_status_t glucose_status;
 extern bool first_glucose_received;
 extern bool sensor_change_mode;        // User confirmed CGM sensor change in progress
@@ -352,7 +353,9 @@ extern char geocoded_zipcode[11];  // Geocoded zipcode tracker
 extern bool user_temp_celsius;
 extern uint8_t user_weather_interval_min;
 extern char user_location[64];
-extern bool user_glucose_mmol;   // false = mg/dL (US), true = mmol/L (rest of world)
+extern bool user_glucose_mmol;
+// Opt in to beta firmware over the air. Off by default; see update_checker.c.
+extern bool user_beta_updates;   // false = mg/dL (US), true = mmol/L (rest of world)
 extern bool user_date_dmy;       // false = US month-day, true = day-month
 
 // Locale glucose formatting helpers (defined in main.c). Glucose is stored
@@ -361,6 +364,7 @@ const char *cygm_glucose_unit(void);                       // "mg/dL" or "mmol/L
 void cygm_format_glucose(int mgdl, char *buf, size_t len); // value only
 void cygm_format_threshold(int mgdl, char *buf, size_t len); // value + unit
 int mgdl_to_mmol_tenths(int mgdl);                         // rounded tenths of mmol/L (for delta math)
+int mmol_tenths_to_mgdl(int tenths);                       // inverse of the above
 // ==================== Weather Data ====================
 
 extern int current_temp_f;

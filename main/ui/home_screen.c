@@ -16,6 +16,8 @@
 #include "whats_new.h"
 #include "ui/glucose_chart.h"
 #include "ui/wifi_screens.h"
+#include "ui/cgm_screens.h"
+#include "ui/time_weather_screens.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
 #include "sd_logger.h"
@@ -601,6 +603,8 @@ void show_login_success_overlay_ui(void) {
 static lv_obj_t *disclaimer_overlay = NULL;
 static lv_obj_t *disclaimer_checkbox = NULL;
 
+static void setup_guide_arm(void);  // defined with the setup walkthrough below
+
 static void disclaimer_agree_cb(lv_event_t *e) {
     (void)e;
     if (disclaimer_checkbox && lv_obj_has_state(disclaimer_checkbox, LV_STATE_CHECKED)) {
@@ -621,6 +625,8 @@ static void disclaimer_agree_cb(lv_event_t *e) {
         nvs_set_welcome_shown();
         show_welcome_overlay();
     }
+
+    setup_guide_arm();  // no-op unless this is a fresh install; the home tick drives it
 }
 
 void show_disclaimer_overlay(void) {
@@ -714,11 +720,15 @@ void show_disclaimer_overlay(void) {
 
 static lv_obj_t *welcome_overlay = NULL;
 
+static void welcome_delete_cb(lv_event_t *e) {
+    (void)e;
+    welcome_overlay = NULL;
+}
+
 static void welcome_close_cb(lv_event_t *e) {
     (void)e;
     if (welcome_overlay) {
-        lv_obj_del(welcome_overlay);
-        welcome_overlay = NULL;
+        lv_obj_del(welcome_overlay);  // delete cb NULLs the static
     }
 }
 
@@ -733,6 +743,9 @@ void show_welcome_overlay(void) {
     lv_obj_set_style_bg_opa(welcome_overlay, LV_OPA_80, 0);
     lv_obj_clear_flag(welcome_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(welcome_overlay);
+    // Parented to whatever screen is active, which the menu deletes on the way
+    // out — without this the static outlives the object.
+    lv_obj_add_event_cb(welcome_overlay, welcome_delete_cb, LV_EVENT_DELETE, NULL);
 
     // Glass card — blue accent (same style as disclaimer)
     lv_obj_t *card = lv_obj_create(welcome_overlay);
@@ -1230,7 +1243,331 @@ static void whats_new_maybe_show(void) {
     whats_new_show();
 }
 
+// ==================== First-Time Setup Walkthrough ====================
+// Three one-shot cards — WiFi, then location, then CGM — put up by the home
+// tick after the disclaimer is accepted. Nothing calls back into the three
+// settings modules: each of them returns to the home screen, so the next tick
+// re-tests the predicates below and a step finished from the menu counts
+// exactly like one finished from a card.
+
+#define SETUP_STEP_WIFI      1
+#define SETUP_STEP_LOCATION  2
+#define SETUP_STEP_CGM       3
+#define SETUP_STEP_DONE      255
+
+// Same pool floor the settings screens build against. A card that will not fit
+// is skipped, not degraded: the tick simply tries again a second later.
+#define SETUP_POOL_MIN_FREE     6144
+#define SETUP_POOL_MIN_BIGGEST  2048
+
+static lv_obj_t *setup_overlay = NULL;
+static uint8_t setup_card_step = 0;          // step the visible card was built for
+static volatile uint8_t setup_step = 0;      // also written by the serial command task
+static volatile bool setup_step_loaded = false;
+static volatile bool setup_force = false;    // bench replay: ignore the predicates
+static bool setup_pool_warned = false;
+
+static uint8_t setup_step_get(void) {
+    if (!setup_step_loaded) {
+        setup_step = nvs_get_setup_step();
+        setup_step_loaded = true;
+    }
+    return setup_step;
+}
+
+static void setup_step_set(uint8_t step) {
+    if (setup_step_loaded && setup_step == step) return;
+    setup_step = step;
+    setup_step_loaded = true;
+    nvs_save_setup_step(step);
+}
+
+static void setup_guide_arm(void) {
+    if (setup_step_get() != 0) return;  // already walked, skipped, or in progress
+    setup_step_set(SETUP_STEP_WIFI);
+    ESP_LOGI(TAG, "Setup guide armed at step 1");
+}
+
+// Location: load_weather_settings() fills both of these at boot from whatever
+// the confirm path stored. nvs_has_weather_settings() tests a key that path
+// never writes, so it would report a configured device as unconfigured.
+static bool setup_location_done(void) {
+    return user_latitude != 0.0f || user_location[0] != '\0';
+}
+
+// Same dispatch the boot path uses to decide whether to auto-login.
+static bool setup_cgm_done(void) {
+    char cgm_type[MAX_CGM_TYPE_LEN] = "dexcom";
+    nvs_load_cgm_type(cgm_type, sizeof(cgm_type));
+    if (strcmp(cgm_type, "nightscout") == 0) return nvs_has_nightscout_credentials();
+    if (strcmp(cgm_type, "libre") == 0)      return nvs_has_libre_credentials();
+    return nvs_has_dexcom_credentials();
+}
+
+static bool setup_step_done(uint8_t step) {
+    if (setup_force) return false;
+    switch (step) {
+        case SETUP_STEP_WIFI:     return nvs_has_wifi_credentials();
+        case SETUP_STEP_LOCATION: return setup_location_done();
+        case SETUP_STEP_CGM:      return setup_cgm_done();
+        default:                  return true;
+    }
+}
+
+static void setup_delete_cb(lv_event_t *e) {
+    (void)e;
+    setup_overlay = NULL;
+}
+
+static void setup_card_close(void) {
+    if (setup_overlay != NULL) {
+        lv_obj_del(setup_overlay);  // delete cb NULLs the static
+    }
+}
+
+static void setup_advance(void) {
+    uint8_t step = setup_step_get();
+    if (step >= SETUP_STEP_CGM) {
+        setup_step_set(SETUP_STEP_DONE);
+        setup_force = false;
+        ESP_LOGI(TAG, "Setup guide finished");
+    } else {
+        setup_step_set((uint8_t)(step + 1));
+    }
+}
+
+// Skip abandons the whole walkthrough, not one step: the three steps depend on
+// each other (location and CGM both need the network), and the card says it
+// will not come back until a fresh install or a device reset.
+static void setup_skip_cb(lv_event_t *e) {
+    (void)e;
+    ESP_LOGI(TAG, "Setup guide: skipped at step %u", (unsigned)setup_step_get());
+    setup_card_close();
+    setup_step_set(SETUP_STEP_DONE);
+    setup_force = false;
+}
+
+// Opens the step's own screen the way the matching menu item does, including
+// the memory each one needs. Already inside an LVGL event, so no lock is taken.
+static void setup_primary_cb(lv_event_t *e) {
+    (void)e;
+    uint8_t step = setup_step_get();
+    setup_card_close();
+
+    home_screen_active = false;
+    pause_background_tasks = true;
+
+    switch (step) {
+        case SETUP_STEP_WIFI:
+            ESP_LOGI(TAG, "Setup guide: opening WiFi setup");
+            // The scan and its UI need the ~30KB the persistent CGM client holds.
+            dexcom_close_persistent_client();
+            libre_close_persistent_client();
+            if (screen_wifi_list != NULL) {
+                lv_obj_del(screen_wifi_list);
+                screen_wifi_list = NULL;
+            }
+            create_wifi_list_screen();
+            lv_scr_load(screen_wifi_list);
+            show_wifi_scanning_overlay();   // the scan task hides it when done
+            xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
+            break;
+
+        case SETUP_STEP_LOCATION:
+            ESP_LOGI(TAG, "Setup guide: opening time/weather settings");
+            // Clean up any leftover search screen (keyboard = 40+ objects)
+            if (screen_zipcode_entry != NULL) {
+                lv_obj_del(screen_zipcode_entry);
+                screen_zipcode_entry = NULL;
+            }
+            create_time_weather_settings_screen();
+            lv_scr_load(screen_time_weather_settings);
+            break;
+
+        default:
+            ESP_LOGI(TAG, "Setup guide: opening CGM settings");
+            if (screen_cgm_menu != NULL) {
+                lv_obj_del(screen_cgm_menu);
+                screen_cgm_menu = NULL;
+            }
+            create_cgm_menu_screen();
+            lv_scr_load(screen_cgm_menu);
+            break;
+    }
+}
+
+static void setup_card_show(uint8_t step) {
+    static const char *const setup_titles[] = {
+        "Connect to WiFi", "Set your location", "Connect your CGM",
+    };
+    static const char *const setup_bodies[] = {
+        "The device needs your network for readings, time and weather.",
+        "Sets the clock, time zone, sunrise and the forecast.",
+        "Sign in to the service that has your readings.",
+    };
+    static const char *const setup_actions[] = {
+        "Set up WiFi", "Set location", "Connect CGM",
+    };
+    const int idx = (int)step - SETUP_STEP_WIFI;
+
+    lv_obj_t *panel = NULL, *caption = NULL, *title = NULL, *body = NULL, *note = NULL;
+    lv_obj_t *go_btn = NULL, *go_lbl = NULL, *skip_btn = NULL, *skip_lbl = NULL;
+    char caption_text[24];
+
+    setup_overlay = lv_obj_create(screen_home);
+    if (setup_overlay == NULL) goto fail;
+    lv_obj_set_size(setup_overlay, 320, 240);
+    lv_obj_set_pos(setup_overlay, 0, 0);
+    lv_obj_set_style_bg_color(setup_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(setup_overlay, LV_OPA_60, 0);  // scrim; absorbs taps
+    lv_obj_set_style_border_width(setup_overlay, 0, 0);
+    lv_obj_set_style_radius(setup_overlay, 0, 0);
+    lv_obj_set_style_pad_all(setup_overlay, 0, 0);
+    lv_obj_clear_flag(setup_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(setup_overlay, setup_delete_cb, LV_EVENT_DELETE, NULL);
+
+    panel = lv_obj_create(setup_overlay);
+    if (panel == NULL) goto fail;
+    lv_obj_set_size(panel, 292, 176);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, 16, 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
+    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    snprintf(caption_text, sizeof(caption_text), "SETUP  step %d of 3", idx + 1);
+    caption = lv_label_create(panel);
+    if (caption == NULL) goto fail;
+    lv_label_set_text(caption, caption_text);
+    lv_obj_set_style_text_font(caption, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(caption, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(caption, 2, 0);
+    lv_obj_align(caption, LV_ALIGN_TOP_MID, 0, 12);
+
+    title = lv_label_create(panel);
+    if (title == NULL) goto fail;
+    lv_label_set_text(title, setup_titles[idx]);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 32);
+
+    body = lv_label_create(panel);
+    if (body == NULL) goto fail;
+    lv_obj_set_width(body, 252);
+    lv_label_set_text(body, setup_bodies[idx]);
+    lv_obj_set_style_text_font(body, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(body, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 62);
+
+    note = lv_label_create(panel);
+    if (note == NULL) goto fail;
+    lv_label_set_text(note, "Shown once, after a fresh install or a device reset.");
+    lv_obj_set_style_text_font(note, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(note, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(note, LV_ALIGN_BOTTOM_MID, 0, -56);
+
+    go_btn = lv_btn_create(panel);
+    if (go_btn == NULL) goto fail;
+    lv_obj_set_size(go_btn, CYGM_BTN_W_TEXT, CYGM_BTN_H);
+    lv_obj_align(go_btn, LV_ALIGN_BOTTOM_LEFT, 26, -14);
+    lv_obj_set_style_border_color(go_btn, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_bg_color(go_btn, lv_color_hex(COLOR_PRESSED_GREEN), LV_STATE_PRESSED);
+    lv_obj_update_layout(go_btn);
+    cygm_apply_ghost_btn(go_btn);
+    lv_obj_add_event_cb(go_btn, setup_primary_cb, LV_EVENT_CLICKED, NULL);
+    go_lbl = lv_label_create(go_btn);
+    if (go_lbl == NULL) goto fail;
+    lv_label_set_text(go_lbl, setup_actions[idx]);
+    lv_obj_set_style_text_font(go_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(go_lbl, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_center(go_lbl);
+
+    skip_btn = lv_btn_create(panel);
+    if (skip_btn == NULL) goto fail;
+    lv_obj_set_size(skip_btn, 96, CYGM_BTN_H);
+    lv_obj_align(skip_btn, LV_ALIGN_BOTTOM_RIGHT, -26, -14);
+    lv_obj_update_layout(skip_btn);
+    cygm_apply_ghost_btn(skip_btn);
+    lv_obj_set_style_border_color(skip_btn, lv_color_hex(COLOR_DIVIDER), 0);
+    lv_obj_add_event_cb(skip_btn, setup_skip_cb, LV_EVENT_CLICKED, NULL);
+    skip_lbl = lv_label_create(skip_btn);
+    if (skip_lbl == NULL) goto fail;
+    lv_label_set_text(skip_lbl, "Skip setup");
+    lv_obj_set_style_text_font(skip_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(skip_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(skip_lbl);
+
+    setup_card_step = step;
+    ESP_LOGI(TAG, "Setup guide: step %d shown", idx + 1);
+    return;
+
+fail:
+    ESP_LOGW(TAG, "Setup guide: card could not be built, retrying");
+    setup_card_close();
+}
+
+void cygm_setup_guide_maybe_show(void) {
+    uint8_t step = setup_step_get();
+    // Not started, finished, or a byte NVS came back with that is not a step.
+    if (step == 0 || step > SETUP_STEP_CGM) return;
+
+    // Re-test before showing anything: the user may have finished this step
+    // from the menu, or from the card's own button on an earlier pass.
+    while (setup_step_done(step)) {
+        setup_advance();
+        step = setup_step_get();
+        if (step > SETUP_STEP_CGM) {
+            setup_card_close();
+            return;
+        }
+    }
+
+    if (setup_overlay != NULL) {
+        if (setup_card_step == step) return;
+        setup_card_close();  // stale after a forced replay rewound the step
+    }
+
+    // Never stack cards: the boot overlays own the screen while they are up.
+    if (disclaimer_overlay != NULL || welcome_overlay != NULL ||
+        whats_new_overlay != NULL || visual_alarm_active) {
+        return;
+    }
+
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    if (mon.free_size < SETUP_POOL_MIN_FREE ||
+        mon.free_biggest_size < SETUP_POOL_MIN_BIGGEST) {
+        if (!setup_pool_warned) {
+            setup_pool_warned = true;
+            ESP_LOGW(TAG, "LVGL pool too low for the setup card: free=%lu biggest=%lu "
+                          "(need free>=%d biggest>=%d) — waiting",
+                     (unsigned long)mon.free_size, (unsigned long)mon.free_biggest_size,
+                     SETUP_POOL_MIN_FREE, SETUP_POOL_MIN_BIGGEST);
+        }
+        return;
+    }
+    setup_pool_warned = false;
+
+    setup_card_show(step);
+}
+
+void cygm_setup_guide_force(void) {
+    setup_force = true;
+    setup_step_set(SETUP_STEP_WIFI);
+    ESP_LOGI(TAG, "Setup guide: replay armed from step 1 (predicates ignored)");
+}
+
 static void glucose_timer_update_cb(lv_timer_t *timer) {
+    if (glucose_display_dirty) {
+        update_glucose_display();  // repaint that lost the LVGL lock at fetch time
+    }
+    weather_display_retry();
+
     if (!home_screen_active || glucose_freshness_arc == NULL) {
         return;
     }
@@ -1256,6 +1593,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
         home_night_reassert();
     } else {
         whats_new_maybe_show();  // one-shot; yields to sheet/night/alarm above
+        cygm_setup_guide_maybe_show();  // same gating; yields to the card above
 
         // Countdown to the next CGM pull. The glucose task arms a deadline on
         // every wait, so the arc drains across exactly one poll interval.

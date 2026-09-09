@@ -239,8 +239,17 @@ esp_err_t nvs_factory_reset(void);
 bool nvs_get_welcome_shown(void);
 esp_err_t nvs_set_welcome_shown(void);
 
+// First-time setup walkthrough position: 0 = never started, 1-3 = the step
+// still to show (WiFi, location, CGM), 255 = finished or skipped.
+uint8_t nvs_get_setup_step(void);
+esp_err_t nvs_save_setup_step(uint8_t step);
+
 // Locale: glucose units (false = mg/dL [default], true = mmol/L)
 esp_err_t nvs_save_glucose_mmol(bool mmol);
+
+/** Update channel. False (default) = public releases only; true = beta builds. */
+esp_err_t nvs_save_beta_updates(bool beta);
+bool nvs_get_beta_updates(void);
 bool nvs_get_glucose_mmol(void);
 
 // Locale: date format (false = US month-day [default], true = day-month)
@@ -250,5 +259,12 @@ bool nvs_get_date_dmy(void);
 // Dexcom region cache (dexcom_region_t int; -1 = unknown / full probe)
 esp_err_t nvs_save_dexcom_region(int region);
 int nvs_get_dexcom_region(void);
+
+// Pseudonymous device identifier — 16 random bytes, stored as an exact-length
+// blob. A factory reset erases the partition, so the id is regenerated
+// afterwards. Both calls take a CYGM_DEVICE_ID_BYTES buffer.
+#define CYGM_DEVICE_ID_BYTES 16
+esp_err_t nvs_load_device_id(uint8_t *id);
+esp_err_t nvs_save_device_id(const uint8_t *id);
 
 #endif // NVS_CONFIG_H

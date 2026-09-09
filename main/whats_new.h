@@ -20,7 +20,7 @@ static const char *const whats_new_bullets[] = {
     "Urgent-low alarm always stays on",
     "Old readings never look current",
     "Updates come only from cygm.me",
-    "Long alarms go quiet, keep flashing",
+    "Type an exact alarm threshold",
 };
 #define WHATS_NEW_COUNT (sizeof(whats_new_bullets) / sizeof(whats_new_bullets[0]))
 

@@ -120,7 +120,7 @@ void ensure_tasks_running(void);
 
 // Task stack sizes (bytes) — shared by main.c and background_tasks.c.
 // Heap-allocated so task deletion frees contiguous memory for TLS reconnection.
-#define WEATHER_STACK_SIZE 6144   // Covers geocoding (HTTP+JSON) plus esp_wifi_set_country_code
+#define WEATHER_STACK_SIZE 6144   // Covers geocoding (TLS+JSON) plus esp_wifi_set_country_code; also sizes the loc_search task
 #define TIME_STACK_SIZE    2048   // Headroom for localtime_r, night fade and logging
 #define BATTERY_STACK_SIZE 2560   // 2048 left only 48 bytes free at high-water mark
 
@@ -166,6 +166,18 @@ void glucose_task_request_stop(void);
 
 /** True once a requested stop has completed (glucose_task_handle is NULL). */
 bool glucose_task_is_stopped(void);
+
+/**
+ * Free the C library's per-task power-of-five cache. Call immediately before
+ * vTaskDelete(NULL) in every task that parks itself.
+ *
+ * strtod() keeps a chain of big integers in the calling task's reent to convert
+ * full-precision doubles, and the teardown FreeRTOS runs on delete frees the
+ * chain's owner but not the chain. A task that parsed one long double and then
+ * deleted itself lost ~96 bytes every time; the weather task did so four times
+ * an hour and drained the heap in about three days.
+ */
+void cygm_task_drain_mprec(void);
 
 #ifdef __cplusplus
 }

@@ -22,7 +22,9 @@ typedef struct {
 
 /**
  * Check for firmware updates (blocking HTTPS call).
- * Does NOT acquire network_mutex — caller must hold it or ensure no conflicts.
+ * Caller MUST hold network_mutex: this may close the provider's persistent TLS
+ * client to afford its own handshake, which is only safe while no fetch is in
+ * flight, and "no conflicts" is not something a caller can promise otherwise.
  */
 esp_err_t update_check_now(void);
 

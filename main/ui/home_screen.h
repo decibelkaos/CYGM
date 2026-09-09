@@ -38,6 +38,15 @@ void show_disclaimer_overlay(void);
 // Welcome overlay (shown once after first ToS acceptance)
 void show_welcome_overlay(void);
 
+// First-time setup walkthrough. Polled from the 1Hz home timer; it puts up one
+// card per step still outstanding (WiFi, location, CGM) and does nothing once
+// the walkthrough is finished or skipped.
+void cygm_setup_guide_maybe_show(void);
+
+// Bench hook for the "setup" serial command: restart the walkthrough at step 1
+// and replay every card regardless of what is already configured.
+void cygm_setup_guide_force(void);
+
 // Update zone border color on home screen cards
 void update_ambient_tint(void);
 

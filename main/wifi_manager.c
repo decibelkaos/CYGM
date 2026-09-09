@@ -97,7 +97,10 @@ void wifi_manager_apply_country(void) {
 
     esp_err_t ret = esp_wifi_set_country_code(cc, true);  // ieee80211d on: honor AP's country
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "WiFi regulatory domain set to '%s' (from TZ '%s')", cc, user_timezone);
+        // The timezone is kept: it is the input this derivation is most often
+        // wrong about, and a zone name is a region spanning many cities, not a
+        // place. See docs/development/LOGGING_POLICY.md, Keep.
+        ESP_LOGI(TAG, "WiFi regulatory domain set to '%s' (from TZ %s)", cc, user_timezone);
     } else {
         ESP_LOGW(TAG, "esp_wifi_set_country_code('%s') failed: %s", cc, esp_err_to_name(ret));
     }
@@ -117,6 +120,11 @@ esp_err_t wifi_manager_init(void) {
     ESP_LOGI(TAG, "WiFi hostname set to: CYGM_Monitor (will appear in DHCP client lists)");
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    // The driver's own INFO lines print the station MAC, the SSID and the
+    // BSSID ("wifi:mode : sta (..)", "wifi:connected with .."), which the
+    // logging policy forbids in the unattended stream. Warnings and errors
+    // from the driver still show.
+    esp_log_level_set("wifi", ESP_LOG_WARN);
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
@@ -145,7 +153,8 @@ esp_err_t wifi_manager_connect_to(const char *ssid, const char *password) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_LOGI(TAG, "Connecting to: %s", ssid);
+    // An SSID names the user's home network; log its length, never the name.
+    ESP_LOGI(TAG, "Connecting to network (SSID %d chars)", (int)strlen(ssid));
 
     // Suppress event handler auto-retry during switchover — without this,
     // the DISCONNECTED event fires and reconnects to the OLD config before
@@ -198,13 +207,13 @@ esp_err_t wifi_manager_connect_to(const char *ssid, const char *password) {
             pdMS_TO_TICKS(60000));
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected to: %s", ssid);
+        ESP_LOGI(TAG, "Connected");
         return ESP_OK;
     }
 
     // Timeout or failure - clean up
     if (!(bits & WIFI_FAIL_BIT)) {
-        ESP_LOGW(TAG, "Connection timeout for: %s", ssid);
+        ESP_LOGW(TAG, "Connection timeout");
         esp_wifi_disconnect();
     }
 
@@ -216,7 +225,7 @@ esp_err_t wifi_manager_connect(void) {
     wifi_credentials_t creds;
 
     if (nvs_load_wifi_credentials(&creds) == ESP_OK) {
-        ESP_LOGI(TAG, "Using saved WiFi credentials for: %s", creds.ssid);
+        ESP_LOGI(TAG, "Using saved WiFi credentials");
         return wifi_manager_connect_to(creds.ssid, creds.password);
     }
 
@@ -323,18 +332,18 @@ esp_err_t wifi_manager_try_reconnect(void) {
     // Try each matching network in RSSI order
     for (int m = 0; m < match_count; m++) {
         int idx = matches[m].creds_idx;
-        ESP_LOGI(TAG, "Auto-reconnect: trying %s (RSSI: %d) [%d/%d]",
-                 networks[idx].ssid, matches[m].rssi, m + 1, match_count);
+        ESP_LOGI(TAG, "Auto-reconnect: candidate %d/%d (RSSI: %d)",
+                 m + 1, match_count, matches[m].rssi);
 
         esp_err_t ret = wifi_manager_connect_to(networks[idx].ssid, networks[idx].password);
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "Auto-reconnect successful: %s", networks[idx].ssid);
-            sd_log(TAG, "WiFi: reconnected to %s (RSSI=%d)", networks[idx].ssid, matches[m].rssi);
+            ESP_LOGI(TAG, "Auto-reconnect successful");
+            sd_log(TAG, "WiFi: reconnected (RSSI=%d)", matches[m].rssi);
             nvs_save_last_wifi_ssid(networks[idx].ssid);
             return ESP_OK;
         }
 
-        ESP_LOGW(TAG, "Auto-reconnect failed for: %s", networks[idx].ssid);
+        ESP_LOGW(TAG, "Auto-reconnect failed for candidate %d/%d", m + 1, match_count);
         if (m < match_count - 1) {
             vTaskDelay(pdMS_TO_TICKS(1000));  // Brief pause before next attempt
         }

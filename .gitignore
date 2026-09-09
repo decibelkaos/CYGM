@@ -12,6 +12,10 @@ dependencies.lock
 # Logs
 *.log
 *.txt
+# ...but the build file is not a log. This rule had been quietly
+# swallowing CMakeLists.txt, which is why the public snapshot has never
+# contained one and could not be built from a clone.
+!CMakeLists.txt
 
 # Temporary files
 NUL
@@ -19,6 +23,7 @@ temp_*
 
 # Large directories
 Documents/
+.claude/
 
 # Backups
 *.tar.gz

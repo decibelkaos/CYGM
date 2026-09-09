@@ -28,6 +28,17 @@ esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon);
 /** Fetch current conditions and the forecast for a coordinate pair. */
 esp_err_t fetch_weather(float lat, float lon);
 
+/**
+ * Gate every optional location/weather TLS request on available heap.
+ *
+ * A TLS session needs roughly 17KB contiguous, which this device does not always
+ * have. Returns false when the request must be skipped; closes an idle provider
+ * client first, since the glucose task reopens one on its next fetch. Callers
+ * must already hold network_mutex, and must treat false as "try next cycle" —
+ * never as a glucose error. `what` is a fixed description, never user data.
+ */
+bool location_tls_heap_ready(const char *what);
+
 /** Refresh temperature, condition, icon and sun times. Returns early if the UI is not up yet. */
 void update_weather_display(void);
 
@@ -36,6 +47,10 @@ void update_location_display(void);
 
 /** Refresh the home-screen sunrise/sunset labels. Returns early if the UI is not up yet. */
 void update_sunrise_sunset_display(void);
+
+// Re-runs any of the three label updates above that lost the LVGL lock.
+// Called from the home screen's 1 Hz timer; a no-op when nothing was lost.
+void weather_display_retry(void);
 
 /** Human-readable text for a mapped weather code (0-7). */
 const char* get_weather_condition_text(int weather_code);

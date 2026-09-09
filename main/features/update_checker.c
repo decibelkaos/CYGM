@@ -4,16 +4,20 @@
  * Checks version.json for newer firmware and, when a firmware_url is present,
  * downloads and flashes it over OTA.
  *
- * The manifest is fetched over plain HTTP — a second TLS session alongside the
- * provider client does not fit in contiguous heap — so everything in it is
- * attacker-controlled, and the document must stay inside HTTP_BUF_SIZE or it is
- * cut and never parses. firmware_url is therefore pinned to FIRMWARE_URL_PREFIX
- * (traversal rejected, since the origin server would normalise it away) and the
- * download itself runs over TLS with the ESP-IDF root bundle attached and
- * redirects refused, so a rewritten manifest cannot substitute an image that is
- * not ours. It could still name an OLDER image of ours, so the version baked
- * into the downloaded app descriptor is checked against this build before the
- * boot partition is switched.
+ * Both the manifest and the image are fetched over TLS with the ESP-IDF root
+ * bundle attached and redirects refused. The manifest handshake needs a
+ * contiguous block that the provider client may be holding, so the check is
+ * optional: below UPDATE_MIN_LARGEST_BLOCK it closes the provider client (the
+ * glucose task reopens it on its next fetch) and, if that is not enough, skips
+ * and comes due again after UPDATE_SKIP_RETRY_MS. A skipped or failed check only
+ * sets check_failed — it never touches glucose state.
+ *
+ * The manifest is still treated as untrusted: it must stay inside HTTP_BUF_SIZE
+ * or it is cut and never parses, and firmware_url is pinned to
+ * FIRMWARE_URL_PREFIX (traversal rejected, since the origin server would
+ * normalise it away). A manifest that somehow lied could still name an OLDER
+ * image of ours, so the version baked into the downloaded app descriptor is
+ * checked against this build before the boot partition is switched.
  */
 
 #include "update_checker.h"
@@ -22,6 +26,7 @@
 #include "sd_logger.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
+#include "nightscout_api.h"
 #include "time_system.h"
 #include "weather_system.h"
 #include "esp_http_client.h"
@@ -41,7 +46,22 @@
 
 static const char *TAG = "UPDATE";
 
-#define UPDATE_CHECK_URL "http://cygm.me/version.json"
+// Two manifests, same four-field contract and the same size limit. The public
+// one is what every device reads. The beta one is unlisted and excluded in
+// robots.txt, and is only ever asked for by a device whose owner ticked the box
+// on the update card. Both must sit under FIRMWARE_URL_PREFIX for the
+// firmware_url they name to be accepted.
+//
+// Unlisted is not private: anyone reading this string can fetch it. That is
+// accepted deliberately — the beta binaries were already downloadable — and it
+// is why the channel is an opt-in on the device rather than a secret.
+#define UPDATE_CHECK_URL      "https://cygm.me/version.json"
+#define UPDATE_CHECK_URL_BETA "https://cygm.me/firmware/beta/channel.json"
+
+static const char *update_manifest_url(void)
+{
+    return user_beta_updates ? UPDATE_CHECK_URL_BETA : UPDATE_CHECK_URL;
+}
 // Firmware may only ever be fetched from our own origin, over TLS.
 #define FIRMWARE_URL_PREFIX "https://cygm.me/firmware/"
 #define UPDATE_INTERVAL_MS (24LL * 60 * 60 * 1000)  // 24 hours
@@ -51,6 +71,14 @@ static const char *TAG = "UPDATE";
 // version.json left every fielded device unable to see updates. Room to grow,
 // and the truncation is reported instead of hidden.
 #define HTTP_BUF_SIZE 768
+// The 8 KB TLS input buffer is the largest single allocation of a handshake;
+// below 16 KB the check is skipped rather than allowed to compete with the
+// glucose fetch for heap. Moves with the heartbeat and location gates.
+#define UPDATE_MIN_LARGEST_BLOCK 16384
+// A skip retries on this cadence, not the glucose cadence: the guard closes the
+// provider persistent clients before it measures, so retrying every fetch would
+// churn those connections and repeat the warning ~40 times an hour.
+#define UPDATE_SKIP_RETRY_MS (15LL * 60 * 1000)
 
 static update_info_t update_info = {0};
 static int64_t last_check_ms = 0;
@@ -117,24 +145,50 @@ esp_err_t update_check_now(void) {
     http_buf[0] = '\0';
     http_buf_truncated = false;
 
-    ESP_LOGI(TAG, "Checking %s ...", UPDATE_CHECK_URL);
+    const char *manifest_url = update_manifest_url();
+    ESP_LOGI(TAG, "Checking %s (%s channel) ...", manifest_url,
+             user_beta_updates ? "beta" : "public");
+
+    // Callers hold network_mutex across this function, so the provider client is
+    // idle here and its buffers can be reclaimed for the handshake. The glucose
+    // task reopens the client on its next fetch.
+    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (largest < UPDATE_MIN_LARGEST_BLOCK) {
+        dexcom_close_persistent_client();
+        libre_close_persistent_client();
+        nightscout_close_persistent_client();
+        largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    }
+    if (largest < UPDATE_MIN_LARGEST_BLOCK) {
+        // Not a failure of the update itself — backdated so update_should_check()
+        // comes due again in UPDATE_SKIP_RETRY_MS rather than on the next glucose
+        // cycle. Zero is the "never checked" sentinel, so step past it.
+        ESP_LOGW(TAG, "Check skipped: largest block %lu below TLS minimum %d",
+                 (unsigned long)largest, UPDATE_MIN_LARGEST_BLOCK);
+        last_check_ms = (esp_timer_get_time() / 1000) - UPDATE_INTERVAL_MS + UPDATE_SKIP_RETRY_MS;
+        if (last_check_ms == 0) last_check_ms = 1;
+        update_info.check_failed = true;
+        update_info.checked = true;
+        return ESP_FAIL;
+    }
 
     esp_http_client_config_t config = {
-        .url = UPDATE_CHECK_URL,
+        .url = manifest_url,
         .event_handler = http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 512,
-        // Plain HTTP, to avoid a 6.7KB TLS buffer allocation that fails under
-        // heap fragmentation. This document is NOT merely version numbers: it
-        // carries firmware_url, which decides what gets installed. That field is
-        // pinned to FIRMWARE_URL_PREFIX below, and the download itself verifies
-        // the certificate, so a tampered manifest cannot substitute firmware.
-        //
+        // This document is NOT merely version numbers: it carries firmware_url,
+        // which decides what gets installed. The root bundle authenticates the
+        // origin, and firmware_url is still pinned to FIRMWARE_URL_PREFIX below
+        // so the pinning survives any future transport change.
+        .crt_bundle_attach = esp_crt_bundle_attach,
         // Redirects are refused rather than followed. http_buf is filled by the
         // event handler across a whole perform, so a followed 3xx would prepend
         // its body to the JSON and every device would report a parse failure
         // with no hint why; refusing turns that into a plain HTTP-status error.
-        // cygm.me must keep serving this path without a redirect.
+        // Fielded v0.16.x devices still fetch this path over plain HTTP with a
+        // client that cannot follow a redirect, so cygm.me must keep serving it
+        // on both schemes without one.
         .disable_auto_redirect = true,
     };
 
@@ -193,13 +247,12 @@ esp_err_t update_check_now(void) {
         snprintf(update_info.date, sizeof(update_info.date), "%s", date->valuestring);
     else
         update_info.date[0] = '\0';
-    // version.json arrives over plain HTTP, so every field in it is
-    // attacker-controlled. This one decides which bytes get executed, so pin it
-    // to our own origin: a rewritten manifest can then lie about the version
-    // number but cannot point the device at somebody else's firmware. A prefix
-    // test alone does not confine the fetch to /firmware/, because the origin
-    // server resolves "../" before it looks at the path, so traversal is a
-    // separate rejection.
+    // This field decides which bytes get executed, so it is pinned to our own
+    // origin independently of how the manifest arrived: a manifest that lied
+    // could then misreport a version but could not point the device at somebody
+    // else's firmware. A prefix test alone does not confine the fetch to
+    // /firmware/, because the origin server resolves "../" before it looks at
+    // the path, so traversal is a separate rejection.
     if (fw_url && cJSON_IsString(fw_url) &&
         strncmp(fw_url->valuestring, FIRMWARE_URL_PREFIX, strlen(FIRMWARE_URL_PREFIX)) == 0 &&
         strstr(fw_url->valuestring, "..") == NULL) {
@@ -631,9 +684,9 @@ void update_do_ota_download(void) {
     time_t clock_now;
     time(&clock_now);
     if (clock_now < 1700000000) {
-        ESP_LOGE(TAG, "Clock not set (%lld); TLS would reject every certificate",
-                 (long long)clock_now);
-        sd_log(TAG, "OTA aborted: clock not set (%lld)", (long long)clock_now);
+        ESP_LOGE(TAG, "Clock not set (%ld); TLS would reject every certificate",
+                 (long)clock_now);
+        sd_log(TAG, "OTA aborted: clock not set (%ld)", (long)clock_now);
         ota_show_result(false, "Clock not set.\nRestarting device...");
         sd_logger_flush();
         vTaskDelay(pdMS_TO_TICKS(5000));
@@ -689,12 +742,12 @@ void update_do_ota_download(void) {
     // a value whose low 32 bits are small pass as a plausible size.
     int64_t content_len = esp_http_client_get_content_length(client);
 
-    ESP_LOGI(TAG, "HEAD: status=%d, size=%lld", status, (long long)content_len);
+    ESP_LOGI(TAG, "HEAD: status=%d, size=%ld", status, (long)content_len);
 
     if (err != ESP_OK || status != 200 || content_len <= 0) {
-        ESP_LOGE(TAG, "HEAD failed: %s (HTTP %d, size=%lld)",
-                 esp_err_to_name(err), status, (long long)content_len);
-        sd_log(TAG, "OTA HEAD failed: HTTP %d, size=%lld", status, (long long)content_len);
+        ESP_LOGE(TAG, "HEAD failed: %s (HTTP %d, size=%ld)",
+                 esp_err_to_name(err), status, (long)content_len);
+        sd_log(TAG, "OTA HEAD failed: HTTP %d, size=%ld", status, (long)content_len);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         ota_show_result(false, "Connection failed.\nRestarting device...");
@@ -720,9 +773,9 @@ void update_do_ota_download(void) {
              update_partition->label, (unsigned long)update_partition->size);
 
     if (content_len > (int64_t)update_partition->size) {
-        ESP_LOGE(TAG, "Firmware %lld bytes exceeds partition %lu",
-                 (long long)content_len, (unsigned long)update_partition->size);
-        sd_log(TAG, "OTA rejected: %lld bytes > partition", (long long)content_len);
+        ESP_LOGE(TAG, "Firmware %ld bytes exceeds partition %lu",
+                 (long)content_len, (unsigned long)update_partition->size);
+        sd_log(TAG, "OTA rejected: %ld bytes > partition", (long)content_len);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         ota_show_result(false, "Image too large.\nRestarting device...");
@@ -1007,10 +1060,130 @@ static void update_close_cb(lv_event_t *e) {
     }
 }
 
-static void update_install_cb(lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        update_start_ota();
+static lv_obj_t *beta_consent_overlay = NULL;
+
+static void beta_consent_dismiss(void)
+{
+    if (beta_consent_overlay != NULL) {
+        lv_obj_t *ov = beta_consent_overlay;
+        beta_consent_overlay = NULL;
+        lv_obj_del_async(ov);
     }
+}
+
+static void beta_consent_no_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) beta_consent_dismiss();
+}
+
+static void beta_consent_yes_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    beta_consent_dismiss();
+    update_start_ota();
+}
+
+// Plain words, and the install cannot happen without pressing through them.
+static void show_beta_consent_overlay(void)
+{
+    if (beta_consent_overlay != NULL) return;
+
+    beta_consent_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(beta_consent_overlay);
+    lv_obj_set_size(beta_consent_overlay, 320, 240);
+    lv_obj_set_style_bg_color(beta_consent_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(beta_consent_overlay, LV_OPA_70, 0);
+    lv_obj_clear_flag(beta_consent_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    // Deliberately not dismissable by tapping the backdrop: this is a decision,
+    // and a stray touch must not read as either answer.
+    lv_obj_add_flag(beta_consent_overlay, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *card = lv_obj_create(beta_consent_overlay);
+    lv_obj_set_size(card, 290, 200);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x131a26), 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_border_width(card, 2, 0);
+    lv_obj_set_style_radius(card, 12, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, LV_SYMBOL_WARNING " Beta firmware");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    lv_obj_t *body = lv_label_create(card);
+    lv_label_set_text(body, "This build has not been fully\ntested. It may be unstable, may\nmiss readings, and may need you\nto reflash it by cable.\n\nInstall it anyway?");
+    lv_obj_set_style_text_font(body, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(body, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 42);
+
+    lv_obj_t *no_btn = lv_btn_create(card);
+    lv_obj_set_size(no_btn, 110, 34);
+    lv_obj_align(no_btn, LV_ALIGN_BOTTOM_MID, -62, -10);
+    lv_obj_set_style_bg_color(no_btn, lv_color_hex(0x1e2d3d), 0);
+    lv_obj_set_style_radius(no_btn, 8, 0);
+    lv_obj_set_style_border_width(no_btn, 0, 0);
+    lv_obj_set_style_shadow_width(no_btn, 0, 0);
+    lv_obj_t *no_lbl = lv_label_create(no_btn);
+    lv_label_set_text(no_lbl, "No thanks");
+    lv_obj_set_style_text_color(no_lbl, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_center(no_lbl);
+    lv_obj_add_event_cb(no_btn, beta_consent_no_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *yes_btn = lv_btn_create(card);
+    lv_obj_set_size(yes_btn, 110, 34);
+    lv_obj_align(yes_btn, LV_ALIGN_BOTTOM_MID, 62, -10);
+    lv_obj_set_style_bg_color(yes_btn, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_radius(yes_btn, 8, 0);
+    lv_obj_set_style_border_width(yes_btn, 0, 0);
+    lv_obj_set_style_shadow_width(yes_btn, 0, 0);
+    lv_obj_t *yes_lbl = lv_label_create(yes_btn);
+    lv_label_set_text(yes_lbl, "I understand");
+    lv_obj_set_style_text_color(yes_lbl, lv_color_hex(0x06121a), 0);
+    lv_obj_center(yes_lbl);
+    lv_obj_add_event_cb(yes_btn, beta_consent_yes_cb, LV_EVENT_CLICKED, NULL);
+
+    ESP_LOGI(TAG, "Beta consent asked before install");
+}
+
+static void update_install_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (user_beta_updates) {
+        dismiss_update_overlay();
+        show_beta_consent_overlay();
+        return;
+    }
+    update_start_ota();
+}
+
+static void beta_channel_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+    user_beta_updates = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    nvs_save_beta_updates(user_beta_updates);
+    ESP_LOGI(TAG, "Update channel set to %s", user_beta_updates ? "beta" : "public");
+}
+
+// Added last so it sits below whatever the branch above drew.
+static void add_beta_channel_row(lv_obj_t *card)
+{
+    lv_obj_t *note = lv_label_create(card);
+    lv_label_set_text(note, "Beta builds arrive far more often\nthan releases, and may be unstable.");
+    lv_obj_set_style_text_font(note, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(note, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(note, LV_ALIGN_BOTTOM_MID, 0, -34);
+
+    lv_obj_t *cb = lv_checkbox_create(card);
+    lv_checkbox_set_text(cb, "Receive beta firmware");
+    lv_obj_set_style_text_font(cb, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(cb, lv_color_hex(COLOR_TEXT_GRAY), 0);
+    lv_obj_align(cb, LV_ALIGN_BOTTOM_MID, 0, -8);
+    if (user_beta_updates) lv_obj_add_state(cb, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(cb, beta_channel_cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
 void dismiss_update_overlay(void) {
@@ -1038,7 +1211,8 @@ void show_update_overlay(void) {
     lv_obj_add_event_cb(update_overlay, update_close_cb, LV_EVENT_CLICKED, NULL);
 
     // --- Card ---
-    int card_h = info->available ? (has_ota ? 175 : 195) : 125;
+    // Every state gains two rows at the bottom: the channel note and its tick.
+    int card_h = info->available ? (has_ota ? 235 : 255) : 185;
     lv_obj_t *card = lv_obj_create(update_overlay);
     lv_obj_set_size(card, 270, card_h);
     lv_obj_center(card);
@@ -1082,7 +1256,8 @@ void show_update_overlay(void) {
     } else if (info->available) {
         // --- Update Available ---
         lv_obj_t *title = lv_label_create(card);
-        lv_label_set_text(title, LV_SYMBOL_DOWNLOAD " Update Available");
+        lv_label_set_text(title, user_beta_updates ? LV_SYMBOL_DOWNLOAD " Beta Update"
+                                                   : LV_SYMBOL_DOWNLOAD " Update Available");
         lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT_BLUE), 0);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
@@ -1116,7 +1291,7 @@ void show_update_overlay(void) {
             // OTA available — show Install and Later buttons
             lv_obj_t *install_btn = lv_btn_create(card);
             lv_obj_set_size(install_btn, 110, 34);
-            lv_obj_align(install_btn, LV_ALIGN_BOTTOM_MID, -60, -10);
+            lv_obj_align(install_btn, LV_ALIGN_BOTTOM_MID, -60, -66);
             lv_obj_set_style_bg_color(install_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
             lv_obj_set_style_radius(install_btn, 8, 0);
             lv_obj_set_style_border_width(install_btn, 0, 0);
@@ -1129,7 +1304,7 @@ void show_update_overlay(void) {
 
             lv_obj_t *later_btn = lv_btn_create(card);
             lv_obj_set_size(later_btn, 90, 34);
-            lv_obj_align(later_btn, LV_ALIGN_BOTTOM_MID, 60, -10);
+            lv_obj_align(later_btn, LV_ALIGN_BOTTOM_MID, 60, -66);
             lv_obj_set_style_bg_color(later_btn, lv_color_hex(0x1e2d3d), 0);
             lv_obj_set_style_radius(later_btn, 8, 0);
             lv_obj_set_style_border_width(later_btn, 0, 0);
@@ -1149,7 +1324,7 @@ void show_update_overlay(void) {
 
             lv_obj_t *btn = lv_btn_create(card);
             lv_obj_set_size(btn, 100, 28);
-            lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -8);
+            lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -64);
             lv_obj_set_style_bg_color(btn, lv_color_hex(0x1e2d3d), 0);
             lv_obj_set_style_radius(btn, 8, 0);
             lv_obj_set_style_border_width(btn, 0, 0);
@@ -1177,11 +1352,13 @@ void show_update_overlay(void) {
         lv_label_set_text(ver_lbl, ver_buf);
         lv_obj_set_style_text_color(ver_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
         lv_obj_set_style_text_font(ver_lbl, &lv_font_montserrat_20, 0);
-        lv_obj_align(ver_lbl, LV_ALIGN_CENTER, 0, -6);
+        lv_obj_align(ver_lbl, LV_ALIGN_CENTER, 0, -34);
 
         lv_obj_t *msg = lv_label_create(card);
         lv_label_set_text(msg, "Your firmware is current.");
         lv_obj_set_style_text_color(msg, lv_color_hex(COLOR_TEXT_GRAY), 0);
-        lv_obj_align(msg, LV_ALIGN_CENTER, 0, 18);
+        lv_obj_align(msg, LV_ALIGN_CENTER, 0, -10);
     }
+
+    add_beta_channel_row(card);
 }

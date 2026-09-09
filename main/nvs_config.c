@@ -17,6 +17,7 @@ static const char *NVS_WEATHER_INTERVAL_KEY = "weather_int";
 static const char *NVS_CGM_TYPE_KEY = "cgm_type";
 static const char *NVS_BRIGHTNESS_KEY = "brightness";
 static const char *NVS_DIM_ON_CHARGE_KEY = "dim_on_chg";
+static const char *NVS_DEVICE_ID_KEY = "dev_id";
 
 esp_err_t nvs_config_init(void) {
     esp_err_t ret = nvs_flash_init();
@@ -53,7 +54,8 @@ esp_err_t nvs_load_wifi_credentials(wifi_credentials_t *creds) {
 
     if (ret == ESP_OK && count > 0) {
         memcpy(creds, &networks[0], sizeof(wifi_credentials_t));
-        ESP_LOGI(TAG, "WiFi credentials loaded from NVS (SSID: %s)", creds->ssid);
+        // An SSID names the user's home network; log its length, never the name.
+        ESP_LOGI(TAG, "WiFi credentials loaded from NVS (SSID %d chars)", (int)strlen(creds->ssid));
         return ESP_OK;
     }
 
@@ -174,7 +176,7 @@ esp_err_t nvs_save_last_wifi_ssid(const char *ssid) {
     ret = nvs_commit(nvs_handle);
     nvs_close(nvs_handle);
 
-    ESP_LOGI(TAG, "Last connected WiFi saved: %s", ssid);
+    ESP_LOGI(TAG, "Last connected WiFi saved");
     return ret;
 }
 
@@ -195,7 +197,7 @@ esp_err_t nvs_load_last_wifi_ssid(char *ssid, size_t max_len) {
     nvs_close(nvs_handle);
 
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Last connected WiFi loaded: %s", ssid);
+        ESP_LOGI(TAG, "Last connected WiFi loaded");
     }
 
     return ret;
@@ -283,7 +285,7 @@ esp_err_t nvs_add_wifi_network(const char *ssid, const char *password) {
         ret = nvs_set_str(nvs_handle, pass_key, password);
         if (ret == ESP_OK) {
             ret = nvs_commit(nvs_handle);
-            ESP_LOGI(TAG, "Updated WiFi network: %s", ssid);
+            ESP_LOGI(TAG, "Updated WiFi network");
         }
         nvs_close(nvs_handle);
         return ret;
@@ -323,7 +325,7 @@ esp_err_t nvs_add_wifi_network(const char *ssid, const char *password) {
 
     ret = nvs_commit(nvs_handle);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Added WiFi network: %s (%d/%d)", ssid, count, MAX_SAVED_WIFI_NETWORKS);
+        ESP_LOGI(TAG, "Added WiFi network (%d/%d)", count, MAX_SAVED_WIFI_NETWORKS);
     }
 
     nvs_close(nvs_handle);
@@ -411,7 +413,7 @@ esp_err_t nvs_remove_wifi_network(const char *ssid) {
 
     ret = nvs_commit(nvs_handle);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Removed WiFi network: %s (%d remaining)", ssid, count);
+        ESP_LOGI(TAG, "Removed WiFi network (%d remaining)", count);
     }
 
     nvs_close(nvs_handle);
@@ -547,8 +549,8 @@ esp_err_t nvs_save_weather_settings(const char *zipcode, bool temp_celsius, uint
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to commit NVS: %s", esp_err_to_name(ret));
     } else {
-        ESP_LOGI(TAG, "Weather settings saved to NVS (Zipcode: %s, Unit: %s, Interval: %d min)",
-                 zipcode, temp_celsius ? "C" : "F", update_interval_min);
+        ESP_LOGI(TAG, "Weather settings saved to NVS (Unit: %s, Interval: %d min)",
+                 temp_celsius ? "C" : "F", update_interval_min);
     }
 
     nvs_close(nvs_handle);
@@ -601,7 +603,9 @@ esp_err_t nvs_save_weather_coords(const char *zipcode, float latitude, float lon
 
     ret = nvs_commit(nvs_handle);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Weather location saved to NVS: %s (%.4f, %.4f, zipcode: %s)", location, latitude, longitude, zipcode);
+        // Coordinates, place name and postal code locate the user's home to a
+        // street; the serial log is mirrored to SD and shared with support.
+        ESP_LOGI(TAG, "Weather location saved to NVS");
     }
 
     nvs_close(nvs_handle);
@@ -662,12 +666,10 @@ esp_err_t nvs_load_weather_settings(weather_settings_t *settings) {
         settings->coords_valid = true;
 
         if (nvs_get_str(nvs_handle, "wx_location", settings->location, &location_len) == ESP_OK) {
-            ESP_LOGI(TAG, "Cached location loaded: %s (%.4f, %.4f, zipcode: %s)",
-                     settings->location, settings->latitude, settings->longitude, settings->geocoded_zipcode);
+            ESP_LOGI(TAG, "Cached location loaded");
         } else {
             settings->location[0] = '\0';  // Empty string
-            ESP_LOGI(TAG, "Cached coordinates loaded: %.4f, %.4f (for zipcode: %s)",
-                     settings->latitude, settings->longitude, settings->geocoded_zipcode);
+            ESP_LOGI(TAG, "Cached coordinates loaded");
         }
     } else {
         settings->coords_valid = false;
@@ -675,8 +677,8 @@ esp_err_t nvs_load_weather_settings(weather_settings_t *settings) {
         settings->location[0] = '\0';  // Empty string
     }
 
-    ESP_LOGI(TAG, "Weather settings loaded from NVS (Zipcode: %s, Unit: %s, Interval: %d min)",
-             settings->zipcode, settings->temp_celsius ? "C" : "F", settings->update_interval_min);
+    ESP_LOGI(TAG, "Weather settings loaded from NVS (Unit: %s, Interval: %d min)",
+             settings->temp_celsius ? "C" : "F", settings->update_interval_min);
 
     nvs_close(nvs_handle);
     return ESP_OK;
@@ -1207,7 +1209,7 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
     alarms->high_alarm.led_enabled = true;
     alarms->high_alarm.tone = ALARM_TONE_BEEP_3;
     alarms->high_alarm.volume = 80;
-    alarms->high_alarm.audio_repeat = true;  // Urgent alarms repeat
+    alarms->high_alarm.audio_repeat = true;  // Every tier repeats until answered
 
     // High Warning (precautionary) - Default: Amber, 180 mg/dL
     alarms->high_warning.enabled = true;
@@ -1218,7 +1220,7 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
     alarms->high_warning.led_enabled = true;
     alarms->high_warning.tone = ALARM_TONE_CHIME;
     alarms->high_warning.volume = 60;
-    alarms->high_warning.audio_repeat = false;  // Warnings play once
+    alarms->high_warning.audio_repeat = true;  // Every tier repeats until answered
 
     // Low Warning (precautionary) - Default: Amber, 80 mg/dL
     alarms->low_warning.enabled = true;
@@ -1229,7 +1231,7 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
     alarms->low_warning.led_enabled = true;
     alarms->low_warning.tone = ALARM_TONE_CHIME;
     alarms->low_warning.volume = 60;
-    alarms->low_warning.audio_repeat = false;  // Warnings play once
+    alarms->low_warning.audio_repeat = true;  // Every tier repeats until answered
 
     // Low Alarm (urgent) - Default: Red, 55 mg/dL
     alarms->low_alarm.enabled = true;
@@ -1240,7 +1242,7 @@ void nvs_get_default_alarm_settings(cgm_alarms_t *alarms) {
     alarms->low_alarm.led_enabled = true;
     alarms->low_alarm.tone = ALARM_TONE_BEEP_3;
     alarms->low_alarm.volume = 80;
-    alarms->low_alarm.audio_repeat = true;  // Urgent alarms repeat
+    alarms->low_alarm.audio_repeat = true;  // Every tier repeats until answered
 }
 
 esp_err_t nvs_save_alarm_settings(const cgm_alarms_t *alarms) {
@@ -1291,7 +1293,10 @@ static void sanitize_alarm_entry(alarm_config_t *cfg, const alarm_config_t *def)
     cfg->audio_enabled  = alarm_norm_bool(&cfg->audio_enabled);
     cfg->visual_enabled = alarm_norm_bool(&cfg->visual_enabled);
     cfg->led_enabled    = alarm_norm_bool(&cfg->led_enabled);
-    cfg->audio_repeat   = alarm_norm_bool(&cfg->audio_repeat);
+    // Forced, not normalised: the per-tier Repeat switch became Keep Sounding
+    // (alarm_ext_settings.persistent_mask), so a blob written before that still
+    // carries Repeat=off and would leave the tier one-shot.
+    cfg->audio_repeat   = true;
 
     if (cfg->threshold < ALARM_THRESHOLD_MIN || cfg->threshold > ALARM_THRESHOLD_MAX) {
         ESP_LOGW(TAG, "Alarm threshold %d out of range, using default %d",
@@ -1603,6 +1608,29 @@ bool nvs_get_welcome_shown(void) {
     return (ret == ESP_OK && val != 0);
 }
 
+// ========== First-Time Setup Walkthrough Step ==========
+// 0 = never started, 1-3 = the step still to show, 255 = finished or skipped.
+// A missing key reads as 0, so a fresh install starts the walkthrough.
+esp_err_t nvs_save_setup_step(uint8_t step) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) return ret;
+    ret = nvs_set_u8(nvs_handle, "setup_step", step);
+    if (ret == ESP_OK) ret = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+uint8_t nvs_get_setup_step(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) return 0;
+    uint8_t val = 0;
+    ret = nvs_get_u8(nvs_handle, "setup_step", &val);
+    nvs_close(nvs_handle);
+    return (ret == ESP_OK) ? val : 0;
+}
+
 // ========== Locale: Glucose Units (mg/dL vs mmol/L) ==========
 // Stored canonical mg/dL everywhere; this flag only affects display.
 // Default false = mg/dL (preserves behavior for existing US installs).
@@ -1615,6 +1643,30 @@ esp_err_t nvs_save_glucose_mmol(bool mmol) {
     if (ret == ESP_OK) ESP_LOGI(TAG, "Glucose units saved: %s", mmol ? "mmol/L" : "mg/dL");
     nvs_close(nvs_handle);
     return ret;
+}
+
+// ========== Update channel: public releases, or beta builds too ==========
+// Off by default and deliberately opt-in per device: a beta build has not been
+// through the release testing, so nobody joins this channel by accident.
+esp_err_t nvs_save_beta_updates(bool beta) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) return ret;
+    ret = nvs_set_u8(nvs_handle, "beta_ota", beta ? 1 : 0);
+    if (ret == ESP_OK) ret = nvs_commit(nvs_handle);
+    if (ret == ESP_OK) ESP_LOGI(TAG, "Update channel saved: %s", beta ? "beta" : "public");
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+bool nvs_get_beta_updates(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) return false;  // Default: public releases only
+    uint8_t val = 0;
+    ret = nvs_get_u8(nvs_handle, "beta_ota", &val);
+    nvs_close(nvs_handle);
+    return (ret == ESP_OK && val != 0);
 }
 
 bool nvs_get_glucose_mmol(void) {
@@ -1857,3 +1909,37 @@ esp_err_t nvs_load_night_cfg(cygm_night_cfg_t *cfg) {
     return ret;
 }
 
+
+// ========== Pseudonymous device id ==========
+
+// Unlike the settings blobs, this one carries no defaults to overlay: it is
+// meaningful only at its exact length, so a blob of any other size is another
+// firmware's record and must not be padded or truncated into an identifier.
+// Neither call ever logs the bytes.
+esp_err_t nvs_load_device_id(uint8_t *id) {
+    if (id == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    size_t len = CYGM_DEVICE_ID_BYTES;
+    ret = nvs_get_blob(nvs_handle, NVS_DEVICE_ID_KEY, id, &len);
+    nvs_close(nvs_handle);
+
+    if (ret == ESP_OK && len != CYGM_DEVICE_ID_BYTES) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    return ret;
+}
+
+esp_err_t nvs_save_device_id(const uint8_t *id) {
+    if (id == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return nvs_write_blob(NVS_DEVICE_ID_KEY, id, CYGM_DEVICE_ID_BYTES);
+}

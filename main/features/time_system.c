@@ -5,6 +5,7 @@
  */
 
 #include "time_system.h"
+#include "main.h"
 #include "shared_state.h"
 #include "nvs_config.h"
 #include "hardware/display.h"
@@ -183,8 +184,9 @@ const char* get_posix_timezone(const char *iana_tz) {
         int east = (int)((lon / 15.0f) + (lon >= 0.0f ? 0.5f : -0.5f));
         if (east > 14) east = 14;
         if (east < -12) east = -12;
-        ESP_LOGW(TAG, "Timezone '%s' not in map; using longitude %.2f -> UTC%+d (no DST)",
-                 iana_tz, (double)user_longitude, east);
+        // The offset is coarse enough to log; the longitude it came from is not.
+        ESP_LOGW(TAG, "Timezone '%s' not in map; using UTC%+d from coordinates (no DST)",
+                 iana_tz, east);
         return fallback_posix_tz[east + 12];
     }
 
@@ -525,6 +527,7 @@ void time_update_task(void *pvParameters) {
     ESP_LOGI(TAG, "Time task parked");
     time_task_stop_requested = false;
     time_task_handle = NULL;
+    cygm_task_drain_mprec();
     vTaskDelete(NULL);
 }
 
@@ -548,6 +551,7 @@ void load_time_settings(void) {
     // Locale display prefs (standalone NVS keys; default to US conventions for
     // backward compatibility with existing installs).
     user_glucose_mmol = nvs_get_glucose_mmol();
+    user_beta_updates = nvs_get_beta_updates();
     user_date_dmy = nvs_get_date_dmy();
     ESP_LOGI(TAG, "  Glucose units: %s", user_glucose_mmol ? "mmol/L" : "mg/dL");
     ESP_LOGI(TAG, "  Date format: %s", user_date_dmy ? "D/M" : "M/D");

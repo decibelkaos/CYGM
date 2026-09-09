@@ -419,7 +419,6 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
 
     if (status != 200) {
         ESP_LOGE(TAG, "Connections failed: HTTP %d", status);
-        ESP_LOGD(TAG, "body: %.120s", http_response);
         return ESP_FAIL;
     }
 
@@ -452,7 +451,7 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
     if (cJSON_IsString(pid) && pid->valuestring != NULL) {
         strncpy(patient_id, pid->valuestring, sizeof(patient_id) - 1);
         patient_id[sizeof(patient_id) - 1] = '\0';
-        ESP_LOGI(TAG, "Patient ID: %s", patient_id);
+        ESP_LOGI(TAG, "Patient connection established");
     }
 
     // Extract glucose measurement if present and caller wants it
@@ -630,7 +629,7 @@ esp_err_t libre_authenticate(const char *email, const char *password) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_LOGI(TAG, "Authenticating with LibreLinkUp (email: %s)", email);
+    ESP_LOGI(TAG, "Authenticating with LibreLinkUp");
 
     strncpy(stored_email, email, sizeof(stored_email) - 1);
     stored_email[sizeof(stored_email) - 1] = '\0';
@@ -650,8 +649,25 @@ auth_attempt:
     char url[128];
     snprintf(url, sizeof(url), "%s%s", base_url, ENDPOINT_LOGIN);
 
-    char body[160];
-    snprintf(body, sizeof(body), "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
+    // Credentials may contain quotes or backslashes, so the body is serialized
+    // rather than formatted; its length is whatever NVS holds, not a fixed cap.
+    cJSON *login_body = cJSON_CreateObject();
+    if (login_body == NULL) {
+        ESP_LOGE(TAG, "Out of memory building login request");
+        return ESP_ERR_NO_MEM;
+    }
+    if (cJSON_AddStringToObject(login_body, "email", email) == NULL ||
+        cJSON_AddStringToObject(login_body, "password", password) == NULL) {
+        cJSON_Delete(login_body);
+        ESP_LOGE(TAG, "Out of memory building login request");
+        return ESP_ERR_NO_MEM;
+    }
+    char *body = cJSON_PrintUnformatted(login_body);
+    cJSON_Delete(login_body);
+    if (body == NULL) {
+        ESP_LOGE(TAG, "Out of memory building login request");
+        return ESP_ERR_NO_MEM;
+    }
 
     http_response_len = 0;
     http_response[0] = '\0';
@@ -670,6 +686,7 @@ auth_attempt:
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "Failed to create HTTP client");
+        cJSON_free(body);
         return ESP_FAIL;
     }
 
@@ -687,6 +704,7 @@ auth_attempt:
         ESP_LOGE(TAG, "Login request failed: %s", esp_err_to_name(err));
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
+        cJSON_free(body);
         return err;
     }
 
@@ -694,6 +712,7 @@ auth_attempt:
     ESP_LOGI(TAG, "Login response: HTTP %d, len=%d", status, http_response_len);
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
+    cJSON_free(body);
 
     if (status != 200) {
         ESP_LOGE(TAG, "Login failed: HTTP %d", status);
@@ -798,7 +817,7 @@ auth_attempt:
         cJSON *user_id = cJSON_GetObjectItem(user_obj, "id");
         if (cJSON_IsString(user_id) && user_id->valuestring != NULL) {
             sha256_hex(user_id->valuestring, account_id_hash, sizeof(account_id_hash));
-            ESP_LOGI(TAG, "Account ID hash: %.16s...", account_id_hash);
+            ESP_LOGI(TAG, "Account header derived");
         }
     }
 
@@ -807,7 +826,7 @@ auth_attempt:
         strncpy(region_base_url, DEFAULT_BASE_URL, sizeof(region_base_url) - 1);
     }
 
-    ESP_LOGI(TAG, "Login successful — token expires %ld", (long)token_expires);
+    ESP_LOGI(TAG, "Login successful (region=%s)", region_base_url);
 
     cJSON_Delete(root);
 
@@ -821,8 +840,7 @@ auth_attempt:
     // Save session to NVS for persistence across reboots
     nvs_save_libre_session(auth_token, patient_id, region_base_url, token_expires, account_id_hash);
 
-    sd_log(TAG, "Auth OK email=%s region=%s patient=%s",
-           stored_email, region_base_url, patient_id);
+    sd_log(TAG, "Login successful (region=%s)", region_base_url);
 
     return ESP_OK;
 }

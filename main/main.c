@@ -179,6 +179,12 @@ static lv_obj_t *visual_alarm_snooze_btn = NULL;  // Giant SNOOZE button on the 
 static int64_t disarm_press_start_ms = 0;      // Timestamp when button was pressed
 #define DISARM_HOLD_MS 1500                     // Hold duration to disarm (1.5s)
 #define ALARM_UNATTENDED_MS (30 * 60 * 1000)    // Untouched takeover auto-snoozes after 30 min
+// An advisory is not a threshold alarm: it says what MIGHT happen, and the
+// number on it is the one from the moment it was raised. Left up it becomes a
+// lie — a projected-low card sat all night reading 118 while the device had
+// long since moved on (2026-09-08). Advisories stand down on their own after
+// this, whatever the alarm settings say.
+#define ALERT_ADVISORY_MS   (60 * 1000)
 
 // An alarm nobody silences stops being information and becomes noise, so the
 // tone is capped. The screen keeps flashing throughout: the alert is quietened,
@@ -313,6 +319,7 @@ dexcom_trend_t current_trend = TREND_NONE;
 time_t glucose_timestamp = 0;
 bool glucose_data_valid = false;      // True if we've EVER received valid data
 bool glucose_data_fresh = false;       // True only if last fetch succeeded
+volatile bool glucose_display_dirty = false;  // A repaint lost the LVGL lock; the 1 Hz home timer retries it
 dexcom_status_t glucose_status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
 bool first_glucose_received = false;  // Track if we've received first reading
 bool sensor_change_mode = false;      // User confirmed CGM sensor change in progress
@@ -374,6 +381,7 @@ bool user_temp_celsius = false;  // false = Fahrenheit, true = Celsius
 uint8_t user_weather_interval_min = 5;  // Weather update interval (5-90 minutes)
 char user_location[64] = "";  // City, State from geocoding
 bool user_glucose_mmol = false;  // false = mg/dL (US), true = mmol/L (rest of world)
+bool user_beta_updates = false;  // false = public releases only, true = beta channel too
 bool user_date_dmy = false;      // false = US month-day, true = day-month
 
 // ---- Locale glucose formatting helpers ----
@@ -387,6 +395,11 @@ const char *cygm_glucose_unit(void) {
 // Non-static: also used by glucose_chart.c (declared in shared_state.h).
 int mgdl_to_mmol_tenths(int mgdl) {
     return (mgdl * 555 + 500) / 1000;  // rounded tenths of mmol/L
+}
+
+// Inverse of the above, same rounding, for controls that work in tenths.
+int mmol_tenths_to_mgdl(int tenths) {
+    return (tenths * 1000 + 277) / 555;
 }
 
 // Format a glucose value (no unit): "100" in mg/dL, "5.6" in mmol/L.
@@ -1956,6 +1969,23 @@ static void visual_alarm_pulse_timer_cb(lv_timer_t *timer) {
         visual_alarm_glucose_update_pending = false;
     }
 
+    // Advisory takeovers (projected low, rate of change, data gap) close
+    // themselves after a minute. Deliberately ahead of the checks below and
+    // subject to none of them: the unattended stand-down is gated on the
+    // auto-snooze setting and on the persistent flag, neither of which has any
+    // business keeping a stale advisory on the screen. Snoozing rather than
+    // dismissing sets this alert kind's suppression window, so it cannot
+    // reappear on the next cycle and flicker.
+    if (active_alert_kind != CYGM_ALERT_GLUCOSE &&
+        lv_tick_elaps(visual_alarm_shown_tick) >= ALERT_ADVISORY_MS) {
+        ESP_LOGI(TAG, "Advisory alert (kind=%d) stood down after %d s",
+                 active_alert_kind, ALERT_ADVISORY_MS / 1000);
+        sd_log(TAG, "ALERT: kind=%d auto-closed after %ds",
+               active_alert_kind, ALERT_ADVISORY_MS / 1000);
+        alarm_snooze_and_close();  // Deletes this timer — must return immediately
+        return;
+    }
+
     // Auto-clear if glucose data has gone stale (e.g., Dexcom session expired overnight).
     // Skipped for the data-gap alert, which exists precisely BECAUSE data is stale.
     if (active_alert_kind != CYGM_ALERT_DATA_GAP && glucose_data_valid && glucose_timestamp > 0) {
@@ -2988,8 +3018,13 @@ void update_glucose_display(void) {
                 }
             }
         }
+        glucose_display_dirty = false;
         lvgl_port_unlock();
     } else {
+        // Nothing else repaints the number before the next new reading, so a
+        // lost race here (boot render, a serial screenshot holding the lock)
+        // would leave a stale value on screen for up to five minutes.
+        glucose_display_dirty = true;
         ESP_LOGW(TAG, "LVGL lock timeout in update_glucose_display");
     }
 }
@@ -3106,6 +3141,23 @@ static inline bool cgm_needs_tls(cgm_provider_t p) {
     return true;  // Dexcom and Libre always use HTTPS
 }
 
+// newlib's _reclaim_reent(), which FreeRTOS runs when a task is deleted, frees
+// the mprec block and its freelist but leaves _p5s, the power-of-five chain
+// strtod builds for doubles past DBL_DIG, so every self-deleting task that
+// parsed one leaked its chain. Verified in the linked _reclaim_reent: it reads
+// _mp->_freelist and _mp->_result and never _mp->_p5s.
+void cygm_task_drain_mprec(void) {
+    struct _reent *r = __getreent();
+    if (r == NULL || r->_mp == NULL) return;
+    struct _Bigint *p = r->_mp->_p5s;
+    while (p != NULL) {
+        struct _Bigint *next = p->_next;
+        _free_r(r, p);
+        p = next;
+    }
+    r->_mp->_p5s = NULL;
+}
+
 // Cooperative stop for the glucose task. See main.h for why the task is never
 // deleted from outside.
 static volatile bool glucose_stop_requested = false;
@@ -3144,6 +3196,7 @@ static void glucose_task_park(cgm_provider_t provider) {
     // still allocated, or the caller creates a second task against it.
     glucose_stop_requested = false;
     glucose_task_handle = NULL;
+    cygm_task_drain_mprec();
     vTaskDelete(NULL);
 }
 
@@ -3343,7 +3396,12 @@ void glucose_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "Fragmented: %lu alloc_blocks, %lu free_blocks",
                              heap_info.allocated_blocks, heap_info.free_blocks);
                 }
-                if (min_ever < 10000) {
+                // A low-water mark never recovers, so once it dips this line has
+                // nothing new to say and repeated 157 times in a four-hour soak.
+                // Only a fresh low is worth reporting.
+                static size_t min_ever_warned = 0;
+                if (min_ever < 10000 && min_ever != min_ever_warned) {
+                    min_ever_warned = min_ever;
                     ESP_LOGW(TAG, "CRITICAL: min_ever=%lu — risk of crashes!", min_ever);
                 }
 
@@ -3424,10 +3482,10 @@ void glucose_update_task(void *pvParameters) {
                     time_t wall_now;
                     time(&wall_now);
                     if (glucose.timestamp > wall_now + 300) {
-                        ESP_LOGW(TAG, "Reading dated %lld ahead of clock %lld — rejecting",
-                                 (long long)glucose.timestamp, (long long)wall_now);
-                        sd_log(TAG, "REJECT: future timestamp %lld (now %lld)",
-                               (long long)glucose.timestamp, (long long)wall_now);
+                        ESP_LOGW(TAG, "Reading dated %ld ahead of clock %ld — rejecting",
+                                 (long)glucose.timestamp, (long)wall_now);
+                        sd_log(TAG, "REJECT: future timestamp %ld (now %ld)",
+                               (long)glucose.timestamp, (long)wall_now);
                         glucose.valid = false;
                         glucose.status = GLUCOSE_STATUS_NO_DATA;
                     }
@@ -3442,8 +3500,8 @@ void glucose_update_task(void *pvParameters) {
                                      glucose.timestamp < glucose_timestamp);
                 if (duplicate_reading || out_of_order) {
                     if (out_of_order) {
-                        ESP_LOGI(TAG, "Out-of-order reading (%lld older than stored %lld) — skipping storage",
-                                 (long long)glucose.timestamp, (long long)glucose_timestamp);
+                        ESP_LOGI(TAG, "Out-of-order reading (%ld older than stored %ld) — skipping storage",
+                                 (long)glucose.timestamp, (long)glucose_timestamp);
                     } else {
                         ESP_LOGI(TAG, "Duplicate reading (same timestamp) — skipping storage");
                     }
@@ -3514,9 +3572,6 @@ void glucose_update_task(void *pvParameters) {
                 sd_log(TAG, "OK: %d mg/dL, %s, heap=%lu",
                        glucose.value, cgm_trend_description(glucose.trend),
                        esp_get_free_heap_size());
-                if (sd_glucose_logging_enabled) {
-                    sd_log_glucose(glucose.value, cgm_trend_description(glucose.trend));
-                }
 
                 // Play success sound on first glucose reading (only on fresh power-on)
                 if (!first_glucose_received) {
@@ -3540,6 +3595,12 @@ void glucose_update_task(void *pvParameters) {
                     } else {
                         ESP_LOGW(TAG, "Skipping alarm check - data is %d mins old", data_age_mins);
                     }
+                }
+
+                // After the alarm check, so the row carries the tier this very
+                // reading raised rather than the one the previous reading left.
+                if (sd_glucose_logging_enabled) {
+                    sd_log_glucose(glucose.value, cgm_trend_description(glucose.trend), provider);
                 }
                 } // end of non-duplicate block
             } else if (ret == ESP_OK) {
@@ -3702,11 +3763,19 @@ void glucose_update_task(void *pvParameters) {
                 // needs, so a kept-alive client fails next cycle. HTTP-mode stays open.
                 bool always_close = cgm_needs_tls(provider);
 
+                // A suspended card gets a chance to answer again on EVERY cycle,
+                // not only after a failed fetch. Hanging the only retry off the
+                // failure path meant a card put back into a healthy device stayed
+                // suspended for ever, and recovered only if the network happened
+                // to break — precisely backwards. The probe is rate-limited to
+                // once an hour inside sd_logger_resume(), so calling it each
+                // cycle costs nothing.
+                sd_logger_resume();
+
                 if (glucose_fetch_failed || always_close) {
                     cgm_close_client(provider);
                     if (glucose_fetch_failed) {
                         sd_log(TAG, "SSL closed (failed), heap=%lu", esp_get_free_heap_size());
-                        sd_logger_resume();
                         sd_logger_flush();
                     }
                     ESP_LOGI(TAG, "SSL closed after fetch (heap=%lu)", esp_get_free_heap_size());
@@ -3753,12 +3822,13 @@ void glucose_update_task(void *pvParameters) {
 
         // ── Automatic firmware update check (deferred, every 24h) ──
         // Only after 5 min uptime + first glucose received + home screen active.
-        // Version check is HTTP (no TLS) — coexists with live CGM SSL client.
+        // Version check is an optional TLS round-trip; it skips itself under heap pressure.
         if (first_glucose_received && home_screen_active && update_should_check()) {
             ESP_LOGI(TAG, "Automatic firmware update check...");
             if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-                // HTTP version check coexists with live SSL — no need to close CGM client.
-                // The network_mutex serializes I/O; multiple open sockets are fine.
+                // update_check_now() reclaims the provider client itself if the
+                // contiguous block is too small for a handshake. The network_mutex
+                // held here is what that guard depends on.
                 esp_err_t chk = update_check_now();
                 xSemaphoreGive(network_mutex);
 

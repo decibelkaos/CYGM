@@ -261,8 +261,8 @@ static void wifi_removal_hold_event_cb(lv_event_t *e) {
 
         if (progress >= 100 && !wifi_removal_initiated) {
             wifi_removal_initiated = true;
-            ESP_LOGI(TAG, "Hold confirmed - removing WiFi network: %s", wifi_removal_ssid);
-            sd_log(TAG, "WiFi: removed network %s", wifi_removal_ssid);
+            ESP_LOGI(TAG, "Hold confirmed - removing saved WiFi network");
+            sd_log(TAG, "WiFi: removed a saved network");
 
             // Check if this is the currently connected network
             bool disconnect_needed = false;
@@ -521,7 +521,7 @@ void wifi_scan_and_show_networks(void) {
                 strncpy((char *)wifi_networks[wifi_network_count].ssid, saved_networks[i].ssid, sizeof(wifi_networks[wifi_network_count].ssid) - 1);
                 wifi_networks[wifi_network_count].rssi = -128;  // Special marker for not visible
                 wifi_network_count++;
-                ESP_LOGI(TAG, "Added saved-but-not-visible network: %s", saved_networks[i].ssid);
+                ESP_LOGI(TAG, "Added saved-but-not-visible network to the list");
             }
         }
     }
@@ -983,7 +983,7 @@ static void network_item_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         const char *ssid = (const char *)lv_event_get_user_data(e);
-        ESP_LOGI(TAG, "Selected network: %s", ssid);
+        ESP_LOGI(TAG, "Network selected from scan list");
 
         // Copy SSID and reset password
         strncpy(selected_ssid, ssid, sizeof(selected_ssid) - 1);
@@ -1024,7 +1024,7 @@ static void wifi_switch_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         const char *ssid = (const char *)lv_event_get_user_data(e);
-        ESP_LOGI(TAG, "Switching to saved network: %s", ssid);
+        ESP_LOGI(TAG, "Switching to a saved network");
 
         // Get saved credentials
         wifi_credentials_t networks[MAX_SAVED_WIFI_NETWORKS];
@@ -1048,7 +1048,7 @@ static void wifi_switch_btn_event_cb(lv_event_t *e) {
             }
         }
 
-        ESP_LOGE(TAG, "Saved network not found: %s", ssid);
+        ESP_LOGE(TAG, "Saved network not found");
     }
 }
 
@@ -1057,7 +1057,7 @@ static void wifi_connect_saved_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         const char *ssid = (const char *)lv_event_get_user_data(e);
-        ESP_LOGI(TAG, "Connecting to saved network: %s", ssid);
+        ESP_LOGI(TAG, "Connecting to a saved network");
 
         // Get saved credentials
         wifi_credentials_t networks[MAX_SAVED_WIFI_NETWORKS];
@@ -1081,7 +1081,7 @@ static void wifi_connect_saved_event_cb(lv_event_t *e) {
             }
         }
 
-        ESP_LOGE(TAG, "Saved network not found: %s", ssid);
+        ESP_LOGE(TAG, "Saved network not found");
     }
 }
 
@@ -1090,7 +1090,7 @@ static void wifi_delete_btn_event_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         const char *ssid = (const char *)lv_event_get_user_data(e);
-        ESP_LOGI(TAG, "Delete button clicked for: %s", ssid);
+        ESP_LOGI(TAG, "Delete button clicked for a saved network");
 
         show_wifi_removal_overlay(ssid);
     }
@@ -1415,14 +1415,14 @@ static void wifi_connect_task(void *pvParameters) {
     led_start_wifi_boot_blink();  // Blue blink = connecting
     update_wifi_connecting_status("Connecting to WiFi...");
 
-    ESP_LOGI(TAG, "Connecting to: %s via wifi_manager", selected_ssid);
+    ESP_LOGI(TAG, "Connecting via wifi_manager");
 
     // Use wifi_manager for proper state management (retry_count, event bits, auth mode)
     esp_err_t ret = wifi_manager_connect_to(selected_ssid, wifi_password);
 
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "WiFi connection successful to correct network");
-        sd_log(TAG, "WiFi UI: connected to %s", selected_ssid);
+        sd_log(TAG, "WiFi UI: connected");
         wifi_connected = true;
         led_show_success();  // Green fade = connected
 
@@ -1507,7 +1507,7 @@ static void wifi_connect_task(void *pvParameters) {
 
         if (!have_internet) {
             ESP_LOGW(TAG, "WiFi joined but no time sync — treating as no internet");
-            sd_log(TAG, "WiFi UI: %s joined, no internet (SNTP never synced)", selected_ssid);
+            sd_log(TAG, "WiFi UI: joined, no internet (SNTP never synced)");
 
             locked = false;
             for (int retry = 0; retry < 50 && !locked; retry++) {
@@ -1552,8 +1552,8 @@ static void wifi_connect_task(void *pvParameters) {
         uint8_t fail_reason = wifi_manager_last_disconnect_reason();
 
         ESP_LOGE(TAG, "WiFi connection failed: %s (reason=%d)", fail_head, fail_reason);
-        sd_log(TAG, "WiFi UI: FAILED to connect to %s — %s (reason=%d)",
-               selected_ssid, fail_head, fail_reason);
+        sd_log(TAG, "WiFi UI: FAILED to connect — %s (reason=%d)",
+               fail_head, fail_reason);
         led_start_error_blink();  // Red pulse = failed
 
         // Turn bar red at current position
@@ -1610,7 +1610,7 @@ static void wifi_password_ok_btn_cb(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED) {
         // OK button pressed - start connection in background task
-        ESP_LOGI(TAG, "Connecting to WiFi: %s (password %d chars)", selected_ssid, (int)strlen(wifi_password));
+        ESP_LOGI(TAG, "Connecting to WiFi (password %d chars)", (int)strlen(wifi_password));
 
         // Start WiFi connection in background task (don't block UI)
         xTaskCreate(wifi_connect_task, "wifi_connect", 8192, NULL, 5, NULL);
@@ -1640,7 +1640,7 @@ static void keyboard_event_cb(lv_event_t *e) {
     // Handle OK/Ready button
     if (code == LV_EVENT_READY) {
         // Keyboard ready button pressed - start connection in background task
-        ESP_LOGI(TAG, "Connecting to WiFi: %s (password %d chars)", selected_ssid, (int)strlen(wifi_password));
+        ESP_LOGI(TAG, "Connecting to WiFi (password %d chars)", (int)strlen(wifi_password));
 
         // Start WiFi connection in background task (don't block UI)
         xTaskCreate(wifi_connect_task, "wifi_connect", 8192, NULL, 5, NULL);

@@ -7,15 +7,23 @@
  *
  * Two streams: GYYMMDD.CSV for glucose readings and SYYMMDD.LOG for raw serial
  * capture, which sd_log() feeds via ESP_LOGI. Permanent cost is ~10KB.
+ *
+ * Only the CSV is written by default. The serial diary is a debugging aid, so it
+ * starts OFF at every boot whatever NVS holds and has to be asked for with
+ * "log on" each session.
  */
 
 #include "sd_logger.h"
 #include "nvs_config.h"
+#include "shared_state.h"
+#include "battery.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_vfs_fat.h"
 #include "esp_timer.h"
+#include "esp_rom_crc.h"
+#include "esp_wifi.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
@@ -24,8 +32,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 
 static const char *TAG = "SD_LOG";
@@ -40,8 +52,13 @@ static const char *TAG = "SD_LOG";
 
 static SemaphoreHandle_t log_mutex = NULL;
 
-// Glucose CSV buffer (simple: datetime,value,trend)
-#define SD_GLUCOSE_BUFFER_SIZE  512
+// Glucose CSV buffer. A row runs ~82 bytes; 201 is the longest the format can
+// produce with every integer field at its type limit, so the reserve below is
+// above that and a row can never be truncated into a half line. Readings arrive
+// every 90s and the battery task flushes at least once a minute, so a buffer
+// holding ten typical rows is never close to full.
+#define SD_GLUCOSE_LINE_MAX     224
+#define SD_GLUCOSE_BUFFER_SIZE  1024
 static char glucose_buffer[SD_GLUCOSE_BUFFER_SIZE];
 static int glucose_buffer_pos = 0;
 
@@ -51,6 +68,10 @@ static char serial_buffer[SD_SERIAL_BUFFER_SIZE];
 static int serial_buffer_pos = 0;
 static SemaphoreHandle_t serial_mutex = NULL;
 static bool serial_capture_enabled = false;
+// What the operator asked for over the console this session. Boot leaves it
+// false whatever NVS holds, and it is what a resume restores — a suspension
+// must not turn the diary on, and must not turn off one that was asked for.
+static bool serial_capture_requested = false;
 static volatile bool serial_capture_paused = false;
 
 // SPI/SD state
@@ -168,13 +189,14 @@ esp_err_t sd_logger_init(void)
                  (unsigned)mount_cost);
 
         // Install custom vprintf handler (always — needed for "log on" command).
-        // Restore serial capture state from NVS (persists across reboots).
+        // The stored preference is deliberately NOT read here: the card carries
+        // CGM data only unless someone asks for the diary in this session, so a
+        // device that once had capture on does not keep filling S*.LOG forever.
         serial_mutex = xSemaphoreCreateMutex();
         if (serial_mutex) {
-            serial_capture_enabled = nvs_get_sd_serial_capture();
             esp_log_set_vprintf(serial_capture_vprintf);
-            ESP_LOGI(TAG, "SD card ready (serial capture %s — type 'log on/off' to toggle)",
-                     serial_capture_enabled ? "ON (restored from NVS)" : "OFF");
+            ESP_LOGI(TAG, "SD card ready — glucose CSV only. Serial diary is OFF "
+                          "at every boot; type 'log on' to record this session.");
         }
     } else {
         // No card — free the SPI bus to reclaim memory (~0.5KB + DMA)
@@ -277,16 +299,29 @@ esp_err_t sd_logger_flush(void)
         char gpath[32];
         snprintf(gpath, sizeof(gpath), MOUNT_POINT "/G%02d%02d%02d.CSV",
                  ti.tm_year % 100, ti.tm_mon + 1, ti.tm_mday);
+
+        // Only a file that does not exist yet gets the column names. A day file
+        // written by an older build already has rows and must never gain one.
+        struct stat gst;
+        size_t header_len = 0;
+        if (stat(gpath, &gst) != 0 || gst.st_size == 0) {
+            header_len = strlen(SD_GLUCOSE_CSV_HEADER);
+        }
+
         errno = 0;
         FILE *gf = fopen(gpath, "a");
         if (gf) {
             errno = 0;
             // A full volume shows up as a short write or a failing close, never
             // as a failed open — the day-file already exists and needs no cluster.
-            size_t written = fwrite(glucose_buffer, 1, glucose_buffer_pos, gf);
+            size_t written = 0;
+            if (header_len > 0) {
+                written += fwrite(SD_GLUCOSE_CSV_HEADER, 1, header_len, gf);
+            }
+            written += fwrite(glucose_buffer, 1, glucose_buffer_pos, gf);
             int write_errno = errno;
             bool closed_ok = (fclose(gf) == 0);
-            if (written != (size_t)glucose_buffer_pos || !closed_ok) {
+            if (written != header_len + (size_t)glucose_buffer_pos || !closed_ok) {
                 sd_report_write_error("glucose CSV", write_errno ? write_errno : errno);
                 any_write_failed = true;
             }
@@ -345,10 +380,47 @@ esp_err_t sd_logger_flush(void)
     return ret;
 }
 
-void sd_log_glucose(int mg_dl, const char *trend)
+// The three words below are the CSV's vocabulary. Each maps an existing enum;
+// none of them may grow a case that names an account, a network or a place.
+static const char *csv_provider_word(cgm_provider_t provider)
+{
+    switch (provider) {
+        case CGM_PROVIDER_LIBRE:      return "libre";
+        case CGM_PROVIDER_NIGHTSCOUT: return "nightscout";
+        case CGM_PROVIDER_DEXCOM:     return "dexcom";
+    }
+    return "dexcom";
+}
+
+static const char *csv_status_word(dexcom_status_t status)
+{
+    switch (status) {
+        case GLUCOSE_STATUS_OK:                return "ok";
+        case GLUCOSE_STATUS_WARMUP:            return "warmup";
+        case GLUCOSE_STATUS_SIGNAL_LOSS:       return "signal-loss";
+        case GLUCOSE_STATUS_NOT_AUTHENTICATED: return "not-authenticated";
+        case GLUCOSE_STATUS_NO_DATA:           return "unknown";
+    }
+    return "unknown";
+}
+
+// Empty, not a word, when no tier is in force: a reader filtering on this column
+// should see nothing rather than a value it has to special-case.
+static const char *csv_alarm_word(active_alarm_state_t state)
+{
+    switch (state) {
+        case ALARM_STATE_HIGH_ALARM:   return "high-alarm";
+        case ALARM_STATE_HIGH_WARNING: return "high-warning";
+        case ALARM_STATE_LOW_WARNING:  return "low-warning";
+        case ALARM_STATE_LOW_ALARM:    return "low-alarm";
+        case ALARM_STATE_NONE:         return "";
+    }
+    return "";
+}
+
+void sd_log_glucose(int mg_dl, const char *trend, cgm_provider_t provider)
 {
     if (!mounted_card || !log_mutex || sd_suspended) return;
-    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     time_t now;
     struct tm ti;
@@ -356,22 +428,41 @@ void sd_log_glucose(int mg_dl, const char *trend)
     localtime_r(&now, &ti);
 
     // Skip if RTC not synced
-    if (ti.tm_year <= 100) {
-        xSemaphoreGive(log_mutex);
-        return;
-    }
+    if (ti.tm_year <= 100) return;
+
+    // Sampled before the mutex: none of it needs the lock, and the WiFi driver
+    // call is the one part of this that can take more than a few microseconds.
+    bool age_known = false;
+    int age_min = cygm_glucose_age_min(&age_known);
+    if (!age_known) age_min = -1;
+
+    int rssi = 0;
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) rssi = ap.rssi;
+
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     int remaining = SD_GLUCOSE_BUFFER_SIZE - glucose_buffer_pos - 2;
-    if (remaining < 60) {
+    if (remaining < SD_GLUCOSE_LINE_MAX) {
         xSemaphoreGive(log_mutex);
         return;
     }
 
     int written = snprintf(glucose_buffer + glucose_buffer_pos, remaining,
-                           "%04d-%02d-%02d %02d:%02d:%02d,%d,%s\n",
+                           "%04d-%02d-%02d %02d:%02d:%02d,%d,%s,%ld,%s,%s,%d,%d,%.2f,%d,%d,%lu,%ld,%s\n",
                            ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
                            ti.tm_hour, ti.tm_min, ti.tm_sec,
-                           mg_dl, trend ? trend : "?");
+                           mg_dl, trend ? trend : "?",
+                           (long)glucose_timestamp,
+                           csv_provider_word(provider),
+                           csv_status_word(glucose_status),
+                           age_min,
+                           battery_percent, battery_voltage,
+                           battery_is_charging() ? 1 : 0,
+                           rssi,
+                           (unsigned long)esp_get_free_heap_size(),
+                           (long)(esp_timer_get_time() / 1000000),
+                           csv_alarm_word(current_alarm_state));
     if (written > 0 && written < remaining) {
         glucose_buffer_pos += written;
     }
@@ -411,8 +502,8 @@ void sd_logger_resume(void)
         sd_suspended = false;
         sd_flush_fail_count = 0;
         sd_write_error_logged = false;
-        // Restore the saved choice; a suspension must not turn capture on.
-        serial_capture_enabled = nvs_get_sd_serial_capture();
+        // Restore this session's choice; a suspension must not turn capture on.
+        serial_capture_enabled = serial_capture_requested;
     }
     xSemaphoreGive(log_mutex);
 
@@ -421,7 +512,7 @@ void sd_logger_resume(void)
         return;
     }
 
-    ESP_LOGI(TAG, "SD logging RESUMED (card responded to probe, serial capture %s)",
+    ESP_LOGI(TAG, "SD logging RESUMED (card responded to probe, serial diary %s)",
              serial_capture_enabled ? "ON" : "OFF");
 }
 
@@ -449,13 +540,147 @@ void sd_card_unmount(sdmmc_card_t *card)
 void sd_serial_capture_set(bool enabled)
 {
     if (!mounted_card || sd_suspended) return;
+    serial_capture_requested = enabled;
     serial_capture_enabled = enabled;
-    ESP_LOGI(TAG, "Serial capture %s", enabled ? "ON" : "OFF");
+    ESP_LOGI(TAG, "Serial diary %s (this session only — off again after a reboot)",
+             enabled ? "ON" : "OFF");
 }
 
 bool sd_serial_capture_get(void)
 {
     return serial_capture_enabled;
+}
+
+// ==================== Glucose File Access (serial console viewer) ====================
+
+// Entries stream out in whatever order the directory yields them, so a card
+// holding years of day-files costs no more RAM than one holding a week. The
+// reader sorts; SDLS-END carries the count so a truncated listing is visible.
+#define SD_GLUCOSE_CHUNK     512
+
+bool sd_glucose_name_valid(const char *name, char *out_upper, size_t out_len)
+{
+    if (!name || strlen(name) != 11) return false;
+    if (toupper((unsigned char)name[0]) != 'G') return false;
+    for (int i = 1; i < 7; i++) {
+        if (!isdigit((unsigned char)name[i])) return false;
+    }
+    if (name[7] != '.') return false;
+    if (toupper((unsigned char)name[8]) != 'C' ||
+        toupper((unsigned char)name[9]) != 'S' ||
+        toupper((unsigned char)name[10]) != 'V') return false;
+
+    if (out_upper) {
+        if (out_len < 12) return false;
+        for (int i = 0; i < 11; i++) {
+            out_upper[i] = (char)toupper((unsigned char)name[i]);
+        }
+        out_upper[11] = '\0';
+    }
+    return true;
+}
+
+sd_glucose_status_t sd_glucose_list(sd_glucose_ready_fn on_ready,
+                                    sd_glucose_entry_fn on_entry,
+                                    void *ctx, int *out_count)
+{
+    if (out_count) *out_count = 0;
+    if (!mounted_card || !log_mutex) return SD_GLUCOSE_NO_CARD;
+    if (sd_suspended) return SD_GLUCOSE_SUSPENDED;
+    if (!on_entry) return SD_GLUCOSE_OPEN_FAILED;
+
+    // Today's file must carry the buffered lines before its size is reported.
+    sd_logger_flush();
+
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        return SD_GLUCOSE_OPEN_FAILED;
+    }
+    serial_capture_paused = true;
+
+    DIR *dir = opendir(MOUNT_POINT);
+    if (!dir) {
+        serial_capture_paused = false;
+        xSemaphoreGive(log_mutex);
+        return SD_GLUCOSE_OPEN_FAILED;
+    }
+
+    if (on_ready) on_ready(ctx);
+
+    int n = 0;
+    unsigned chunks = 0;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        char upper[12];
+        if (!sd_glucose_name_valid(ent->d_name, upper, sizeof(upper))) continue;
+
+        char path[32];
+        snprintf(path, sizeof(path), MOUNT_POINT "/%s", upper);
+        struct stat st;
+        if (stat(path, &st) != 0) continue;
+
+        on_entry(upper, (uint32_t)st.st_size, ctx);
+        n++;
+
+        // The console TX path busy-waits on the UART at priority 2; a card with
+        // years of files would otherwise starve IDLE0 past the task watchdog.
+        if ((++chunks & 15) == 0) vTaskDelay(1);
+    }
+    closedir(dir);
+
+    serial_capture_paused = false;
+    xSemaphoreGive(log_mutex);
+
+    if (out_count) *out_count = n;
+    return SD_GLUCOSE_OK;
+}
+
+sd_glucose_status_t sd_glucose_read(const char *name,
+                                    sd_glucose_open_fn on_open,
+                                    sd_glucose_data_fn on_data,
+                                    void *ctx, uint32_t *out_crc32)
+{
+    char upper[12];
+    if (!sd_glucose_name_valid(name, upper, sizeof(upper))) return SD_GLUCOSE_BAD_NAME;
+    if (!mounted_card || !log_mutex) return SD_GLUCOSE_NO_CARD;
+    if (sd_suspended) return SD_GLUCOSE_SUSPENDED;
+
+    sd_logger_flush();
+
+    // Held across stat, read and emit: a flush part-way through would append to
+    // today's file and leave the reported size short of the bytes sent.
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(2000)) != pdTRUE) return SD_GLUCOSE_READ_FAILED;
+    serial_capture_paused = true;
+
+    char path[32];
+    snprintf(path, sizeof(path), MOUNT_POINT "/%s", upper);
+
+    sd_glucose_status_t status = SD_GLUCOSE_OK;
+    struct stat st;
+    FILE *f = NULL;
+    if (stat(path, &st) != 0 || (f = fopen(path, "rb")) == NULL) {
+        status = SD_GLUCOSE_NOT_FOUND;
+    } else {
+        if (on_open) on_open((uint32_t)st.st_size, ctx);
+
+        uint32_t crc = 0;
+        char buf[SD_GLUCOSE_CHUNK];
+        size_t got;
+        unsigned chunks = 0;
+        while ((got = fread(buf, 1, sizeof(buf), f)) > 0) {
+            crc = esp_rom_crc32_le(crc, (const uint8_t *)buf, got);
+            if (on_data) on_data(buf, got, ctx);
+            // The console TX path busy-waits on the UART at priority 2; without
+            // a yield a file over ~55 KB starves IDLE0 past the 5 s task watchdog.
+            if ((++chunks & 7) == 0) vTaskDelay(1);
+        }
+        if (ferror(f)) status = SD_GLUCOSE_READ_FAILED;
+        fclose(f);
+        if (out_crc32) *out_crc32 = crc;
+    }
+
+    serial_capture_paused = false;
+    xSemaphoreGive(log_mutex);
+    return status;
 }
 
 void sd_logger_shutdown(void)

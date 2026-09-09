@@ -107,8 +107,8 @@ void glucose_history_add(int glucose_value, int64_t timestamp) {
 
     if (glucose_value < HISTORY_GLUCOSE_MIN || glucose_value > HISTORY_GLUCOSE_MAX ||
         timestamp <= 0) {
-        ESP_LOGW(TAG, "Rejected implausible reading: %d mg/dL at %lld",
-                 glucose_value, (long long)timestamp);
+        ESP_LOGW(TAG, "Rejected implausible reading: %d mg/dL at %ld",
+                 glucose_value, (long)(timestamp / 1000));
         return;
     }
 
@@ -116,8 +116,10 @@ void glucose_history_add(int glucose_value, int64_t timestamp) {
     g_history.readings[g_history.head].glucose = glucose_value;
     g_history.readings[g_history.head].valid = true;
 
+    // Seconds, not the stored milliseconds: a millisecond epoch does not fit
+    // the only integer width this build can print.
     ESP_LOGI(TAG, "Added reading: %d mg/dL at slot %d (timestamp: %ld)",
-             glucose_value, g_history.head, (long)timestamp);
+             glucose_value, g_history.head, (long)(timestamp / 1000));
 
     // Advance head (circular)
     g_history.head = (g_history.head + 1) % GLUCOSE_HISTORY_MAX_POINTS;

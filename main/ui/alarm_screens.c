@@ -18,6 +18,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "ui/menu_screen.h"
 
 static const char *TAG = "ALARM_SCREENS";
@@ -148,7 +150,6 @@ static void alarm_volume_slider_event_cb(lv_event_t *e);
 static void alarm_audio_toggle_event_cb(lv_event_t *e);
 static void alarm_visual_toggle_event_cb(lv_event_t *e);
 static void alarm_led_toggle_event_cb(lv_event_t *e);
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e);
 static void alarm_settings_back_event_cb(lv_event_t *e);
 static void tone_picker_prev_page_event_cb(lv_event_t *e);
 static void tone_picker_next_page_event_cb(lv_event_t *e);
@@ -165,6 +166,7 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer);
 static void alarm_options_open_event_cb(lv_event_t *e);
 static void alarm_options_close(bool return_to_settings);
 static void alarm_ext_flush(void);
+static void opt_mask_switch_event_cb(lv_event_t *e);
 static void alarm_options_clear_refs(void);
 static void time_picker_close(void);
 
@@ -230,6 +232,18 @@ static int alarm_index_from_ptr(const alarm_config_t *alarm) {
     if (alarm == &current_alarm_settings.low_warning) return 2;
     if (alarm == &current_alarm_settings.low_alarm) return 3;
     return -1;
+}
+
+// Zero for anything that is not one of the four glucose tiers, which
+// opt_mask_switch_event_cb treats as "no bit to edit".
+static uint8_t alarm_persist_bit(const alarm_config_t *alarm) {
+    switch (alarm_index_from_ptr(alarm)) {
+        case 0:  return CYGM_PERSIST_HIGH_ALARM;
+        case 1:  return CYGM_PERSIST_HIGH_WARNING;
+        case 2:  return CYGM_PERSIST_LOW_WARNING;
+        case 3:  return CYGM_PERSIST_LOW_ALARM;
+        default: return 0;
+    }
 }
 
 // ==================== Alarm Settings Screen ====================
@@ -526,6 +540,285 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
     lv_obj_add_event_cb(sw, alarm_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
 }
 
+// ==================== Threshold Keypad (Modal Overlay) ====================
+
+// The slider cannot reliably land on a single mg/dL, so the value on the
+// threshold card doubles as a button that opens this keypad. Entry stays in the
+// user's display unit; the accepted value goes back through the slider so the
+// slider callback remains the only writer of alarm->threshold.
+#define THRESH_KEYPAD_MIN_MGDL   55    // urgent-low floor
+#define THRESH_KEYPAD_MAX_MGDL  400    // slider maximum
+
+// Panel 224x234 centred on the 320x240 frame; the matrix is 200x152 with 4px
+// gaps, so a key is 64x35 (47x35 on the four-key mmol row).
+#define THRESH_KEYPAD_PANEL_W   224
+#define THRESH_KEYPAD_PANEL_H   234
+#define THRESH_KEYPAD_MTX_W     200
+#define THRESH_KEYPAD_MTX_H     152
+#define THRESH_KEYPAD_MTX_Y      76
+#define THRESH_KEYPAD_GAP         4
+
+static lv_obj_t *thresh_keypad_overlay = NULL;
+static lv_obj_t *thresh_keypad_entry_lbl = NULL;
+static lv_obj_t *thresh_keypad_hint_lbl = NULL;
+static lv_obj_t *thresh_keypad_slider = NULL;
+static alarm_config_t *thresh_keypad_alarm = NULL;
+static char thresh_keypad_buf[8];
+
+// LVGL keeps the map pointer, so both maps are file-scope. mmol/L needs the
+// decimal point, which lands as a fourth key on the bottom row.
+static const char *thresh_keypad_map_mgdl[] = {
+    "1", "2", "3", "\n",
+    "4", "5", "6", "\n",
+    "7", "8", "9", "\n",
+    LV_SYMBOL_BACKSPACE, "0", "OK", ""
+};
+static const char *thresh_keypad_map_mmol[] = {
+    "1", "2", "3", "\n",
+    "4", "5", "6", "\n",
+    "7", "8", "9", "\n",
+    LV_SYMBOL_BACKSPACE, "0", ".", "OK", ""
+};
+
+// The overlay is parented to the live screen, so deleting that screen takes it
+// down without going through thresh_keypad_close(); drop every session ref here.
+static void thresh_keypad_delete_cb(lv_event_t *e) {
+    (void)e;
+    thresh_keypad_overlay = NULL;
+    thresh_keypad_entry_lbl = NULL;
+    thresh_keypad_hint_lbl = NULL;
+    thresh_keypad_alarm = NULL;
+}
+
+static void thresh_keypad_close(void) {
+    if (thresh_keypad_overlay != NULL) {
+        lv_obj_del(thresh_keypad_overlay);   // delete cb clears every static below
+    }
+    thresh_keypad_overlay = NULL;
+    thresh_keypad_entry_lbl = NULL;
+    thresh_keypad_hint_lbl = NULL;
+    thresh_keypad_alarm = NULL;
+    thresh_keypad_buf[0] = '\0';
+}
+
+// An empty entry shows the value being replaced, dimmed, so the first key
+// pressed starts a fresh number instead of editing the old one.
+static void thresh_keypad_refresh(bool out_of_range) {
+    if (thresh_keypad_entry_lbl == NULL) return;
+
+    char text[32];
+    uint32_t color = COLOR_ACCENT_LIGHT;
+    if (thresh_keypad_buf[0] == '\0') {
+        int shown = (thresh_keypad_alarm != NULL) ? thresh_keypad_alarm->threshold
+                                                  : THRESH_KEYPAD_MIN_MGDL;
+        cygm_format_threshold(shown, text, sizeof(text));
+        color = COLOR_TEXT_DIM;
+    } else {
+        snprintf(text, sizeof(text), "%s %s", thresh_keypad_buf, cygm_glucose_unit());
+        if (out_of_range) color = COLOR_RED;
+    }
+    lv_label_set_text(thresh_keypad_entry_lbl, text);
+    lv_obj_set_style_text_color(thresh_keypad_entry_lbl, lv_color_hex(color), 0);
+
+    if (thresh_keypad_hint_lbl != NULL) {
+        lv_obj_set_style_text_color(thresh_keypad_hint_lbl,
+                                    lv_color_hex(out_of_range ? COLOR_RED : COLOR_TEXT_DIM), 0);
+    }
+}
+
+// mg/dL takes three digits; mmol/L takes d.d or dd.d, so the integer part stops
+// at two digits and only one digit may follow the point.
+static void thresh_keypad_push(char c) {
+    size_t len = strlen(thresh_keypad_buf);
+    const char *point = strchr(thresh_keypad_buf, '.');
+
+    if (c == '.') {
+        if (!user_glucose_mmol || point != NULL || len == 0) return;
+    } else if (user_glucose_mmol) {
+        if (point != NULL) {
+            if (len - (size_t)(point - thresh_keypad_buf) > 1) return;
+        } else if (len >= 2) {
+            return;
+        }
+    } else if (len >= 3) {
+        return;
+    }
+
+    if (len + 1 >= sizeof(thresh_keypad_buf)) return;
+    thresh_keypad_buf[len] = c;
+    thresh_keypad_buf[len + 1] = '\0';
+    thresh_keypad_refresh(false);
+}
+
+static void thresh_keypad_pop(void) {
+    size_t len = strlen(thresh_keypad_buf);
+    if (len > 0) thresh_keypad_buf[len - 1] = '\0';
+    thresh_keypad_refresh(false);
+}
+
+// -1 when nothing has been typed. mmol/L entry is folded into tenths first, so
+// the 3.1-22.2 window and the 55-400 window are the same test.
+static int thresh_keypad_entry_mgdl(void) {
+    if (thresh_keypad_buf[0] == '\0') return -1;
+    if (!user_glucose_mmol) return atoi(thresh_keypad_buf);
+
+    int whole = 0;
+    int tenth = 0;
+    const char *p = thresh_keypad_buf;
+    while (*p >= '0' && *p <= '9') {
+        whole = whole * 10 + (*p - '0');
+        p++;
+    }
+    if (*p == '.' && p[1] >= '0' && p[1] <= '9') tenth = p[1] - '0';
+    return mmol_tenths_to_mgdl(whole * 10 + tenth);
+}
+
+static void thresh_keypad_accept(void) {
+    int mgdl = thresh_keypad_entry_mgdl();
+    if (mgdl < THRESH_KEYPAD_MIN_MGDL || mgdl > THRESH_KEYPAD_MAX_MGDL) {
+        thresh_keypad_refresh(true);
+        return;
+    }
+
+    if (thresh_keypad_alarm != NULL && thresh_keypad_slider != NULL) {
+        lv_slider_set_value(thresh_keypad_slider,
+                            user_glucose_mmol ? mgdl_to_mmol_tenths(mgdl) : mgdl,
+                            LV_ANIM_OFF);
+        // The slider callback owns alarm->threshold and the card label; sending
+        // the event keeps the typed path and the dragged path identical.
+        lv_event_send(thresh_keypad_slider, LV_EVENT_VALUE_CHANGED, NULL);
+    }
+
+    ESP_LOGI(TAG, "Threshold typed: %s -> %d mg/dL", thresh_keypad_buf, mgdl);
+    thresh_keypad_close();
+}
+
+static void thresh_keypad_matrix_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+
+    lv_obj_t *mtx = lv_event_get_target(e);
+    const char *key = lv_btnmatrix_get_btn_text(mtx, lv_btnmatrix_get_selected_btn(mtx));
+    if (key == NULL) return;
+
+    if (strcmp(key, "OK") == 0) {
+        thresh_keypad_accept();
+    } else if (strcmp(key, LV_SYMBOL_BACKSPACE) == 0) {
+        thresh_keypad_pop();
+    } else {
+        thresh_keypad_push(key[0]);
+    }
+}
+
+static void thresh_keypad_close_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    thresh_keypad_close();
+}
+
+static void open_threshold_keypad(alarm_config_t *alarm, lv_obj_t *slider) {
+    if (alarm == NULL || slider == NULL) return;
+    thresh_keypad_close();
+
+    thresh_keypad_alarm = alarm;
+    thresh_keypad_slider = slider;
+
+    thresh_keypad_overlay = lv_obj_create(lv_scr_act());
+    if (thresh_keypad_overlay == NULL) {
+        ESP_LOGE(TAG, "Failed to create threshold keypad overlay!");
+        thresh_keypad_alarm = NULL;
+        return;
+    }
+    lv_obj_add_event_cb(thresh_keypad_overlay, thresh_keypad_delete_cb, LV_EVENT_DELETE, NULL);
+    lv_obj_remove_style_all(thresh_keypad_overlay);
+    lv_obj_set_size(thresh_keypad_overlay, 320, 240);
+    lv_obj_set_pos(thresh_keypad_overlay, 0, 0);
+    lv_obj_set_style_bg_color(thresh_keypad_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(thresh_keypad_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(thresh_keypad_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(thresh_keypad_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(thresh_keypad_overlay, thresh_keypad_close_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *panel = lv_obj_create(thresh_keypad_overlay);
+    lv_obj_set_size(panel, THRESH_KEYPAD_PANEL_W, THRESH_KEYPAD_PANEL_H);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(0x141c2b), 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, 16, 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_DIVIDER), 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(panel);
+    lv_label_set_text(title, "Threshold");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 14, 8);
+
+    // Same ring-plus-glyph target as the tone picker's close control.
+    lv_obj_t *close_btn = lv_btn_create(panel);
+    lv_obj_set_size(close_btn, 30, 30);
+    lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
+    lv_obj_set_style_border_color(close_btn, lv_color_hex(COLOR_DIVIDER), 0);
+    lv_obj_set_style_border_width(close_btn, 1, 0);
+    lv_obj_set_style_border_opa(close_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(close_btn, 15, 0);
+    lv_obj_update_layout(close_btn);
+    cygm_apply_ghost_btn(close_btn);
+    lv_obj_t *close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(close_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_center(close_lbl);
+    lv_obj_add_event_cb(close_btn, thresh_keypad_close_event_cb, LV_EVENT_CLICKED, NULL);
+
+    thresh_keypad_entry_lbl = lv_label_create(panel);
+    lv_obj_set_style_text_font(thresh_keypad_entry_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_align(thresh_keypad_entry_lbl, LV_ALIGN_TOP_MID, 0, 32);
+
+    thresh_keypad_hint_lbl = lv_label_create(panel);
+    lv_label_set_text(thresh_keypad_hint_lbl, user_glucose_mmol ? "3.1 - 22.2" : "55 - 400");
+    lv_obj_set_style_text_font(thresh_keypad_hint_lbl, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(thresh_keypad_hint_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(thresh_keypad_hint_lbl, LV_ALIGN_TOP_MID, 0, 60);
+
+    lv_obj_t *mtx = lv_btnmatrix_create(panel);
+    lv_btnmatrix_set_map(mtx, user_glucose_mmol ? thresh_keypad_map_mmol : thresh_keypad_map_mgdl);
+    lv_obj_set_size(mtx, THRESH_KEYPAD_MTX_W, THRESH_KEYPAD_MTX_H);
+    lv_obj_align(mtx, LV_ALIGN_TOP_MID, 0, THRESH_KEYPAD_MTX_Y);
+    lv_obj_set_style_bg_opa(mtx, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(mtx, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(mtx, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(mtx, THRESH_KEYPAD_GAP, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(mtx, THRESH_KEYPAD_GAP, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(mtx, lv_color_hex(COLOR_PRESSED), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(mtx, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(mtx, lv_color_hex(COLOR_MODAL_BORDER), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(mtx, 0, LV_PART_ITEMS);
+    // The light theme puts a drop shadow on every button style, including these
+    // matrix cells; shadows freeze this hardware.
+    lv_obj_set_style_shadow_width(mtx, 0, LV_PART_ITEMS);
+    lv_obj_set_style_radius(mtx, 8, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(mtx, &lv_font_montserrat_18, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(mtx, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
+    lv_obj_add_event_cb(mtx, thresh_keypad_matrix_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    thresh_keypad_buf[0] = '\0';
+    thresh_keypad_refresh(false);
+}
+
+static void alarm_threshold_value_event_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    open_threshold_keypad((alarm_config_t *)lv_event_get_user_data(e), thresh_keypad_slider);
+}
+
+// The detail editor is in the watchdog's disposable list, so it can be freed
+// from another task; both borrowed widget pointers die with it.
+static void alarm_detail_editor_delete_cb(lv_event_t *e) {
+    (void)e;
+    thresh_keypad_slider = NULL;
+    alarm_threshold_value_label = NULL;
+}
+
 // ==================== Detail Editor Screen ====================
 
 void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
@@ -543,6 +836,7 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     }
     lv_obj_add_style(screen_alarm_detail_editor, &style_bg, 0);
     lv_obj_clear_flag(screen_alarm_detail_editor, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(screen_alarm_detail_editor, alarm_detail_editor_delete_cb, LV_EVENT_DELETE, NULL);
 
     // Determine alarm name for header
     const char *alarm_name = "Alarm";
@@ -571,13 +865,15 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     // and its first control sits below that. The cards have nothing to tap, so
     // their CLICKABLE flag comes off — left on, a card sits above the back
     // button in z-order and swallows taps landing in its grown box.
+    // The threshold card carries a 34px-tall value button whose grown touch box
+    // is clipped to the card, so it needs 60px of card to clear 44px of target.
     #define AED_CARD_W        290
-    #define AED_CARD_GAP        6
+    #define AED_CARD_GAP        4
     #define AED_THRESH_Y       44
-    #define AED_THRESH_H       54
-    #define AED_AUDIO_Y  (AED_THRESH_Y + AED_THRESH_H + AED_CARD_GAP)   // 104
+    #define AED_THRESH_H       60
+    #define AED_AUDIO_Y  (AED_THRESH_Y + AED_THRESH_H + AED_CARD_GAP)   // 108
     #define AED_AUDIO_H        78
-    #define AED_VISUAL_Y (AED_AUDIO_Y + AED_AUDIO_H + AED_CARD_GAP)     // 188
+    #define AED_VISUAL_Y (AED_AUDIO_Y + AED_AUDIO_H + AED_CARD_GAP)     // 190
     #define AED_VISUAL_H       44
     // Shared inner column: content runs x=16..278 inside every card.
     #define AED_PAD_L          16
@@ -598,7 +894,7 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     // Left accent bar (alarm color)
     lv_obj_t *thresh_accent = lv_obj_create(thresh_card);
     lv_obj_remove_style_all(thresh_accent);
-    lv_obj_set_size(thresh_accent, 3, 38);
+    lv_obj_set_size(thresh_accent, 3, 44);
     lv_obj_align(thresh_accent, LV_ALIGN_LEFT_MID, 5, 0);
     lv_obj_set_style_bg_color(thresh_accent, lv_color_hex(alarm->text_color), 0);
     lv_obj_set_style_bg_opa(thresh_accent, LV_OPA_COVER, 0);
@@ -608,22 +904,31 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_label_set_text(thresh_label, "Threshold");
     lv_obj_set_style_text_font(thresh_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(thresh_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(thresh_label, LV_ALIGN_TOP_LEFT, 16, 8);
+    lv_obj_align(thresh_label, LV_ALIGN_TOP_LEFT, 16, 10);
 
-    // Threshold value display (prominent, in alarm color)
-    lv_obj_t *thresh_value = lv_label_create(thresh_card);
+    // Threshold value display (prominent, in alarm color). It is a button, not a
+    // bare label: tapping it opens the keypad for an exact value. Its grown
+    // touch box stops one pixel short of the slider below.
+    lv_obj_t *thresh_value_btn = lv_btn_create(thresh_card);
+    lv_obj_set_size(thresh_value_btn, 110, 34);
+    lv_obj_align(thresh_value_btn, LV_ALIGN_TOP_RIGHT, -8, 2);
+    lv_obj_update_layout(thresh_value_btn);
+    cygm_apply_ghost_btn(thresh_value_btn);
+    lv_obj_add_event_cb(thresh_value_btn, alarm_threshold_value_event_cb, LV_EVENT_CLICKED, alarm);
+
+    lv_obj_t *thresh_value = lv_label_create(thresh_value_btn);
     char threshold_text[16];
     cygm_format_threshold(alarm->threshold, threshold_text, sizeof(threshold_text));
     lv_label_set_text(thresh_value, threshold_text);
     lv_obj_set_style_text_font(thresh_value, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(thresh_value, lv_color_hex(alarm->text_color), 0);
-    lv_obj_align(thresh_value, LV_ALIGN_TOP_RIGHT, -12, 6);  // Baseline-matched to "Threshold"
+    lv_obj_center(thresh_value);
     alarm_threshold_value_label = thresh_value;
 
     // Threshold slider
     lv_obj_t *thresh_slider = lv_slider_create(thresh_card);
     lv_obj_set_size(thresh_slider, AED_ROW_W, 12);
-    lv_obj_align(thresh_slider, LV_ALIGN_TOP_LEFT, AED_PAD_L, 32);
+    lv_obj_align(thresh_slider, LV_ALIGN_TOP_LEFT, AED_PAD_L, 44);
     // In mmol mode the slider operates in tenths-of-mmol so each knob step is a
     // clean 0.1 mmol/L; the stored alarm->threshold stays canonical mg/dL.
     if (user_glucose_mmol) {
@@ -648,6 +953,7 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
 
     lv_obj_set_user_data(thresh_slider, thresh_value);
     lv_obj_add_event_cb(thresh_slider, alarm_threshold_slider_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+    thresh_keypad_slider = thresh_slider;
 
     // ---- Audio Card ----
     lv_obj_t *audio_card = lv_obj_create(screen_alarm_detail_editor);
@@ -742,26 +1048,31 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_set_user_data(vol_slider, vol_value);
     lv_obj_add_event_cb(vol_slider, alarm_volume_slider_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
 
-    // Divider before repeat
-    lv_obj_t *repeat_div = lv_obj_create(audio_card);
-    lv_obj_remove_style_all(repeat_div);
-    lv_obj_set_size(repeat_div, AED_ROW_W, 1);
-    lv_obj_align(repeat_div, LV_ALIGN_TOP_LEFT, AED_PAD_L, 52);
-    lv_obj_set_style_bg_color(repeat_div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(repeat_div, LV_OPA_COVER, 0);
+    // Divider before keep-sounding
+    lv_obj_t *persist_div = lv_obj_create(audio_card);
+    lv_obj_remove_style_all(persist_div);
+    lv_obj_set_size(persist_div, AED_ROW_W, 1);
+    lv_obj_align(persist_div, LV_ALIGN_TOP_LEFT, AED_PAD_L, 52);
+    lv_obj_set_style_bg_color(persist_div, lv_color_hex(COLOR_DIVIDER), 0);
+    lv_obj_set_style_bg_opa(persist_div, LV_OPA_COVER, 0);
 
-    // Repeat label + switch (row 3, y=56)
-    lv_obj_t *repeat_label = lv_label_create(audio_card);
-    lv_label_set_text(repeat_label, "Repeat");
-    lv_obj_set_style_text_font(repeat_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(repeat_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_align(repeat_label, LV_ALIGN_TOP_LEFT, 16, 56);
+    // Keep Sounding label + switch (row 3, y=56). This tier's bit of the alarm
+    // extension blob, not a field of alarm_config_t, so it is flushed by
+    // alarm_ext_flush() rather than nvs_save_alarm_settings().
+    uint8_t persist_bit = alarm_persist_bit(alarm);
 
-    lv_obj_t *repeat_sw = lv_switch_create(audio_card);
-    alarm_style_switch(repeat_sw, 36, 16);
-    lv_obj_align(repeat_sw, LV_ALIGN_TOP_RIGHT, -12, 56);  // Row-centred with the Repeat label
-    if (alarm->audio_repeat) lv_obj_add_state(repeat_sw, LV_STATE_CHECKED);
-    lv_obj_add_event_cb(repeat_sw, alarm_audio_repeat_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
+    lv_obj_t *persist_label = lv_label_create(audio_card);
+    lv_label_set_text(persist_label, "Keep Sounding");
+    lv_obj_set_style_text_font(persist_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(persist_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(persist_label, LV_ALIGN_TOP_LEFT, 16, 56);
+
+    lv_obj_t *persist_sw = lv_switch_create(audio_card);
+    alarm_style_switch(persist_sw, 36, 16);
+    lv_obj_align(persist_sw, LV_ALIGN_TOP_RIGHT, -12, 56);  // Row-centred with the label
+    if (alarm_ext_settings.persistent_mask & persist_bit) lv_obj_add_state(persist_sw, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(persist_sw, opt_mask_switch_event_cb, LV_EVENT_VALUE_CHANGED,
+                        (void *)(intptr_t)persist_bit);
 
     // ---- Visual Card ----
     lv_obj_t *visual_card = lv_obj_create(screen_alarm_detail_editor);
@@ -1118,7 +1429,7 @@ void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_
 // Paged rather than scrolled: scroll momentum can schedule style transitions,
 // and animations freeze this hardware.
 
-#define ALARM_OPT_PAGES     7
+#define ALARM_OPT_PAGES     6
 #define ALARM_OPT_ROW_H     36
 #define ALARM_OPT_ROW_STEP  40
 #define ALARM_OPT_ROW_W    290
@@ -1192,7 +1503,6 @@ static opt_stepper_t opt_steppers[OPT_STEPPER_COUNT] = {
 static void opt_stepper_event_cb(lv_event_t *e);
 static void opt_switch_event_cb(lv_event_t *e);
 static void opt_inverted_switch_event_cb(lv_event_t *e);
-static void opt_mask_switch_event_cb(lv_event_t *e);
 static void alarm_options_back_event_cb(lv_event_t *e);
 static void alarm_options_prev_page_event_cb(lv_event_t *e);
 static void alarm_options_next_page_event_cb(lv_event_t *e);
@@ -1305,17 +1615,6 @@ static void opt_row_add_inverted_switch(lv_obj_t *row, uint8_t *field) {
     lv_obj_add_event_cb(sw, opt_inverted_switch_event_cb, LV_EVENT_VALUE_CHANGED, field);
 }
 
-// One bit of persistent_mask, so each tier gets its own switch without spending
-// a byte of the blob's reserved space per tier.
-static void opt_row_add_mask_switch(lv_obj_t *row, uint8_t bit) {
-    lv_obj_t *sw = lv_switch_create(row);
-    alarm_style_switch(sw, 40, 20);
-    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -14, 0);
-    if (alarm_ext_settings.persistent_mask & bit) lv_obj_add_state(sw, LV_STATE_CHECKED);
-    lv_obj_add_event_cb(sw, opt_mask_switch_event_cb, LV_EVENT_VALUE_CHANGED,
-                        (void *)(intptr_t)bit);
-}
-
 static void opt_row_add_stepper(lv_obj_t *row, int idx) {
     opt_stepper_t *s = &opt_steppers[idx];
 
@@ -1419,7 +1718,6 @@ static const char *alarm_options_page_title(int page) {
         case 2:  return "DATA GAP";
         case 3:  return "PREDICTIVE";
         case 4:  return "SAFETY FLOOR";
-        case 5:  return "KEEP SOUNDING";
         default: return "UNATTENDED";
     }
 }
@@ -1523,20 +1821,6 @@ static void alarm_options_build_page(void) {
             lv_obj_set_style_text_font(eff_lbl, &lv_font_montserrat_12, 0);
             lv_obj_set_style_text_color(eff_lbl, lv_color_hex(COLOR_ORANGE), 0);
             lv_obj_align(eff_lbl, LV_ALIGN_TOP_MID, 0, ALARM_OPT_ROW_STEP * 2 + 54);
-            break;
-        }
-        case 5: {
-            lv_obj_t *r = opt_row_create(0, "High Alarm", "keep sounding");
-            opt_row_add_mask_switch(r, CYGM_PERSIST_HIGH_ALARM);
-
-            r = opt_row_create(1, "High Warning", "keep sounding");
-            opt_row_add_mask_switch(r, CYGM_PERSIST_HIGH_WARNING);
-
-            r = opt_row_create(2, "Low Warning", "keep sounding");
-            opt_row_add_mask_switch(r, CYGM_PERSIST_LOW_WARNING);
-
-            r = opt_row_create(3, "Low Alarm", "keep sounding");
-            opt_row_add_mask_switch(r, CYGM_PERSIST_LOW_ALARM);
             break;
         }
         default: {
@@ -2092,8 +2376,8 @@ static void alarm_threshold_slider_event_cb(lv_event_t *e) {
     int32_t value = lv_slider_get_value(slider);
 
     // In mmol mode the slider value is tenths-of-mmol; convert back to canonical
-    // mg/dL for storage/comparison (round: mg/dL = tenths * 1000 / 555).
-    int mgdl = user_glucose_mmol ? (int)((value * 1000 + 277) / 555) : (int)value;
+    // mg/dL for storage/comparison.
+    int mgdl = user_glucose_mmol ? mmol_tenths_to_mgdl((int)value) : (int)value;
     alarm->threshold = mgdl;
 
     lv_obj_t *threshold_value = (lv_obj_t *)lv_obj_get_user_data(slider);
@@ -2153,15 +2437,6 @@ static void alarm_led_toggle_event_cb(lv_event_t *e) {
     lv_obj_t *toggle = lv_event_get_target(e);
     alarm->led_enabled = lv_obj_has_state(toggle, LV_STATE_CHECKED);
     ESP_LOGI(TAG, "LED enabled: %d", alarm->led_enabled);
-}
-
-static void alarm_audio_repeat_toggle_event_cb(lv_event_t *e) {
-    alarm_config_t *alarm = (alarm_config_t *)lv_event_get_user_data(e);
-    if (alarm == NULL) return;
-
-    lv_obj_t *toggle = lv_event_get_target(e);
-    alarm->audio_repeat = lv_obj_has_state(toggle, LV_STATE_CHECKED);
-    ESP_LOGI(TAG, "Audio repeat enabled: %d", alarm->audio_repeat);
 }
 
 static void alarm_settings_back_event_cb(lv_event_t *e) {
@@ -2310,7 +2585,9 @@ static void alarm_detail_editor_back_event_cb(lv_event_t *e) {
     alarm_trace_event("alarm_detail_editor_back_event_cb", e);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Detail editor back - saving and returning to alarm settings");
+        thresh_keypad_close();
         nvs_save_alarm_settings(&current_alarm_settings);
+        alarm_ext_flush();
 
         if (screen_alarm_settings != NULL) {
             lv_obj_del(screen_alarm_settings);
@@ -2373,7 +2650,8 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
         (active == screen_alarm_preview) ||
         (active == screen_alarm_options) ||
         (screen_tone_picker != NULL) ||
-        (time_picker_overlay != NULL);
+        (time_picker_overlay != NULL) ||
+        (thresh_keypad_overlay != NULL);
 
     if (!alarm_ui_active) {
         // The global watchdog runs the same timeout from another task and can
@@ -2400,7 +2678,8 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
     ESP_LOGI(TAG, "Alarm UI inactivity timeout (%lu ms) - returning to home", (unsigned long)inactive_ms);
     nvs_save_alarm_settings(&current_alarm_settings);
 
-    // Clean up tone picker (child of detail editor screen)
+    // Clean up the overlays parented to the detail editor screen
+    thresh_keypad_close();
     if (screen_tone_picker != NULL) {
         lv_obj_del(screen_tone_picker);
         screen_tone_picker = NULL;

@@ -625,7 +625,7 @@ void wifi_task_core0(void *pvParameters) {
             for (int i = 0; i < network_count; i++) {
                 if (strcmp(networks[i].ssid, last_ssid) == 0) {
                     connection_order[order_count++] = i;
-                    ESP_LOGI(TAG, "Last connected WiFi found: %s (will try first)", last_ssid);
+                    ESP_LOGI(TAG, "Last connected WiFi is saved (will try first)");
                     break;
                 }
             }
@@ -648,7 +648,7 @@ void wifi_task_core0(void *pvParameters) {
         bool connected = false;
         for (int attempt = 0; attempt < order_count; attempt++) {
             int idx = connection_order[attempt];
-            ESP_LOGI(TAG, "Trying WiFi network %d/%d: %s", attempt + 1, order_count, networks[idx].ssid);
+            ESP_LOGI(TAG, "Trying WiFi network %d/%d", attempt + 1, order_count);
             add_boot_log("Connecting WiFi...");
             led_start_wifi_boot_blink();  // Blue blink = connecting
 
@@ -659,16 +659,16 @@ void wifi_task_core0(void *pvParameters) {
                     char actual_ssid[33] = {0};
                     memcpy(actual_ssid, wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid));
                     actual_ssid[32] = '\0';  // Ensure null termination
-                    ESP_LOGI(TAG, "Successfully connected to: %s", actual_ssid);
+                    ESP_LOGI(TAG, "Successfully connected (SSID read back from driver)");
                     nvs_save_last_wifi_ssid(actual_ssid);  // Save as last successful connection
                 } else {
-                    ESP_LOGI(TAG, "Successfully connected to: %s", networks[idx].ssid);
+                    ESP_LOGI(TAG, "Successfully connected (SSID as attempted)");
                     nvs_save_last_wifi_ssid(networks[idx].ssid);  // Fallback to attempted SSID
                 }
                 connected = true;
                 break;
             } else {
-                ESP_LOGW(TAG, "Failed to connect to: %s", networks[idx].ssid);
+                ESP_LOGW(TAG, "Failed to connect to network %d/%d", attempt + 1, order_count);
                 if (attempt < order_count - 1) {
                     ESP_LOGI(TAG, "Trying next saved network...");
                     vTaskDelay(pdMS_TO_TICKS(2000));  // Brief delay before next attempt
@@ -886,10 +886,6 @@ void wifi_task_core0(void *pvParameters) {
 
                             sd_logger_flush();
 
-                            // Send "device online" heartbeat (HTTP, ~500ms)
-                            // No other network tasks running yet. Safe without mutex.
-                            heartbeat_send();
-
                             // Close SSL before creating tasks — their stacks fragment
                             // the heap and the TLS read buffer then fails on cycle one.
                             if (boot_provider == CGM_PROVIDER_NIGHTSCOUT) {
@@ -900,6 +896,12 @@ void wifi_task_core0(void *pvParameters) {
                                 dexcom_close_persistent_client();
                             }
                             ESP_LOGI(TAG, "SSL closed after initial fetch (heap=%lu)", esp_get_free_heap_size());
+
+                            // Optional TLS heartbeat; heartbeat_send() takes network_mutex
+                            // itself and skips on low heap. It must stay after the provider
+                            // close and before the task stacks: two TLS sessions never
+                            // overlap, and the handshake gets the whole reclaimed block.
+                            heartbeat_send();
 
                             // Start background tasks AFTER auth: their stacks interleave
                             // with the SSL region, so freeing both on reconnect merges

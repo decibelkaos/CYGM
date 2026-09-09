@@ -530,8 +530,7 @@ static esp_err_t get_account_id(const char *username, const char *password) {
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGI(TAG, "Getting account ID for: %s", username);
-    ESP_LOGI(TAG, "URL: %s", url);
+    ESP_LOGI(TAG, "Requesting account ID...");
 
     memset(http_response, 0, sizeof(http_response));
     http_response_len = 0;
@@ -564,7 +563,8 @@ static esp_err_t get_account_id(const char *username, const char *password) {
     }
 
     if (status != 200) {
-        ESP_LOGE(TAG, "Auth failed with status %d: %s", status, http_response);
+        ESP_LOGE(TAG, "Auth failed with status %d (%d byte response)", status, http_response_len);
+        ESP_LOGD(TAG, "Auth error body: %s", http_response);
         cleanup_persistent_client();  // Clean up on error
         return ESP_FAIL;
     }
@@ -574,12 +574,12 @@ static esp_err_t get_account_id(const char *username, const char *password) {
     strip_quotes(account_id);
 
     if (!is_valid_id(account_id)) {
-        ESP_LOGE(TAG, "Invalid account ID received: %s", http_response);
+        ESP_LOGE(TAG, "Account ID response failed validation (%d bytes)", http_response_len);
         cleanup_persistent_client();  // Clean up on error
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Got account ID: %.8s...", account_id);
+    ESP_LOGI(TAG, "Account ID received");
     // DON'T cleanup - keep connection alive for next request
     return ESP_OK;
 }
@@ -640,7 +640,8 @@ static esp_err_t get_session_id(const char *password) {
     }
 
     if (status != 200) {
-        ESP_LOGE(TAG, "Login failed with status %d: %s", status, http_response);
+        ESP_LOGE(TAG, "Login failed with status %d (%d byte response)", status, http_response_len);
+        ESP_LOGD(TAG, "Login error body: %s", http_response);
         cleanup_persistent_client();
         return ESP_FAIL;
     }
@@ -650,12 +651,12 @@ static esp_err_t get_session_id(const char *password) {
     strip_quotes(session_id);
 
     if (!is_valid_id(session_id)) {
-        ESP_LOGE(TAG, "Invalid session ID received: %s", http_response);
+        ESP_LOGE(TAG, "Session ID response failed validation (%d bytes)", http_response_len);
         cleanup_persistent_client();
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Got session ID: %.8s...", session_id);
+    ESP_LOGI(TAG, "Session ID received");
     return ESP_OK;
 }
 
@@ -722,7 +723,7 @@ static esp_err_t get_session_by_name(const char *username, const char *password)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Got session via legacy endpoint: %.8s...", session_id);
+    ESP_LOGI(TAG, "Session ID received via legacy endpoint");
     // DON'T cleanup - keep connection alive for glucose fetch
     return ESP_OK;
 }
@@ -950,7 +951,8 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     // as a session error produced an endless re-auth loop during outages — two SSL
     // handshakes every 90s for nothing — so leave those to task-level backoff.
     if (status != 200) {
-        ESP_LOGE(TAG, "Glucose fetch failed with status %d: %s", status, http_response);
+        ESP_LOGE(TAG, "Glucose fetch failed with status %d (%d byte response)", status, http_response_len);
+        ESP_LOGD(TAG, "Glucose error body: %s", http_response);
 
         // Determine if this is a confirmed session expiration error
         bool session_error = (status == 401);  // 401 always means session expired
@@ -1046,7 +1048,7 @@ esp_err_t dexcom_fetch_glucose(dexcom_glucose_t *glucose) {
     cJSON *root = cJSON_Parse(http_response);
     if (root == NULL) {
         ESP_LOGE(TAG, "Failed to parse JSON response");
-        ESP_LOGE(TAG, "Response that failed to parse: %s", http_response);
+        ESP_LOGD(TAG, "Response that failed to parse: %s", http_response);
         glucose->status = GLUCOSE_STATUS_NO_DATA;  // Still authenticated, just bad data
 
         // Don't cleanup on parse errors - might be transient server issue

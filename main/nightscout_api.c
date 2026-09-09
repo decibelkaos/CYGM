@@ -285,7 +285,7 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
     }
 
     is_https = (strncmp(stored_url, "https", 5) == 0);
-    ESP_LOGI(TAG, "Authenticating with Nightscout (%s): %s", is_https ? "HTTPS" : "HTTP", stored_url);
+    ESP_LOGI(TAG, "Authenticating with Nightscout (%s)", is_https ? "HTTPS" : "HTTP");
 
     // Build validation URL: /api/v1/status.json
     char url[256];
@@ -295,8 +295,9 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
         return ESP_ERR_INVALID_SIZE;
     }
 
-    // The full URL carries the access token in its query string; never log it.
-    ESP_LOGI(TAG, "Validating: %s/api/v1/status.json (%s)", stored_url,
+    // The site address identifies the user and the query string carries the
+    // access token; log neither.
+    ESP_LOGI(TAG, "Validating /api/v1/status.json (%s)",
              stored_token[0] != '\0' ? "token attached" : "no token");
 
     // Close any existing client
@@ -376,7 +377,7 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
 
     is_authenticated = true;
     consecutive_failures = 0;
-    sd_log(TAG, "Nightscout auth OK: %s (%s)", stored_url, is_https ? "HTTPS" : "HTTP");
+    sd_log(TAG, "Nightscout auth OK (%s)", is_https ? "HTTPS" : "HTTP");
     ESP_LOGI(TAG, "Nightscout authentication successful!");
 
     return ESP_OK;

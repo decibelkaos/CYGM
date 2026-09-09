@@ -12,10 +12,12 @@
 #include "wifi_manager.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
+#include "nightscout_api.h"
 #include "geocoding_api.h"
 #include "sd_logger.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
@@ -58,6 +60,44 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
+// The 8 KB TLS input buffer is the largest single allocation of a handshake,
+// and the TLSF allocator cannot defragment. This gate is deliberately lower
+// than the heartbeat and update-check gates (16 KB): those are background work
+// that can skip a cycle unnoticed, while a refused search shows the user
+// "Device is busy". Measured 2026-09-07 on a no-SD unit with the search screen,
+// its keyboard and this task's stack allocated: largest block 14336 and 16384
+// on two runs, so 16 KB refused it too. The search releases everything before
+// the next glucose fetch, which the network mutex serialises behind it anyway.
+#define LOCATION_TLS_MIN_BLOCK 12288
+
+bool location_tls_heap_ready(const char *what) {
+    size_t block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (block >= LOCATION_TLS_MIN_BLOCK) {
+        return true;
+    }
+
+    // Reclaiming a provider client costs nothing: the glucose task reopens one
+    // on its next fetch, exactly as the screenshot and OTA paths already assume.
+    if (dexcom_persistent_client_is_open()) {
+        dexcom_close_persistent_client();
+    }
+    if (libre_persistent_client_is_open()) {
+        libre_close_persistent_client();
+    }
+    if (nightscout_persistent_client_is_open()) {
+        nightscout_close_persistent_client();
+    }
+
+    block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    if (block >= LOCATION_TLS_MIN_BLOCK) {
+        return true;
+    }
+
+    ESP_LOGW(TAG, "Skipping %s: largest free block %lu below %d",
+             what, (unsigned long)block, LOCATION_TLS_MIN_BLOCK);
+    return false;
+}
+
 void load_weather_settings(void) {
     weather_settings_t settings;
 
@@ -77,16 +117,13 @@ void load_weather_settings(void) {
             if (strlen(settings.location) > 0) {
                 strncpy(user_location, settings.location, sizeof(user_location) - 1);
                 user_location[sizeof(user_location) - 1] = '\0';
-                ESP_LOGI(TAG, "Using cached location: %s (%.4f, %.4f)",
-                         user_location, user_latitude, user_longitude);
-            } else {
-                ESP_LOGI(TAG, "Using cached coordinates: %.4f, %.4f",
-                         user_latitude, user_longitude);
             }
+            // Place name and coordinates stay out of the log: the serial capture
+            // is copied to the SD card and shared for support.
+            ESP_LOGI(TAG, "Using cached location");
         }
 
         ESP_LOGI(TAG, "Loaded weather settings from NVS:");
-        ESP_LOGI(TAG, "  Zipcode: %s", user_zipcode);
         ESP_LOGI(TAG, "  Unit: %s", user_temp_celsius ? "Celsius" : "Fahrenheit");
         ESP_LOGI(TAG, "  Update interval: %d minutes", user_weather_interval_min);
     } else {
@@ -95,7 +132,7 @@ void load_weather_settings(void) {
 }
 esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
     // ONLINE GEOCODING - Uses Open-Meteo Geocoding API (free, worldwide)
-    ESP_LOGI(TAG, "Searching for location '%s' using online geocoding...", zipcode);
+    ESP_LOGI(TAG, "Resolving the configured location...");
 
     geocode_result_t results[MAX_GEOCODE_RESULTS];
     uint8_t result_count = 0;
@@ -107,7 +144,7 @@ esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
     }
 
     if (result_count == 0) {
-        ESP_LOGW(TAG, "No results found for: %s", zipcode);
+        ESP_LOGW(TAG, "Geocoding found no match for the configured location");
         return ESP_FAIL;
     }
 
@@ -134,8 +171,7 @@ esp_err_t zipcode_to_latlon(const char *zipcode, float *lat, float *lon) {
         ESP_LOGW(TAG, "No timezone in result, using default: America/New_York");
     }
 
-    ESP_LOGI(TAG, "Location '%s' -> %.4f, %.4f (%s, %s) [Timezone: %s]",
-             zipcode, *lat, *lon, result->name, result->country, user_timezone);
+    ESP_LOGI(TAG, "Location resolved [Timezone: %s]", user_timezone);
 
     // Re-apply the system timezone and WiFi regulatory domain now that we know
     // the user's actual location — otherwise the clock and channel set keep the
@@ -176,12 +212,30 @@ const char* get_weather_condition_text(int weather_code) {
     }
 }
 
+// A label update that cannot get the LVGL lock (a serial screenshot holds it
+// for seconds at a time) would otherwise stay lost until the next fetch,
+// fifteen minutes on. The 1 Hz home timer retries through weather_display_retry().
+static volatile bool weather_ui_dirty = false;
+
+static bool weather_ui_lock(void) {
+    if (lvgl_port_lock(1)) return true;
+    weather_ui_dirty = true;
+    return false;
+}
+
+void weather_display_retry(void) {
+    if (!weather_ui_dirty) return;
+    weather_ui_dirty = false;
+    update_weather_display();   // ends with the sunrise/sunset labels
+    update_location_display();
+}
+
 void update_location_display(void) {
     if (home_location_label == NULL) {
         return;
     }
 
-    if (lvgl_port_lock(1)) {
+    if (weather_ui_lock()) {
         lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
         lvgl_port_unlock();
     }
@@ -198,6 +252,7 @@ void update_sunrise_sunset_display(void) {
         locked = lvgl_port_lock(1);
         if (!locked) vTaskDelay(pdMS_TO_TICKS(10));
     }
+    if (!locked) weather_ui_dirty = true;
     if (locked) {
         if (sunrise_time != 0 && sunset_time != 0) {
             struct tm tm_sunrise;
@@ -258,12 +313,16 @@ esp_err_t fetch_weather(float lat, float lon) {
     }
 
     char url[512];
-    // Use HTTP for Open-Meteo (free API, no SSL needed, saves ~20KB memory)
     // Always fetch Fahrenheit: current_temp_f/high/low are stored in F and the
     // display converts. Fetching in the user's unit made Celsius get converted twice.
     snprintf(url, sizeof(url),
-             "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1",
+             "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&timezone=auto&forecast_days=1",
              lat, lon);
+
+    // Caller holds network_mutex; a refusal here means "try next cycle".
+    if (!location_tls_heap_ready("weather fetch")) {
+        return ESP_ERR_NO_MEM;
+    }
 
     http_response_len = 0;
     memset(http_response_buffer, 0, sizeof(http_response_buffer));
@@ -274,12 +333,14 @@ esp_err_t fetch_weather(float lat, float lon) {
         .timeout_ms = 15000,  // Increase timeout to 15 seconds
         .user_agent = "CYGM/1.0",
         .method = HTTP_METHOD_GET,
-        .transport_type = HTTP_TRANSPORT_OVER_TCP,  // HTTP instead of HTTPS
-        .skip_cert_common_name_check = true,
-        .disable_auto_redirect = false
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        // A redirect would carry the coordinates in this URL to another host.
+        .disable_auto_redirect = true
     };
 
-    ESP_LOGI(TAG, "Weather URL: %s", url);
+    // The URL and the response body both carry the user's coordinates, so
+    // neither is logged.
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "Failed to initialize HTTP client for weather");
@@ -288,11 +349,9 @@ esp_err_t fetch_weather(float lat, float lon) {
 
     esp_err_t err = esp_http_client_perform(client);
     int status_code = esp_http_client_get_status_code(client);
-    ESP_LOGI(TAG, "Weather HTTP result: %s (status: %d)", esp_err_to_name(err), status_code);
+    ESP_LOGI(TAG, "Weather request: %s (status: %d)", esp_err_to_name(err), status_code);
 
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Weather response: %s", http_response_buffer);
-
         cJSON *json = cJSON_Parse(http_response_buffer);
         if (json != NULL) {
             cJSON *current = cJSON_GetObjectItem(json, "current");
@@ -386,7 +445,7 @@ void update_weather_display(void) {
     const char *location_text = strlen(user_location) > 0 ? user_location : "";
 
     // Lock 1: Update text labels (~2-3ms)
-    if (lvgl_port_lock(1)) {
+    if (weather_ui_lock()) {
         lv_label_set_text(home_temp_label, temp_buf);
         if (expanded_temp_label != NULL) {
             lv_label_set_text(expanded_temp_label, temp_buf);
@@ -398,7 +457,7 @@ void update_weather_display(void) {
     }
 
     // Lock 2: Draw weather icon (~5-10ms, separate to reduce contention)
-    if (lvgl_port_lock(1)) {
+    if (weather_ui_lock()) {
         lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
         draw_weather_icon(home_weather_canvas, current_weather_code);
         lvgl_port_unlock();
@@ -432,12 +491,28 @@ static void weather_sleep_ms(int ms) {
     }
 }
 
+// Take the network mutex in 500ms slices up to a 5s budget: blocking the whole
+// time would hold a park request past the caller's patience. Only ever returns
+// true with the mutex held, so an aborted attempt can never orphan it in a task
+// that is about to delete itself.
+static bool weather_take_network_mutex(void) {
+    for (int w = 0; w < 10 && !weather_park_requested; w++) {
+        if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Called only from points holding no LVGL lock, no network mutex, no HTTP client
 // and no open NVS handle.
 static void weather_task_park(void) {
     ESP_LOGI(TAG, "Weather task parked on request");
     weather_park_requested = false;
     weather_task_handle = NULL;
+    // This task parses the forecast body, whose generationtime_ms field is a
+    // 17-digit double, so its reent holds the strtod chain that teardown skips.
+    cygm_task_drain_mprec();
     vTaskDelete(NULL);
 }
 
@@ -492,30 +567,34 @@ void weather_update_task(void *pvParameters) {
 
             if (need_geocode) {
                 if (strcmp(user_zipcode, geocoded_zipcode) != 0) {
-                    ESP_LOGI(TAG, "Location changed (%s -> %s), re-geocoding...", geocoded_zipcode, user_zipcode);
+                    ESP_LOGI(TAG, "Configured location changed, re-geocoding...");
                 } else {
-                    ESP_LOGI(TAG, "No cached coordinates - need to geocode location: %s", user_zipcode);
+                    ESP_LOGI(TAG, "No cached coordinates - geocoding needed");
                 }
 
-                ESP_LOGI(TAG, "Searching for location using Open-Meteo Geocoding API...");
-                esp_err_t geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
+                // Geocoding opens a TLS client, so it belongs under the same
+                // mutex that serializes the provider connections.
+                esp_err_t geocode_result = ESP_FAIL;
+                if (weather_take_network_mutex()) {
+                    geocode_result = zipcode_to_latlon(user_zipcode, &user_latitude, &user_longitude);
+                    xSemaphoreGive(network_mutex);
+                } else {
+                    ESP_LOGW(TAG, "Network mutex unavailable for geocoding");
+                }
 
                 if (geocode_result == ESP_OK) {
                     // Save auto-detected timezone to NVS (timezone was set during geocoding)
                     nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
-                    ESP_LOGI(TAG, "Auto-detected timezone saved to NVS: %s", user_timezone);
+                    ESP_LOGI(TAG, "Auto-detected timezone saved to NVS");
 
                     // TZ + WiFi country were already applied inside zipcode_to_latlon();
                     // no need to setenv/tzset again here. Just refresh the display.
 
                     update_time_display();
-                    ESP_LOGI(TAG, "Time display updated with new timezone: %s", user_timezone);
+                    ESP_LOGI(TAG, "Time display updated with new timezone");
 
                     strncpy(geocoded_zipcode, user_zipcode, sizeof(geocoded_zipcode) - 1);
                     geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
-
-                    ESP_LOGI(TAG, "Geocoded location: %s", geocoded_zipcode);
-                    ESP_LOGI(TAG, "Result: %s (%.4f, %.4f) [%s]", user_location, user_latitude, user_longitude, user_timezone);
 
                     // Save location, coordinates, and timezone to NVS (from geocoding API)
                     nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
@@ -525,9 +604,7 @@ void weather_update_task(void *pvParameters) {
                     ESP_LOGW(TAG, "Online geocoding failed - skipping weather update this cycle");
                 }
             } else {
-                // Using cached coordinates - no geocoding needed
-                ESP_LOGI(TAG, "Using cached coordinates for %s (no geocoding needed)", geocoded_zipcode);
-                ESP_LOGI(TAG, "Location: %s (%.4f, %.4f)", user_location, user_latitude, user_longitude);
+                ESP_LOGI(TAG, "Using cached coordinates (no geocoding needed)");
             }
 
             // Fetch weather if we have coordinates
@@ -535,45 +612,15 @@ void weather_update_task(void *pvParameters) {
                 // Retry with short critical sections: never sleep while holding network mutex
                 for (int attempt = 1; attempt <= 3; attempt++) {
                     ESP_LOGI(TAG, "Waiting for network mutex (attempt %d/3)...", attempt);
-                    // Same 5s budget, taken in slices: blocking the whole time
-                    // would hold a park request past the caller's patience.
-                    bool got_mutex = false;
-                    for (int w = 0; w < 10 && !weather_park_requested; w++) {
-                        if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-                            got_mutex = true;
-                            break;
-                        }
-                    }
-                    // The request may only abort the attempt when nothing was
+                    // A park request may only abort the attempt when nothing was
                     // acquired: breaking out with the mutex held would orphan it
                     // in a task that is about to delete itself.
-                    if (!got_mutex) {
+                    if (!weather_take_network_mutex()) {
                         if (weather_park_requested) break;
                         ESP_LOGW(TAG, "Weather mutex timeout (attempt %d/3)", attempt);
                         continue;
                     }
 
-                    ESP_LOGI(TAG, "Network mutex acquired for weather fetch");
-
-                    // Weather uses plain HTTP — no need to close CGM SSL client.
-                    // ~13KB free with CGM alive is enough for HTTP client + cJSON.
-                    size_t weather_heap = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-                    ESP_LOGI(TAG, "Weather fetch (largest_block=%lu)", (unsigned long)weather_heap);
-
-                    // Safety fallback: close the CGM client only when the heap is
-                    // desperately low. Plain HTTP plus cJSON needs only ~2KB, and
-                    // the response buffer is static rather than heap.
-                    if (weather_heap < 2048) {
-                        ESP_LOGW(TAG, "Low heap for weather (%lu) — closing CGM client", (unsigned long)weather_heap);
-                        if (dexcom_persistent_client_is_open()) {
-                            dexcom_close_persistent_client();
-                        }
-                        if (libre_persistent_client_is_open()) {
-                            libre_close_persistent_client();
-                        }
-                    }
-
-                    ESP_LOGI(TAG, "Fetching weather for %.4f, %.4f", user_latitude, user_longitude);
                     ESP_LOGI(TAG, "Free heap before weather fetch: %lu bytes", esp_get_free_heap_size());
 
                     esp_err_t fetch_ret = fetch_weather(user_latitude, user_longitude);
@@ -584,13 +631,22 @@ void weather_update_task(void *pvParameters) {
 
                     if (fetch_ret == ESP_OK) {
                         last_weather_fetch_ms = esp_timer_get_time() / 1000;
-                        ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes", esp_get_free_heap_size());
+                        // This stack now has to cover a TLS handshake; the margin
+                        // is the only way to tell whether it is still enough.
+                        ESP_LOGI(TAG, "Free heap after weather fetch: %lu bytes, stack headroom: %u bytes",
+                                 esp_get_free_heap_size(),
+                                 (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
                         update_weather_display();
                         // The display call is the last holder of the LVGL lock in
                         // this cycle, so a pending park is safe to take here.
                         if (weather_park_requested) weather_task_park();
                         break;
                     }
+
+                    // Too little heap for a TLS session will not change in five
+                    // seconds, and weather is optional: give the cycle up rather
+                    // than retry against the glucose path.
+                    if (fetch_ret == ESP_ERR_NO_MEM) break;
 
                     ESP_LOGW(TAG, "Weather fetch attempt %d/3 failed", attempt);
                     ESP_LOGI(TAG, "Free heap after failed weather fetch: %lu bytes", esp_get_free_heap_size());
@@ -604,8 +660,8 @@ void weather_update_task(void *pvParameters) {
 
             // Dexcom client will reopen automatically on next glucose fetch
         } else {
-            ESP_LOGD(TAG, "Skipping weather update (WiFi: %d, Zipcode: %s)",
-                    wifi_manager_is_connected(), user_zipcode);
+            ESP_LOGD(TAG, "Skipping weather update (WiFi: %d, location set: %d)",
+                    wifi_manager_is_connected(), strlen(user_zipcode) > 0);
         }
 
         // Wait out the configured interval, or return at once if notified to

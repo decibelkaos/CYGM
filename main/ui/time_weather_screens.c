@@ -11,6 +11,7 @@
 #include "features/geocoding_api.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
+#include "nightscout_api.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
@@ -176,17 +177,26 @@ static void apply_selected_location(void);
 
 // ==================== Background Search Task ====================
 static void location_search_task(void *pvParameters) {
-    // Provider SSL is already closed by the caller to free heap.
-    bool mutex_held = false;
-    if (network_mutex != NULL &&
-        xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-        mutex_held = true;
+    // Provider SSL is already closed by the caller to free heap. The search now
+    // opens a TLS client and may recycle a provider connection to afford it, so
+    // it may only run with the mutex actually held.
+    // Sliced take, ~20s budget: a provider fetch routinely holds the mutex for
+    // longer than one short blocking take, and this runs behind the modal
+    // "Searching..." overlay where the wait costs nothing interactive.
+    esp_err_t err = ESP_ERR_TIMEOUT;
+    bool have_mutex = false;
+    if (network_mutex != NULL) {
+        for (int w = 0; w < 40 && !have_mutex; w++) {
+            have_mutex = (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(500)) == pdTRUE);
+        }
     }
 
-    esp_err_t err = geocoding_search(pending_search_query, search_results, &search_result_count);
-
-    if (mutex_held) {
+    if (have_mutex) {
+        err = geocoding_search(pending_search_query, search_results, &search_result_count);
         xSemaphoreGive(network_mutex);
+    } else {
+        search_result_count = 0;
+        ESP_LOGW(TAG, "Network busy — location search skipped");
     }
 
     // lvgl_port_lock(1) is a try-lock, so retry with a yield: one failed attempt
@@ -209,11 +219,14 @@ static void location_search_task(void *pvParameters) {
             selected_result_idx = 0;
             show_results_phase();
         } else {
-            ESP_LOGW(TAG, "No locations found for: %s", pending_search_query);
+            ESP_LOGW(TAG, "Location search returned nothing (%s)", esp_err_to_name(err));
             selected_result_idx = -1;
             search_result_count = 0;
             if (hint_label != NULL) {
-                lv_label_set_text(hint_label, "No locations found.\nTry different search terms.");
+                lv_label_set_text(hint_label,
+                                  (err == ESP_ERR_NO_MEM || err == ESP_ERR_TIMEOUT)
+                                      ? "Device is busy right now.\nTry the search again."
+                                      : "No locations found.\nTry different search terms.");
                 lv_obj_set_style_text_color(hint_label, lv_color_hex(COLOR_ORANGE), 0);
             }
         }
@@ -227,6 +240,11 @@ static void location_search_task(void *pvParameters) {
             search_overlay = NULL;
         }
     }
+
+    // This stack now has to cover a TLS handshake; the margin is the only way to
+    // tell whether WEATHER_STACK_SIZE is still enough for it.
+    ESP_LOGI(TAG, "Search task stack headroom: %u bytes",
+             (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
     location_search_in_progress = false;
     vTaskDelete(NULL);
@@ -340,7 +358,9 @@ static void apply_selected_location(void) {
         return;
 
     geocode_result_t *r = &search_results[selected_result_idx];
-    ESP_LOGI(TAG, "Location confirmed: %s, %s (%s)", r->name, r->country, r->timezone);
+    // The place name and coordinates stay off the log; the serial capture is
+    // copied to the SD card and shared for support.
+    ESP_LOGI(TAG, "Location confirmed (%s)", r->timezone);
 
     // Save search query
     strncpy(user_zipcode, temp_search_query, sizeof(user_zipcode) - 1);
@@ -384,8 +404,7 @@ static void apply_selected_location(void) {
     }
 
     update_time_display();
-    ESP_LOGI(TAG, "Location saved: %s (%.4f, %.4f) [%s]",
-             user_location, user_latitude, user_longitude, user_timezone);
+    ESP_LOGI(TAG, "Location saved [%s]", user_timezone);
 
     // Load the new screen FIRST: deleting the active screen before
     // lv_scr_load panics.
@@ -440,7 +459,8 @@ static void location_kb_ready_cb(lv_event_t *e) {
     strncpy(pending_search_query, txt, sizeof(pending_search_query) - 1);
     pending_search_query[sizeof(pending_search_query) - 1] = '\0';
 
-    ESP_LOGI(TAG, "Searching for: %s", pending_search_query);
+    // The query is the user's own place name — kept out of the log.
+    ESP_LOGI(TAG, "Location search starting");
 
     if (hint_label) {
         lv_label_set_text(hint_label, "Searching...");
@@ -468,7 +488,7 @@ static void location_kb_ready_cb(lv_event_t *e) {
     }
 
     // Free provider SSL before creating the task: with it alive (~15KB) there
-    // is not enough heap left for a 4KB task stack.
+    // is not enough heap left for the task stack.
     if (network_mutex != NULL &&
         xSemaphoreTake(network_mutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
         if (dexcom_persistent_client_is_open()) {
@@ -479,11 +499,17 @@ static void location_kb_ready_cb(lv_event_t *e) {
             libre_close_persistent_client();
             ESP_LOGI(TAG, "Closed Libre SSL for search (heap: %lu)", esp_get_free_heap_size());
         }
+        if (nightscout_persistent_client_is_open()) {
+            nightscout_close_persistent_client();
+            ESP_LOGI(TAG, "Closed Nightscout SSL for search (heap: %lu)", esp_get_free_heap_size());
+        }
         xSemaphoreGive(network_mutex);
     }
 
     location_search_in_progress = true;
-    if (xTaskCreate(location_search_task, "loc_search", 4096, NULL, 2, NULL) != pdPASS) {
+    // Same stack as the weather task: the search now runs a TLS handshake on top
+    // of the geocoding JSON parse, which 4KB no longer covers.
+    if (xTaskCreate(location_search_task, "loc_search", WEATHER_STACK_SIZE, NULL, 2, NULL) != pdPASS) {
         location_search_in_progress = false;
         ESP_LOGE(TAG, "Failed to create search task");
         // Remove search overlay on failure

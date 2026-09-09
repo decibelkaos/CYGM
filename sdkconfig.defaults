@@ -58,8 +58,9 @@ CONFIG_ESP_TLS_INSECURE=n
 CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=n
 
 # ESP HTTPS OTA - unused: the updater drives esp_http_client and esp_ota_ops
-# directly, and its URL is pinned to https://cygm.me/firmware/.
-CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+# directly, and its URL is pinned to https://cygm.me/firmware/. Off so that a
+# future caller of esp_https_ota cannot be handed a plain-HTTP image.
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=n
 
 # mbedTLS - TLS buffer sizes (tuned for ESP32 memory constraints)
 # IN: 8KB is enough — OTA uses Range requests (4KB chunks) so no TLS record exceeds 8KB.

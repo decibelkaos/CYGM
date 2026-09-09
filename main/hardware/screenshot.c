@@ -13,6 +13,7 @@
 #include "dexcom_api.h"
 #include "libre_api.h"
 #include "hardware/display.h"
+#include "ui/home_screen.h"
 #include "main.h"
 #include "features/time_system.h"
 #include "features/weather_system.h"
@@ -378,7 +379,7 @@ esp_err_t screenshot_take(void)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Screenshot saved: %s (%d rows, %lldms)", filepath, ctx.rows_written, elapsed);
+    ESP_LOGI(TAG, "Screenshot saved: %s (%d rows, %ldms)", filepath, ctx.rows_written, (long)elapsed);
     return ESP_OK;
 }
 
@@ -504,6 +505,7 @@ esp_err_t screenshot_take_serial(void)
 
     printf("SSHOT-END rows=%d\n", ctx.rows_emitted);
     esp_log_level_set("*", prev_level);
+    esp_log_level_set("wifi", ESP_LOG_WARN);   // "*" clears the per-tag level wifi_manager.c set
     lvgl_port_unlock();
 
     if (ctx.rows_emitted < LCD_HEIGHT) {
@@ -587,6 +589,11 @@ static void demo_trend_set(bool on)
 // Printed a line at a time on purpose: the ss_cmd task has a 4KB stack and one wide
 // snprintf buffer would eat a meaningful slice of it. Every line is prefixed STATUS:
 // so the PC-side tool can pick them out of the log stream.
+//
+// This is the one place allowed to print the SSID. It runs only
+// when an operator types 'status' on the USB console, so it is never part of the
+// unattended log stream a user would hand to support. Nothing here may be moved
+// into a periodic or boot-time log line. See docs/development/LOGGING_POLICY.md.
 
 static void status_report(void)
 {
@@ -637,6 +644,143 @@ static void status_report(void)
     printf("STATUS: glucose_valid=%d value=%d\n", glucose_data_valid ? 1 : 0, current_glucose);
     printf("STATUS: hold=%s\n", cygm_ui_hold_active() ? "on" : "off");
     printf("STATUS: demo=%s\n", cygm_demo_trend_active() ? "on" : "off");
+}
+
+// ==================== Live Status Frame ====================
+// The wire protocol behind the browser status bar, polled every ten seconds for
+// as long as a page is open: one key=value per line between LIVE-BEGIN and
+// LIVE-END, every key always present so the parser never handles a missing one.
+// Unlike 'status' this frame leaves the device for a web page, so nothing
+// identifying may ever be added to it — no SSID, IP, MAC, device id, coordinates
+// or place name. See docs/development/LOGGING_POLICY.md.
+
+static void live_report(void)
+{
+    // Whole minutes is all the age helper exposes; deriving seconds here would
+    // be a second age calculation that could disagree with the screen.
+    bool age_known = false;
+    int age_s = cygm_glucose_age_min(&age_known) * 60;
+
+    int rssi = 0;
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        rssi = (int)ap.rssi;
+    }
+
+    printf("LIVE-BEGIN\n");
+    printf("valid=%d\n", glucose_data_valid ? 1 : 0);
+    printf("value=%d\n", glucose_data_valid ? current_glucose : 0);
+    printf("trend=%s\n", glucose_data_valid ? cgm_trend_description(current_trend) : "");
+    printf("age_s=%d\n", age_s);
+    printf("age_known=%d\n", age_known ? 1 : 0);
+    printf("units=%s\n", user_glucose_mmol ? "mmol" : "mgdl");
+    printf("batt_pct=%d\n", battery_percent);
+    printf("batt_v=%.2f\n", battery_voltage);
+    printf("charging=%d\n", battery_is_charging() ? 1 : 0);
+    printf("wifi=%d\n", wifi_connected ? 1 : 0);
+    printf("rssi=%d\n", rssi);
+    printf("uptime_s=%lu\n", (unsigned long)(esp_timer_get_time() / 1000000));
+    printf("fw=%s\n", CYGM_VERSION_STRING);
+    printf("LIVE-END\n");
+    fflush(stdout);
+}
+
+// ==================== SD Glucose File Access ====================
+// A web page parses these lines byte for byte; they are its wire protocol, not
+// log output. Logging is silenced across each dump so no log line can land
+// inside the stream — the SD serial capture hooks esp_log_set_vprintf, so raw
+// printf is never written back to the card.
+
+typedef struct {
+    const char *name;   // Validated, upper-case
+    uint32_t size;      // From stat, reported before the bytes
+    char last;          // Last byte streamed
+} sd_cat_ctx_t;
+
+static void sd_ls_ready(void *ctx)
+{
+    (void)ctx;
+    printf("SDLS-BEGIN\n");
+}
+
+static void sd_ls_entry(const char *name, uint32_t size, void *ctx)
+{
+    (void)ctx;
+    printf("%s %u\n", name, (unsigned)size);
+}
+
+static void sd_cat_open(uint32_t size, void *ctx)
+{
+    sd_cat_ctx_t *c = (sd_cat_ctx_t *)ctx;
+    c->size = size;
+    printf("SDCAT-BEGIN %s %u\n", c->name, (unsigned)size);
+}
+
+static void sd_cat_data(const char *data, size_t len, void *ctx)
+{
+    sd_cat_ctx_t *c = (sd_cat_ctx_t *)ctx;
+    fwrite(data, 1, len, stdout);
+    c->last = data[len - 1];
+}
+
+static const char *sd_err_word(sd_glucose_status_t status)
+{
+    switch (status) {
+        case SD_GLUCOSE_NO_CARD:     return "no-card";
+        case SD_GLUCOSE_SUSPENDED:   return "suspended";
+        case SD_GLUCOSE_BAD_NAME:    return "bad-name";
+        case SD_GLUCOSE_NOT_FOUND:   return "not-found";
+        case SD_GLUCOSE_READ_FAILED: return "read-failed";
+        default:                     return "open-failed";
+    }
+}
+
+static void sd_command(const char *arg)
+{
+    esp_log_level_t prev_level = esp_log_level_get("*");
+
+    if (strcmp(arg, "ls") == 0) {
+        int count = 0;
+        esp_log_level_set("*", ESP_LOG_NONE);
+        sd_glucose_status_t st = sd_glucose_list(sd_ls_ready, sd_ls_entry, NULL, &count);
+        if (st == SD_GLUCOSE_OK) {
+            printf("SDLS-END count=%d\n", count);
+        } else {
+            printf("SDLS-ERR %s\n", sd_err_word(st));
+        }
+        fflush(stdout);
+        esp_log_level_set("*", prev_level);
+        esp_log_level_set("wifi", ESP_LOG_WARN);   // "*" clears the per-tag level wifi_manager.c set
+        if (st == SD_GLUCOSE_OK) {
+            ESP_LOGI(TAG, "SD: listed %d files", count);
+        }
+    } else if (strncmp(arg, "cat ", 4) == 0 && arg[4] != '\0') {
+        char name[12];
+        if (!sd_glucose_name_valid(arg + 4, name, sizeof(name))) {
+            printf("SDCAT-ERR %s bad-name\n", arg + 4);
+            return;
+        }
+        sd_cat_ctx_t c = { .name = name, .size = 0, .last = '\n' };
+        uint32_t crc = 0;
+        esp_log_level_set("*", ESP_LOG_NONE);
+        sd_glucose_status_t st = sd_glucose_read(name, sd_cat_open, sd_cat_data, &c, &crc);
+        if (st == SD_GLUCOSE_OK) {
+            // A file that ends without one still gets a newline here so END
+            // starts a fresh line; the byte count stays the file size.
+            if (c.last != '\n') printf("\n");
+            printf("SDCAT-END %s %u crc32=%08x\n", name, (unsigned)c.size, (unsigned)crc);
+        } else {
+            printf("SDCAT-ERR %s %s\n", name, sd_err_word(st));
+        }
+        fflush(stdout);
+        esp_log_level_set("*", prev_level);
+        esp_log_level_set("wifi", ESP_LOG_WARN);   // "*" clears the per-tag level wifi_manager.c set
+        if (st == SD_GLUCOSE_OK) {
+            ESP_LOGI(TAG, "SD: sent %s (%u bytes)", name, (unsigned)c.size);
+        }
+    } else {
+        ESP_LOGW(TAG, "Usage: sd ls | sd cat <GYYMMDD.CSV>");
+    }
 }
 
 // ==================== Serial Command Listener ====================
@@ -696,6 +840,8 @@ static void screenshot_cmd_task(void *arg)
                     }
                 } else if (strcmp(cmd_buf, "status") == 0) {
                     status_report();
+                } else if (strcmp(cmd_buf, "live") == 0) {
+                    live_report();
                 } else if (strcmp(cmd_buf, "reboot") == 0) {
                     ESP_LOGW(TAG, "Reboot requested over serial — restarting now");
                     vTaskDelay(pdMS_TO_TICKS(100));  // Let the ack drain out of the UART
@@ -778,11 +924,13 @@ static void screenshot_cmd_task(void *arg)
                 } else if (strcmp(cmd_buf, "log on") == 0) {
                     sd_serial_capture_set(true);
                     nvs_save_sd_serial_capture(true);
-                    ESP_LOGI(TAG, "Serial capture: ON (saved — persists across reboots)");
+                    ESP_LOGI(TAG, "Serial diary: ON for this session — a reboot leaves it off again");
                 } else if (strcmp(cmd_buf, "log off") == 0) {
                     sd_serial_capture_set(false);
                     nvs_save_sd_serial_capture(false);
-                    ESP_LOGI(TAG, "Serial capture: OFF (saved — persists across reboots)");
+                    ESP_LOGI(TAG, "Serial diary: OFF");
+                } else if (strncmp(cmd_buf, "sd ", 3) == 0) {
+                    sd_command(cmd_buf + 3);
                 } else if (strcmp(cmd_buf, "whatsnew") == 0) {
                     // The card shows once per version string. Re-flashing the
                     // same version leaves the stamp in place, so there is no
@@ -807,17 +955,31 @@ static void screenshot_cmd_task(void *arg)
                     } else {
                         ESP_LOGW(TAG, "Could not clear disclaimer flag: %s", esp_err_to_name(dc));
                     }
+                } else if (strcmp(cmd_buf, "setup") == 0) {
+                    // The bench unit already has WiFi, a location and a CGM, so
+                    // without the override the walkthrough finishes on its first
+                    // tick and no card is ever drawn.
+                    cygm_setup_guide_force();
                 } else if (strcmp(cmd_buf, "help") == 0) {
                     ESP_LOGI(TAG, "Commands: ss (SD) | sss (serial b64) | tap x y [ms] | "
-                                  "swipe x1 y1 x2 y2 [ms] | status | reboot | "
+                                  "swipe x1 y1 x2 y2 [ms] | status | live | reboot | "
                                   "hold on | hold off | demo on | demo off | "
-                                  "log on | log off | ship | whatsnew | disclaimer | help");
+                                  "log on | log off | sd ls | sd cat <NAME> | "
+                                  "ship | whatsnew | disclaimer | setup | help");
                     ESP_LOGI(TAG, "  disclaimer = forget acceptance and reboot, so the "
                                   "boot disclaimer card shows again");
                     ESP_LOGI(TAG, "  whatsnew = forget the seen-version stamp and "
                                   "reboot, so the What's New card shows again");
+                    ESP_LOGI(TAG, "  setup = replay the first-time setup walkthrough "
+                                  "from step 1, ignoring what is already configured");
                     ESP_LOGI(TAG, "  demo on = cycle the trend arrow through a random "
                                   "direction every 10s (arrow only, expires in 30 min)");
+                    ESP_LOGI(TAG, "  live = one machine-readable LIVE-BEGIN/LIVE-END "
+                                  "frame of the current reading, battery and link");
+                    ESP_LOGI(TAG, "  sd ls = list the glucose CSV files on the card, "
+                                  "newest first, with their sizes");
+                    ESP_LOGI(TAG, "  sd cat <NAME> = stream one GYYMMDD.CSV verbatim, "
+                                  "framed by its size and CRC-32");
                 }
 
                 cmd_pos = 0;

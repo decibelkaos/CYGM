@@ -6,6 +6,7 @@
  */
 
 #include "geocoding_api.h"
+#include "weather_system.h"   // location_tls_heap_ready()
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -16,7 +17,7 @@
 
 static const char *TAG = "GEOCODING";
 
-#define GEOCODING_API_URL "http://geocoding-api.open-meteo.com/v1/search"
+#define GEOCODING_API_URL "https://geocoding-api.open-meteo.com/v1/search"
 #define GEOCODE_API_REQUEST_COUNT 10  // Request more than we display so population sort finds big cities
 #define HTTP_RESPONSE_BUFFER_SIZE 4096
 
@@ -72,8 +73,8 @@ static void url_encode(const char *input, char *output, size_t output_size) {
 // Zippopotam.us (free, no key), then fetch the IANA timezone from Open-Meteo's
 // timezone=auto endpoint, which Zippopotam does not provide.
 //
-// All plain HTTP, under the network_mutex the caller already holds, reusing the
-// shared response buffer — so no new tasks and no new heap.
+// All over validated TLS, under the network_mutex the caller already holds,
+// reusing the shared response buffer — so no new tasks and no new heap.
 // ===========================================================================
 
 // Classify a query as a postal code and produce the Zippopotam country code +
@@ -135,8 +136,11 @@ static bool postal_code_detect(const char *query, char *cc, char *norm) {
 // hit; ESP_FAIL on a clean miss (404/empty) or transport error.
 static esp_err_t zippopotam_lookup(const char *cc, const char *norm, geocode_result_t *out) {
     char url[128];
-    snprintf(url, sizeof(url), "http://api.zippopotam.us/%s/%s", cc, norm);
-    ESP_LOGI(TAG, "Postal fallback lookup: %s", url);
+    // The postal code is in the path, so the URL itself is not logged.
+    snprintf(url, sizeof(url), "https://api.zippopotam.us/%s/%s", cc, norm);
+    ESP_LOGI(TAG, "Postal fallback lookup");
+
+    if (!location_tls_heap_ready("postal lookup")) return ESP_ERR_NO_MEM;
 
     http_response_len = 0;
     memset(http_response_buffer, 0, sizeof(http_response_buffer));
@@ -146,6 +150,8 @@ static esp_err_t zippopotam_lookup(const char *cc, const char *norm, geocode_res
         .event_handler = geocoding_http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 1024,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .disable_auto_redirect = true,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) return ESP_FAIL;
@@ -156,7 +162,7 @@ static esp_err_t zippopotam_lookup(const char *cc, const char *norm, geocode_res
 
     if (err != ESP_OK) return err;
     if (status != 200) {
-        ESP_LOGI(TAG, "Postal lookup miss (HTTP %d) for %s/%s", status, cc, norm);
+        ESP_LOGI(TAG, "Postal lookup miss (HTTP %d)", status);
         return ESP_FAIL;
     }
 
@@ -199,8 +205,10 @@ static esp_err_t zippopotam_lookup(const char *cc, const char *norm, geocode_res
 static void fill_timezone_from_latlon(float lat, float lon, char *tz_out, size_t tz_len) {
     char url[160];
     snprintf(url, sizeof(url),
-             "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&timezone=auto&forecast_days=1",
+             "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&timezone=auto&forecast_days=1",
              lat, lon);
+
+    if (!location_tls_heap_ready("timezone lookup")) return;
 
     http_response_len = 0;
     memset(http_response_buffer, 0, sizeof(http_response_buffer));
@@ -210,6 +218,9 @@ static void fill_timezone_from_latlon(float lat, float lon, char *tz_out, size_t
         .event_handler = geocoding_http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 1024,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        // The coordinates are in this URL; a redirect would hand them elsewhere.
+        .disable_auto_redirect = true,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) return;
@@ -238,9 +249,7 @@ static void postal_code_fallback(const char *query, geocode_result_t *results, u
 
     results[0] = r;
     *count = 1;
-    ESP_LOGI(TAG, "Postal fallback resolved '%s' -> %s, %s (%.4f, %.4f) [%s]",
-             query, r.name, r.country, r.latitude, r.longitude,
-             r.timezone[0] ? r.timezone : "no-tz");
+    ESP_LOGI(TAG, "Postal fallback resolved [%s]", r.timezone[0] ? r.timezone : "no-tz");
 }
 
 /**
@@ -269,8 +278,10 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
              "%s?name=%s&count=%d&language=en&format=json",
              GEOCODING_API_URL, encoded_query, GEOCODE_API_REQUEST_COUNT);
 
-    ESP_LOGI(TAG, "Geocoding search for: %s", search_query);
-    ESP_LOGI(TAG, "API URL: %s", url);
+    // The query is the user's own place name; neither it nor the URL is logged.
+    ESP_LOGI(TAG, "Geocoding search starting");
+
+    if (!location_tls_heap_ready("location search")) return ESP_ERR_NO_MEM;
 
     http_response_len = 0;
     memset(http_response_buffer, 0, sizeof(http_response_buffer));
@@ -280,6 +291,8 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
         .event_handler = geocoding_http_event_handler,
         .timeout_ms = 10000,
         .buffer_size = 1024,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .disable_auto_redirect = true,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -304,8 +317,8 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Geocoding response (%d bytes): %s", http_response_len, http_response_buffer);
-    ESP_LOGI(TAG, "Free heap before JSON parse: %lu bytes", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "Geocoding response (%d bytes), free heap %lu",
+             http_response_len, esp_get_free_heap_size());
 
     cJSON *root = cJSON_Parse(http_response_buffer);
     if (!root) {
@@ -316,7 +329,7 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
 
     cJSON *results_array = cJSON_GetObjectItem(root, "results");
     if (!results_array || !cJSON_IsArray(results_array)) {
-        ESP_LOGI(TAG, "No city results for: %s — trying postal-code fallback", search_query);
+        ESP_LOGI(TAG, "No city results — trying postal-code fallback");
         cJSON_Delete(root);
         postal_code_fallback(search_query, results, result_count);  // sets count=1 on hit
         return ESP_OK;  // No results (even after fallback) is not an error
@@ -410,13 +423,7 @@ esp_err_t geocoding_search(const char *search_query, geocode_result_t *results, 
         }
     }
 
-    for (int i = 0; i < *result_count; i++) {
-        ESP_LOGI(TAG, "Result %d: %s, %s, %s (%.4f, %.4f) pop=%lu [%s]",
-                 i + 1, results[i].name, results[i].admin1, results[i].country,
-                 results[i].latitude, results[i].longitude,
-                 (unsigned long)results[i].population, results[i].timezone);
-    }
-
-    ESP_LOGI(TAG, "Found %d location(s) for: %s (sorted by population)", *result_count, search_query);
+    // Place names and coordinates go to the screen, never to the log.
+    ESP_LOGI(TAG, "Found %d location(s) (sorted by population)", *result_count);
     return ESP_OK;
 }
