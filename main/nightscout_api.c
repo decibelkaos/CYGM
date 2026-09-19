@@ -337,6 +337,16 @@ esp_err_t nightscout_authenticate(const char *base_url, const char *token) {
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Status request failed: %s", esp_err_to_name(err));
+        // esp_http_client turns a 401 it cannot answer into
+        // ESP_ERR_NOT_SUPPORTED inside perform(), before the caller sees the
+        // status line, so the 401 check further down is unreachable without
+        // this. A rejected token is the commonest way to land here and it
+        // read as an unspecified failure.
+        if (status == 401) {
+            ESP_LOGE(TAG, "Authentication failed (401) - check the API token");
+            nightscout_close_persistent_client();
+            return ESP_ERR_INVALID_STATE;
+        }
         if (is_https && err == ESP_ERR_HTTP_CONNECT) {
             ESP_LOGE(TAG, "Could not reach the server. A self-signed certificate is one "
                           "possible cause and is not supported; an unsynced clock and an "
@@ -448,6 +458,18 @@ esp_err_t nightscout_fetch_glucose(cgm_glucose_t *glucose) {
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
+        // esp_http_client turns a 401 it cannot answer into
+        // ESP_ERR_NOT_SUPPORTED inside perform(), before the caller sees the
+        // status line, so the 401 check further down is unreachable without
+        // this. A rejected token is the commonest way to land here and it
+        // read as an unspecified failure.
+        if (status_code == 401) {
+            ESP_LOGE(TAG, "Token rejected (401) - marking unauthenticated");
+            is_authenticated = false;
+            glucose->status = GLUCOSE_STATUS_NOT_AUTHENTICATED;
+            nightscout_close_persistent_client();
+            return ESP_ERR_INVALID_STATE;
+        }
         if (is_https && err == ESP_ERR_HTTP_CONNECT) {
             ESP_LOGE(TAG, "Could not reach the server. A self-signed certificate is one "
                           "possible cause and is not supported; an unsynced clock and an "

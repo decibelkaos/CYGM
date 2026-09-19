@@ -391,6 +391,19 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Connections request failed: %s", esp_err_to_name(err));
+        // esp_http_client turns a 401 it cannot answer into
+        // ESP_ERR_NOT_SUPPORTED inside perform(), before the caller sees the
+        // status line, so the 401 check further down is unreachable without
+        // this. A rejected token is the commonest way to land here and it
+        // read as an unspecified failure.
+        if (esp_http_client_get_status_code(client) == 401) {
+            ESP_LOGW(TAG, "Token expired (401) - need re-auth");
+            is_authenticated = false;
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            if (using_persistent) persistent_client = NULL;
+            return ESP_ERR_INVALID_STATE;
+        }
         if (using_persistent) {
             // Connection died — clean up and let caller retry
             esp_http_client_close(client);
@@ -702,6 +715,18 @@ auth_attempt:
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Login request failed: %s", esp_err_to_name(err));
+        // esp_http_client turns a 401 it cannot answer into
+        // ESP_ERR_NOT_SUPPORTED inside perform(), before the caller sees the
+        // status line, so the 401 check further down is unreachable without
+        // this. A rejected token is the commonest way to land here and it
+        // read as an unspecified failure.
+        if (esp_http_client_get_status_code(client) == 401) {
+            ESP_LOGE(TAG, "Invalid credentials (401)");
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            cJSON_free(body);
+            return ESP_ERR_INVALID_STATE;
+        }
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         cJSON_free(body);

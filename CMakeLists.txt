@@ -20,6 +20,13 @@ set(PARTITION_CSV_PATH "${CMAKE_SOURCE_DIR}/partitions.csv")
 #
 # Read from shared_state.h so there is one source of truth and it cannot drift
 # from the version on the About screen.
+# file(READ) creates no dependency, so CMake had no reason to re-run when the
+# version changed and PROJECT_VER kept the value from whenever configure last
+# happened. That put 0.17.5 in the image descriptor of a tree that called
+# itself 0.17.7 on the About screen: the drift this block exists to prevent,
+# reintroduced one line above it.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_SOURCE_DIR}/main/shared_state.h")
 file(READ "${CMAKE_SOURCE_DIR}/main/shared_state.h" _cygm_hdr)
 string(REGEX MATCH "CYGM_VERSION_MAJOR[ \t]+([0-9]+)" _m "${_cygm_hdr}")
 set(_cygm_major "${CMAKE_MATCH_1}")

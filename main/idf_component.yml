@@ -1,5 +1,9 @@
-﻿dependencies:
+dependencies:
   idf: ">=5.0"
   kodediy/esp_lcd_touch_cst820: "^1.0.0"
   espressif/esp_lvgl_port: "^2.5.0"
-  lvgl/lvgl: "^8.4.0"
+  # Pinned exactly, not "^8.4.0". esp_lvgl_port asks for >=8,<10, and lvgl
+  # 9.6.0 (2026-09-16) added optional deps gated on LV_USE_* symbols that
+  # 8.4 does not define. A range lets the solver read those rules and then
+  # fail to resolve them for ever. One candidate, no exploration.
+  lvgl/lvgl: "==8.4.0"

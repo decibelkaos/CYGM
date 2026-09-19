@@ -14,6 +14,7 @@
 #include "libre_api.h"
 #include "nightscout_api.h"
 #include "geocoding_api.h"
+#include "ui/home_screen.h"   // home_location_scroll_sync() after a text change
 #include "sd_logger.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -237,6 +238,7 @@ void update_location_display(void) {
 
     if (weather_ui_lock()) {
         lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+        home_location_scroll_sync();
         lvgl_port_unlock();
     }
 }
@@ -453,6 +455,7 @@ void update_weather_display(void) {
         lv_label_set_text(home_hilo_label, hilo_buf);
         lv_label_set_text(home_condition_label, condition_text);
         lv_label_set_text(home_location_label, location_text);
+        home_location_scroll_sync();
         lvgl_port_unlock();
     }
 

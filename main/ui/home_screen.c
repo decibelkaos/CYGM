@@ -37,11 +37,26 @@ extern const lv_font_t font_montserrat_120;
 static lv_obj_t *brightness_btn_ref = NULL;
 static lv_obj_t *expanded_weather_icon = NULL;  // Mini weather icon for expanded top bar
 static lv_obj_t *serial_log_indicator = NULL;   // "Log On" indicator below right card
+static lv_obj_t *sd_mounted_icon = NULL;        // Card glyph beside the WiFi icon
+static lv_obj_t *device_label = NULL;           // Bench tag, e.g. the host's COM port
+static char device_label_text[16] = "";        // Kept here: it can arrive before the widget
 static lv_obj_t *menu_icon_ref = NULL;          // Gear glyph (recoloured by the night face)
 static lv_obj_t *label_glucose_delta = NULL;    // Signed change vs the previous reading
 static lv_obj_t *label_glucose_age = NULL;      // Age stamp shown once the value goes stale
 static lv_obj_t *label_demo_badge = NULL;       // Marks a trend arrow driven by the serial demo
-static lv_color_t canvas_buf_trend[LV_CANVAS_BUF_SIZE_TRUE_COLOR(80, 80)];  // Sized for expanded 80x80
+// LVGL's LV_CANVAS_BUF_SIZE_* macros return a count of BYTES, but every
+// example in circulation declares the buffer as lv_color_t[], which at 16-bit
+// colour depth reserves two bytes for every byte asked for. Six buffers in
+// this file did that and held 24,976 bytes of static RAM hostage on a board
+// whose free heap is around 28,000. These wrap the macros back into element
+// counts. The round-up on the alpha form is deliberate: over-reserving wastes
+// memory, but under-reserving lets the canvas draw past the end of the array.
+#define CANVAS_ELEMS(bytes)   (((bytes) + sizeof(lv_color_t) - 1) / sizeof(lv_color_t))
+#define CANVAS_BUF_TC(w, h)   CANVAS_ELEMS(LV_CANVAS_BUF_SIZE_TRUE_COLOR(w, h))
+#define CANVAS_BUF_TCA(w, h)  CANVAS_ELEMS(LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(w, h))
+
+static lv_color_t canvas_buf_trend[CANVAS_BUF_TC(HOME_TREND_SIZE_EXPANDED,
+                                                 HOME_TREND_SIZE_EXPANDED)];
 
 #define HOME_NIGHT_RED          0x8B0000  // Dim red: readable in the dark, few lit pixels
 #define HOME_STALE_MIN          12        // Two missed 5-min fetch cycles
@@ -51,9 +66,6 @@ static lv_color_t canvas_buf_trend[LV_CANVAS_BUF_SIZE_TRUE_COLOR(80, 80)];  // S
 
 // 1Hz change-detection state. Every style setter below invalidates its widget,
 // so the timer applies one only when the value it would write actually moved.
-typedef enum { ARC_LOOK_NONE, ARC_LOOK_FETCH, ARC_LOOK_ZONE } home_arc_look_t;
-static home_arc_look_t cache_arc_look = ARC_LOOK_NONE;
-static uint32_t cache_arc_zone_color = HOME_NO_COLOR;
 static lv_color_t cache_border_color;
 static bool cache_border_valid = false;
 static bool cache_stale_active = false;
@@ -135,8 +147,6 @@ static void home_set_text_color(lv_obj_t *obj, uint32_t hex) {
 }
 
 static void home_reset_change_caches(void) {
-    cache_arc_look = ARC_LOOK_NONE;
-    cache_arc_zone_color = HOME_NO_COLOR;
     cache_border_valid = false;
     cache_stale_active = false;
     night_face_active = false;
@@ -519,11 +529,22 @@ void dismiss_wifi_disconnected_overlay(void) {
 
 static lv_obj_t *login_success_overlay = NULL;
 
+// Both overlays are children of whatever screen was active when they appeared,
+// so leaving the screen deletes them without either dismiss path running. The
+// global would then point at freed memory: the next show would see it non-NULL
+// and silently draw nothing forever, and the four-second timer below would free
+// it a second time. LVGL sends LV_EVENT_DELETE to an object however it dies,
+// including when its parent takes it with it, so that is where the pointer is
+// cleared and nowhere else.
+static void login_success_deleted_cb(lv_event_t *e) {
+    (void)e;
+    login_success_overlay = NULL;
+}
+
 static void login_success_dismiss_cb(lv_event_t *e) {
     (void)e;
     if (login_success_overlay) {
         lv_obj_del(login_success_overlay);
-        login_success_overlay = NULL;
     }
 }
 
@@ -531,7 +552,6 @@ static void login_success_timer_cb(lv_timer_t *timer) {
     lv_timer_del(timer);
     if (login_success_overlay) {
         lv_obj_del(login_success_overlay);
-        login_success_overlay = NULL;
     }
 }
 
@@ -547,6 +567,7 @@ void show_login_success_overlay_ui(void) {
     lv_obj_clear_flag(login_success_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(login_success_overlay);
     lv_obj_add_event_cb(login_success_overlay, login_success_dismiss_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(login_success_overlay, login_success_deleted_cb, LV_EVENT_DELETE, NULL);
 
     // Glass card — green accent for success
     lv_obj_t *card = lv_obj_create(login_success_overlay);
@@ -596,6 +617,81 @@ void show_login_success_overlay_ui(void) {
     lv_timer_create(login_success_timer_cb, 4000, NULL);
 
     ESP_LOGI(TAG, "Login success overlay shown");
+}
+
+static lv_obj_t *login_error_overlay = NULL;
+
+static void login_error_deleted_cb(lv_event_t *e) {
+    (void)e;
+    login_error_overlay = NULL;
+}
+
+static void login_error_dismiss_cb(lv_event_t *e) {
+    (void)e;
+    if (login_error_overlay) {
+        lv_obj_del(login_error_overlay);
+    }
+}
+
+// Deliberately has no auto-dismiss twin of login_success_timer_cb. A failure
+// the user did not finish reading is a failure they cannot act on, and every
+// sign-in path used to end in silence: the Connecting overlay simply vanished
+// and left them on the form with nothing to go on. Whatever brought them here
+// stays on screen until they tap it away.
+void show_login_error_overlay_ui(const char *reason) {
+    if (login_error_overlay != NULL) return;
+
+    login_error_overlay = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(login_error_overlay);
+    lv_obj_set_size(login_error_overlay, 320, 240);
+    lv_obj_set_style_bg_color(login_error_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(login_error_overlay, LV_OPA_60, 0);
+    lv_obj_clear_flag(login_error_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(login_error_overlay);
+    lv_obj_add_event_cb(login_error_overlay, login_error_dismiss_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(login_error_overlay, login_error_deleted_cb, LV_EVENT_DELETE, NULL);
+
+    lv_obj_t *card = lv_obj_create(login_error_overlay);
+    lv_obj_set_size(card, 280, 170);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *icon = lv_label_create(card);
+    lv_label_set_text(icon, LV_SYMBOL_WARNING);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(COLOR_RED), 0);
+    lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 12);
+
+    lv_obj_t *title = lv_label_create(card);
+    lv_label_set_text(title, "Sign-in failed");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 38);
+
+    lv_obj_t *sub = lv_label_create(card);
+    lv_label_set_text(sub, (reason != NULL && reason[0] != '\0')
+                      ? reason : "The server did not accept the sign-in.");
+    lv_obj_set_style_text_font(sub, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(sub, 254);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 70);
+
+    lv_obj_t *hint = lv_label_create(card);
+    lv_label_set_text(hint, "Tap to dismiss");
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    ESP_LOGI(TAG, "Login error overlay shown: %s", reason ? reason : "(generic)");
 }
 
 // ==================== Legal Disclaimer Overlay ====================
@@ -831,15 +927,14 @@ void show_welcome_overlay(void) {
 #define EXPANDED_RIGHT_W    308
 #define CARD_H              220
 
-// Collapsed trend-arrow block. The canvas and its freshness arc share a centre
-// so the arc reads as a halo, boxed in by the unit line above and the delta
-// below. Only the arc's top semicircle paints, but that crown sits at the top
-// of its bounding box, so the diameter decides its clearance from the unit:
-//   centre = 98 + HOME_TREND_Y_OFS = 122
-//   arc drawn top = 122 - HOME_ARC_SIZE/2 = 84   (3px under the unit ink)
-//   canvas bottom = 122 + 30            = 152   (3px over the delta ink)
-#define HOME_TREND_Y_OFS    24
-#define HOME_ARC_SIZE       76
+// Collapsed trend-arrow block. The countdown arc that used to ring it is gone,
+// so the arrow takes the whole band between the unit line above and the delta
+// below. Those two are what bound it, not the arc:
+//   centre = 98 + HOME_TREND_Y_OFS = 118
+//   canvas top    = 118 - 34       = 84    (3px under the unit ink)
+//   canvas bottom = 118 + 34       = 152   (3px over the delta ink)
+#define HOME_TREND_Y_OFS    20
+#define HOME_LOCATION_W     130   // the slot the city name has to live in
 
 // ==================== Night Face ====================
 // During the scheduled night window the home screen collapses to a clock, the
@@ -850,6 +945,140 @@ void show_welcome_overlay(void) {
 #define HOME_NIGHT_HIDE_MAX 24
 
 static bool night_prev_expanded = false;  // layout to give back at dawn
+
+// ==================== City name scroll ====================
+// Plenty of place names overflow the 130 px the card gives them ("Federal Way,
+// Washington" needs about 160). LVGL's circular scroll never rests and its
+// other scroll mode pauses for a fixed 300 ms buried in the managed component,
+// so the movement is driven here instead: a long read at the start, a slow
+// travel, a long rest at the end, then back to the beginning.
+//
+// It takes TWO objects, and the first attempt at this used one. Translating a
+// label shifts the rectangle its text is laid out in AND the rectangle its
+// drawing is clipped to, because both are read from the same obj->coords, so
+// the identical glyphs stay on screen however far it travels. The name has to
+// move inside something that doesn't: home_location_clip is a fixed 130 px
+// window, the label inside it is as wide as its own text, and children are
+// clipped to their parent.
+//
+// The timer exists only while the text actually overflows, and is deleted the
+// moment a shorter name fits.
+#define LOC_SCROLL_HOLD_MS   20000   // read time at each end
+#define LOC_SCROLL_TICK_MS     110   // one pixel per tick, so ~9 px per second
+#define LOC_SCROLL_STEP_PX       1
+
+static lv_obj_t   *home_location_clip = NULL;   // the window; the label slides inside it
+static lv_timer_t *loc_scroll_timer = NULL;
+static int32_t loc_scroll_x = 0;        // current offset, 0 .. -loc_scroll_span
+static int32_t loc_scroll_span = 0;     // how far the text overhangs its box
+static int32_t loc_scroll_hold = 0;     // ticks left to hold before moving
+static bool    loc_scroll_returning = false;
+
+static void loc_scroll_stop(void) {
+    if (loc_scroll_timer != NULL) {
+        lv_timer_del(loc_scroll_timer);
+        loc_scroll_timer = NULL;
+    }
+    loc_scroll_x = 0;
+    loc_scroll_span = 0;
+    loc_scroll_hold = 0;
+    loc_scroll_returning = false;
+    if (home_location_label != NULL) {
+        lv_obj_set_style_translate_x(home_location_label, 0, 0);
+    }
+}
+
+static void loc_scroll_tick_cb(lv_timer_t *t) {
+    (void)t;
+    if (home_location_label == NULL || loc_scroll_span <= 0) return;
+    // The night face hides the name. Sliding it behind a hidden window would
+    // be a style write and an invalidate every 110 ms for nothing.
+    if (!lv_obj_is_visible(home_location_label)) return;
+
+    if (loc_scroll_hold > 0) {
+        loc_scroll_hold--;
+        return;
+    }
+
+    if (loc_scroll_returning) {
+        // Snap back rather than crawl backwards: reading the start again is the
+        // point, and a slow reverse just doubles the time the name is unreadable.
+        loc_scroll_x = 0;
+        loc_scroll_returning = false;
+        loc_scroll_hold = LOC_SCROLL_HOLD_MS / LOC_SCROLL_TICK_MS;
+    } else {
+        loc_scroll_x -= LOC_SCROLL_STEP_PX;
+        if (loc_scroll_x <= -loc_scroll_span) {
+            loc_scroll_x = -loc_scroll_span;
+            loc_scroll_returning = true;
+            loc_scroll_hold = LOC_SCROLL_HOLD_MS / LOC_SCROLL_TICK_MS;
+        }
+    }
+    lv_obj_set_style_translate_x(home_location_label, loc_scroll_x, 0);
+}
+
+// Call after the text changes. Measures the name against its box and starts,
+// restarts or stops the travel to suit.
+// Set (or clear, with NULL or "") the bench tag in the status corner.
+//
+// This is called from the console task, which is listening long before
+// lvgl_port_init() runs, so it must never assume LVGL exists. It did once: the
+// handler took the LVGL lock, which asserts before the port is up, and since
+// the logger re-sends the tag on every reboot it saw, one crash became a boot
+// loop that only stopped when the logger was killed.
+//
+// The text is therefore kept here and applied when there is something to apply
+// it to. device_label is NULL until create_home_screen() has run, which is
+// after the port is up, so that check does both jobs.
+void home_set_device_label(const char *text) {
+    if (text == NULL) {
+        device_label_text[0] = '\0';
+    } else {
+        strncpy(device_label_text, text, sizeof(device_label_text) - 1);
+        device_label_text[sizeof(device_label_text) - 1] = '\0';
+    }
+
+    if (device_label == NULL) return;          // applied at creation instead
+    if (!lvgl_port_lock(1)) return;            // the 1Hz tick re-asserts it
+    bool empty = (device_label_text[0] == '\0');
+    lv_label_set_text(device_label, empty ? "" : device_label_text);
+    home_set_hidden(device_label, empty);
+    lvgl_port_unlock();
+}
+
+void home_location_scroll_sync(void) {
+    if (home_location_label == NULL) return;
+
+    const char *txt = lv_label_get_text(home_location_label);
+    if (txt == NULL || txt[0] == '\0') {
+        loc_scroll_stop();
+        return;
+    }
+
+    const lv_font_t *font = lv_obj_get_style_text_font(home_location_label, LV_PART_MAIN);
+    lv_coord_t letter = lv_obj_get_style_text_letter_space(home_location_label, LV_PART_MAIN);
+    lv_coord_t line   = lv_obj_get_style_text_line_space(home_location_label, LV_PART_MAIN);
+    lv_point_t size;
+    lv_txt_get_size(&size, txt, font, letter, line, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+
+    // The window's width is the budget, not the label's: the label is as wide
+    // as whatever text it holds.
+    lv_coord_t box = (home_location_clip != NULL) ? lv_obj_get_width(home_location_clip) : 0;
+    if (box <= 0) box = HOME_LOCATION_W;
+
+    loc_scroll_stop();                    // also clears any leftover offset
+    if (size.x <= box) {
+        lv_obj_align(home_location_label, LV_ALIGN_CENTER, 0, 0);   // it fits: centred, still
+        return;
+    }
+
+    // Overflowing: park the start of the name at the left edge and travel left
+    // from there, so the first thing read is the first thing written.
+    lv_obj_align(home_location_label, LV_ALIGN_LEFT_MID, 0, 0);
+    loc_scroll_span = size.x - box;
+    loc_scroll_hold = LOC_SCROLL_HOLD_MS / LOC_SCROLL_TICK_MS;   // read the start first
+    loc_scroll_timer = lv_timer_create(loc_scroll_tick_cb, LOC_SCROLL_TICK_MS, NULL);
+}
 
 // The glow pass bakes the canvas fill colour into its pixels, so the fill must
 // match what is behind it: card navy by day, pure black on the night face
@@ -900,10 +1129,11 @@ static unsigned home_night_hide_set(lv_obj_t **objs) {
     objs[n++] = expanded_weather_icon;
     objs[n++] = label_unit;
     objs[n++] = label_time_ago;
-    objs[n++] = glucose_freshness_arc;
     objs[n++] = label_glucose_delta;
     objs[n++] = label_glucose_age;
     objs[n++] = serial_log_indicator;
+    objs[n++] = sd_mounted_icon;
+    objs[n++] = device_label;
     objs[n++] = label_demo_badge;
     return n;
 }
@@ -945,12 +1175,11 @@ static void home_enter_night_face(void) {
 
     night_face_active = true;
     cache_border_valid = false;
-    cache_arc_look = ARC_LOOK_NONE;
 
     // Repaint on a black canvas — see home_trend_bg().
     if (trend_canvas != NULL) {
         lv_canvas_fill_bg(trend_canvas, lv_color_hex(0x000000), LV_OPA_0);
-        draw_trend_arrow_sized(trend_canvas, current_trend, 80);
+        draw_trend_arrow_sized(trend_canvas, current_trend, HOME_TREND_SIZE_EXPANDED);
     }
 
     ESP_LOGI(TAG, "Night face on");
@@ -986,7 +1215,6 @@ static void home_exit_night_face(void) {
     home_set_text_color(menu_icon_ref, COLOR_TEXT_WHITE);
 
     cache_border_valid = false;
-    cache_arc_look = ARC_LOOK_NONE;
     cache_stale_active = false;
     update_ambient_tint();
     update_glucose_display();  // repaints value colour, arrow and age from live state
@@ -1102,7 +1330,228 @@ static void home_update_stale_visuals(bool night) {
     }
 }
 
-// Glucose freshness arc + heartbeat update callback (1Hz)
+// ==================== SD card format offer ====================
+// A card whose filesystem is not FAT is healthy; it simply will not mount.
+// Anything over 32 GB ships as exFAT, so this is the ordinary case rather than
+// a fault, and the device can put it right by reformatting. That erases the
+// card, so this asks first and says so in the plainest words available.
+//
+// Only SD_CARD_NEEDS_FORMAT gets here. A card that failed to initialise is a
+// different problem entirely and formatting cannot touch it; offering the
+// button anyway would promise a fix that fails and blame the wrong thing.
+
+#define SD_FORMAT_ARM_MS 500
+
+static lv_obj_t *sd_format_overlay = NULL;
+static lv_obj_t *sd_format_status  = NULL;
+static lv_obj_t *sd_format_go_btn  = NULL;
+static lv_obj_t *sd_format_close_btn = NULL;   // "Not now", becomes a centred "OK"
+static lv_obj_t *sd_format_close_lbl = NULL;
+static uint32_t  sd_format_shown_ms = 0;
+static bool      sd_format_offered = false;   // once a boot, however often it probes
+static bool      sd_format_running = false;
+static volatile int sd_format_result = 0;     // 0 running, 1 done, -1 failed
+
+static void sd_format_delete_cb(lv_event_t *e) {
+    (void)e;
+    sd_format_overlay = NULL;
+    sd_format_status  = NULL;
+    sd_format_go_btn  = NULL;
+    sd_format_close_btn = NULL;
+    sd_format_close_lbl = NULL;
+}
+
+static void sd_format_close_cb(lv_event_t *e) {
+    (void)e;
+    if (sd_format_overlay != NULL) {
+        lv_obj_del(sd_format_overlay);   // delete cb NULLs the statics
+    }
+}
+
+// The format takes seconds to minutes and must never run on the LVGL task.
+static void sd_format_task(void *arg) {
+    (void)arg;
+    esp_err_t err = sd_logger_format();
+    sd_format_result = (err == ESP_OK) ? 1 : -1;
+    vTaskDelete(NULL);
+}
+
+static void sd_format_go_cb(lv_event_t *e) {
+    (void)e;
+    // The same backstop the erase card uses: a tap landing within the arming
+    // window cannot be a considered answer to a question that was not on
+    // screen when the finger started moving.
+    if (lv_tick_elaps(sd_format_shown_ms) < SD_FORMAT_ARM_MS) {
+        ESP_LOGW(TAG, "Format tap ignored: %ums after the card appeared",
+                 (unsigned)lv_tick_elaps(sd_format_shown_ms));
+        return;
+    }
+    if (sd_format_running) return;
+
+    sd_format_running = true;
+    sd_format_result = 0;
+    if (sd_format_go_btn != NULL) lv_obj_add_flag(sd_format_go_btn, LV_OBJ_FLAG_HIDDEN);
+    if (sd_format_status != NULL) {
+        lv_label_set_text(sd_format_status, "Formatting. Do not remove the card.");
+    }
+
+    if (xTaskCreate(sd_format_task, "sd_format", 4096, NULL, 4, NULL) != pdPASS) {
+        sd_format_running = false;
+        sd_format_result = -1;
+        ESP_LOGE(TAG, "Could not start the format task");
+    }
+}
+
+// Called from the 1Hz tick while the card is up, to report how it went.
+static void sd_format_poll(void) {
+    if (!sd_format_running || sd_format_result == 0) return;
+    sd_format_running = false;
+    if (sd_format_status == NULL) return;   // card closed while it ran
+    const bool won = (sd_format_result > 0);
+    lv_label_set_text(sd_format_status,
+                      won ? "Done. The card is ready to use."
+                          : "Format failed. Try a different card.");
+    // The red belonged to the erase warning. Leaving it on the result made a
+    // success read like a fault.
+    lv_obj_set_style_text_color(sd_format_status,
+                                lv_color_hex(won ? COLOR_GREEN : COLOR_RED), 0);
+
+    // The work is over, so the only thing left to do is leave. "Not now" was an
+    // answer to a question that is no longer being asked, and a lone button
+    // pinned to the left edge reads as though its partner failed to draw.
+    if (sd_format_close_lbl != NULL) lv_label_set_text(sd_format_close_lbl, "OK");
+    if (sd_format_close_btn != NULL) {
+        lv_obj_align(sd_format_close_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    }
+}
+
+static void sd_format_show(sd_card_state_t st) {
+    const bool formattable = (st == SD_CARD_NEEDS_FORMAT);
+    sd_format_overlay = lv_obj_create(screen_home);
+    lv_obj_set_size(sd_format_overlay, 320, 240);
+    lv_obj_set_pos(sd_format_overlay, 0, 0);
+    lv_obj_set_style_bg_color(sd_format_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(sd_format_overlay, LV_OPA_60, 0);  // scrim; absorbs taps
+    lv_obj_set_style_border_width(sd_format_overlay, 0, 0);
+    lv_obj_set_style_radius(sd_format_overlay, 0, 0);
+    lv_obj_set_style_pad_all(sd_format_overlay, 0, 0);
+    lv_obj_clear_flag(sd_format_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(sd_format_overlay, sd_format_delete_cb, LV_EVENT_DELETE, NULL);
+
+    lv_obj_t *panel = lv_obj_create(sd_format_overlay);
+    lv_obj_set_size(panel, 292, 190);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, 12, 0);
+    lv_obj_set_style_border_width(panel, 1, 0);
+    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
+    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(panel);
+    lv_label_set_text(title,
+        st == SD_CARD_NEEDS_FORMAT ? "SD card needs formatting" :
+        st == SD_CARD_TOO_LARGE    ? "This SD card is too big" :
+                                     "This SD card will not work");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
+
+    lv_obj_t *body = lv_label_create(panel);
+    lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(body, 292 - 32);
+    lv_label_set_text(body,
+        st == SD_CARD_NEEDS_FORMAT ? "The card is fine. It is just not in a format this device reads." :
+        st == SD_CARD_TOO_LARGE    ? "Cards above 32GB use a format this device cannot read." :
+                                     "The card would not start up. This one is not compatible.");
+    lv_obj_set_style_text_font(body, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(body, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 38);
+
+    // The warning is its own label, in the alarm colour, because it is the one
+    // line that has to be read before the button on the right is pressed.
+    sd_format_status = lv_label_create(panel);
+    lv_label_set_long_mode(sd_format_status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(sd_format_status, 292 - 32);
+    lv_label_set_text(sd_format_status,
+        formattable ? "Formatting ERASES everything on the card."
+                    : "Use a 32GB card or smaller.");
+    lv_obj_set_style_text_font(sd_format_status, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(sd_format_status,
+                                lv_color_hex(formattable ? COLOR_RED : COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(sd_format_status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(sd_format_status, LV_ALIGN_TOP_MID, 0, 80);
+
+    if (formattable) {
+        // The second route, and only on the card where it is true. Proven false
+        // for an unusable card: COM80's was reformatted as FAT32 on a PC and
+        // failed identically, because CMD59 is refused before any filesystem is
+        // looked at.
+        lv_obj_t *alt = lv_label_create(panel);
+        lv_label_set_long_mode(alt, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(alt, 292 - 32);
+        lv_label_set_text(alt, "Or format it as FAT32 on a Mac or PC.");
+        lv_obj_set_style_text_font(alt, &lv_font_montserrat_10, 0);
+        lv_obj_set_style_text_color(alt, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_set_style_text_align(alt, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(alt, LV_ALIGN_TOP_MID, 0, 118);
+    }
+
+    lv_obj_t *not_now = lv_btn_create(panel);
+    sd_format_close_btn = not_now;
+    lv_obj_set_size(not_now, 110, CYGM_BTN_H);
+    lv_obj_align(not_now, LV_ALIGN_BOTTOM_LEFT, 12, -10);
+    cygm_apply_ghost_btn(not_now);
+    lv_obj_add_event_cb(not_now, sd_format_close_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *nl = lv_label_create(not_now);
+    sd_format_close_lbl = nl;
+    lv_label_set_text(nl, formattable ? "Not now" : "OK");
+    lv_obj_set_style_text_font(nl, &lv_font_montserrat_14, 0);
+    lv_obj_center(nl);
+
+    if (!formattable) {
+        // No Format button at all. A button that cannot work is worse than none:
+        // it would promise a fix and then blame the card for not taking it.
+        lv_obj_align(not_now, LV_ALIGN_BOTTOM_MID, 0, -10);
+        sd_format_shown_ms = lv_tick_get();
+        ESP_LOGI(TAG, "SD unusable-card notice shown");
+        return;
+    }
+
+    sd_format_go_btn = lv_btn_create(panel);
+    lv_obj_set_size(sd_format_go_btn, 110, CYGM_BTN_H);
+    lv_obj_align(sd_format_go_btn, LV_ALIGN_BOTTOM_RIGHT, -12, -10);
+    cygm_apply_ghost_btn(sd_format_go_btn);
+    lv_obj_set_style_bg_color(sd_format_go_btn, lv_color_hex(COLOR_RED), 0);
+    lv_obj_set_style_bg_opa(sd_format_go_btn, LV_OPA_COVER, 0);
+    lv_obj_add_event_cb(sd_format_go_btn, sd_format_go_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *gl = lv_label_create(sd_format_go_btn);
+    lv_label_set_text(gl, "Format");
+    lv_obj_set_style_text_font(gl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(gl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_center(gl);
+
+    sd_format_shown_ms = lv_tick_get();
+    ESP_LOGI(TAG, "SD format card shown");
+}
+
+static void sd_format_maybe_show(void) {
+    if (sd_format_overlay != NULL) {
+        sd_format_poll();
+        return;
+    }
+    if (sd_format_offered) return;
+    sd_card_state_t st = sd_logger_card_state();
+    if (st != SD_CARD_NEEDS_FORMAT && st != SD_CARD_UNUSABLE &&
+        st != SD_CARD_TOO_LARGE) return;
+    if (visual_alarm_active) return;   // the reading always outranks a card
+    sd_format_offered = true;
+    sd_format_show(st);
+}
+
 // ==================== Post-Update "What's New" Card ====================
 // Shown once per firmware version, on the first calm home tick after an
 // update: it yields to the Display sheet, the night face, and any alarm, and
@@ -1161,21 +1610,41 @@ static void whats_new_show(void) {
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
 
+#ifdef WHATS_NEW_INTRO
+    // An intro takes the caption's place rather than sitting under it. The title
+    // above already names the version, so the caption was the line worth
+    // spending to buy two rows of prose.
+    lv_obj_t *intro = lv_label_create(panel);
+    lv_label_set_text(intro, WHATS_NEW_INTRO);
+    lv_obj_set_width(intro, 292 - 32);
+    lv_obj_set_style_text_font(intro, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(intro, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_align(intro, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_line_space(intro, 2, 0);
+    lv_obj_align(intro, LV_ALIGN_TOP_MID, 0, 34);
+#else
     lv_obj_t *caption = lv_label_create(panel);
     lv_label_set_text(caption, "WHAT'S NEW");
     lv_obj_set_style_text_font(caption, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(caption, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_set_style_text_letter_space(caption, 2, 0);
     lv_obj_align(caption, LV_ALIGN_TOP_MID, 0, 34);
+#endif
 
     // The OK button's top edge sits at 160 (panel 206, aligned bottom -10, 36
-    // tall) and each row is 20 with the footer 8 below the last. Five rows plus
-    // a footer puts the footer at 162, drawn straight through the button, so the
-    // row budget is one smaller whenever a footer is defined.
-#ifdef WHATS_NEW_FOOTER
-    const int whats_new_max_rows = 4;
+    // tall) and each row is 20, with a footer 8 below the last. Where the rows
+    // start depends on the intro: two lines of montserrat_10 at 34 end at 62, so
+    // the first bullet drops from 54 to 68 and the budget falls from five rows
+    // to four. Deriving it beats hardcoding, because the next person to add an
+    // intro line should not have to redo this arithmetic.
+#ifdef WHATS_NEW_INTRO
+    const int whats_new_rows_top = 68;
 #else
-    const int whats_new_max_rows = 5;
+    const int whats_new_rows_top = 54;
+#endif
+    int whats_new_max_rows = (160 - whats_new_rows_top) / 20;
+#ifdef WHATS_NEW_FOOTER
+    whats_new_max_rows -= 1;   // the footer takes the last row's space
 #endif
 
     for (int i = 0; i < (int)WHATS_NEW_COUNT && i < whats_new_max_rows; i++) {
@@ -1187,7 +1656,7 @@ static void whats_new_show(void) {
         lv_label_set_text(bullet, line);
         lv_obj_set_style_text_font(bullet, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(bullet, lv_color_hex(COLOR_TEXT_WHITE), 0);
-        lv_obj_align(bullet, LV_ALIGN_TOP_LEFT, 16, 54 + i * 20);
+        lv_obj_align(bullet, LV_ALIGN_TOP_LEFT, 16, whats_new_rows_top + i * 20);
     }
 
 #ifdef WHATS_NEW_FOOTER
@@ -1200,7 +1669,7 @@ static void whats_new_show(void) {
         lv_label_set_text(foot, WHATS_NEW_FOOTER);
         lv_obj_set_style_text_font(foot, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(foot, lv_color_hex(COLOR_TEXT_DIM), 0);
-        lv_obj_align(foot, LV_ALIGN_TOP_LEFT, 16, 54 + rows * 20 + 8);
+        lv_obj_align(foot, LV_ALIGN_TOP_LEFT, 16, whats_new_rows_top + rows * 20 + 8);
     }
 #endif
 
@@ -1568,7 +2037,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     }
     weather_display_retry();
 
-    if (!home_screen_active || glucose_freshness_arc == NULL) {
+    if (!home_screen_active) {
         return;
     }
 
@@ -1594,39 +2063,10 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     } else {
         whats_new_maybe_show();  // one-shot; yields to sheet/night/alarm above
         cygm_setup_guide_maybe_show();  // same gating; yields to the card above
-
-        // Countdown to the next CGM pull. The glucose task arms a deadline on
-        // every wait, so the arc drains across exactly one poll interval.
-        // Empty with no deadline armed means a pull is due or the link is down.
-        {
-            int64_t remain_ms = glucose_next_fetch_ms - esp_timer_get_time() / 1000;
-            int period_s = glucose_fetch_period_s;
-            if (period_s < 1) period_s = 1;
-            int arc_value = 0;
-            if (remain_ms > 0) {
-                arc_value = (int)(remain_ms / (period_s * 10));  // = ms * 100 / (s * 1000)
-                if (arc_value > 100) arc_value = 100;
-            }
-            lv_arc_set_value(glucose_freshness_arc, arc_value);  // LVGL skips an unchanged value
-        }
-
-        // Fetch-in-progress: shift arc color to accent blue
-        if (glucose_fetch_active) {
-            if (cache_arc_look != ARC_LOOK_FETCH) {
-                lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-                lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_COVER, LV_PART_INDICATOR);
-                cache_arc_look = ARC_LOOK_FETCH;
-            }
-        } else if (glucose_data_valid && current_glucose > 0) {
-            uint32_t arc_color = home_zone_color_for(current_glucose);
-            if (cache_arc_look != ARC_LOOK_ZONE || cache_arc_zone_color != arc_color) {
-                lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(arc_color), LV_PART_INDICATOR);
-                lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(arc_color), LV_PART_MAIN);
-                lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_70, LV_PART_INDICATOR);
-                cache_arc_look = ARC_LOOK_ZONE;
-                cache_arc_zone_color = arc_color;
-            }
-        }
+        // Last, and only with the screen to itself. This yielded to alarms but
+        // not to the other one-shot cards, so on the first boot after an update
+        // it was raised underneath the What's New card and never seen.
+        if (whats_new_overlay == NULL) sd_format_maybe_show();
 
         // Zone border: recompute every 10 seconds
         {
@@ -1693,6 +2133,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
     // The night face owns this widget's visibility while it is up.
     if (!night_face_active) {
         home_set_hidden(serial_log_indicator, !sd_serial_capture_get());
+        home_set_hidden(sd_mounted_icon, !sd_logger_available());
         home_set_hidden(label_demo_badge, !cygm_demo_trend_active());
     }
 }
@@ -2742,11 +3183,12 @@ static void expand_cgm_card(void) {
         lv_obj_align(label_glucose, LV_ALIGN_CENTER, -40, -8);
     }
 
-    // Resize trend arrow canvas to 80x80 to match large digits
+    // Resize the trend canvas to match the large digits
     if (trend_canvas != NULL) {
-        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 80, 80, LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE_EXPANDED,
+                             HOME_TREND_SIZE_EXPANDED, LV_IMG_CF_TRUE_COLOR);
         lv_canvas_fill_bg(trend_canvas, home_trend_bg(), LV_OPA_0);
-        draw_trend_arrow_sized(trend_canvas, current_trend, 80);
+        draw_trend_arrow_sized(trend_canvas, current_trend, HOME_TREND_SIZE_EXPANDED);
     }
 
     // Trend arrow: fixed position on right side of card
@@ -2770,11 +3212,6 @@ static void expand_cgm_card(void) {
         lv_obj_align(label_glucose_delta, LV_ALIGN_BOTTOM_MID, 0, -26);
     }
 
-    // Freshness arc: semicircle around expanded trend arrow
-    if (glucose_freshness_arc != NULL) {
-        lv_obj_set_size(glucose_freshness_arc, 100, 100);
-        lv_obj_align(glucose_freshness_arc, LV_ALIGN_RIGHT_MID, 9, -8);  // Shifted right from trend arrow
-    }
 
 
 
@@ -2817,9 +3254,9 @@ static void collapse_cgm_card(void) {
         lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 65);
     }
     if (trend_canvas != NULL) {
-        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE, HOME_TREND_SIZE, LV_IMG_CF_TRUE_COLOR);
         lv_canvas_fill_bg(trend_canvas, home_trend_bg(), LV_OPA_0);
-        draw_trend_arrow(trend_canvas, current_trend);
+        draw_trend_arrow_sized(trend_canvas, current_trend, HOME_TREND_SIZE);
         lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, HOME_TREND_Y_OFS);
     }
     if (label_time_ago != NULL) {
@@ -2827,10 +3264,6 @@ static void collapse_cgm_card(void) {
     }
     if (label_glucose_delta != NULL) {
         lv_obj_align(label_glucose_delta, LV_ALIGN_BOTTOM_MID, 0, -26);
-    }
-    if (glucose_freshness_arc != NULL) {
-        lv_obj_set_size(glucose_freshness_arc, HOME_ARC_SIZE, HOME_ARC_SIZE);
-        lv_obj_align(glucose_freshness_arc, LV_ALIGN_CENTER, 0, HOME_TREND_Y_OFS);  // Same center as trend arrow
     }
     if (brightness_btn_ref != NULL) {
         lv_obj_align(brightness_btn_ref, LV_ALIGN_TOP_MID, 22, 0);
@@ -2856,6 +3289,35 @@ void create_home_screen(void) {
     lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(label_wifi_status, LV_ALIGN_TOP_LEFT, 2, 2);
     lv_obj_add_flag(label_wifi_status, LV_OBJ_FLAG_CLICKABLE);
+
+    // Card glyph, beside the WiFi icon because this corner is where the device
+    // says what it is connected to. Shown only while a card is actually mounted
+    // and writable, and refreshed on the 1 Hz tick, so a card fitted after boot
+    // lights it as soon as the probe finds one. A symbol, not a canvas: the
+    // glyph is already in the montserrat_12 build range and costs no buffer.
+    // A tag the HOST sets, because the device cannot know its own COM port:
+    // that number is assigned by the host to the USB-serial chip and nothing
+    // about it reaches the ESP32. Empty unless something sends "label <text>",
+    // so a shipped device never shows it and a bench unit says which one it is
+    // without being touched.
+    device_label = lv_label_create(left_card);
+    lv_label_set_text(device_label, "");
+    lv_obj_set_style_text_font(device_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(device_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(device_label, LV_ALIGN_TOP_LEFT, 40, 5);
+    lv_obj_add_flag(device_label, LV_OBJ_FLAG_HIDDEN);
+    if (device_label_text[0] != '\0') {
+        // A tag that arrived before this widget existed, now that it does.
+        lv_label_set_text(device_label, device_label_text);
+        lv_obj_clear_flag(device_label, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    sd_mounted_icon = lv_label_create(left_card);
+    lv_label_set_text(sd_mounted_icon, LV_SYMBOL_SD_CARD);
+    lv_obj_set_style_text_font(sd_mounted_icon, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(sd_mounted_icon, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(sd_mounted_icon, LV_ALIGN_TOP_LEFT, 22, 4);
+    lv_obj_add_flag(sd_mounted_icon, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(label_wifi_status, wifi_icon_event_cb, LV_EVENT_CLICKED, NULL);
     home_apply_tap_feedback(label_wifi_status, 12);  // Capped: the clock sits directly below
 
@@ -2918,7 +3380,7 @@ void create_home_screen(void) {
     home_apply_tap_feedback(label_date, CYGM_BTN_EXT_CLICK);  // Capped: clock digits above
 
     // Weather icon, below the date
-    static lv_color_t weather_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(60, 50)];
+    static lv_color_t weather_buf[CANVAS_BUF_TCA(60, 50)];
     home_weather_canvas = lv_canvas_create(left_card);
     lv_canvas_set_buffer(home_weather_canvas, weather_buf, 60, 50, LV_IMG_CF_TRUE_COLOR_ALPHA);
     lv_obj_align(home_weather_canvas, LV_ALIGN_CENTER, 0, 11);
@@ -2966,20 +3428,29 @@ void create_home_screen(void) {
     // the sun-times row below both keep breathing room.
     lv_obj_align(home_condition_label, LV_ALIGN_CENTER, 0, 68);
 
-    // Location (above sunrise/sunset, centered, closer to bottom)
-    home_location_label = lv_label_create(left_card);
-    lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
-    lv_label_set_long_mode(home_location_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_width(home_location_label, 130);
-    lv_obj_set_style_text_font(home_location_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(home_location_label, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_set_style_text_align(home_location_label, LV_TEXT_ALIGN_CENTER, 0);
+    // Location (above sunrise/sunset, centered, closer to bottom). The window
+    // holds the slot; the label inside it carries the text and does the moving.
     // -11 leaves 5px between this line's descenders and the sun-times row;
     // any less and the two merge.
-    lv_obj_align(home_location_label, LV_ALIGN_BOTTOM_MID, 0, -11);
+    home_location_clip = lv_obj_create(left_card);
+    lv_obj_remove_style_all(home_location_clip);
+    lv_obj_set_size(home_location_clip, HOME_LOCATION_W,
+                    lv_font_get_line_height(&lv_font_montserrat_10));
+    lv_obj_clear_flag(home_location_clip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(home_location_clip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(home_location_clip, LV_ALIGN_BOTTOM_MID, 0, -11);
+
+    home_location_label = lv_label_create(home_location_clip);
+    lv_label_set_text(home_location_label, strlen(user_location) > 0 ? user_location : "");
+    lv_label_set_long_mode(home_location_label, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(home_location_label, LV_SIZE_CONTENT);
+    lv_obj_set_style_text_font(home_location_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(home_location_label, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_align(home_location_label, LV_ALIGN_CENTER, 0, 0);
+    home_location_scroll_sync();
 
     // Sunrise time with icon (very bottom left)
-    static lv_color_t canvas_buf_sunrise[LV_CANVAS_BUF_SIZE_TRUE_COLOR(12, 12)];
+    static lv_color_t canvas_buf_sunrise[CANVAS_BUF_TC(12, 12)];
     home_sunrise_canvas = lv_canvas_create(left_card);
     lv_canvas_set_buffer(home_sunrise_canvas, canvas_buf_sunrise, 12, 12, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(home_sunrise_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
@@ -2993,7 +3464,7 @@ void create_home_screen(void) {
     lv_obj_align(home_sunrise_label, LV_ALIGN_BOTTOM_LEFT, 22, 6);
 
     // Sunset time with icon (very bottom right)
-    static lv_color_t canvas_buf_sunset[LV_CANVAS_BUF_SIZE_TRUE_COLOR(12, 12)];
+    static lv_color_t canvas_buf_sunset[CANVAS_BUF_TC(12, 12)];
     home_sunset_canvas = lv_canvas_create(left_card);
     lv_canvas_set_buffer(home_sunset_canvas, canvas_buf_sunset, 12, 12, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(home_sunset_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
@@ -3015,7 +3486,7 @@ void create_home_screen(void) {
 
     // Battery canvas - gauge, or the plug icon when no cell is fitted.
     // Tappable to toggle the percentage display.
-    static lv_color_t canvas_buf_battery[LV_CANVAS_BUF_SIZE_TRUE_COLOR(30, 14)];
+    static lv_color_t canvas_buf_battery[CANVAS_BUF_TC(30, 14)];
     battery_canvas = lv_canvas_create(right_card);
     lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 30, 14, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(battery_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
@@ -3053,7 +3524,7 @@ void create_home_screen(void) {
     cygm_apply_ghost_btn(brightness_btn);
 
     // Canvas for lightbulb drawing (inside button)
-    static lv_color_t brightness_icon_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(20, 24)];
+    static lv_color_t brightness_icon_buf[CANVAS_BUF_TC(20, 24)];
     brightness_icon = lv_canvas_create(brightness_btn);
     lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 20, 24, LV_IMG_CF_TRUE_COLOR);
     lv_obj_set_style_bg_opa(brightness_icon, LV_OPA_TRANSP, 0);
@@ -3087,7 +3558,7 @@ void create_home_screen(void) {
     // so its crown must clear the unit label while its inert lower half is free
     // to overlap the canvas and the delta.
     trend_canvas = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, 60, 60, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE, HOME_TREND_SIZE, LV_IMG_CF_TRUE_COLOR);
     lv_obj_set_style_bg_opa(trend_canvas, LV_OPA_TRANSP, 0);
     lv_canvas_fill_bg(trend_canvas, home_trend_bg(), LV_OPA_0);
     lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, HOME_TREND_Y_OFS);
@@ -3133,28 +3604,6 @@ void create_home_screen(void) {
     lv_obj_align(label_glucose_age, LV_ALIGN_TOP_RIGHT, -2, 2);   // Corner both layouts leave free
     lv_obj_add_flag(label_glucose_age, LV_OBJ_FLAG_HIDDEN);
 
-    // Countdown arc: semicircle halo around the trend arrow, drains toward
-    // the next CGM pull (blue while the pull is running)
-    glucose_freshness_arc = lv_arc_create(right_card);
-    lv_obj_set_size(glucose_freshness_arc, HOME_ARC_SIZE, HOME_ARC_SIZE);
-    lv_obj_align(glucose_freshness_arc, LV_ALIGN_CENTER, 0, HOME_TREND_Y_OFS);  // Same center as trend arrow
-    lv_arc_set_rotation(glucose_freshness_arc, 0);
-    lv_arc_set_bg_angles(glucose_freshness_arc, 180, 360); // Top semicircle only
-    lv_arc_set_range(glucose_freshness_arc, 0, 100);
-    lv_arc_set_value(glucose_freshness_arc, 100);
-    lv_obj_remove_style(glucose_freshness_arc, NULL, LV_PART_KNOB);  // No knob
-    lv_obj_clear_flag(glucose_freshness_arc, LV_OBJ_FLAG_CLICKABLE); // Not interactive
-    lv_obj_set_style_pad_all(glucose_freshness_arc, 0, 0);
-
-    // Arc indicator (the filled part)
-    lv_obj_set_style_arc_width(glucose_freshness_arc, 3, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(COLOR_GREEN), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_70, LV_PART_INDICATOR);
-
-    // Arc background track (the unfilled part)
-    lv_obj_set_style_arc_width(glucose_freshness_arc, 3, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(glucose_freshness_arc, lv_color_hex(COLOR_GREEN), LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(glucose_freshness_arc, LV_OPA_10, LV_PART_MAIN);
     
     // --- MENU BUTTON (top right) ---
     lv_obj_t *menu_btn = lv_btn_create(screen_home);
@@ -3249,7 +3698,7 @@ void create_home_screen(void) {
     lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
 
     // Mini weather condition icon (20x20 canvas, right of temp label)
-    static lv_color_t mini_weather_buf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(20, 20)];
+    static lv_color_t mini_weather_buf[CANVAS_BUF_TC(20, 20)];
     expanded_weather_icon = lv_canvas_create(right_card);
     lv_canvas_set_buffer(expanded_weather_icon, mini_weather_buf, 20, 20, LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(expanded_weather_icon, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);

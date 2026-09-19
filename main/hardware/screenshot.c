@@ -739,7 +739,23 @@ static void sd_command(const char *arg)
 {
     esp_log_level_t prev_level = esp_log_level_get("*");
 
-    if (strcmp(arg, "ls") == 0) {
+    if (strcmp(arg, "diag") == 0) {
+        sd_logger_diagnose();
+    } else if (strcmp(arg, "trash") == 0) {
+        sd_logger_trash_filesystem();
+    } else if (strcmp(arg, "fakeformat on") == 0) {
+        sd_logger_force_needs_format(true);
+    } else if (strcmp(arg, "fakeformat off") == 0) {
+        sd_logger_force_needs_format(false);
+    } else if (strcmp(arg, "fail on") == 0) {
+        sd_logger_force_write_fail(true);
+    } else if (strcmp(arg, "fail off") == 0) {
+        sd_logger_force_write_fail(false);
+    } else if (strcmp(arg, "release") == 0) {
+        sd_logger_release();
+    } else if (strcmp(arg, "reacquire") == 0) {
+        sd_logger_reacquire();
+    } else if (strcmp(arg, "ls") == 0) {
         int count = 0;
         esp_log_level_set("*", ESP_LOG_NONE);
         sd_glucose_status_t st = sd_glucose_list(sd_ls_ready, sd_ls_entry, NULL, &count);
@@ -931,6 +947,18 @@ static void screenshot_cmd_task(void *arg)
                     ESP_LOGI(TAG, "Serial diary: OFF");
                 } else if (strncmp(cmd_buf, "sd ", 3) == 0) {
                     sd_command(cmd_buf + 3);
+                } else if (strncmp(cmd_buf, "bat ", 4) == 0) {
+                    battery_command(cmd_buf + 4);
+                } else if (strncmp(cmd_buf, "label ", 6) == 0) {
+                    // The host knows the COM port; the device cannot. No lock
+                    // here: this task is listening before lvgl_port_init() has
+                    // run, and taking it that early asserts. The setter keeps
+                    // the text and applies it when there is a widget.
+                    home_set_device_label(cmd_buf + 6);
+                    ESP_LOGI(TAG, "Device label set to \"%s\"", cmd_buf + 6);
+                } else if (strcmp(cmd_buf, "label") == 0) {
+                    home_set_device_label(NULL);
+                    ESP_LOGI(TAG, "Device label cleared");
                 } else if (strcmp(cmd_buf, "whatsnew") == 0) {
                     // The card shows once per version string. Re-flashing the
                     // same version leaves the stamp in place, so there is no

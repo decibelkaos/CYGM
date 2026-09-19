@@ -585,18 +585,24 @@ esp_err_t nvs_save_weather_coords(const char *zipcode, float latitude, float lon
         return ret;
     }
 
-    // Save the zipcode that was geocoded (to detect changes)
-    ret = nvs_set_str(nvs_handle, "wx_zip_cached", zipcode);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to save geocoded zipcode: %s", esp_err_to_name(ret));
-        nvs_close(nvs_handle);
-        return ret;
-    }
-
     // Save location name (e.g., "Bethel, ME")
     ret = nvs_set_str(nvs_handle, "wx_location", location);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save location: %s", esp_err_to_name(ret));
+        nvs_close(nvs_handle);
+        return ret;
+    }
+
+    // Written last on purpose. These four keys are set one at a time, so power
+    // lost part-way through leaves whichever ones already landed. This is the
+    // key weather_system.c compares the user's postcode against to decide
+    // whether to geocode again, so while it still names the old place every
+    // torn combination re-geocodes and repairs itself. Written before
+    // wx_location, a cut between the two would leave the new coordinates
+    // labelled with the old town's name, and nothing would ever correct it.
+    ret = nvs_set_str(nvs_handle, "wx_zip_cached", zipcode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save geocoded zipcode: %s", esp_err_to_name(ret));
         nvs_close(nvs_handle);
         return ret;
     }

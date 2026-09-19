@@ -38,6 +38,15 @@ uint32_t battery_percent_to_dark_color(int percent);
  */
 bool battery_is_charging(void);
 
+/**
+ * Bench console command, reached as "bat <args>".
+ *   bat mv <500-5000>  report this voltage instead of the ADC
+ *   bat mv off         go back to the real reading
+ * While a value is forced the critical shutdown logs what it would do and
+ * stays awake, because deep sleep arms no wake source. Cleared by a reboot.
+ */
+void battery_command(const char *args);
+
 /** False once the ADC has shown no cell fitted (USB-only build). */
 bool battery_is_present(void);
 

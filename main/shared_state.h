@@ -32,15 +32,15 @@ extern "C" {
 
 // ==================== Version Information ====================
 // Version format: major.minor.patch.YYYY-MM-DD.stage
-#define CYGM_VERSION_MAJOR 0
-#define CYGM_VERSION_MINOR 17
-#define CYGM_VERSION_PATCH 5
+#define CYGM_VERSION_MAJOR 1
+#define CYGM_VERSION_MINOR 0
+#define CYGM_VERSION_PATCH 1
 #define CYGM_VERSION_BUILD 0
-#define CYGM_VERSION_DATE "2026-09-09"
-#define CYGM_VERSION_STAGE "Beta"  // "Alpha", "Beta", or "Release"
+#define CYGM_VERSION_DATE "2026-09-18"
+#define CYGM_VERSION_STAGE "Release"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "0.17.5.2026-09-09.Beta"
+#define CYGM_VERSION_STRING "1.0.1.2026-09-18.Release"
 
 // ==================== Hardware Configuration ====================
 
@@ -314,15 +314,12 @@ extern lv_obj_t *label_glucose;
 extern lv_obj_t *trend_canvas;
 extern lv_obj_t *label_time_ago;
 extern lv_obj_t *label_unit;              // "mg/dL" unit label (repositioned in expanded mode)
-extern lv_obj_t *glucose_freshness_arc;    // Arc counting down to the next CGM pull
 extern bool glucose_fetch_active;          // True while a glucose fetch is in progress
 extern lv_timer_t *glucose_timer_update;    // Timer to update the progress bar
 extern int64_t last_glucose_fetch_time;     // Timestamp of last glucose fetch (milliseconds)
 extern bool glucose_fetch_in_progress;      // True when actively fetching glucose
 extern bool glucose_fetch_failed;           // True if last fetch failed
 extern bool glucose_force_fetch_requested;  // True when user requested manual fetch
-extern volatile int64_t glucose_next_fetch_ms;   // esp_timer ms deadline of the next pull
-extern volatile int     glucose_fetch_period_s;  // interval the deadline was armed with
 extern lv_timer_t *glucose_fetch_animation_timer;  // Animation timer for bouncing indicator
 extern lv_obj_t *label_wifi_status;
 

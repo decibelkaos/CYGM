@@ -344,15 +344,12 @@ lv_obj_t *label_glucose = NULL;
 lv_obj_t *trend_canvas = NULL;  // Canvas for custom-drawn trend arrow
 lv_obj_t *label_time_ago = NULL;
 lv_obj_t *label_unit = NULL;              // "mg/dL" unit label
-lv_obj_t *glucose_freshness_arc = NULL;    // Arc showing glucose reading age (0-5 min)
 bool glucose_fetch_active = false;         // True while a glucose fetch is in progress
 lv_timer_t *glucose_timer_update = NULL;    // Timer to update the progress bar
 int64_t last_glucose_fetch_time = 0;        // Timestamp of last glucose fetch (milliseconds)
 bool glucose_fetch_in_progress = false;     // True when actively fetching glucose
 bool glucose_fetch_failed = false;          // True if last fetch failed
 bool glucose_force_fetch_requested = false; // True when user requested manual fetch
-volatile int64_t glucose_next_fetch_ms = 0;  // esp_timer ms deadline of the next pull
-volatile int     glucose_fetch_period_s = 90; // interval the deadline was armed with
 lv_timer_t *glucose_fetch_animation_timer = NULL;  // Animation timer for bouncing indicator
 lv_obj_t *label_wifi_status = NULL;
 
@@ -960,27 +957,47 @@ void draw_weather_icon_animated(lv_obj_t *canvas, int weather_code, uint8_t fram
 #define TA_ANGLE_NONE  999   // trend with no arrow to draw
 
 // Geometry in a 60-unit design space; TA_S() scales it to the real canvas.
-// Barbs are 45 deg so every segment is horizontal, vertical or an exact 1:1
-// diagonal — the only cases this renderer draws cleanly with no anti-aliasing.
 // Sizes are set against the ink's bounding CIRCLE, not its box: the glyph
 // rotates and the canvas does not, so sizing to the upright box clips diagonals.
-#define TA_TIP       23   // arrow point, from the centre
-#define TA_TAIL      23   // shaft end, from the centre
-#define TA_ARM       12   // chevron: setback along and half-width across the
-                          // axis — equal is what makes the barbs 45 deg
-#define TA_W          7   // stroke weight; forced odd after scaling, because an
-                          // even width can flip sides mid-rotation and shimmer
-#define TA_D_TIP     22   // doubles are two complete arrows side by side: each
-#define TA_D_TAIL    22   // is shorter, with a smaller head and lighter stroke,
-#define TA_D_ARM      9   // offset TA_D_OFF to each side of the axis, so the
-#define TA_D_W        5   // pair's swept circle stays inside the single's.
+#define TA_TIP       28   // arrow point, from the centre
+#define TA_D_TIP     25   // doubles are two complete arrows side by side, each
+                          // shorter with a smaller head, so the pair's swept
+                          // circle stays inside the single's
 #define TA_D_OFF     12
-#define TA_GLOW       4   // glow stroke = core + this (a 2 px halo)
+
+// Fading trail: a solid head with four equal dots behind it, the ramp
+// carried by opacity rather than by size. Sizes are in the same 60 px
+// reference frame as the constants above and scale with TA_S().
+// Long and narrow on purpose. The rounding and glow strokes inflate the head
+// by their own width, so a stubby triangle loses its point to them; at back 14
+// and half 11 the first build came out 21 long by 29 wide, which read as a
+// rounded square once rotated off the axis.
+#define TA_HEAD_BACK  18   // head base, setback from the point along the axis
+#define TA_HEAD_HALF  10   // head base, half width across it
+#define TA_HEAD_ROUND  3   // rounding stroke width, not a radius
+#define TA_HEAD_GLOW   2   // edge glow = the rounding stroke plus this
+#define TA_DOT_R       4   // radius of the nearest dot; the rest taper from it
+#define TA_DOT_N       4
+#define TA_DOT_FROM  (-24) // first dot, from the centre along the axis
+#define TA_DOT_STEP    9
+// Twins are shorter and lighter so the pair's swept circle stays inside the
+// single's, the same reasoning as TA_D_TIP above.
+#define TA_D_HEAD_BACK 15
+#define TA_D_HEAD_HALF  8
+#define TA_D_DOT_R      3
+#define TA_D_DOT_FROM (-20)
+#define TA_D_DOT_STEP   7
+// Four steps from barely-there to nearly solid. The nearest dot deliberately
+// stops short of the head's opacity so the head still reads as the point.
+static const lv_opa_t TA_DOT_OPA[TA_DOT_N] = { 60, 105, 155, 205 };
+// And they shrink as they fade, as a percentage of TA_DOT_R. Fading alone left
+// the trail reading as a dotted line; losing size as well makes it a tail.
+static const uint8_t TA_DOT_PCT[TA_DOT_N] = { 45, 62, 80, 100 };
 
 typedef struct {
     int cx, cy;        // canvas centre, px
     int32_t c, s;      // cos/sin of the angle, in 1/32768
-    int tail, tip;     // shaft end / arrow point, from the centre, px
+    int tip;           // arrow point, from the centre, px
 } trend_geom_t;
 
 // The point `along` px down the axis and `across` px to its on-screen left.
@@ -993,29 +1010,87 @@ static lv_point_t trend_pt(const trend_geom_t *g, int along, int across) {
     return p;
 }
 
-// The shaft, tail to point, `off` px left of the axis (0 for the single; the
-// doubles draw one at -off and one at +off). It runs all the way to the point so
-// the round caps of the shaft and both barbs land on the same pixel.
-static void trend_shaft(lv_obj_t *canvas, const trend_geom_t *g, int off,
-                        const lv_draw_line_dsc_t *dsc) {
+// Doubles pulse their glow and slide side to side (the wiggle timer below
+// writes both); everything else glows at the constant subtle level, unshifted.
+#define TA_GLOW_OPA_BASE  LV_OPA_40
+static lv_opa_t ta_glow_opa = TA_GLOW_OPA_BASE;
+
+// Trace the head's three edges with one stroke description. Used four times per
+// head, at four widths and colours, to build the glow, the rounding and the
+// outline out of the same three segments.
+static void trend_head_edges(lv_obj_t *canvas, const lv_point_t tri[3],
+                             lv_coord_t width, lv_color_t colour, lv_opa_t opa)
+{
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = colour;
+    dsc.opa = opa;
+    dsc.width = width < 1 ? 1 : width;
+    dsc.round_start = 1;
+    dsc.round_end = 1;
+
     lv_point_t seg[2];
-    seg[0] = trend_pt(g, -g->tail, off);
-    seg[1] = trend_pt(g,  g->tip,  off);
-    lv_canvas_draw_line(canvas, seg, 2, dsc);
+    for (int i = 0; i < 3; i++) {
+        seg[0] = tri[i];
+        seg[1] = tri[(i + 1) % 3];
+        lv_canvas_draw_line(canvas, seg, 2, &dsc);
+    }
 }
 
-// Two barbs back from `apex`, `arm` units along the axis and the same across it,
-// which puts them at 45 deg. Left open: a closed outline at this stroke weight
-// fills itself in, and two mirrored segments rotate without a lumpy third edge.
-static void trend_chevron(lv_obj_t *canvas, const trend_geom_t *g, int apex, int arm,
-                          int off, const lv_draw_line_dsc_t *dsc) {
-    lv_point_t seg[2];
-    lv_point_t tip = trend_pt(g, apex, off);
+// The head: a filled triangle with rounded corners, a soft edge glow outside it
+// and a light outline on top.
+//
+// The corners are rounded by stroking the perimeter with round caps rather than
+// by any radius parameter, which lv_canvas_draw_polygon does not have. The same
+// three segments then serve as the glow (wider, dim, behind) and the outline
+// (thin, contrasting, in front), so the whole head costs one polygon and three
+// passes of three lines.
+static void trend_head(lv_obj_t *canvas, const trend_geom_t *g, int back, int half,
+                       int off, lv_color_t colour, int round_w, int glow_w,
+                       lv_color_t edge, lv_opa_t glow_opa)
+{
+    lv_point_t tri[3];
+    tri[0] = trend_pt(g, g->tip, off);
+    tri[1] = trend_pt(g, g->tip - back, off + half);
+    tri[2] = trend_pt(g, g->tip - back, off - half);
 
-    seg[0] = tip; seg[1] = trend_pt(g, apex - arm, off + arm);
-    lv_canvas_draw_line(canvas, seg, 2, dsc);
-    seg[0] = tip; seg[1] = trend_pt(g, apex - arm, off - arm);
-    lv_canvas_draw_line(canvas, seg, 2, dsc);
+    // Glow first, so nothing later smears over it.
+    trend_head_edges(canvas, tri, round_w + glow_w, colour, glow_opa);
+
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.bg_color = colour;
+    dsc.bg_opa   = LV_OPA_COVER;
+    dsc.border_width = 0;
+    dsc.shadow_width = 0;   // NEVER a shadow: it freezes this hardware
+    lv_canvas_draw_polygon(canvas, tri, 3, &dsc);
+
+    // Rounding, then the contrasting edge on top of it.
+    trend_head_edges(canvas, tri, round_w, colour, LV_OPA_COVER);
+    trend_head_edges(canvas, tri, 1, edge, LV_OPA_70);
+}
+
+// One dot, drawn as a one-unit round-capped line, which paints as a disc of the
+// stroke width. It must not be zero length: LVGL culls a degenerate segment
+// before it reaches the cap, which drew the heads with no trail at all on the
+// first build of this.
+static void trend_dot(lv_obj_t *canvas, const trend_geom_t *g, int along, int off,
+                      int radius, lv_color_t colour, lv_opa_t opa)
+{
+    if (radius < 1) radius = 1;
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = colour;
+    dsc.opa = opa;
+    dsc.width = radius * 2;
+    dsc.round_start = 1;
+    dsc.round_end = 1;
+
+    lv_point_t seg[2];
+    seg[0] = trend_pt(g, along, off);
+    seg[1] = trend_pt(g, along + 1, off);
+    if (seg[0].x == seg[1].x && seg[0].y == seg[1].y) seg[1].x++;   // never degenerate
+    lv_canvas_draw_line(canvas, seg, 2, &dsc);
 }
 
 static int trend_angle_of(dexcom_trend_t trend) {
@@ -1031,10 +1106,6 @@ static int trend_angle_of(dexcom_trend_t trend) {
     }
 }
 
-// Doubles pulse their glow and slide side to side (the wiggle timer below
-// writes both); everything else glows at the constant subtle level, unshifted.
-#define TA_GLOW_OPA_BASE  LV_OPA_30
-static lv_opa_t ta_glow_opa = TA_GLOW_OPA_BASE;
 static int      ta_wig_shift = 0;   // design units, across the axis
 
 // Renders `trend` at an arbitrary angle: colour and single/pair form come from
@@ -1067,35 +1138,34 @@ static void trend_render(lv_obj_t *canvas, dexcom_trend_t trend, int angle, int 
     g.cy = sz / 2;
     g.c  = lv_trigo_cos((int16_t)angle);
     g.s  = lv_trigo_sin((int16_t)angle);
-    g.tail = TA_S(twin ? TA_D_TAIL : TA_TAIL);
     g.tip  = TA_S(twin ? TA_D_TIP  : TA_TIP);
 
-    int arm = TA_S(twin ? TA_D_ARM : TA_ARM);
-    int w   = TA_S(twin ? TA_D_W   : TA_W);
     int off = twin ? TA_S(TA_D_OFF) : 0;
-    if (w < 3)   w = 3;
-    if (arm < 3) arm = 3;
-    if ((w & 1) == 0) w++;   // odd stroke only — even shimmers in rotation
 
-    lv_draw_line_dsc_t glow, core;
-    lv_draw_line_dsc_init(&glow);
-    glow.round_start = 1;
-    glow.round_end = 1;
-    glow.width = w + TA_S(TA_GLOW);
-    glow.opa = twin ? ta_glow_opa : TA_GLOW_OPA_BASE;
-    glow.color = lv_color_hex(ink_hex);
-    core = glow;
-    core.width = w;
-    core.opa = LV_OPA_COVER;
+    lv_color_t ink = lv_color_hex(ink_hex);
+    int head_back = TA_S(twin ? TA_D_HEAD_BACK : TA_HEAD_BACK);
+    int head_half = TA_S(twin ? TA_D_HEAD_HALF : TA_HEAD_HALF);
+    int dot_r     = TA_S(twin ? TA_D_DOT_R     : TA_DOT_R);
+    int dot_from  = TA_S(twin ? TA_D_DOT_FROM  : TA_DOT_FROM);
+    int dot_step  = TA_S(twin ? TA_D_DOT_STEP  : TA_DOT_STEP);
+    if (head_back < 3) head_back = 3;
+    if (head_half < 2) head_half = 2;
+    int round_w = TA_S(TA_HEAD_ROUND);
+    if (round_w < 2) round_w = 2;
+    // Light against the card by day; on the night face a white edge would be
+    // the brightest thing on a screen that exists to be dim.
+    lv_color_t edge = lv_color_hex(home_night_face_is_active() ? 0x7A2A2A : 0xE8EDF2);
 
-    // All glow strokes first, cores on top, so no glow smears over a core.
+    // Trail first, head last, so the nearest dot never sits over the point.
     int shift = twin ? TA_S(ta_wig_shift) : 0;   // the alert slide, whole pair
-    for (int pass = 0; pass < 2; pass++) {
-        const lv_draw_line_dsc_t *d = pass ? &core : &glow;
-        for (int side = twin ? -1 : 0; side <= (twin ? 1 : 0); side += 2) {
-            trend_shaft(canvas, &g, side * off + shift, d);
-            trend_chevron(canvas, &g, g.tip, arm, side * off + shift, d);
+    for (int side = twin ? -1 : 0; side <= (twin ? 1 : 0); side += 2) {
+        int lane = side * off + shift;
+        for (int i = 0; i < TA_DOT_N; i++) {
+            trend_dot(canvas, &g, dot_from + i * dot_step, lane,
+                      (dot_r * TA_DOT_PCT[i]) / 100, ink, TA_DOT_OPA[i]);
         }
+        trend_head(canvas, &g, head_back, head_half, lane, ink,
+                   round_w, TA_S(TA_HEAD_GLOW), edge, ta_glow_opa);
     }
 
     #undef TA_S
@@ -1310,9 +1380,6 @@ void draw_trend_arrow_sized(lv_obj_t *canvas, dexcom_trend_t trend, int sz) {
     trend_render(canvas, trend, ta_cur, sz);
 }
 
-void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend) {
-    draw_trend_arrow_sized(canvas, trend, 60);
-}
 
 // ==================== Time & SNTP Functions ====================
 // Moved to features/time_system.c
@@ -1383,7 +1450,8 @@ static void demo_tick_cb(lv_timer_t *t) {
     current_trend = demo_next_trend(current_trend);
     ESP_LOGI(TAG, "DEMO: trend %d -> %d", (int)prev, (int)current_trend);
     lv_canvas_fill_bg(trend_canvas, trend_fill_bg(), LV_OPA_0);
-    draw_trend_arrow_sized(trend_canvas, current_trend, cgm_expanded ? 80 : 60);
+    draw_trend_arrow_sized(trend_canvas, current_trend,
+                           cgm_expanded ? HOME_TREND_SIZE_EXPANDED : HOME_TREND_SIZE);
 }
 
 void cygm_demo_trend_sync(void) {
@@ -2940,13 +3008,10 @@ void update_glucose_display(void) {
                 uint32_t alarm_color = get_glucose_alarm_color(current_glucose);
                 lv_obj_set_style_text_color(label_glucose, lv_color_hex(alarm_color), 0);
 
-                // Update trend arrow canvas (80px when expanded, 60px normal)
                 lv_canvas_fill_bg(trend_canvas, trend_fill_bg(), LV_OPA_0);
-                if (cgm_expanded) {
-                    draw_trend_arrow_sized(trend_canvas, current_trend, 80);
-                } else {
-                    draw_trend_arrow(trend_canvas, current_trend);
-                }
+                draw_trend_arrow_sized(trend_canvas, current_trend,
+                                       cgm_expanded ? HOME_TREND_SIZE_EXPANDED
+                                                    : HOME_TREND_SIZE);
 
                 update_ambient_tint();
 
@@ -3244,8 +3309,6 @@ void glucose_update_task(void *pvParameters) {
     if (wait_time_ms > 0) {
         int wait_seconds = wait_time_ms / 1000;
         // Arm the home-screen countdown arc for this wait
-        glucose_next_fetch_ms = esp_timer_get_time() / 1000 + wait_time_ms;
-        glucose_fetch_period_s = (wait_seconds > 0) ? wait_seconds : 1;
         for (int i = 0; i < wait_seconds; i++) {
             if (glucose_stop_requested) glucose_task_park(provider);
             if (glucose_force_fetch_requested) {
@@ -3263,14 +3326,11 @@ void glucose_update_task(void *pvParameters) {
 
         // Wait for poll_interval_sec OR until force-fetch is requested
         // Check every 1 second to allow responsive force-fetch
-        glucose_next_fetch_ms = esp_timer_get_time() / 1000 + (int64_t)poll_interval_sec * 1000;
-        glucose_fetch_period_s = poll_interval_sec;
         for (int i = 0; i < poll_interval_sec; i++) {
             if (glucose_stop_requested) glucose_task_park(provider);
             if (glucose_force_fetch_requested) {
                 ESP_LOGI(TAG, "Force-fetch requested, breaking wait loop early");
                 glucose_force_fetch_requested = false;
-                glucose_next_fetch_ms = esp_timer_get_time() / 1000;  // arc: pull is now
                 break;
             }
             vTaskDelay(pdMS_TO_TICKS(1000));  // Check every 1 second
@@ -3557,9 +3617,6 @@ void glucose_update_task(void *pvParameters) {
                             lv_timer_del(glucose_fetch_animation_timer);
                             glucose_fetch_animation_timer = NULL;
                         }
-                        if (glucose_freshness_arc != NULL) {
-                            lv_arc_set_value(glucose_freshness_arc, 100);  // Fresh reading
-                        }
                         lvgl_port_unlock();
                     } else {
                         ESP_LOGW(TAG, "LVGL lock timeout in glucose success UI");
@@ -3772,6 +3829,10 @@ void glucose_update_task(void *pvParameters) {
                 // cycle costs nothing.
                 sd_logger_resume();
 
+                // And a device that booted with no card at all looks again, so a
+                // card pushed in afterwards comes up without a reboot.
+                sd_logger_probe();
+
                 if (glucose_fetch_failed || always_close) {
                     cgm_close_client(provider);
                     if (glucose_fetch_failed) {
@@ -3826,10 +3887,18 @@ void glucose_update_task(void *pvParameters) {
         if (first_glucose_received && home_screen_active && update_should_check()) {
             ESP_LOGI(TAG, "Automatic firmware update check...");
             if (xSemaphoreTake(network_mutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-                // update_check_now() reclaims the provider client itself if the
-                // contiguous block is too small for a handshake. The network_mutex
-                // held here is what that guard depends on.
+                // update_check_now() reclaims the provider client and lends the
+                // SD card's heap itself. The scattered task stacks are the one
+                // thing it cannot reach from inside, and on a unit with a card
+                // they are the difference between a largest block of 10 KB and
+                // one of 21 KB. The button path has always done this; the
+                // periodic check did not, which is why it was the one that kept
+                // being refused. Safe from here: this helper is already called
+                // from this task for re-auth and SSL reconnects, and it never
+                // touches the glucose task itself.
+                bool freed_for_check = delete_background_tasks_for_ssl("version-check");
                 esp_err_t chk = update_check_now();
+                if (freed_for_check) recreate_background_tasks();
                 xSemaphoreGive(network_mutex);
 
                 if (chk == ESP_OK) {

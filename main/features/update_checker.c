@@ -74,7 +74,40 @@ static const char *update_manifest_url(void)
 // The 8 KB TLS input buffer is the largest single allocation of a handshake;
 // below 16 KB the check is skipped rather than allowed to compete with the
 // glucose fetch for heap. Moves with the heartbeat and location gates.
-#define UPDATE_MIN_LARGEST_BLOCK 16384
+// Raised from 16384 on 2026-09-09. A bench unit sat at exactly 16384, passed
+// this gate, and then failed the handshake with ESP_ERR_HTTP_CONNECT; the same
+// unit rebooted to 18432 and the very next check succeeded. The old value was
+// the floor rather than a budget, so the one case it was meant to prevent, a
+// doomed handshake that closes the provider's client to make room and shows
+// the user "Check WiFi and try again", was exactly what it let through.
+// Skipping a cycle is the graceful outcome this exists to choose.
+//
+// 18432 and not more. It is the lowest value measured to actually work,
+// and 20 KB was tried first purely because a comment elsewhere claimed
+// that figure. Two hundred samples per unit said otherwise: a 20 KB gate
+// let the no-card unit through on 6% of cycles against 36% at 18 KB,
+// which stops being a guard and starts being an off switch. The gate is
+// also measured a second time after the provider client is closed, so
+// the real pass rate is better than an idle sample suggests.
+// A handshake needs room for several allocations, not one big one, so both
+// numbers matter and total free is the one that actually tracks the outcome.
+// Measured across both bench units: a check failed with a largest block of
+// 22528 and succeeded at 20480, while the unit with an SD card failed every
+// time at ~28 KB free and the unit without one succeeded every time at ~33 KB.
+// Three rounds of tuning the block threshold changed nothing, because it was
+// never the deciding quantity.
+//
+// The block figure that remains is the biggest single allocation a handshake
+// makes, the 8 KB TLS input buffer plus headroom; 12288 is what
+// weather_system.c already documents as measured for the location search.
+// The floor is the one allocation that must be served whole: the 8192-byte
+// TLS input buffer, plus slack for its header. 12288 was borrowed from the
+// location search in weather_system.c, which was measured for a different
+// path, and on a card-fitted unit it refused checks that had ample total
+// free heap. Total free is the quantity that was shown to decide the outcome;
+// this one only has to stop a request that cannot possibly fit.
+#define UPDATE_MIN_LARGEST_BLOCK 9216
+#define UPDATE_MIN_FREE_HEAP     30720
 // A skip retries on this cadence, not the glucose cadence: the guard closes the
 // provider persistent clients before it measures, so retrying every fetch would
 // churn those connections and repeat the warning ~40 times an hour.
@@ -128,19 +161,51 @@ void update_set_manual_polling(bool polling) {
 
 // ==================== Check Logic ====================
 
-bool update_should_check(void) {
-    // Don't check within first 5 minutes of boot — let heap stabilize first.
-    // Early OTA checks fail with -0x7F00 (ALLOC_FAILED) because the heap is
-    // still fragmented from boot-time SSL + task allocation churn.
-    int64_t uptime_us = esp_timer_get_time();
-    if (uptime_us < 300000000LL) return false;  // 300s = 5 minutes
+// The first check of a boot happens here, the periodic ones after this.
+//
+// Waiting five minutes was meant to let the heap settle after the boot-time
+// SSL and task churn. Measured on a unit with an SD card, it settles the wrong
+// way: the largest free block is 18-21 KB from about 40 seconds and collapses
+// to 14-16 KB by 150, then holds there for as long as the device stays up,
+// because TLSF cannot defragment. Free heap stays flat at 28 KB throughout, so
+// nothing is leaking; the region is simply split and never rejoins.
+//
+// The consequence was that a card-fitted device could never check for updates
+// at all. Every attempt ran after the collapse, was correctly refused as too
+// small for a handshake, and the owner saw nothing wrong: no error, no badge,
+// a device that looks exactly like one already up to date.
+//
+// So the first attempt of each boot is made at 90 seconds, inside the window
+// that was measured to work, and the periodic ones keep the original spacing.
+// The other two conditions at the call site, a glucose reading received and
+// the home screen up, already prove the network is working by then.
+#define UPDATE_FIRST_CHECK_US    (90LL * 1000000LL)
+#define UPDATE_SETTLED_CHECK_US  (300LL * 1000000LL)
 
-    if (last_check_ms == 0) return true;  // Never checked
+bool update_should_check(void) {
+    int64_t uptime_us = esp_timer_get_time();
+
+    // last_check_ms lives in RAM, so every boot gets one attempt in the window.
+    if (last_check_ms == 0) return uptime_us >= UPDATE_FIRST_CHECK_US;
+
+    if (uptime_us < UPDATE_SETTLED_CHECK_US) return false;
     int64_t now_ms = uptime_us / 1000;
     return (now_ms - last_check_ms) >= UPDATE_INTERVAL_MS;
 }
 
+// The card goes away for the duration. Both callers reach the handshake
+// through here, the periodic one from the glucose task and the button from
+// its worker, so wrapping this covers both.
+static esp_err_t update_check_inner(void);
+
 esp_err_t update_check_now(void) {
+    sd_logger_release();
+    esp_err_t r = update_check_inner();
+    sd_logger_reacquire();
+    return r;
+}
+
+static esp_err_t update_check_inner(void) {
     http_buf_len = 0;
     http_buf[0] = '\0';
     http_buf_truncated = false;
@@ -153,18 +218,32 @@ esp_err_t update_check_now(void) {
     // idle here and its buffers can be reclaimed for the handshake. The glucose
     // task reopens the client on its next fetch.
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    if (largest < UPDATE_MIN_LARGEST_BLOCK) {
+    size_t freeheap = esp_get_free_heap_size();
+    size_t largest_before = largest;
+    bool reclaimed = false;
+    if (largest < UPDATE_MIN_LARGEST_BLOCK || freeheap < UPDATE_MIN_FREE_HEAP) {
         dexcom_close_persistent_client();
         libre_close_persistent_client();
         nightscout_close_persistent_client();
         largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        freeheap = esp_get_free_heap_size();
+        reclaimed = true;
     }
-    if (largest < UPDATE_MIN_LARGEST_BLOCK) {
+    if (largest < UPDATE_MIN_LARGEST_BLOCK || freeheap < UPDATE_MIN_FREE_HEAP) {
         // Not a failure of the update itself — backdated so update_should_check()
         // comes due again in UPDATE_SKIP_RETRY_MS rather than on the next glucose
         // cycle. Zero is the "never checked" sentinel, so step past it.
-        ESP_LOGW(TAG, "Check skipped: largest block %lu below TLS minimum %d",
-                 (unsigned long)largest, UPDATE_MIN_LARGEST_BLOCK);
+        // Both measurements, because they answer different questions. A unit
+        // with a card was seen skipping at 15872 while its idle samples sat
+        // around 21504, which means either the reclaim buys nothing or the
+        // check runs at the worst moment of the cycle. One line of evidence
+        // settles which, and a device that can never check for updates looks
+        // exactly like one that is up to date.
+        ESP_LOGW(TAG, "Check skipped: free %lu (need %d), largest %lu (need %d, was %lu%s)",
+                 (unsigned long)freeheap, UPDATE_MIN_FREE_HEAP,
+                 (unsigned long)largest, UPDATE_MIN_LARGEST_BLOCK,
+                 (unsigned long)largest_before,
+                 reclaimed ? ", after closing provider clients" : "");
         last_check_ms = (esp_timer_get_time() / 1000) - UPDATE_INTERVAL_MS + UPDATE_SKIP_RETRY_MS;
         if (last_check_ms == 0) last_check_ms = 1;
         update_info.check_failed = true;
@@ -1099,7 +1178,7 @@ static void show_beta_consent_overlay(void)
     lv_obj_add_flag(beta_consent_overlay, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *card = lv_obj_create(beta_consent_overlay);
-    lv_obj_set_size(card, 290, 200);
+    lv_obj_set_size(card, 290, 210);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_hex(0x131a26), 0);
     lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ORANGE), 0);
@@ -1114,11 +1193,12 @@ static void show_beta_consent_overlay(void)
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     lv_obj_t *body = lv_label_create(card);
-    lv_label_set_text(body, "This build has not been fully\ntested. It may be unstable, may\nmiss readings, and may need you\nto reflash it by cable.\n\nInstall it anyway?");
+    lv_label_set_text(body, "This build has not been fully\ntested. It may be unstable, may\nmiss readings, and may need you\nto reflash it by cable.\nInstall it anyway?");
     lv_obj_set_style_text_font(body, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(body, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 42);
+    lv_obj_set_style_text_line_space(body, 2, 0);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 38);
 
     lv_obj_t *no_btn = lv_btn_create(card);
     lv_obj_set_size(no_btn, 110, 34);
@@ -1175,7 +1255,10 @@ static void add_beta_channel_row(lv_obj_t *card)
     lv_obj_set_style_text_font(note, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(note, lv_color_hex(COLOR_ORANGE), 0);
     lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(note, LV_ALIGN_BOTTOM_MID, 0, -34);
+    // Montserrat 12 sets its rows closer than the glyphs need at this size,
+    // so the two lines collided until the spacing was given explicitly.
+    lv_obj_set_style_text_line_space(note, 3, 0);
+    lv_obj_align(note, LV_ALIGN_BOTTOM_MID, 0, -38);
 
     lv_obj_t *cb = lv_checkbox_create(card);
     lv_checkbox_set_text(cb, "Receive beta firmware");

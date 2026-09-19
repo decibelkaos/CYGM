@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include <string.h>
 #include "esp_heap_caps.h"
+#include "esp_http_client.h"  // ESP_ERR_HTTP_CONNECT, told apart from a refusal
 #include "sd_logger.h"
 #include "ui/menu_screen.h"
 #include "ui/home_screen.h"
@@ -160,6 +161,40 @@ static bool cgm_lvgl_lock_insistent(int ms_budget)
     }
     ESP_LOGW(TAG, "LVGL lock not obtained in %d ms — a screen update was dropped", ms_budget);
     return false;
+}
+
+// What to put in front of the user when a sign-in fails. Every provider
+// returns the transport error when the request never completed, and
+// ESP_FAIL when the server answered and refused, so the two causes a
+// person can actually act on stay distinguishable even though the three
+// clients differ in how much else they report.
+static const char *cgm_login_error_text(esp_err_t err, bool https)
+{
+    switch (err) {
+    case ESP_ERR_HTTP_CONNECT:
+        return https
+            ? "The server could not be reached securely.\n"
+              "A self-signed certificate will not work.\n"
+              "Check the address, or use http:// on your own network."
+            : "The server could not be reached.\n"
+              "Check the address, and that this device is on the network.";
+    case ESP_ERR_NOT_SUPPORTED:   // a 401 the HTTP client could not answer
+    case ESP_ERR_INVALID_STATE:
+        return "The server rejected the sign-in.\n"
+               "Check the token or password.";
+    case ESP_ERR_NOT_FOUND:
+        return "Signed in, but no sensor or shared\n"
+               "follower was found on the account.";
+    case ESP_ERR_NO_MEM:
+        return "Not enough memory to sign in.\n"
+               "Restart the device and try again.";
+    case ESP_ERR_TIMEOUT:
+        return "The server did not answer in time.\n"
+               "Try again in a moment.";
+    default:
+        return "The server refused the sign-in.\n"
+               "Check the details and try again.";
+    }
 }
 
 static void hide_connecting_overlay(void) {
@@ -339,7 +374,8 @@ static void dexcom_login_task(void *pvParameters) {
              (unsigned long)esp_get_free_heap_size(),
              (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
-    if (dexcom_authenticate(username, password) == ESP_OK) {
+    esp_err_t login_err = dexcom_authenticate(username, password);
+    if (login_err == ESP_OK) {
         ESP_LOGI(TAG, "Dexcom login successful");
         sd_log(TAG, "Dexcom: login OK");
         nvs_set_dexcom_credentials(username, password);
@@ -388,6 +424,7 @@ static void dexcom_login_task(void *pvParameters) {
 
         if (cgm_lvgl_lock_insistent(1000)) {
             hide_connecting_overlay();
+            show_login_error_overlay_ui(cgm_login_error_text(login_err, true));
             lvgl_port_unlock();
         }
     }
@@ -1659,7 +1696,8 @@ static void libre_login_task(void *pvParameters) {
              (unsigned long)esp_get_free_heap_size(),
              (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
-    if (libre_authenticate(email, password) == ESP_OK) {
+    esp_err_t login_err = libre_authenticate(email, password);
+    if (login_err == ESP_OK) {
         ESP_LOGI(TAG, "Libre login successful");
         sd_log(TAG, "Libre: login OK");
         nvs_set_libre_credentials(email, password);
@@ -1700,6 +1738,7 @@ static void libre_login_task(void *pvParameters) {
 
         if (cgm_lvgl_lock_insistent(1000)) {
             hide_connecting_overlay();
+            show_login_error_overlay_ui(cgm_login_error_text(login_err, true));
             lvgl_port_unlock();
         }
     }
@@ -2702,7 +2741,8 @@ static void nightscout_login_task(void *pvParameters) {
              (unsigned long)esp_get_free_heap_size(),
              (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
-    if (nightscout_authenticate(url, token) == ESP_OK) {
+    esp_err_t login_err = nightscout_authenticate(url, token);
+    if (login_err == ESP_OK) {
         ESP_LOGI(TAG, "Nightscout login successful");
         sd_log(TAG, "Nightscout: login OK");
         nvs_set_nightscout_credentials(url, token);
@@ -2743,6 +2783,7 @@ static void nightscout_login_task(void *pvParameters) {
 
         if (cgm_lvgl_lock_insistent(1000)) {
             hide_connecting_overlay();
+            show_login_error_overlay_ui(cgm_login_error_text(login_err, needs_tls));
             lvgl_port_unlock();
         }
     }

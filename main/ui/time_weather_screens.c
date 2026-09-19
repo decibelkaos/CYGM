@@ -386,7 +386,16 @@ static void apply_selected_location(void) {
         ESP_LOGW(TAG, "No timezone in result, using default");
     }
 
-    // Save to NVS
+    // Save to NVS.
+    //
+    // BOTH of these are needed. nvs_save_weather_coords() stores the query under
+    // "wx_zip_cached", which is the marker for what has already been geocoded,
+    // NOT the user's own setting; that one lives under NVS_ZIPCODE_KEY and only
+    // nvs_save_weather_settings() writes it. Saving just the first left the two
+    // disagreeing at the next boot, which is exactly the condition that triggers
+    // a re-geocode, so the device re-derived the OLD place and wrote its
+    // coordinates, name and timezone back over this choice.
+    nvs_save_weather_settings(user_zipcode, user_temp_celsius, user_weather_interval_min);
     nvs_save_weather_coords(user_zipcode, user_latitude, user_longitude, user_location);
     nvs_save_time_settings(user_timezone, user_dst_enabled, user_24hr_format);
 
@@ -395,8 +404,13 @@ static void apply_selected_location(void) {
     setenv("TZ", posix_tz, 1);
     tzset();
 
-    // Reset geocoding tracker
-    memset(geocoded_zipcode, 0, sizeof(geocoded_zipcode));
+    // Mark the query as already geocoded, rather than clearing it to force
+    // another lookup. The coordinates above came from the result the user
+    // actually picked; re-geocoding would hand the same words back to the
+    // geocoder and take whatever it chose that time, which need not be the same
+    // place. Keep what was chosen.
+    strncpy(geocoded_zipcode, user_zipcode, sizeof(geocoded_zipcode) - 1);
+    geocoded_zipcode[sizeof(geocoded_zipcode) - 1] = '\0';
 
     // Trigger immediate weather update
     if (weather_task_handle != NULL) {

@@ -1,0 +1,38 @@
+# Shim for three Kconfig symbols this project does not own and cannot define away.
+#
+# lvgl 9.6.0 (published 2026-09-16) is the first lvgl release to declare optional
+# dependencies on espressif/freetype, libjpeg-turbo, libpng and lz4, each gated
+# on an LV_USE_* symbol. The component manager registers those rules while
+# resolving, then evaluates them against the Kconfig of the version actually
+# installed. We are pinned to lvgl 8.4.0, whose Kconfig defines LV_USE_FREETYPE
+# (so that one resolves and the dependency is skipped, which is why the build log
+# shows "Skipping optional dependency: espressif/freetype" and nothing worse) but
+# not the other three. Those three stay unresolved for ever, so the manager keeps
+# asking CMake to re-run and CMake gives up after one retry:
+#
+#     Missing required kconfig option after retry.
+#
+# Defining them here, all off, gives the rules something to evaluate against.
+# The dependencies are then skipped exactly as freetype already is. Nothing in
+# lvgl 8.4 reads these symbols, and 8.4 does not define them, so there is no
+# collision and no behavioural change: this is the build-system equivalent of a
+# forward declaration.
+#
+# DELETE THIS FILE if the project ever moves to lvgl 9.x, where these symbols
+# become real and this would shadow them.
+
+menu "LVGL 9 forward-declared symbols (build-system shim, not features)"
+
+    config LV_USE_LIBJPEG_TURBO
+        bool "Placeholder: lvgl 9 JPEG decoder (unused on 8.4)"
+        default n
+
+    config LV_USE_LIBPNG
+        bool "Placeholder: lvgl 9 PNG decoder (unused on 8.4)"
+        default n
+
+    config LV_USE_LZ4
+        bool "Placeholder: lvgl 9 LZ4 support (unused on 8.4)"
+        default n
+
+endmenu

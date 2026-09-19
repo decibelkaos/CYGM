@@ -39,7 +39,40 @@ static const char *TAG = "HEARTBEAT";
 // of roughly 9KB, plus the output buffer and session state. Below this the
 // allocation would either fail with -0x7F00 or succeed by taking the block the
 // next glucose fetch needs.
-#define HEARTBEAT_MIN_LARGEST_BLOCK 16384
+// Raised from 16384 on 2026-09-09. A bench unit sat at exactly 16384, passed
+// this gate, and then failed the handshake with ESP_ERR_HTTP_CONNECT; the same
+// unit rebooted to 18432 and the very next check succeeded. The old value was
+// the floor rather than a budget, so the one case it was meant to prevent, a
+// doomed handshake that closes the provider's client to make room and shows
+// the user "Check WiFi and try again", was exactly what it let through.
+// Skipping a cycle is the graceful outcome this exists to choose.
+//
+// 18432 and not more. It is the lowest value measured to actually work,
+// and 20 KB was tried first purely because a comment elsewhere claimed
+// that figure. Two hundred samples per unit said otherwise: a 20 KB gate
+// let the no-card unit through on 6% of cycles against 36% at 18 KB,
+// which stops being a guard and starts being an off switch. The gate is
+// also measured a second time after the provider client is closed, so
+// the real pass rate is better than an idle sample suggests.
+// A handshake needs room for several allocations, not one big one, so both
+// numbers matter and total free is the one that actually tracks the outcome.
+// Measured across both bench units: a check failed with a largest block of
+// 22528 and succeeded at 20480, while the unit with an SD card failed every
+// time at ~28 KB free and the unit without one succeeded every time at ~33 KB.
+// Three rounds of tuning the block threshold changed nothing, because it was
+// never the deciding quantity.
+//
+// The block figure that remains is the biggest single allocation a handshake
+// makes, the 8 KB TLS input buffer plus headroom; 12288 is what
+// weather_system.c already documents as measured for the location search.
+// The floor is the one allocation that must be served whole: the 8192-byte
+// TLS input buffer, plus slack for its header. 12288 was borrowed from the
+// location search in weather_system.c, which was measured for a different
+// path, and on a card-fitted unit it refused checks that had ample total
+// free heap. Total free is the quantity that was shown to decide the outcome;
+// this one only has to stop a request that cannot possibly fit.
+#define HEARTBEAT_MIN_LARGEST_BLOCK 9216
+#define HEARTBEAT_MIN_FREE_HEAP     30720
 
 // Long enough to outlast a glucose fetch that is already in flight, short
 // enough that a wedged holder costs one cycle rather than the task.
@@ -122,19 +155,30 @@ esp_err_t heartbeat_send(void) {
     }
 
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    if (largest < HEARTBEAT_MIN_LARGEST_BLOCK) {
+    size_t freeheap = esp_get_free_heap_size();
+    if (largest < HEARTBEAT_MIN_LARGEST_BLOCK || freeheap < HEARTBEAT_MIN_FREE_HEAP) {
         heartbeat_release_provider_clients();
         largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        freeheap = esp_get_free_heap_size();
     }
-    if (largest < HEARTBEAT_MIN_LARGEST_BLOCK) {
-        ESP_LOGW(TAG, "Heartbeat skipped: low heap (largest_block=%u)", (unsigned)largest);
+    if (largest < HEARTBEAT_MIN_LARGEST_BLOCK || freeheap < HEARTBEAT_MIN_FREE_HEAP) {
+        ESP_LOGW(TAG, "Heartbeat skipped: free %u (need %d), largest %u (need %d)",
+                 (unsigned)freeheap, HEARTBEAT_MIN_FREE_HEAP,
+                 (unsigned)largest, HEARTBEAT_MIN_LARGEST_BLOCK);
         if (took_mutex) xSemaphoreGive(network_mutex);
         return ESP_ERR_NO_MEM;
     }
 
     char url[384];
+    // The version goes on every beat, not just the ones that carry a location:
+    // the fleet panel groups by it, and a device with no location set would
+    // otherwise never report one. MAJOR.MINOR.PATCH only — the date and stage
+    // would fragment the distribution into one bucket per build for no gain,
+    // and this is the same triple the update checker compares.
     int n = snprintf(url, sizeof(url),
-                     "https://cygm.me/api/heartbeat.php?id=%s", cygm_device_id());
+                     "https://cygm.me/api/heartbeat.php?id=%s&v=%d.%d.%d",
+                     cygm_device_id(),
+                     CYGM_VERSION_MAJOR, CYGM_VERSION_MINOR, CYGM_VERSION_PATCH);
 
     // Zero coordinates are the "no location set yet" state, not a real place.
     if (n > 0 && n < (int)sizeof(url) &&

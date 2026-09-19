@@ -80,10 +80,90 @@ static int  sd_flush_fail_count = 0;        // Consecutive flush failures
 #define SD_SUSPEND_AFTER_FAILURES  5        // Suspend after this many consecutive failures
 static bool sd_write_error_logged = false;  // Write-error detail is logged once per failure run
 static int64_t sd_resume_probe_us = 0;      // esp_timer stamp of the last resume probe
-#define SD_RESUME_PROBE_INTERVAL_US  (3600LL * 1000000LL)  // At most one resume probe per hour
+static int     sd_resume_probe_fails = 0;   // Consecutive probes that found no card
+static bool sd_released = false;            // Unmounted to lend its heap to a handshake
+static bool sd_force_write_fail = false;    // Bench aid, see sd_logger_force_write_fail()
+
+// A suspended card is probed on a backoff: 30s, then doubling to an hour.
+//
+// A flat hourly probe was measured to behave badly in the one case that
+// matters. A suspension grants one immediate probe, and that probe is spent
+// on the next cycle, which is still moments after the card came out and so
+// still fails. Everything after it waits the full hour, so a card put back a
+// minute later sat idle for fifty-nine of them with nothing on screen or in
+// the log to say why. Reinserting a card is a deliberate act by someone who
+// expects it to be noticed.
+//
+// The probe is sdmmc_get_status(), a status query rather than a write, so
+// the early attempts are cheap; the doubling is what keeps a genuinely dead
+// or absent card from being asked all day.
+// Above this the card is SDXC, which ships as exFAT and which this build does
+// not mount. A 64GB card CAN be made FAT32 with 64KB clusters, but that is a
+// configuration nobody should have to discover by email, so it is refused with
+// an explanation instead. No SDHC card reaches this: a "32GB" card reports about
+// 30500MB and the largest SDHC is 32GB exactly.
+#define SD_MAX_CARD_MB  32768
+
+// Classified from the last mount result, for the UI. ESP_FAIL is the one
+// case formatting can fix: esp_vfs_fat_sdmmc_mount only reformats on
+// FR_NO_FILESYSTEM, which means the card answered and its filesystem did
+// not read. Everything else failed before any filesystem was looked at.
+static sd_card_state_t sd_state = SD_CARD_NONE;
+
+static void sd_classify(esp_err_t ret)
+{
+    if (ret == ESP_OK)               sd_state = SD_CARD_MOUNTED;
+    else if (ret == ESP_FAIL)        sd_state = SD_CARD_NEEDS_FORMAT;
+    else if (ret == ESP_ERR_TIMEOUT) sd_state = SD_CARD_NONE;
+    else                             sd_state = SD_CARD_UNUSABLE;
+}
+
+sd_card_state_t sd_logger_card_state(void)
+{
+    return sd_state;
+}
+
+// Bench hook: pretend a card is present and unformatted, so the card that
+// offers to format it can be seen without owning an exFAT card.
+//
+// Refused while one is mounted. Faking this state over a working card would put
+// a Format button in front of someone with real data behind it, which is the
+// exact accident the feature exists to avoid. Never persisted.
+void sd_logger_force_needs_format(bool on)
+{
+    if (on && sd_state == SD_CARD_MOUNTED) {
+        ESP_LOGW(TAG, "Refused: a card is mounted, and faking NEEDS_FORMAT would "
+                      "offer to erase it");
+        return;
+    }
+    sd_state = on ? SD_CARD_NEEDS_FORMAT : SD_CARD_NONE;
+    ESP_LOGW(TAG, "Card state forced to %s (bench hook)",
+             on ? "NEEDS_FORMAT" : "NONE");
+}
+
+// How often to look for a card that was not there at boot. The bus stays up
+// between attempts, so this costs a few SD commands and no allocation. It is
+// called from the glucose cycle, which runs every 90 s, so that is the real
+// floor; the limit below only stops a shorter cycle probing every time.
+#define SD_FIT_PROBE_US           (30LL * 1000000LL)
+
+#define SD_RESUME_PROBE_FIRST_US  (30LL * 1000000LL)
+#define SD_RESUME_PROBE_MAX_US    (3600LL * 1000000LL)
+
 static sdmmc_host_t host;
 static sdspi_device_config_t slot_config;
 static sdmmc_card_t *mounted_card = NULL;   // Persistent mount — stays mounted for device lifetime
+
+esp_err_t sd_logger_reacquire(void);   // defined below, used by the resume probe
+
+static int64_t sd_resume_probe_interval(void)
+{
+    int64_t interval = SD_RESUME_PROBE_FIRST_US;
+    for (int i = 0; i < sd_resume_probe_fails && interval < SD_RESUME_PROBE_MAX_US; i++) {
+        interval *= 2;
+    }
+    return interval > SD_RESUME_PROBE_MAX_US ? SD_RESUME_PROBE_MAX_US : interval;
+}
 
 // Custom vprintf handler — captures ALL ESP_LOG output to serial buffer
 static int serial_capture_vprintf(const char *fmt, va_list args)
@@ -117,6 +197,60 @@ static int serial_capture_vprintf(const char *fmt, va_list args)
 
     va_end(args_copy);
     return ret;
+}
+
+// The SD drivers shout on every failed probe, and a device with no card probes
+// for ever. Silence them around an attempt and put them back afterwards.
+static void sd_quiet_drivers(bool quiet)
+{
+    esp_log_level_t lv = quiet ? ESP_LOG_NONE : ESP_LOG_WARN;
+    esp_log_level_set("sdspi_transaction", lv);
+    esp_log_level_set("sdspi_host", lv);
+    esp_log_level_set("sdmmc_cmd", lv);
+    esp_log_level_set("sdmmc_sd", lv);
+    esp_log_level_set("sdmmc_init", lv);
+    esp_log_level_set("vfs_fat_sdmmc", lv);
+}
+
+// Everything that has to happen once a card actually answers. Shared by the
+// boot mount and the later retry, so a card fitted afterwards is set up
+// identically rather than half configured.
+// Returns false when the card mounted but is not one we will use, having
+// already unmounted it and set the state. The caller must then treat the mount
+// as failed.
+static bool sd_mount_succeeded(sdmmc_card_t *card, size_t heap_before)
+{
+    unsigned long mb = (unsigned long)(((uint64_t)card->csd.capacity) *
+                                       card->csd.sector_size / (1024 * 1024));
+
+    if (mb > SD_MAX_CARD_MB) {
+        ESP_LOGW(TAG, "SD card is %luMB — too large. This build reads FAT only and "
+                      "anything over 32GB is SDXC. Unmounting.", mb);
+        sd_log(TAG, "SD rejected: %luMB, over the 32GB limit", mb);
+        esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+        mounted_card = NULL;
+        sd_state = SD_CARD_TOO_LARGE;
+        return false;
+    }
+
+    mounted_card = card;  // Keep mounted permanently — no unmount!
+    size_t mount_cost = heap_before - esp_get_free_heap_size();
+    ESP_LOGI(TAG, "SD card: %s, %luMB — logging enabled (mount cost: %u bytes)",
+             card->cid.name, mb, (unsigned)mount_cost);
+
+    // Install custom vprintf handler (always — needed for "log on" command).
+    // The stored preference is deliberately NOT read here: the card carries
+    // CGM data only unless someone asks for the diary in this session, so a
+    // device that once had capture on does not keep filling S*.LOG forever.
+    if (serial_mutex == NULL) {
+        serial_mutex = xSemaphoreCreateMutex();
+        if (serial_mutex) {
+            esp_log_set_vprintf(serial_capture_vprintf);
+            ESP_LOGI(TAG, "SD card ready — glucose CSV only. Serial diary is OFF "
+                          "at every boot; type 'log on' to record this session.");
+        }
+    }
+    return true;
 }
 
 esp_err_t sd_logger_init(void)
@@ -156,13 +290,7 @@ esp_err_t sd_logger_init(void)
     // interleave with SSL buffers, preventing heap fragmentation.
     size_t heap_before_mount = esp_get_free_heap_size();
 
-    // Temporarily suppress noisy SDMMC/SDSPI errors during probe
-    esp_log_level_set("sdspi_transaction", ESP_LOG_NONE);
-    esp_log_level_set("sdspi_host", ESP_LOG_NONE);
-    esp_log_level_set("sdmmc_cmd", ESP_LOG_NONE);
-    esp_log_level_set("sdmmc_sd", ESP_LOG_NONE);
-    esp_log_level_set("sdmmc_init", ESP_LOG_NONE);
-    esp_log_level_set("vfs_fat_sdmmc", ESP_LOG_NONE);
+    sd_quiet_drivers(true);
 
     sdmmc_card_t *card = NULL;
     esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
@@ -173,38 +301,39 @@ esp_err_t sd_logger_init(void)
 
     ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_cfg, &card);
 
-    esp_log_level_set("sdspi_transaction", ESP_LOG_WARN);
-    esp_log_level_set("sdspi_host", ESP_LOG_WARN);
-    esp_log_level_set("sdmmc_cmd", ESP_LOG_WARN);
-    esp_log_level_set("sdmmc_sd", ESP_LOG_WARN);
-    esp_log_level_set("sdmmc_init", ESP_LOG_WARN);
-    esp_log_level_set("vfs_fat_sdmmc", ESP_LOG_WARN);
+    sd_quiet_drivers(false);
+    sd_classify(ret);
 
+    if (ret == ESP_OK && !sd_mount_succeeded(card, heap_before_mount)) {
+        ret = ESP_FAIL;   // refused; sd_state already says why
+    }
     if (ret == ESP_OK) {
-        mounted_card = card;  // Keep mounted permanently — no unmount!
-        size_t mount_cost = heap_before_mount - esp_get_free_heap_size();
-        ESP_LOGI(TAG, "SD card: %s, %luMB — logging enabled (mount cost: %u bytes)",
-                 card->cid.name,
-                 (unsigned long)(((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024)),
-                 (unsigned)mount_cost);
-
-        // Install custom vprintf handler (always — needed for "log on" command).
-        // The stored preference is deliberately NOT read here: the card carries
-        // CGM data only unless someone asks for the diary in this session, so a
-        // device that once had capture on does not keep filling S*.LOG forever.
-        serial_mutex = xSemaphoreCreateMutex();
-        if (serial_mutex) {
-            esp_log_set_vprintf(serial_capture_vprintf);
-            ESP_LOGI(TAG, "SD card ready — glucose CSV only. Serial diary is OFF "
-                          "at every boot; type 'log on' to record this session.");
-        }
     } else {
-        // No card — free the SPI bus to reclaim memory (~0.5KB + DMA)
+        // The bus and the mutex STAY UP. Freeing them reclaimed about half a
+        // kilobyte plus DMA descriptors, and cost the ability to ever notice a
+        // card afterwards: sd_logger_resume() returns immediately on a null
+        // mutex, so a card pushed in later stayed invisible until a reboot.
+        // Two bench units were fitted with cards and neither saw them. Holding
+        // the bus makes the retry in sd_logger_probe() just the mount, with no
+        // allocation to churn the heap every time it fails, and the memory to
+        // pay for it came out of the canvas buffers.
         mounted_card = NULL;
-        spi_bus_free(SD_SPI_HOST);
-        vSemaphoreDelete(log_mutex);
-        log_mutex = NULL;
-        ESP_LOGI(TAG, "No SD card — logging disabled (0 bytes used)");
+
+        // Say which of the two it was. ESP_FAIL means the card answered and its
+        // filesystem would not mount, which on a card bought today almost always
+        // means exFAT: anything over 32 GB ships that way and this build mounts
+        // FAT only. Every other error means nothing answered at all. Reporting
+        // both as "No SD card" sent two bench units chasing a seating fault that
+        // was really a format.
+        if (ret == ESP_FAIL) {
+            ESP_LOGW(TAG, "SD card present but its filesystem would not mount — "
+                          "logging disabled. Reformat it as FAT32; cards over "
+                          "32GB are exFAT from the factory and will not work.");
+            sd_log(TAG, "SD unmountable: format is not FAT32");
+        } else {
+            ESP_LOGI(TAG, "No SD card (%s) — watching for one (0 bytes used)",
+                     esp_err_to_name(ret));
+        }
     }
 
     return ESP_OK;  // Always succeed — missing card is not fatal
@@ -227,7 +356,13 @@ static void sd_report_write_error(const char *what, int err)
     sd_write_error_logged = true;
     // FATFS can short-write without setting errno, so the cause is not always
     // available and the message must not claim one it does not have.
-    ESP_LOGW(TAG, "SD write failed (%s): %s — card may be full or write-protected",
+    //
+    // The list is ordered by how often each cause actually turns up. A card
+    // pulled out of a running device is by far the commonest, and naming full
+    // and write-protected first sent anyone reading this log looking at the
+    // card's contents and its lock tab before checking it was still in the
+    // slot. EIO on open is what removal looks like from here.
+    ESP_LOGW(TAG, "SD write failed (%s): %s — card removed, full, or write-protected",
              what, err ? strerror(err) : "short write, no errno reported");
 }
 
@@ -354,12 +489,15 @@ esp_err_t sd_logger_flush(void)
         }
     }
 
+    if (sd_force_write_fail) any_write_failed = true;
+
     // Track consecutive failures (card removal detection)
     if (any_write_failed) {
         sd_flush_fail_count++;
         if (sd_flush_fail_count >= SD_SUSPEND_AFTER_FAILURES) {
             sd_suspended = true;
             sd_resume_probe_us = 0;  // Each suspension earns one immediate probe
+            sd_resume_probe_fails = 0;
             serial_capture_enabled = false;
             glucose_buffer_pos = 0;
             if (serial_mutex && xSemaphoreTake(serial_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -475,8 +613,209 @@ bool sd_logger_available(void)
     return mounted_card != NULL && !sd_suspended;
 }
 
+void sd_logger_probe(void)
+{
+    // Only for a device that came up with no card. A mounted card, a released
+    // one, or a bus that never initialised are all somebody else's business.
+    if (mounted_card != NULL || log_mutex == NULL || sd_released) return;
+
+    static int64_t last_probe_us = 0;
+    int64_t now_us = esp_timer_get_time();
+    if (last_probe_us != 0 && (now_us - last_probe_us) < SD_FIT_PROBE_US) return;
+    last_probe_us = now_us;
+
+    // Same floor the flush uses: the mount needs contiguous DMA memory, and an
+    // attempt that fails for want of heap says nothing about the card.
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) < 8192) return;
+
+    size_t heap_before = esp_get_free_heap_size();
+    sdmmc_card_t *card = NULL;
+    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
+        .format_if_mount_failed = false,
+        .max_files = 1,
+        .allocation_unit_size = 0,
+    };
+
+    sd_quiet_drivers(true);
+    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config,
+                                            &mount_cfg, &card);
+    sd_quiet_drivers(false);
+
+    sd_card_state_t was = sd_state;
+    sd_classify(ret);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "SD card fitted after boot");
+        if (!sd_mount_succeeded(card, heap_before)) ret = ESP_FAIL;
+    }
+    if (ret != ESP_OK && sd_state != was) {
+        // Only on a change, or a cardless device would say this for ever.
+        ESP_LOGI(TAG, "SD probe: %s (%s)",
+                 sd_state == SD_CARD_NEEDS_FORMAT ? "card present, needs formatting" :
+                 sd_state == SD_CARD_UNUSABLE     ? "card present but not usable" :
+                                                    "no card",
+                 esp_err_to_name(ret));
+    }
+    // A failure is the normal case on a device that has no card, so it is not
+    // logged: the boot line already said what happened, and repeating it every
+    // cycle for ever would bury everything else.
+}
+
+// One probe, with the drivers left talking, so a refusal says why.
+// Bench hook: make a healthy card look unformatted, so the Format button has
+// real work to do. Zeroes sector 0, which is the partition table and the
+// filesystem signature, and leaves every other sector alone. The card is not
+// damaged; formatting puts it straight back.
+//
+// Faking the card state would not test anything: the mount would still succeed,
+// so format_if_mount_failed would never fire and nothing would be formatted.
+esp_err_t sd_logger_trash_filesystem(void)
+{
+    if (mounted_card == NULL || log_mutex == NULL) {
+        ESP_LOGW(TAG, "Trash refused: no card mounted");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    uint8_t *zero = heap_caps_calloc(1, 512, MALLOC_CAP_DMA);
+    if (zero == NULL) return ESP_ERR_NO_MEM;
+
+    ESP_LOGW(TAG, "Zeroing sector 0 — this card will look unformatted until it is "
+                  "formatted again");
+    sdmmc_card_t *card = mounted_card;
+    esp_err_t err = sdmmc_write_sectors(card, zero, 0, 1);
+    free(zero);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Trash failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    // Unmount so the next probe has to read it fresh.
+    esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
+    mounted_card = NULL;
+    sd_state = SD_CARD_NONE;
+    ESP_LOGW(TAG, "Sector 0 zeroed and card unmounted — the next probe should "
+                  "report it as needing a format");
+    return ESP_OK;
+}
+
+void sd_logger_diagnose(void)
+{
+    if (mounted_card != NULL) {
+        ESP_LOGI(TAG, "Diag: a card is already mounted — nothing to diagnose");
+        return;
+    }
+    if (log_mutex == NULL || sd_released) {
+        ESP_LOGW(TAG, "Diag: the SD subsystem is not up; nothing to probe with");
+        return;
+    }
+
+    ESP_LOGW(TAG, "Diag: probing once with the SD drivers left talking ...");
+    sd_quiet_drivers(false);   // the one place their own errors are wanted
+
+    sdmmc_card_t *card = NULL;
+    esp_vfs_fat_sdmmc_mount_config_t cfg = {
+        .format_if_mount_failed = false,   // a diagnosis must not change anything
+        .max_files = 1,
+        .allocation_unit_size = 0,
+    };
+    size_t heap_before = esp_get_free_heap_size();
+    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &cfg, &card);
+    sd_classify(ret);
+
+    ESP_LOGW(TAG, "Diag: mount returned %s", esp_err_to_name(ret));
+    if (ret == ESP_OK) {
+        ESP_LOGW(TAG, "Diag: it came up this time");
+        if (sd_mount_succeeded(card, heap_before)) return;
+        ESP_LOGW(TAG, "Diag: mounted, but refused as too large");
+        return;
+    }
+    if (ret == ESP_FAIL) {
+        ESP_LOGW(TAG, "Diag: the card answered and its filesystem did not read. "
+                      "This is the case formatting fixes.");
+    } else {
+        ESP_LOGW(TAG, "Diag: the card was refused during initialisation, before any "
+                      "partition table was read. Formatting cannot reach a card that "
+                      "will not talk, on this device or any other.");
+    }
+}
+
+esp_err_t sd_logger_format(void)
+{
+    // Refuse anything the format cannot actually fix. A card that failed to
+    // initialise will fail again the same way, and reporting that as a failed
+    // format would blame the wrong thing.
+    if (sd_state != SD_CARD_NEEDS_FORMAT) {
+        ESP_LOGW(TAG, "Format refused: card state is %d, not NEEDS_FORMAT", (int)sd_state);
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (log_mutex == NULL || sd_released) return ESP_ERR_INVALID_STATE;
+
+    ESP_LOGW(TAG, "Formatting the SD card — every file on it is being erased");
+
+    sdmmc_card_t *card = NULL;
+    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
+        .format_if_mount_failed = true,   // the whole point of this call
+        .max_files = 1,
+        .allocation_unit_size = 0,
+    };
+
+    size_t heap_before = esp_get_free_heap_size();
+    // Deliberately NOT silenced. A probe repeats once a cycle for ever, which is
+    // why those are quiet; a format happens because somebody pressed a button,
+    // so its progress and its failure are worth every line. ESP-IDF logs
+    // "partitioning card" and "formatting card" at WARN, which survives
+    // CONFIG_LOG_MAXIMUM_LEVEL=3, and those two say which step gave up. The
+    // FRESULT itself is logged at DEBUG and is compiled out of this build.
+    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config,
+                                            &mount_cfg, &card);
+    sd_classify(ret);
+
+    if (ret != ESP_OK) {
+        // A card is busy for a while after f_mkfs, and ESP-IDF's remount happens
+        // inside the same call, so it can land in that window and report failure
+        // for a format that actually worked. Measured on an 8GB card: the format
+        // succeeded, this call still returned ESP_FAIL, the next probe timed out
+        // because the card was still finishing, and the card mounted perfectly
+        // on the next boot. Telling somebody to buy a new card at that point is
+        // the worst answer available, so ask again before believing it.
+        for (int i = 0; i < 3 && ret != ESP_OK; i++) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            ESP_LOGW(TAG, "Format: the card was busy, remount attempt %d of 3", i + 1);
+            esp_vfs_fat_sdmmc_mount_config_t plain = {
+                .format_if_mount_failed = false,   // it is already formatted
+                .max_files = 1,
+                .allocation_unit_size = 0,
+            };
+            card = NULL;
+            ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &plain, &card);
+            sd_classify(ret);
+        }
+    }
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Format complete — card mounted");
+        if (!sd_mount_succeeded(card, heap_before)) ret = ESP_FAIL;
+        else sd_log(TAG, "SD card formatted on the device");
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Format failed: %s", esp_err_to_name(ret));
+    }
+    return ret;
+}
+
 void sd_logger_resume(void)
 {
+    // A remount that failed leaves the card lent out with nothing holding a
+    // retry, so logging would stay dead until the next reboot and the only
+    // sign would be one warning nobody reads. This probe already runs on every
+    // glucose cycle with its own backoff, so it is the right place to keep
+    // trying.
+    if (sd_released) {
+        sd_logger_reacquire();
+        return;
+    }
+
     if (!mounted_card || !log_mutex) return;
     if (!sd_suspended) return;
 
@@ -484,7 +823,7 @@ void sd_logger_resume(void)
     // seconds. A suspension only lifts on evidence that the card answers again,
     // and the probe that gathers it costs an SD command, so it is rate-limited.
     int64_t now_us = esp_timer_get_time();
-    if (sd_resume_probe_us != 0 && (now_us - sd_resume_probe_us) < SD_RESUME_PROBE_INTERVAL_US) {
+    if (sd_resume_probe_us != 0 && (now_us - sd_resume_probe_us) < sd_resume_probe_interval()) {
         return;
     }
 
@@ -501,6 +840,7 @@ void sd_logger_resume(void)
     if (probe == ESP_OK) {
         sd_suspended = false;
         sd_flush_fail_count = 0;
+        sd_resume_probe_fails = 0;
         sd_write_error_logged = false;
         // Restore this session's choice; a suspension must not turn capture on.
         serial_capture_enabled = serial_capture_requested;
@@ -508,7 +848,9 @@ void sd_logger_resume(void)
     xSemaphoreGive(log_mutex);
 
     if (probe != ESP_OK) {
-        ESP_LOGD(TAG, "SD card still not responding — logging stays suspended");
+        if (sd_resume_probe_fails < 24) sd_resume_probe_fails++;
+        ESP_LOGD(TAG, "SD card still not responding — next probe in %lds",
+                 (long)(sd_resume_probe_interval() / 1000000LL));
         return;
     }
 
@@ -681,6 +1023,77 @@ sd_glucose_status_t sd_glucose_read(const char *name,
     serial_capture_paused = false;
     xSemaphoreGive(log_mutex);
     return status;
+}
+
+
+// ==================== Releasing the card to free heap ====================
+
+// Hand the mount's ~7 KB back for the duration of a TLS handshake.
+//
+// The file header warns that repeated mount/unmount churns the heap badly
+// enough to break SSL reconnection, and that still holds: this is once per
+// update check, at most daily, and the remount happens before any other
+// network work resumes. It exists because a card-fitted unit simply does not
+// have the total free heap for a handshake while the card is mounted.
+esp_err_t sd_logger_release(void)
+{
+    if (!mounted_card || !log_mutex) return ESP_ERR_INVALID_STATE;
+
+    sd_logger_flush();   // takes the mutex itself, so before we hold it
+
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) return ESP_ERR_TIMEOUT;
+    serial_capture_paused = true;
+    size_t before = esp_get_free_heap_size();
+    esp_vfs_fat_sdcard_unmount(MOUNT_POINT, mounted_card);
+    mounted_card = NULL;
+    sd_released = true;
+    size_t after = esp_get_free_heap_size();
+    xSemaphoreGive(log_mutex);
+
+    ESP_LOGI(TAG, "Card released: free %lu -> %lu (+%ld), largest=%lu",
+             (unsigned long)before, (unsigned long)after,
+             (long)(after - before),
+             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    return ESP_OK;
+}
+
+// Always call this, including when the work in between failed. A device that
+// silently stops logging because a check went wrong is worse than the check.
+esp_err_t sd_logger_reacquire(void)
+{
+    if (!sd_released) return ESP_OK;
+    if (!log_mutex) return ESP_ERR_INVALID_STATE;
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(3000)) != pdTRUE) return ESP_ERR_TIMEOUT;
+
+    sdmmc_card_t *card = NULL;
+    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
+        .format_if_mount_failed = false,
+        .max_files = 1,
+        .allocation_unit_size = 0,
+    };
+    esp_err_t ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_cfg, &card);
+    if (ret == ESP_OK) {
+        mounted_card = card;
+        sd_released = false;
+        sd_flush_fail_count = 0;
+        sd_write_error_logged = false;
+        ESP_LOGI(TAG, "Card remounted (free=%lu)", (unsigned long)esp_get_free_heap_size());
+    } else {
+        ESP_LOGW(TAG, "Card did not remount: %s - logging stays off until reboot",
+                 esp_err_to_name(ret));
+    }
+    serial_capture_paused = false;
+    xSemaphoreGive(log_mutex);
+    return ret;
+}
+
+// Bench aid. Pretends every write failed so the five-strike suspension and the
+// resume backoff can be exercised on a device nobody is standing next to.
+// Console-only and off at every boot, like the serial diary.
+void sd_logger_force_write_fail(bool on)
+{
+    sd_force_write_fail = on;
+    ESP_LOGW(TAG, "Simulated write failure %s", on ? "ON" : "OFF");
 }
 
 void sd_logger_shutdown(void)

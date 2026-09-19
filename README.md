@@ -31,14 +31,15 @@ its touch will not work. Check the listing says capacitive.
 The easiest install is the **browser flasher at [cygm.me](https://cygm.me)** —
 no toolchain needed.
 
-## Features (v0.16.x)
+## Features
 
 - **Three data sources**: Dexcom Share, LibreLinkUp, Nightscout — pick one
   on-device, switch anytime. Nightscout is a data source rather than a CGM
   maker, so through it CYGM shows any CGM your Nightscout setup already handles
-- **Glanceable home screen**: big value with signed delta, trend arrow with a
-  sliding two-arrow alert for rapid change, a countdown arc until CYGM next
-  checks for data, and stale readings that visibly gray out
+- **Glanceable home screen**: big value with signed delta, a trend arrow drawn
+  as a solid head with a fading trail so direction reads from across the room,
+  a second arrow alongside it when glucose is moving fastest, and stale readings
+  that visibly gray out
 - **Polling, not magic**: CYGM checks the cloud about every 90 seconds. How
   often a genuinely new reading appears is set by your CGM system — Dexcom
   typically every five minutes, Libre 3 and 3 Plus as often as every minute
@@ -49,7 +50,12 @@ no toolchain needed.
 - **Alarm engine**: four threshold tiers, 28 tones (including a randomized loud
   sequence designed to reduce habituation), escalating volume, quiet hours,
   predictive low warning, a data-gap alert that suggests likely causes, and a
-  non-disableable urgent-low safety floor with a full-screen takeover
+  non-disableable urgent-low safety floor with a full-screen takeover. On the
+  High Alarm, High Warning and Low Warning tiers an unanswered alarm goes quiet
+  after three minutes and sounds again two readings later if you are still out
+  of range, and a per-tier **Keep Sounding** switch removes that pause. The low
+  end never goes quiet at all, deliberately: the urgent-low floor and the Low
+  Alarm both sound until somebody answers them, and that is permanent
 - **Night face**: scheduled dim hands the screen to one huge zone-colored
   number; the time stays small in the top bar so it is not misread as a
   glucose value

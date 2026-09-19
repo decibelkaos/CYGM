@@ -62,6 +62,57 @@ bool sd_logger_available(void);
  * restores whatever serial capture the operator asked for in THIS session.
  * No-op when no card was ever detected.
  */
+/**
+ * Look for a card on a device that booted without one. Cheap: the SPI bus is
+ * already up, so this is only the mount, and it rate-limits itself. Call it
+ * from the glucose cycle beside sd_logger_resume().
+ */
+/**
+ * How the last mount attempt ended. The difference matters to the UI: one of
+ * these can be fixed by formatting and the rest cannot, and offering a Format
+ * button for a card that fails to initialise would promise something it cannot
+ * deliver.
+ */
+typedef enum {
+    SD_CARD_NONE,          /* nothing answered on the bus */
+    SD_CARD_MOUNTED,       /* up and writable */
+    SD_CARD_NEEDS_FORMAT,  /* answered, but no FAT filesystem — formattable */
+    SD_CARD_UNUSABLE,      /* answered, and the driver refused it — not fixable here */
+    SD_CARD_TOO_LARGE,     /* mounted, but over 32GB — SDXC, refused on purpose */
+} sd_card_state_t;
+
+sd_card_state_t sd_logger_card_state(void);
+
+/**
+ * Bench hook: force the state to NEEDS_FORMAT so the format card can be
+ * raised without an exFAT card to hand. Refused while a card is mounted,
+ * because faking it there would offer to erase a working card.
+ */
+void sd_logger_force_needs_format(bool on);
+
+/**
+ * Format the card as FAT and mount it. ERASES EVERYTHING on the card. Only
+ * meaningful in SD_CARD_NEEDS_FORMAT; anything else returns ESP_ERR_INVALID_STATE
+ * rather than touching the card. Takes seconds to minutes, so never call it from
+ * the LVGL task.
+ */
+/**
+ * Probe once with the SD drivers left unsilenced, so a refused card says
+ * why. Changes nothing: format_if_mount_failed is off for this call.
+ */
+/**
+ * Bench hook: zero sector 0 so a healthy card looks unformatted, then
+ * unmount. Used to give the Format button real work; formatting puts the
+ * card straight back. Destroys the filesystem, not the card.
+ */
+esp_err_t sd_logger_trash_filesystem(void);
+
+void sd_logger_diagnose(void);
+
+esp_err_t sd_logger_format(void);
+
+void sd_logger_probe(void);
+
 void sd_logger_resume(void);
 
 /**
@@ -72,6 +123,18 @@ esp_err_t sd_card_mount(sdmmc_card_t **out_card);
 
 /** Release the mutex after external use. Does NOT unmount. */
 void sd_card_unmount(sdmmc_card_t *card);
+
+/**
+ * Unmount to hand the card's ~7 KB back for a TLS handshake, and remount
+ * afterwards. A card-fitted unit does not otherwise have the total free heap
+ * for one, which is why update checks failed on it. Always pair them, and
+ * call reacquire even when the work in between failed.
+ */
+esp_err_t sd_logger_release(void);
+esp_err_t sd_logger_reacquire(void);
+
+/** Bench aid: pretend every write fails, to exercise the suspension path. */
+void sd_logger_force_write_fail(bool on);
 
 /** Unmount for a clean shutdown (e.g. before OTA). All SD ops fail afterwards. */
 void sd_logger_shutdown(void);

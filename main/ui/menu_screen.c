@@ -120,8 +120,25 @@ static void erase_close_event_cb(lv_event_t *e) {
     }
 }
 
+// Nothing can confirm in the first moments after the card appears. The gesture
+// bug above is fixed at its source; this is the backstop, because the cost of
+// being wrong here is somebody's WiFi password, CGM login and settings.
+#define ERASE_CONFIRM_ARM_MS 400
+static uint32_t erase_overlay_shown_ms = 0;
+
 static void erase_confirm_cb(lv_event_t *e) {
     (void)e;
+    // The arming window, which was defined and then never consulted. Confirming
+    // on RELEASE is what actually fixed the original defect and it still does
+    // the work; this is the backstop behind it, for any future path that raises
+    // this card while a finger is already travelling. A tap that lands within
+    // ERASE_CONFIRM_ARM_MS of the card appearing cannot be a considered answer
+    // to a question that was not on screen when it started.
+    if (lv_tick_elaps(erase_overlay_shown_ms) < ERASE_CONFIRM_ARM_MS) {
+        ESP_LOGW(TAG, "Erase confirm ignored: %ums after the card appeared",
+                 (unsigned)lv_tick_elaps(erase_overlay_shown_ms));
+        return;
+    }
     dismiss_erase_overlay();
     nvs_factory_reset();
     esp_restart();
@@ -153,20 +170,38 @@ static void erase_hold_event_cb(lv_event_t *e) {
         lv_bar_set_value(bar, progress, LV_ANIM_OFF);
 
         if (progress >= 100 && !erase_hold_initiated) {
-            erase_hold_initiated = true;
-            ESP_LOGI(TAG, "Erase requested via hold button");
+            erase_hold_initiated = true;   // bar full; the dialog waits for the lift
+            ESP_LOGI(TAG, "Erase hold complete - confirmation on release");
+        }
+    } else if (code == LV_EVENT_RELEASED) {
+        // The confirmation is raised here and not the moment the bar fills.
+        //
+        // Measured: the confirm button sits at the bottom right of its card,
+        // which is where this button already is, so raising the dialog mid-press
+        // put "Erase & Reset" directly under the finger. The release that ended
+        // the hold then landed on it. An 8-second hold wiped the device 200 ms
+        // after the finger lifted, six seconds after the dialog it never gave
+        // anyone a chance to read. On an irreversible action that is not a
+        // confirmation at all.
+        if (erase_hold_initiated) {
+            erase_hold_initiated = false;
+            lv_bar_set_value(bar, 0, LV_ANIM_OFF);
             dismiss_about_overlay();
             show_erase_overlay();
-        }
-    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-        if (!erase_hold_initiated) {
+        } else {
             lv_bar_set_value(bar, 0, LV_ANIM_OFF);  // LV_ANIM_ON triggers lv_anim_start (freeze risk)
         }
+    } else if (code == LV_EVENT_PRESS_LOST) {
+        // Slid off the button. Treat it as abandoned rather than completed: the
+        // finger is still down somewhere and its release must not confirm.
+        erase_hold_initiated = false;
+        lv_bar_set_value(bar, 0, LV_ANIM_OFF);
     }
 }
 
 static void show_erase_overlay(void) {
     if (erase_overlay != NULL) return;
+    erase_overlay_shown_ms = lv_tick_get();
 
     // Full-screen dimmed backdrop
     erase_overlay = lv_obj_create(lv_layer_top());
@@ -548,6 +583,10 @@ static void hide_update_check_overlay(void) {
 static void update_check_task_fn(void *param) {
     (void)param;
 
+    // Done here rather than in the caller so this task's own stack does not
+    // come out of the memory being reclaimed for the handshake.
+    delete_background_tasks_for_ssl("update-check");
+
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
     ESP_LOGI(TAG, "Update check: largest_block=%lu (worker task)", (unsigned long)largest);
 
@@ -622,10 +661,20 @@ static void check_update_btn_cb(lv_event_t *e) {
     dexcom_close_persistent_client();
     libre_close_persistent_client();
 
-    // Delete background tasks to coalesce heap (~11KB stacks freed). This must
-    // stay ahead of the worker: with the SSL clients alive largest_block is
-    // ~3.5KB and the task creation would fail outright.
-    delete_background_tasks_for_ssl("update-check");
+    // The task stacks are freed by the worker itself, not here.
+    //
+    // Closing the SSL clients above is what the old comment was really about:
+    // with those alive the largest block is ~3.5 KB and no task can be created
+    // at all. Freeing the ~11 KB of stacks as well, before the worker exists,
+    // hands the worker's own 6144 straight back out of what was just reclaimed.
+    // On a unit with an SD card that was the difference between passing the
+    // check and failing it: free heap measured 27532 at rest and 21160 by the
+    // time the check ran, entirely the worker's stack, which is below what a
+    // handshake needs even after the card is lent back.
+    //
+    // So the worker is created first, against the ordinary heap, and frees the
+    // stacks once it is running. update_restore_tasks() at the end still puts
+    // them back on every path.
 
     // 6144 covers the TLS check, the SD-mount-on-write path in sd_log, and the
     // overlay build — same budget as the provider login tasks.

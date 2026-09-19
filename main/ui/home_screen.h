@@ -14,6 +14,13 @@ extern "C" {
 
 void create_home_screen(void);
 
+// The trend arrow's canvas, in both card states. Both files that draw the
+// arrow need these: main.c owns the renderer, home_screen.c owns the layout,
+// and when the collapsed size lived in only one of them the two drifted apart
+// and the arrow spent a release drawn 4 px off its own centre.
+#define HOME_TREND_SIZE           68   // collapsed: the band between unit and delta
+#define HOME_TREND_SIZE_EXPANDED  80   // expanded: matches the large digits
+
 // Draw the battery icon onto `canvas`; `percent` is the 0-100 fill level.
 void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent);
 
@@ -30,7 +37,21 @@ void show_wifi_disconnected_overlay(void);
 void dismiss_wifi_disconnected_overlay(void);
 
 // Login success overlay (one-time after CGM login)
+/**
+ * Re-measure the city name against its slot and start, restart or stop the
+ * scroll. Call after changing home_location_label's text.
+ */
+/**
+ * Show a short tag in the home screen's status corner, or hide it when the
+ * text is NULL or empty. Set over serial with "label <text>"; the device
+ * cannot work out its own COM port, so the host has to say.
+ */
+void home_set_device_label(const char *text);
+
+void home_location_scroll_sync(void);
+
 void show_login_success_overlay_ui(void);
+void show_login_error_overlay_ui(const char *reason);
 
 // Legal disclaimer overlay (shown on boot until user accepts)
 void show_disclaimer_overlay(void);

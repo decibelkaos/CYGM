@@ -11,7 +11,11 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # FreeRTOS
 CONFIG_FREERTOS_HZ=100
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+# 3584, not 16384. This file asked for 16384 but the generated sdkconfig
+# carried 3584, so 3584 is what every build including the 72-hour 1.0 soak
+# actually ran. Raising it costs 12.8 KB of a ~53 KB free heap on a device
+# whose TLS handshake gate is 18432 bytes. Change it only with a fresh soak.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=3584
 
 # Log level
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
@@ -26,6 +30,23 @@ CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 CONFIG_LCD_PANEL_IO_INCLUDE_TOUCH=y
 
 # LVGL Configuration - Enable larger fonts for readability
+# 10/12/16/18 were enabled through menuconfig and only ever existed in the
+# generated sdkconfig, never here. Regenerating the config therefore dropped
+# them and the build failed on undeclared lv_font_montserrat_10/12/16/18.
+# Every size the UI references is listed now, so the config is reproducible
+# from this file alone (2026-09-17).
+# Neither of these was ever specified here, so regenerating sdkconfig took
+# the upstream defaults (32 KB and ON) instead of the values the soak ran on.
+# KEEP_PEER_CERTIFICATE off matters most: it holds the peer cert for the life
+# of the session, which is heap this device does not have to spare.
+CONFIG_LV_MEM_SIZE_KILOBYTES=36
+CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE=n
+
+CONFIG_LV_FONT_MONTSERRAT_10=y
+CONFIG_LV_FONT_MONTSERRAT_12=y
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_18=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_24=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
@@ -157,3 +178,47 @@ CONFIG_LWIP_SNTP_MAX_SERVERS=3
 # mbedTLS - check certificate validity dates. This makes TLS fail until SNTP
 # has set the clock, which is the intended fail-closed order.
 CONFIG_MBEDTLS_HAVE_TIME_DATE=y
+
+# ---------------------------------------------------------------------------
+# Captured from the generated sdkconfig on 2026-09-17. All of these were made
+# through menuconfig and never recorded here, so regenerating sdkconfig reset
+# every one of them to an upstream default. They are the configuration the
+# 72-hour 1.0 soak actually validated; keep them together and keep them here.
+# ---------------------------------------------------------------------------
+
+# The display byte order. Without this the ST7789 reads RGB565 with the bytes
+# the wrong way round and the screen renders as colour banding. This single
+# line is why the 1.0 build looked broken on 2026-09-17.
+CONFIG_LV_COLOR_16_SWAP=y
+
+# LVGL widgets this project does not use, and the bundled examples. Off to keep
+# flash and RAM for the things that are used.
+CONFIG_LV_BUILD_EXAMPLES=n
+CONFIG_LV_USE_ANIMIMG=n
+CONFIG_LV_USE_CALENDAR=n
+CONFIG_LV_USE_COLORWHEEL=n
+CONFIG_LV_USE_IMGBTN=n
+CONFIG_LV_USE_LED=n
+CONFIG_LV_USE_LIST=n
+CONFIG_LV_USE_MENU=n
+CONFIG_LV_USE_METER=n
+CONFIG_LV_USE_MSGBOX=n
+CONFIG_LV_USE_ROLLER=n
+CONFIG_LV_USE_SPAN=n
+CONFIG_LV_USE_SPINBOX=n
+CONFIG_LV_USE_TABLE=n
+CONFIG_LV_USE_TABVIEW=n
+CONFIG_LV_USE_THEME_BASIC=n
+CONFIG_LV_USE_TILEVIEW=n
+CONFIG_LV_USE_WIN=n
+
+# MQTT is not used by this firmware.
+CONFIG_MQTT_PROTOCOL_311=n
+CONFIG_MQTT_TRANSPORT_SSL=n
+CONFIG_MQTT_TRANSPORT_WEBSOCKET=n
+
+# Flash chip families this board does not carry.
+CONFIG_SPI_FLASH_SUPPORT_GD_CHIP=n
+CONFIG_SPI_FLASH_SUPPORT_ISSI_CHIP=n
+CONFIG_SPI_FLASH_SUPPORT_MXIC_CHIP=n
+CONFIG_SPI_FLASH_SUPPORT_WINBOND_CHIP=n

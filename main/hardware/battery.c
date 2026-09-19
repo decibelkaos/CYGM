@@ -5,6 +5,8 @@
  */
 
 #include "battery.h"
+#include <string.h>
+#include <stdio.h>
 #include "buzzer.h"
 #include "shared_state.h"
 #include "ui/home_screen.h"
@@ -23,6 +25,12 @@
 static const char *TAG = "BATTERY";
 
 // Helper function prototypes
+// Bench hook. Non-zero means battery_read_voltage() reports this instead of
+// the ADC, and the critical shutdown says what it would do rather than doing
+// it, so a test cannot leave a unit needing a physical power cycle. Never
+// persisted: a reboot clears it.
+static int bat_forced_mv = 0;
+
 static float battery_read_voltage(void);
 static float battery_quick_read_voltage(void);
 static int battery_voltage_to_percent(float voltage);
@@ -100,11 +108,25 @@ static float battery_read_voltage(void) {
     ESP_LOGI(TAG, "Battery ADC: raw=%d, spread=%d, voltage_mv=%d, calculated=%.3fV (divider=%.2fx)",
              adc_avg, bat_last_spread, voltage_mv, battery_volts, BATTERY_VOLTAGE_DIVIDER);
 
+    // Bench override, applied after the real read so bat_last_spread stays
+    // genuine and the presence detector's noise arm behaves as it would here.
+    if (bat_forced_mv > 0) {
+        battery_volts = bat_forced_mv / 1000.0f;
+        ESP_LOGW(TAG, "Battery FORCED to %.3fV (bench hook; 'bat mv off' to clear)",
+                 battery_volts);
+    }
+
     return battery_volts;
 }
 
 static int bat_absent_streak = 0;   // Consecutive reads that look like no cell
 static int bat_present_streak = 0;  // Consecutive reads that look like a real cell
+// battery_present starts optimistic, so until one streak reaches
+// BATTERY_ABSENT_CONFIRM the flag is an assumption rather than a measurement.
+// Acting on it before then is what made a USB-only unit beep three times at
+// every boot: the first raw sample read 3.381 V, the warning fired at 5 s, and
+// the no-cell verdict only arrived at 15 s.
+static bool bat_presence_known = false;
 
 // Returns true when the presence state changed this cycle.
 static bool battery_update_presence(float volts) {
@@ -119,8 +141,20 @@ static bool battery_update_presence(float volts) {
         bat_absent_streak = 0;
     }
 
+    if (bat_absent_streak >= BATTERY_ABSENT_CONFIRM ||
+        bat_present_streak >= BATTERY_ABSENT_CONFIRM) {
+        bat_presence_known = true;
+    }
+
     if (battery_present && bat_absent_streak >= BATTERY_ABSENT_CONFIRM) {
         battery_present = false;
+        // A warning raised while we still thought there was a cell has to be
+        // taken back, or the red flash keeps repainting over the USB symbol.
+        battery_low_warning_shown = false;
+        if (battery_flash_timer != NULL) {
+            lv_timer_del(battery_flash_timer);
+            battery_flash_timer = NULL;
+        }
         ESP_LOGW(TAG, "No battery detected (%.3fV, spread=%d) - USB power only",
                  volts, bat_last_spread);
         sd_log(TAG, "No battery: %.3fV spread=%d", volts, bat_last_spread);
@@ -445,6 +479,38 @@ static void battery_stop_charging(void) {
     bat_voltage_hist_count = 0;
 }
 
+// Bench command, reached as "bat <args>" on the serial console.
+void battery_command(const char *args)
+{
+    int mv = 0;
+    if (strncmp(args, "mv off", 6) == 0) {
+        bat_forced_mv = 0;
+        // Put the gauge back on the truth in one step. The averaging and the
+        // charging animation are both step-clamped to BATTERY_MAX_STEP a
+        // reading, so without this the display crawls back from whatever the
+        // forced value implied at 2% a minute: after a test at 3.1 V a full
+        // cell showed 42% and climbing for most of an hour. A bench hook must
+        // not go on affecting the screen after it has been switched off.
+        battery_stop_charging();
+        bat_history_count = 0;
+        bat_history_idx = 0;
+        bat_voltage_hist_count = 0;
+        bat_displayed_percent = -1;   // next reading initialises fresh
+        bat_prev_voltage = 0.0f;
+        bat_prev_raw_percent = -1;
+        ESP_LOGW(TAG, "Battery override cleared — reading the ADC again, gauge reset");
+        return;
+    }
+    if (sscanf(args, "mv %d", &mv) == 1 && mv >= 500 && mv <= 5000) {
+        bat_forced_mv = mv;
+        ESP_LOGW(TAG, "Battery override set to %d mV — the ADC is ignored until "
+                      "'bat mv off' or a reboot", mv);
+        return;
+    }
+    ESP_LOGW(TAG, "Usage: bat mv <500-5000> | bat mv off   (current: %d mV)",
+             bat_forced_mv);
+}
+
 void battery_monitor_task(void *arg) {
     ESP_LOGI(TAG, "Battery monitor task started");
 
@@ -624,8 +690,38 @@ void battery_monitor_task(void *arg) {
 
             update_battery_display();
 
-            // Check for critical low battery (3.2V or below) — shut down to prevent damage
-            if (battery_voltage <= BATTERY_LOW_VOLTAGE) {
+            // Critical low battery — shut down to protect the cell.
+            //
+            // Gated on a CONFIRMED presence verdict rather than the optimistic
+            // default. battery_present starts true and takes two consistent
+            // samples to be corrected, so without this gate the first sample of
+            // a boot can deep-sleep the device before the detector has spoken.
+            // A USB-only unit reading 2.970 V did exactly that: that is below
+            // BATTERY_ABSENT_MAX_VOLTAGE, this firmware's own definition of "no
+            // cell can be powering us", so the reading that proved there was no
+            // battery was shutting the device down to save it. Deep sleep here
+            // arms no wake source, making it a power cycle to recover, on every
+            // boot.
+            //
+            // A real cell at this voltage is quiet and in range, so it confirms
+            // present on the second sample and shuts down one cycle later: ten
+            // seconds during the boot phase, against the 3.5 s this routine
+            // already spends on the buzzer and the warning screen.
+            bool critical_low = bat_presence_known &&
+                                battery_voltage <= BATTERY_LOW_VOLTAGE;
+
+            // On a forced reading, prove the branch was reached and stop there.
+            // Deep sleep arms no wake source, so actually running it would cost
+            // a physical power cycle to undo, which is exactly what makes this
+            // path impossible to test on a device nobody is standing next to.
+            if (critical_low && bat_forced_mv > 0) {
+                ESP_LOGW(TAG, "CRITICAL (forced %.3fV): would shut down now — "
+                              "bench hook, staying awake", battery_voltage);
+                sd_log(TAG, "CRITICAL forced: would shut down at %.3fV", battery_voltage);
+                critical_low = false;
+            }
+
+            if (critical_low) {
                 ESP_LOGE(TAG, "CRITICAL: Battery voltage %.3fV <= %.3fV - SHUTTING DOWN",
                          battery_voltage, BATTERY_LOW_VOLTAGE);
                 sd_log(TAG, "CRITICAL: %.3fV - SHUTDOWN", battery_voltage);
@@ -657,7 +753,8 @@ void battery_monitor_task(void *arg) {
             }
 
             // Check for 10% battery warning
-            if (battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
+            if (bat_presence_known &&
+                battery_percent <= BATTERY_CRITICAL_PERCENT && !battery_low_warning_shown) {
                 battery_low_warning_shown = true;
                 sd_log(TAG, "LOW: %d%% (%.3fV) - alert played", battery_percent, battery_voltage);
                 battery_low_alert();

@@ -49,7 +49,6 @@ void draw_sunrise_icon(lv_obj_t *canvas);
 void draw_sunset_icon(lv_obj_t *canvas);
 
 /** Draw the glucose trend arrow on a canvas. */
-void draw_trend_arrow(lv_obj_t *canvas, dexcom_trend_t trend);
 void draw_trend_arrow_sized(lv_obj_t *canvas, dexcom_trend_t trend, int sz);
 
 /**
