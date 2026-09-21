@@ -201,5 +201,20 @@ sd_glucose_status_t sd_glucose_read(const char *name,
                                     sd_glucose_data_fn on_data,
                                     void *ctx, uint32_t *out_crc32);
 
+/**
+ * Stream one slice of a GYYMMDD.CSV, starting at `offset` and stopping after
+ * `length` bytes or at end of file, whichever comes first. `length` of 0 means
+ * to the end. *out_crc32 receives the CRC-32 of the bytes actually emitted, not
+ * of the whole file, so the host can check each slice on its own.
+ *
+ * on_open still reports the total file size, because the host needs that to
+ * know how many slices to ask for.
+ */
+sd_glucose_status_t sd_glucose_read_range(const char *name,
+                                          uint32_t offset, uint32_t length,
+                                          sd_glucose_open_fn on_open,
+                                          sd_glucose_data_fn on_data,
+                                          void *ctx, uint32_t *out_crc32);
+
 /** Mount point path for SD card file operations */
 #define SD_MOUNT_POINT "/sdcard"

@@ -981,6 +981,15 @@ sd_glucose_status_t sd_glucose_read(const char *name,
                                     sd_glucose_data_fn on_data,
                                     void *ctx, uint32_t *out_crc32)
 {
+    return sd_glucose_read_range(name, 0, 0, on_open, on_data, ctx, out_crc32);
+}
+
+sd_glucose_status_t sd_glucose_read_range(const char *name,
+                                          uint32_t offset, uint32_t length,
+                                          sd_glucose_open_fn on_open,
+                                          sd_glucose_data_fn on_data,
+                                          void *ctx, uint32_t *out_crc32)
+{
     char upper[12];
     if (!sd_glucose_name_valid(name, upper, sizeof(upper))) return SD_GLUCOSE_BAD_NAME;
     if (!mounted_card || !log_mutex) return SD_GLUCOSE_NO_CARD;
@@ -1004,13 +1013,31 @@ sd_glucose_status_t sd_glucose_read(const char *name,
     } else {
         if (on_open) on_open((uint32_t)st.st_size, ctx);
 
+        // A slice that starts past the end is not an error, it is an empty
+        // answer: the host works the offsets out from a size it was told
+        // earlier, and the file can have been rewritten since.
+        uint32_t total = (uint32_t)st.st_size;
+        uint32_t start = offset > total ? total : offset;
+        uint32_t want = (length == 0 || start + length > total)
+                            ? total - start : length;
+
         uint32_t crc = 0;
+        if (start != 0 && fseek(f, (long)start, SEEK_SET) != 0) {
+            status = SD_GLUCOSE_READ_FAILED;
+            want = 0;
+        }
+
         char buf[SD_GLUCOSE_CHUNK];
         size_t got;
         unsigned chunks = 0;
-        while ((got = fread(buf, 1, sizeof(buf), f)) > 0) {
+        uint32_t left = want;
+        while (left > 0) {
+            size_t ask = left < sizeof(buf) ? (size_t)left : sizeof(buf);
+            got = fread(buf, 1, ask, f);
+            if (got == 0) break;
             crc = esp_rom_crc32_le(crc, (const uint8_t *)buf, got);
             if (on_data) on_data(buf, got, ctx);
+            left -= (uint32_t)got;
             // The console TX path busy-waits on the UART at priority 2; without
             // a yield a file over ~55 KB starves IDLE0 past the 5 s task watchdog.
             if ((++chunks & 7) == 0) vTaskDelay(1);

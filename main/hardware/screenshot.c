@@ -32,11 +32,18 @@
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
 
 static const char *TAG = "SCREENSHOT";
+
+// Every command line the listener accepts fits here, longest being
+// "sd cat G260911.CSV 4294967295 65536" (35). Anything copied out of that
+// buffer is declared this size too: the compiler works the worst case out from
+// it and treats a possible truncation as an error.
+#define CYGM_CMD_MAX 48
 
 // Synthetic-touch defaults for the "tap"/"swipe" commands. The ceiling is above
 // display.c's own poll clamp, so an over-long request is trimmed there rather
@@ -695,6 +702,9 @@ typedef struct {
     const char *name;   // Validated, upper-case
     uint32_t size;      // From stat, reported before the bytes
     char last;          // Last byte streamed
+    uint32_t sent;      // Bytes actually emitted, which is the slice length
+    uint32_t offset;    // Where this slice starts
+    bool ranged;        // A slice was asked for, so say so in the header
 } sd_cat_ctx_t;
 
 static void sd_ls_ready(void *ctx)
@@ -713,13 +723,38 @@ static void sd_cat_open(uint32_t size, void *ctx)
 {
     sd_cat_ctx_t *c = (sd_cat_ctx_t *)ctx;
     c->size = size;
-    printf("SDCAT-BEGIN %s %u\n", c->name, (unsigned)size);
+    // Three tokens for a whole file, which is what every host before this one
+    // knows how to read. A slice adds where it starts, and the total stays so
+    // the host can work out how many more to ask for.
+    if (c->ranged) {
+        printf("SDCAT-BEGIN %s %u %u\n", c->name, (unsigned)size,
+               (unsigned)c->offset);
+    } else {
+        printf("SDCAT-BEGIN %s %u\n", c->name, (unsigned)size);
+    }
 }
 
 static void sd_cat_data(const char *data, size_t len, void *ctx)
 {
     sd_cat_ctx_t *c = (sd_cat_ctx_t *)ctx;
-    fwrite(data, 1, len, stdout);
+    c->sent += (uint32_t)len;
+    // fwrite reports how much it took, and under a sustained transfer it takes
+    // less than asked whenever the console is still draining. The shortfall is
+    // invisible from here: the crc32 in SDCAT-END covers the bytes read off the
+    // card, not the bytes that left the port, so anything dropped here reaches
+    // the host as a hole the device does not know it made. Keep offering the
+    // remainder until it is all gone.
+    size_t off = 0;
+    while (off < len) {
+        size_t wrote = fwrite(data + off, 1, len - off, stdout);
+        if (wrote == 0) {
+            // Nothing taken at all: give the port a tick to drain rather than
+            // spinning on a buffer that has no room yet.
+            fflush(stdout);
+            vTaskDelay(1);
+        }
+        off += wrote;
+    }
     c->last = data[len - 1];
 }
 
@@ -771,20 +806,44 @@ static void sd_command(const char *arg)
             ESP_LOGI(TAG, "SD: listed %d files", count);
         }
     } else if (strncmp(arg, "cat ", 4) == 0 && arg[4] != '\0') {
+        // "cat NAME", or "cat NAME OFFSET LENGTH" for one slice of it. The wire
+        // drops bytes under a sustained transfer, so a host that asks for the
+        // whole file gambles all of it on every attempt; a slice that arrives
+        // damaged costs one short re-request instead.
+        char spec[CYGM_CMD_MAX];
+        snprintf(spec, sizeof(spec), "%s", arg + 4);
+        uint32_t offset = 0, length = 0;
+        bool ranged = false;
+        char *sp = strchr(spec, ' ');
+        if (sp) {
+            *sp++ = '\0';
+            while (*sp == ' ') sp++;
+            char *endp = NULL;
+            offset = (uint32_t)strtoul(sp, &endp, 10);
+            if (endp && endp != sp) {
+                length = (uint32_t)strtoul(endp, NULL, 10);
+                ranged = true;
+            }
+        }
+
         char name[12];
-        if (!sd_glucose_name_valid(arg + 4, name, sizeof(name))) {
-            printf("SDCAT-ERR %s bad-name\n", arg + 4);
+        if (!sd_glucose_name_valid(spec, name, sizeof(name))) {
+            printf("SDCAT-ERR %s bad-name\n", spec);
             return;
         }
-        sd_cat_ctx_t c = { .name = name, .size = 0, .last = '\n' };
+        sd_cat_ctx_t c = { .name = name, .size = 0, .last = '\n',
+                           .sent = 0, .offset = offset, .ranged = ranged };
         uint32_t crc = 0;
         esp_log_level_set("*", ESP_LOG_NONE);
-        sd_glucose_status_t st = sd_glucose_read(name, sd_cat_open, sd_cat_data, &c, &crc);
+        sd_glucose_status_t st = sd_glucose_read_range(name, offset, length,
+                                                       sd_cat_open, sd_cat_data,
+                                                       &c, &crc);
         if (st == SD_GLUCOSE_OK) {
             // A file that ends without one still gets a newline here so END
-            // starts a fresh line; the byte count stays the file size.
+            // starts a fresh line; the byte count is what was emitted, which
+            // for a whole file is its size and for a slice is the slice.
             if (c.last != '\n') printf("\n");
-            printf("SDCAT-END %s %u crc32=%08x\n", name, (unsigned)c.size, (unsigned)crc);
+            printf("SDCAT-END %s %u crc32=%08x\n", name, (unsigned)c.sent, (unsigned)crc);
         } else {
             printf("SDCAT-ERR %s %s\n", name, sd_err_word(st));
         }
@@ -813,8 +872,7 @@ static void screenshot_cmd_task(void *arg)
 
     ESP_LOGI(TAG, "Screenshot command listener ready (type 'help' + Enter)");
 
-    // Must hold the longest command line: "swipe 319 239 319 239 12345" (27).
-    char cmd_buf[48];
+    char cmd_buf[CYGM_CMD_MAX];
     int cmd_pos = 0;
     uint8_t byte;
 
