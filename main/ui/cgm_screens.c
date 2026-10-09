@@ -182,6 +182,14 @@ static const char *cgm_login_error_text(esp_err_t err, bool https)
     case ESP_ERR_INVALID_STATE:
         return "The server rejected the sign-in.\n"
                "Check the token or password.";
+    case ESP_ERR_NOT_ALLOWED:
+        return "The account needs attention first.\n"
+               "Open the LibreLinkUp app, accept or\n"
+               "verify what it asks, then try again.";
+    case ESP_ERR_INVALID_VERSION:
+        return "The service no longer accepts this\n"
+               "firmware version. Update the device,\n"
+               "then try again.";
     case ESP_ERR_NOT_FOUND:
         return "Signed in, but no sensor or shared\n"
                "follower was found on the account.";

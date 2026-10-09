@@ -3,6 +3,7 @@
                             "wifi_manager.c"
                             "dexcom_api.c"
                             "libre_api.c"
+                            "json_scan.c"
                             "nightscout_api.c"
                             "sd_logger.c"
                             "hardware/led.c"

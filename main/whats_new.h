@@ -16,21 +16,17 @@
 
 /* Optional opener, in place of the "WHAT'S NEW" caption. Two lines at most:
    each one costs a bullet. Comment out to get the caption back. */
-/* No intro and no footer this release: five bullets is the bare budget and each
-   intro line or footer would cost one. The thanks is a bullet instead. */
 /* #define WHATS_NEW_INTRO "" */
 
 static const char *const whats_new_bullets[] = {
-    "FIRST PUBLIC FULL RELEASE",
-    "New Trend Arrows",
-    "Updated Alarms and Settings",
+    "LibreLinkUp sign-in fixed",
+    "Works with larger Libre accounts",
+    "Clearer sign-in error messages",
     "Full release notes on CYGM.me",
-    "THANK YOU TO ALL THAT HELPED",
 };
 #define WHATS_NEW_COUNT (sizeof(whats_new_bullets) / sizeof(whats_new_bullets[0]))
 
 /* Optional closing line, drawn below the bullets without one of its own and
    dimmed, to set it apart from the list. Comment out when there is none. */
-/* No footer: it would cost the fifth bullet. */
 
 #endif // WHATS_NEW_H

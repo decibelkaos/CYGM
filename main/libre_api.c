@@ -6,6 +6,7 @@
  */
 
 #include "libre_api.h"
+#include "json_scan.h"
 #include "nvs_config.h"
 #include "sd_logger.h"
 #include "esp_log.h"
@@ -40,14 +41,14 @@ static const char *TAG = "LIBRE";
 #define ENDPOINT_LOGIN       "/llu/auth/login"
 #define ENDPOINT_CONNECTIONS "/llu/connections"
 
-// HTTP buffer size
+// HTTP client receive buffer; also the ceiling on one response header line
 #define HTTP_BUFFER_SIZE 2048
 
-// cJSON recurses once per nesting level; the glucose task's 5 KB stack cannot
-// unwind much more than this before it overflows into adjacent heap. The service
-// controls this body's shape, so the limit sits well above its observed depth
-// rather than close to it: a false reject here blocks every reading.
-#define JSON_MAX_DEPTH 16
+// Status values the service puts in the response body, beside the HTTP status
+#define LLU_STATUS_BAD_CREDENTIALS  2
+#define LLU_STATUS_STEP_REQUIRED    4
+#define LLU_STATUS_LOCKED_OUT       429
+#define LLU_STATUS_VERSION_TOO_OLD  920
 
 // Physiologically possible range; anything outside it is a service artefact.
 #define GLUCOSE_MIN_MGDL 20
@@ -66,9 +67,16 @@ static char account_id_hash[65] = {0};  // SHA-256 hex of user ID (required head
 static int32_t token_expires = 0;
 static bool is_authenticated = false;
 
-// HTTP response buffer
-static char http_response[HTTP_BUFFER_SIZE];
+// Response bodies are picked apart as they arrive and never stored: the login
+// reply carries the whole account record, whose size the service decides, and
+// a reply one byte over a fixed buffer used to fail the sign-in outright.
+static json_scan_t response_scan;
 static int http_response_len = 0;
+
+// Holds the token of a login in flight, so a failed attempt cannot overwrite
+// the one still in use. Static: too large for the calling tasks' stacks, and
+// network_mutex serializes every caller.
+static char login_token[sizeof(auth_token)];
 
 // Persistent HTTP client for connection reuse
 static esp_http_client_handle_t persistent_client = NULL;
@@ -90,14 +98,8 @@ static const char* get_base_url(void) {
 static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
         case HTTP_EVENT_ON_DATA:
-            if (http_response_len + evt->data_len < HTTP_BUFFER_SIZE - 1) {
-                memcpy(http_response + http_response_len, evt->data, evt->data_len);
-                http_response_len += evt->data_len;
-                http_response[http_response_len] = '\0';
-            } else {
-                ESP_LOGE(TAG, "HTTP response buffer overflow! (%d + %d >= %d)",
-                         http_response_len, evt->data_len, HTTP_BUFFER_SIZE);
-            }
+            json_scan_feed(&response_scan, (const char *)evt->data, evt->data_len);
+            http_response_len += evt->data_len;
             break;
         default:
             break;
@@ -254,31 +256,17 @@ static bool region_base_url_is_valid(const char *url) {
     return true;
 }
 
-// Counts bracket nesting without recursing, so an adversarial body is refused
-// before cJSON's recursive parser can walk off the task stack.
-static bool json_depth_ok(const char *body) {
-    int depth = 0;
-    bool in_string = false;
+// A picked value counts only if it arrived whole and with the expected type.
+static bool pick_is(const json_pick_t *p, json_scan_type_t type) {
+    return p->type == type && !p->truncated;
+}
 
-    for (const char *p = body; *p != '\0'; p++) {
-        if (in_string) {
-            if (*p == '\\') {
-                if (p[1] == '\0') break;
-                p++;
-            } else if (*p == '"') {
-                in_string = false;
-            }
-            continue;
-        }
-        if (*p == '"') {
-            in_string = true;
-        } else if (*p == '[' || *p == '{') {
-            if (++depth > JSON_MAX_DEPTH) return false;
-        } else if ((*p == ']' || *p == '}') && depth > 0) {
-            depth--;
-        }
-    }
-    return true;
+// Number text as the service sent it, truncated toward zero. Anything that
+// would not fit an int reads as 0, which no caller treats as a usable value.
+static int pick_int(const char *text) {
+    double v = strtod(text, NULL);
+    if (!(v > -2.1e9 && v < 2.1e9)) return 0;
+    return (int)v;
 }
 
 // ============================================================================
@@ -373,8 +361,27 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
         }
     }
 
+    char pid_buf[sizeof(patient_id)];
+    char value_buf[16];
+    char trend_buf[8];
+    char ts_buf[32];
+    char fts_buf[32];
+    enum { C_DATA, C_FIRST, C_PID, C_VALUE, C_TREND, C_TS, C_FTS, C_COUNT };
+    json_pick_t picks[C_COUNT] = {
+        [C_DATA]  = { .path = "data" },
+        [C_FIRST] = { .path = "data[0]" },
+        [C_PID]   = { .path = "data[0].patientId", .out = pid_buf, .out_size = sizeof(pid_buf) },
+        [C_VALUE] = { .path = "data[0].glucoseMeasurement.ValueInMgPerDl",
+                      .out = value_buf, .out_size = sizeof(value_buf) },
+        [C_TREND] = { .path = "data[0].glucoseMeasurement.TrendArrow",
+                      .out = trend_buf, .out_size = sizeof(trend_buf) },
+        [C_TS]    = { .path = "data[0].glucoseMeasurement.Timestamp",
+                      .out = ts_buf, .out_size = sizeof(ts_buf) },
+        [C_FTS]   = { .path = "data[0].glucoseMeasurement.FactoryTimestamp",
+                      .out = fts_buf, .out_size = sizeof(fts_buf) },
+    };
+    json_scan_init(&response_scan, picks, C_COUNT);
     http_response_len = 0;
-    http_response[0] = '\0';
 
     // Configure request — all headers required by LibreLinkUp API
     esp_http_client_set_url(client, url);
@@ -435,109 +442,83 @@ static esp_err_t libre_fetch_connections(cgm_glucose_t *glucose_out) {
         return ESP_FAIL;
     }
 
-    if (!json_depth_ok(http_response)) {
-        ESP_LOGE(TAG, "Response nesting exceeds %d levels — refusing to parse", JSON_MAX_DEPTH);
-        return ESP_FAIL;
-    }
-
-    cJSON *root = cJSON_Parse(http_response);
-    if (root == NULL) {
+    if (!json_scan_complete(&response_scan)) {
         ESP_LOGE(TAG, "Failed to parse connections JSON");
         return ESP_FAIL;
     }
 
-    cJSON *data = cJSON_GetObjectItem(root, "data");
-    if (!cJSON_IsArray(data) || cJSON_GetArraySize(data) == 0) {
-        ESP_LOGE(TAG, "No patient connections found");
-        cJSON_Delete(root);
-        return ESP_ERR_NOT_FOUND;
-    }
-
     // Auto-use first patient connection
-    cJSON *connection = cJSON_GetArrayItem(data, 0);
-    if (connection == NULL) {
-        cJSON_Delete(root);
+    if (picks[C_DATA].type != JSON_SCAN_CONTAINER || picks[C_FIRST].type == JSON_SCAN_NONE) {
+        ESP_LOGE(TAG, "No patient connections found");
         return ESP_ERR_NOT_FOUND;
     }
 
-    cJSON *pid = cJSON_GetObjectItem(connection, "patientId");
-    if (cJSON_IsString(pid) && pid->valuestring != NULL) {
-        strncpy(patient_id, pid->valuestring, sizeof(patient_id) - 1);
+    if (pick_is(&picks[C_PID], JSON_SCAN_STRING)) {
+        strncpy(patient_id, pid_buf, sizeof(patient_id) - 1);
         patient_id[sizeof(patient_id) - 1] = '\0';
         ESP_LOGI(TAG, "Patient connection established");
     }
 
     // Extract glucose measurement if present and caller wants it
-    if (glucose_out != NULL) {
-        cJSON *gm = cJSON_GetObjectItem(connection, "glucoseMeasurement");
-        if (gm != NULL) {
-            cJSON *value = cJSON_GetObjectItem(gm, "ValueInMgPerDl");
-            cJSON *trend = cJSON_GetObjectItem(gm, "TrendArrow");
-            cJSON *ts = cJSON_GetObjectItem(gm, "Timestamp");
-            cJSON *fts = cJSON_GetObjectItem(gm, "FactoryTimestamp");
+    if (glucose_out != NULL && pick_is(&picks[C_VALUE], JSON_SCAN_NUMBER)) {
+        glucose_out->value = pick_int(value_buf);
+        glucose_out->valid = true;
+        glucose_out->status = GLUCOSE_STATUS_OK;
 
-            if (cJSON_IsNumber(value)) {
-                glucose_out->value = value->valueint;
-                glucose_out->valid = true;
-                glucose_out->status = GLUCOSE_STATUS_OK;
+        if (pick_is(&picks[C_TREND], JSON_SCAN_NUMBER)) {
+            glucose_out->trend = map_libre_trend(pick_int(trend_buf));
+        } else {
+            glucose_out->trend = TREND_NONE;
+        }
 
-                if (cJSON_IsNumber(trend)) {
-                    glucose_out->trend = map_libre_trend(trend->valueint);
-                } else {
-                    glucose_out->trend = TREND_NONE;
-                }
-
-                // FactoryTimestamp is UTC; Timestamp is a local zone the service
-                // never names, so it can only be read as the device's own.
-                const char *raw_ts = NULL;
-                time_t parsed = 0;
-                if (cJSON_IsString(fts) && fts->valuestring != NULL) {
-                    raw_ts = fts->valuestring;
-                    parsed = parse_libre_timestamp_utc(raw_ts);
-                }
-                // The service owns both formats; falling through keeps a change to
-                // the UTC field from taking every reading with it.
-                if (parsed == 0 && cJSON_IsString(ts) && ts->valuestring != NULL) {
-                    if (!warned_no_factory_timestamp) {
-                        warned_no_factory_timestamp = true;
-                        ESP_LOGW(TAG, "No usable FactoryTimestamp in reading — reading "
-                                      "Timestamp as device-local time, which is wrong if "
-                                      "the sensor is in another zone");
-                    }
-                    raw_ts = ts->valuestring;
-                    parsed = parse_libre_timestamp_local(raw_ts);
-                }
-                glucose_out->timestamp = bound_libre_timestamp(parsed);
-
-                if (!is_time_synced()) {
-                    ESP_LOGW(TAG, "Device clock not synced — rejecting reading");
-                    glucose_out->timestamp = 0;
-                    glucose_out->valid = false;
-                    glucose_out->status = GLUCOSE_STATUS_SIGNAL_LOSS;
-                } else if (glucose_out->timestamp == 0) {
-                    // No usable time means every staleness and alarm-age gate would
-                    // be measured against a fabricated "now".
-                    ESP_LOGW(TAG, "Unusable reading timestamp \"%s\" — rejecting reading",
-                             raw_ts != NULL ? raw_ts : "(absent)");
-                    glucose_out->valid = false;
-                    glucose_out->status = GLUCOSE_STATUS_SIGNAL_LOSS;
-                } else if (glucose_out->value < GLUCOSE_MIN_MGDL ||
-                           glucose_out->value > GLUCOSE_MAX_MGDL) {
-                    ESP_LOGW(TAG, "Implausible glucose value %d mg/dL — rejecting",
-                             glucose_out->value);
-                    glucose_out->value = 0;
-                    glucose_out->timestamp = 0;
-                    glucose_out->valid = false;
-                    glucose_out->status = GLUCOSE_STATUS_NO_DATA;
-                } else {
-                    ESP_LOGI(TAG, "Glucose from connections: %d mg/dL, trend=%d",
-                             glucose_out->value, glucose_out->trend);
-                }
+        // FactoryTimestamp is UTC; Timestamp is a local zone the service
+        // never names, so it can only be read as the device's own.
+        const char *raw_ts = NULL;
+        time_t parsed = 0;
+        if (pick_is(&picks[C_FTS], JSON_SCAN_STRING)) {
+            raw_ts = fts_buf;
+            parsed = parse_libre_timestamp_utc(raw_ts);
+        }
+        // The service owns both formats; falling through keeps a change to
+        // the UTC field from taking every reading with it.
+        if (parsed == 0 && pick_is(&picks[C_TS], JSON_SCAN_STRING)) {
+            if (!warned_no_factory_timestamp) {
+                warned_no_factory_timestamp = true;
+                ESP_LOGW(TAG, "No usable FactoryTimestamp in reading — reading "
+                              "Timestamp as device-local time, which is wrong if "
+                              "the sensor is in another zone");
             }
+            raw_ts = ts_buf;
+            parsed = parse_libre_timestamp_local(raw_ts);
+        }
+        glucose_out->timestamp = bound_libre_timestamp(parsed);
+
+        if (!is_time_synced()) {
+            ESP_LOGW(TAG, "Device clock not synced — rejecting reading");
+            glucose_out->timestamp = 0;
+            glucose_out->valid = false;
+            glucose_out->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+        } else if (glucose_out->timestamp == 0) {
+            // No usable time means every staleness and alarm-age gate would
+            // be measured against a fabricated "now".
+            ESP_LOGW(TAG, "Unusable reading timestamp \"%s\" — rejecting reading",
+                     raw_ts != NULL ? raw_ts : "(absent)");
+            glucose_out->valid = false;
+            glucose_out->status = GLUCOSE_STATUS_SIGNAL_LOSS;
+        } else if (glucose_out->value < GLUCOSE_MIN_MGDL ||
+                   glucose_out->value > GLUCOSE_MAX_MGDL) {
+            ESP_LOGW(TAG, "Implausible glucose value %d mg/dL — rejecting",
+                     glucose_out->value);
+            glucose_out->value = 0;
+            glucose_out->timestamp = 0;
+            glucose_out->valid = false;
+            glucose_out->status = GLUCOSE_STATUS_NO_DATA;
+        } else {
+            ESP_LOGI(TAG, "Glucose from connections: %d mg/dL, trend=%d",
+                     glucose_out->value, glucose_out->trend);
         }
     }
 
-    cJSON_Delete(root);
     return ESP_OK;
 }
 
@@ -656,6 +637,31 @@ esp_err_t libre_authenticate(const char *email, const char *password) {
     const char *base_url = DEFAULT_BASE_URL;
     bool redirected = false;
 
+    char status_buf[12];
+    char redirect_buf[8];
+    char region_buf[12];
+    char step_buf[24];
+    char min_version_buf[16];
+    char expires_buf[24];
+    char user_id_buf[48];
+    enum { L_STATUS, L_DATA, L_REDIRECT, L_REGION, L_STEP, L_STEP_TYPE, L_MIN_VERSION,
+           L_TOKEN, L_EXPIRES, L_USER_ID, L_COUNT };
+    json_pick_t picks[L_COUNT] = {
+        [L_STATUS]      = { .path = "status", .out = status_buf, .out_size = sizeof(status_buf) },
+        [L_DATA]        = { .path = "data" },
+        [L_REDIRECT]    = { .path = "data.redirect", .out = redirect_buf, .out_size = sizeof(redirect_buf) },
+        [L_REGION]      = { .path = "data.region", .out = region_buf, .out_size = sizeof(region_buf) },
+        [L_STEP]        = { .path = "data.step" },
+        [L_STEP_TYPE]   = { .path = "data.step.type", .out = step_buf, .out_size = sizeof(step_buf) },
+        [L_MIN_VERSION] = { .path = "data.minimumVersion",
+                            .out = min_version_buf, .out_size = sizeof(min_version_buf) },
+        [L_TOKEN]       = { .path = "data.authTicket.token",
+                            .out = login_token, .out_size = sizeof(login_token) },
+        [L_EXPIRES]     = { .path = "data.authTicket.expires",
+                            .out = expires_buf, .out_size = sizeof(expires_buf) },
+        [L_USER_ID]     = { .path = "data.user.id", .out = user_id_buf, .out_size = sizeof(user_id_buf) },
+    };
+
 auth_attempt:
     ;  // Label requires a statement
 
@@ -682,8 +688,8 @@ auth_attempt:
         return ESP_ERR_NO_MEM;
     }
 
+    json_scan_init(&response_scan, picks, L_COUNT);
     http_response_len = 0;
-    http_response[0] = '\0';
 
     esp_http_client_config_t config = {
         .url = url,
@@ -739,111 +745,105 @@ auth_attempt:
     esp_http_client_cleanup(client);
     cJSON_free(body);
 
+    int api_status = pick_is(&picks[L_STATUS], JSON_SCAN_NUMBER)
+                         ? pick_int(status_buf) : 0;
+
+    // The service reports these in the body, and not always with a matching
+    // HTTP status, so they are read before either is trusted.
+    if (api_status == LLU_STATUS_BAD_CREDENTIALS || status == 401) {
+        ESP_LOGE(TAG, "Invalid credentials");
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (api_status == LLU_STATUS_VERSION_TOO_OLD) {
+        ESP_LOGE(TAG, "Service requires a newer client version (minimum %s, sent %s)",
+                 pick_is(&picks[L_MIN_VERSION], JSON_SCAN_STRING) ? min_version_buf : "unknown",
+                 LLU_VERSION);
+        sd_log(TAG, "Auth blocked: service requires a newer client version");
+        return ESP_ERR_INVALID_VERSION;
+    }
+    if (api_status == LLU_STATUS_LOCKED_OUT || status == 429) {
+        ESP_LOGW(TAG, "Rate limited — try again later");
+        return ESP_FAIL;
+    }
     if (status != 200) {
-        ESP_LOGE(TAG, "Login failed: HTTP %d", status);
-        if (status == 401) {
-            ESP_LOGE(TAG, "Invalid credentials");
-        } else if (status == 429) {
-            ESP_LOGW(TAG, "Rate limited — try again later");
-        }
+        ESP_LOGE(TAG, "Login failed: HTTP %d, service status %d", status, api_status);
         return ESP_FAIL;
     }
 
-    if (!json_depth_ok(http_response)) {
-        ESP_LOGE(TAG, "Response nesting exceeds %d levels — refusing to parse", JSON_MAX_DEPTH);
-        return ESP_FAIL;
-    }
-
-    cJSON *root = cJSON_Parse(http_response);
-    if (root == NULL) {
+    if (!json_scan_complete(&response_scan)) {
         ESP_LOGE(TAG, "Failed to parse login JSON");
         return ESP_FAIL;
     }
 
-    cJSON *data = cJSON_GetObjectItem(root, "data");
-    if (data == NULL) {
+    // Terms of use, a privacy policy or an unverified email. The reply to these
+    // still carries an authTicket, but it is a short-lived one that only the
+    // vendor's own app can use to finish the step, so it must not be kept.
+    if (api_status == LLU_STATUS_STEP_REQUIRED || picks[L_STEP].type != JSON_SCAN_NONE) {
+        const char *step = pick_is(&picks[L_STEP_TYPE], JSON_SCAN_STRING) ? step_buf : "unknown";
+        ESP_LOGE(TAG, "Account needs a step completed in the LibreLinkUp app first (%s)", step);
+        ESP_LOGE(TAG, "Open the LibreLinkUp app, accept or verify what it asks for, then retry");
+        sd_log(TAG, "Auth blocked: account step required (%s)", step);
+        return ESP_ERR_NOT_ALLOWED;
+    }
+    if (api_status != 0) {
+        ESP_LOGE(TAG, "Login failed: service status %d", api_status);
+        return ESP_FAIL;
+    }
+
+    if (picks[L_DATA].type == JSON_SCAN_NONE) {
         ESP_LOGE(TAG, "No 'data' in login response");
-        cJSON_Delete(root);
         return ESP_FAIL;
     }
 
     // Check for regional redirect
-    cJSON *redirect = cJSON_GetObjectItem(data, "redirect");
-    if (cJSON_IsTrue(redirect) && !redirected) {
-        cJSON *region = cJSON_GetObjectItem(data, "region");
-        if (cJSON_IsString(region) && region->valuestring != NULL &&
-            region_code_is_valid(region->valuestring)) {
-            ESP_LOGI(TAG, "Redirecting to region: %s", region->valuestring);
+    if (pick_is(&picks[L_REDIRECT], JSON_SCAN_BOOL) && strcmp(redirect_buf, "true") == 0 &&
+        !redirected) {
+        if (pick_is(&picks[L_REGION], JSON_SCAN_STRING) && region_code_is_valid(region_buf)) {
+            ESP_LOGI(TAG, "Redirecting to region: %s", region_buf);
 
-            if (strcmp(region->valuestring, "ru") == 0) {
+            if (strcmp(region_buf, "ru") == 0) {
                 snprintf(region_base_url, sizeof(region_base_url),
                          "https://api.libreview.ru");
             } else {
                 snprintf(region_base_url, sizeof(region_base_url),
-                         "https://api-%s.libreview.io", region->valuestring);
+                         "https://api-%s.libreview.io", region_buf);
             }
 
             base_url = region_base_url;
             redirected = true;
-            cJSON_Delete(root);
-
-            // Reset and retry with regional URL
-            http_response_len = 0;
-            http_response[0] = '\0';
             goto auth_attempt;
         }
-        if (cJSON_IsString(region) && region->valuestring != NULL) {
+        if (picks[L_REGION].type == JSON_SCAN_STRING) {
             ESP_LOGE(TAG, "Server asked to redirect to an unrecognised region code");
-            cJSON_Delete(root);
             return ESP_FAIL;
         }
     }
 
-    // LibreLinkUp can return HTTP 200 with no authTicket when its Terms of Use need
-    // accepting. That cannot be automated, so the user must open the vendor's app.
-    cJSON *auth_ticket = cJSON_GetObjectItem(data, "authTicket");
-    if (auth_ticket == NULL || !cJSON_IsObject(auth_ticket)) {
-        cJSON *step = cJSON_GetObjectItem(data, "step");
-        if (step != NULL && cJSON_IsNumber(step)) {
-            ESP_LOGE(TAG, "Terms of Use acceptance required (step=%d)", step->valueint);
-            ESP_LOGE(TAG, "Open the LibreLinkUp app and accept any pending terms, then retry");
-            sd_log(TAG, "Auth blocked: TOU acceptance required (step=%d)", step->valueint);
-        } else {
-            ESP_LOGE(TAG, "No authTicket in login response — Terms of Use may need acceptance");
-            ESP_LOGE(TAG, "Open the LibreLinkUp app and accept any pending terms, then retry");
-        }
-        cJSON_Delete(root);
+    if (picks[L_TOKEN].type != JSON_SCAN_STRING || login_token[0] == '\0') {
+        ESP_LOGE(TAG, "No token in login response");
+        return ESP_FAIL;
+    }
+    if (picks[L_TOKEN].truncated) {
+        ESP_LOGE(TAG, "Session token is longer than the %d bytes reserved for it",
+                 (int)sizeof(login_token) - 1);
         return ESP_FAIL;
     }
 
-    cJSON *token_obj = cJSON_GetObjectItem(auth_ticket, "token");
-    cJSON *expires_obj = cJSON_GetObjectItem(auth_ticket, "expires");
-
-    if (!cJSON_IsString(token_obj) || token_obj->valuestring == NULL) {
-        ESP_LOGE(TAG, "No token in authTicket");
-        cJSON_Delete(root);
-        return ESP_FAIL;
-    }
-
-    strncpy(auth_token, token_obj->valuestring, sizeof(auth_token) - 1);
+    strncpy(auth_token, login_token, sizeof(auth_token) - 1);
     auth_token[sizeof(auth_token) - 1] = '\0';
 
     // Store expiry (Unix epoch seconds)
-    if (cJSON_IsNumber(expires_obj)) {
-        token_expires = (int32_t)expires_obj->valuedouble;
+    if (pick_is(&picks[L_EXPIRES], JSON_SCAN_NUMBER)) {
+        token_expires = (int32_t)pick_int(expires_buf);
     } else {
         // Default: 180 days from now
         token_expires = (int32_t)time(NULL) + (180 * 24 * 3600);
     }
 
     // The account-id header on every authenticated request is the SHA-256 of the user ID.
-    cJSON *user_obj = cJSON_GetObjectItem(data, "user");
-    if (user_obj != NULL) {
-        cJSON *user_id = cJSON_GetObjectItem(user_obj, "id");
-        if (cJSON_IsString(user_id) && user_id->valuestring != NULL) {
-            sha256_hex(user_id->valuestring, account_id_hash, sizeof(account_id_hash));
-            ESP_LOGI(TAG, "Account header derived");
-        }
+    if (pick_is(&picks[L_USER_ID], JSON_SCAN_STRING)) {
+        sha256_hex(user_id_buf, account_id_hash, sizeof(account_id_hash));
+        ESP_LOGI(TAG, "Account header derived");
     }
 
     // If we didn't redirect, set region URL to default
@@ -852,8 +852,6 @@ auth_attempt:
     }
 
     ESP_LOGI(TAG, "Login successful (region=%s)", region_base_url);
-
-    cJSON_Delete(root);
 
     // Mark authenticated before fetching connections
     is_authenticated = true;
