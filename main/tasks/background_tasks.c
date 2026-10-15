@@ -17,6 +17,7 @@
 #include "ui/home_screen.h"
 #include "ui/menu_screen.h"
 #include "ui/wifi_screens.h"
+#include "ui/cygm_theme.h"
 #include "wifi_manager.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
@@ -281,8 +282,8 @@ static void boot_button_action(void) {
         // busy, leave home_screen_active false so the watchdog does the return
         // instead of the flags claiming a screen that is not displayed.
         if (screen_home != NULL && lvgl_port_lock(1)) {
-            if (lv_scr_act() != screen_home) lv_scr_load(screen_home);
-            home_screen_active = (lv_scr_act() == screen_home);
+            if (cygm_theme_scr_act() != screen_home) cygm_theme_scr_load(screen_home, NULL, NULL);
+            home_screen_active = (cygm_theme_scr_act() == screen_home);
             lvgl_port_unlock();
         }
         pause_background_tasks = false;
@@ -334,12 +335,12 @@ static lv_obj_t **const k_disposable_screens[] = {
 };
 
 // Remember which screen the user walked away from and its child count on arrival.
-// Modal overlays here are children of lv_scr_act() but are freed through a
+// Modal overlays here are children of cygm_theme_scr_act() but are freed through a
 // module-static pointer, so freeing the screen under a live overlay would leave
 // that pointer dangling. An unchanged child count is the evidence none is up.
 static void watchdog_sample_screen(void) {
     if (!lvgl_port_lock(1)) return;
-    lv_obj_t *act = lv_scr_act();
+    lv_obj_t *act = cygm_theme_scr_act();
     if (act != NULL && act != watch_screen) {
         watch_screen = act;
         watch_child_cnt = lv_obj_get_child_cnt(act);
@@ -347,9 +348,8 @@ static void watchdog_sample_screen(void) {
     lvgl_port_unlock();
 }
 
-// Load home and free the abandoned sub-screen in one lock — lv_scr_load with no
-// animation swaps synchronously, so the old screen can be deleted immediately
-// (same pattern as back_btn_event_cb).
+// Keep the active screen alive through the optional fade; child overlay globals
+// are cleared before ownership passes to the transition helper.
 static void return_to_home(void) {
     if (screen_home == NULL) return;
 
@@ -363,8 +363,8 @@ static void return_to_home(void) {
 
     if (!lvgl_port_lock(1)) return;
 
-    lv_obj_t *abandoned = lv_scr_act();
-    lv_scr_load(screen_home);
+    lv_obj_t *abandoned = cygm_theme_scr_act();
+    lv_obj_t **abandoned_slot = NULL;
 
     if (abandoned != NULL && abandoned != screen_home && abandoned != screen_splash &&
         abandoned == watch_screen && lv_obj_get_child_cnt(abandoned) == watch_child_cnt) {
@@ -382,14 +382,15 @@ static void return_to_home(void) {
                         *k_disposable_screens[j] = NULL;
                     }
                 }
-                lv_obj_del(abandoned);
-                *k_disposable_screens[i] = NULL;
-                ESP_LOGI(TAG, "Freed abandoned screen (heap=%lu)",
-                         (unsigned long)esp_get_free_heap_size());
+                abandoned_slot = k_disposable_screens[i];
                 break;
             }
         }
     }
+
+    cygm_theme_scr_load(screen_home,
+                        abandoned_slot != NULL ? abandoned : NULL,
+                        abandoned_slot);
 
     watch_screen = NULL;
     watch_child_cnt = 0;
@@ -442,7 +443,7 @@ void ui_task_core1(void *pvParameters) {
 
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    // Switch to home screen (no animation — lv_anim_start causes freeze on this hardware).
+    // The splash handoff stays synchronous so its memory can be measured immediately.
     // Retried: a single missed lock here would leave the device showing the splash
     // for the rest of the run while home_screen_active below claims otherwise.
     lv_mem_monitor_t splash_mon = {0};

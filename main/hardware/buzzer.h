@@ -36,6 +36,12 @@ void play_success_sound(void);
  */
 void play_alarm_tone(alarm_tone_t tone, uint8_t volume);
 
+/**
+ * Play a short, quiet lullaby (under 5 s) from a one-shot task. Returns at
+ * once; does nothing while an alarm is sounding or a lullaby is already playing.
+ */
+void buzzer_play_lullaby(void);
+
 #ifdef __cplusplus
 }
 #endif

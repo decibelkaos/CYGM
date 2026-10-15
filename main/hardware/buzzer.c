@@ -607,3 +607,50 @@ void play_alarm_tone(alarm_tone_t tone, uint8_t volume) {
             break;
     }
 }
+
+// ---- Night-face lullaby ---------------------------------------------------
+//
+// Opening phrase of a cradle song, E E G | E E G | E G C' B A A G. Holds are
+// multiples of 10 ms (100 Hz tick) and the whole phrase, gaps included, stays
+// under 5 s. Volume is a quarter of the boot sound's 80.
+#define LULLABY_VOLUME  20
+#define LULLABY_GAP_MS  30
+
+static const buzzer_step_t lullaby_steps[] = {
+    {659, 180}, {659, 180}, {784, 540},
+    {659, 180}, {659, 180}, {784, 540},
+    {659, 180}, {784, 180}, {1047, 360}, {988, 360},
+    {880, 360}, {880, 360}, {784, 540},
+};
+
+static volatile bool lullaby_playing = false;
+
+static bool lullaby_alarm_sounding(void) {
+    return visual_alarm_active || current_alarm_state != ALARM_STATE_NONE;
+}
+
+static void lullaby_task(void *arg) {
+    (void)arg;
+    const size_t n = sizeof(lullaby_steps) / sizeof(lullaby_steps[0]);
+    for (size_t i = 0; i < n; i++) {
+        // An alarm that starts mid-phrase owns the buzzer; never touch it again.
+        if (lullaby_alarm_sounding()) break;
+        buzzer_tone(lullaby_steps[i].freq, LULLABY_VOLUME);
+        vTaskDelay(pdMS_TO_TICKS(lullaby_steps[i].ms));
+        if (lullaby_alarm_sounding()) break;
+        buzzer_stop();
+        vTaskDelay(pdMS_TO_TICKS(LULLABY_GAP_MS));
+    }
+    if (!lullaby_alarm_sounding()) buzzer_stop();
+    lullaby_playing = false;
+    vTaskDelete(NULL);
+}
+
+void buzzer_play_lullaby(void) {
+    if (lullaby_playing || lullaby_alarm_sounding()) return;
+    lullaby_playing = true;
+    if (xTaskCreate(lullaby_task, "lullaby", 2048, NULL, 2, NULL) != pdPASS) {
+        lullaby_playing = false;
+        ESP_LOGW(TAG, "Lullaby task not created (heap)");
+    }
+}

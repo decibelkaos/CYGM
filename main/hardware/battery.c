@@ -10,6 +10,7 @@
 #include "buzzer.h"
 #include "shared_state.h"
 #include "ui/home_screen.h"
+#include "ui/cygm_theme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -739,7 +740,7 @@ void battery_monitor_task(void *arg) {
                     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
                     lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
-                    lv_scr_load(shutdown_screen);
+                    cygm_theme_scr_load_now(shutdown_screen);
                     lvgl_port_unlock();
                 }
 

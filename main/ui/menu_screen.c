@@ -23,6 +23,7 @@
 #include "dexcom_api.h"
 #include "libre_api.h"
 #include "ui/home_screen.h"
+#include "ui/cygm_theme.h"
 
 static const char *TAG = "MENU_SCREEN";
 
@@ -189,7 +190,7 @@ static void erase_hold_event_cb(lv_event_t *e) {
             dismiss_about_overlay();
             show_erase_overlay();
         } else {
-            lv_bar_set_value(bar, 0, LV_ANIM_OFF);  // LV_ANIM_ON triggers lv_anim_start (freeze risk)
+            lv_bar_set_value(bar, 0, LV_ANIM_OFF);  // Animated progress freezes this hardware
         }
     } else if (code == LV_EVENT_PRESS_LOST) {
         // Slid off the button. Treat it as abandoned rather than completed: the
@@ -217,12 +218,8 @@ static void show_erase_overlay(void) {
     lv_obj_t *card = lv_obj_create(erase_overlay);
     lv_obj_set_size(card, 280, 185);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -255,30 +252,25 @@ static void show_erase_overlay(void) {
     lv_obj_set_width(msg, 260);
     lv_obj_align(msg, LV_ALIGN_TOP_MID, 0, 56);
 
-    // Cancel button — ghost outline, blue text, left side
+    // Cancel remains non-primary.
     lv_obj_t *cancel_btn = lv_btn_create(card);
     lv_obj_set_size(cancel_btn, CYGM_BTN_W_TEXT, CYGM_BTN_H);
     lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_LEFT, 12, -8);
-    cygm_apply_ghost_btn(cancel_btn);
+    cygm_theme_glass_btn(cancel_btn);
     lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_lbl, "Cancel");
     lv_obj_set_style_text_color(cancel_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
     lv_obj_center(cancel_lbl);
     lv_obj_add_event_cb(cancel_btn, erase_close_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // Erase & Reset button — solid red, white text, right side
+    // Destructive actions remain glass with red text.
     lv_obj_t *confirm_btn = lv_btn_create(card);
     lv_obj_set_size(confirm_btn, CYGM_BTN_W_TEXT, CYGM_BTN_H);
     lv_obj_align(confirm_btn, LV_ALIGN_BOTTOM_RIGHT, -12, -8);
-    cygm_apply_ghost_btn(confirm_btn);
-    // Solid destructive fill overrides the ghost base at both states
-    lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_bg_opa(confirm_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(COLOR_PRESSED_RED), LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(confirm_btn, 0, 0);
+    cygm_theme_glass_btn(confirm_btn);
     lv_obj_t *confirm_lbl = lv_label_create(confirm_btn);
     lv_label_set_text(confirm_lbl, "Erase & Reset");
-    lv_obj_set_style_text_color(confirm_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_color(confirm_lbl, lv_color_hex(COLOR_RED), 0);
     lv_obj_center(confirm_lbl);
     lv_obj_add_event_cb(confirm_btn, erase_confirm_cb, LV_EVENT_CLICKED, NULL);
 }
@@ -302,11 +294,8 @@ static void show_about_overlay(void) {
     lv_obj_t *card = lv_obj_create(about_overlay);
     lv_obj_set_size(card, 290, card_h);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -315,8 +304,7 @@ static void show_about_overlay(void) {
     lv_obj_set_size(close_btn, 32, 32);
     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
     lv_obj_update_layout(close_btn);  // under 34px — helper needs the resolved size
-    cygm_apply_ghost_btn(close_btn);
-    lv_obj_set_style_border_width(close_btn, 0, 0);  // borderless round glyph button
+    cygm_theme_icon_btn(close_btn);
     lv_obj_set_style_radius(close_btn, 16, 0);
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
@@ -345,8 +333,8 @@ static void show_about_overlay(void) {
     lv_obj_t *divider = lv_obj_create(card);
     lv_obj_remove_style_all(divider);
     lv_obj_set_size(divider, 255, 1);
-    lv_obj_set_style_bg_color(divider, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(divider, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(divider, 90, 0);
     lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 50);
 
     // --- Middle section: Developer info (left) + QR (right) ---
@@ -382,7 +370,7 @@ static void show_about_overlay(void) {
     lv_obj_set_size(guide_btn, 160, 28);
     lv_obj_align(guide_btn, LV_ALIGN_TOP_LEFT, 14, 122);
     lv_obj_update_layout(guide_btn);  // 28px tall — helper needs the resolved size
-    cygm_apply_ghost_btn(guide_btn);
+    cygm_theme_glass_btn(guide_btn);
     lv_obj_t *guide_lbl = lv_label_create(guide_btn);
     lv_label_set_text(guide_lbl, LV_SYMBOL_LIST " Device Guide");
     lv_obj_set_style_text_color(guide_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
@@ -398,7 +386,7 @@ static void show_about_overlay(void) {
         lv_obj_set_style_bg_color(sd_cb, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR | LV_STATE_CHECKED);
         lv_obj_set_style_border_color(sd_cb, lv_color_hex(COLOR_TEXT_DIM), LV_PART_INDICATOR);
         lv_obj_align(sd_cb, LV_ALIGN_TOP_LEFT, 14, 154);
-        // A checkbox gets no ghost frame, but its touch box still grows
+        // The checkbox still needs the shared touch target.
         lv_obj_set_ext_click_area(sd_cb, CYGM_BTN_EXT_CLICK);
         if (sd_glucose_logging_enabled) {
             lv_obj_add_state(sd_cb, LV_STATE_CHECKED);
@@ -411,8 +399,8 @@ static void show_about_overlay(void) {
     lv_obj_t *divider2 = lv_obj_create(card);
     lv_obj_remove_style_all(divider2);
     lv_obj_set_size(divider2, 255, 1);
-    lv_obj_set_style_bg_color(divider2, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(divider2, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(divider2, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(divider2, 90, 0);
     lv_obj_align(divider2, LV_ALIGN_TOP_MID, 0, bottom_section_y);
 
     // Bottom row: Check for Updates (left) + Erase Device (right)
@@ -420,7 +408,7 @@ static void show_about_overlay(void) {
     lv_obj_set_size(upd_btn, 128, 28);
     lv_obj_align(upd_btn, LV_ALIGN_TOP_LEFT, 8, bottom_section_y + 5);
     lv_obj_update_layout(upd_btn);  // 28px tall — helper needs the resolved size
-    cygm_apply_ghost_btn(upd_btn);
+    cygm_theme_glass_btn(upd_btn);
     lv_obj_t *upd_lbl = lv_label_create(upd_btn);
     lv_label_set_text(upd_lbl, LV_SYMBOL_REFRESH " Updates");
     lv_obj_set_style_text_color(upd_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
@@ -431,10 +419,7 @@ static void show_about_overlay(void) {
     lv_obj_set_size(erase_btn, 128, 28);
     lv_obj_align(erase_btn, LV_ALIGN_TOP_RIGHT, -8, bottom_section_y + 5);
     lv_obj_update_layout(erase_btn);  // 28px tall — helper needs the resolved size
-    cygm_apply_ghost_btn(erase_btn);
-    // Destructive accent: red outline, red press fill
-    lv_obj_set_style_border_color(erase_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_bg_color(erase_btn, lv_color_hex(COLOR_PRESSED_RED), LV_STATE_PRESSED);
+    cygm_theme_glass_btn(erase_btn);
     // Fill bar first so the label, created after it, draws on top.
     lv_obj_t *erase_bar = lv_bar_create(erase_btn);
     lv_obj_set_size(erase_bar, 124, 24);
@@ -464,11 +449,11 @@ static void show_about_overlay(void) {
     static const char *qr_url = "http://cygm.me";
     lv_obj_t *qr = lv_qrcode_create(card, 75,
                                      lv_color_hex(COLOR_TEXT_WHITE),
-                                     lv_color_hex(COLOR_MODAL_BG));
+                                     lv_color_hex(CYGM_PANEL_BG));
     lv_qrcode_update(qr, qr_url, strlen(qr_url));
     lv_obj_align(qr, LV_ALIGN_TOP_RIGHT, -16, 56);
     lv_obj_set_style_border_color(qr, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(qr, 2, 0);
+    lv_obj_set_style_border_width(qr, 1, 0);
 }
 
 // 8KB stack for HTTPS/TLS. Only created after update_stop_all_tasks() frees ~35KB.
@@ -539,12 +524,8 @@ static void show_update_check_overlay(void) {
     lv_obj_t *card = lv_obj_create(update_check_overlay);
     lv_obj_set_size(card, 220, 118);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -553,7 +534,7 @@ static void show_update_check_overlay(void) {
     lv_obj_align(spinner, LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_arc_color(spinner, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(spinner, 4, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(spinner, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_arc_color(spinner, lv_color_hex(CYGM_BTN_BG), 0);
     lv_obj_set_style_arc_width(spinner, 4, 0);
 
     lv_obj_t *title = lv_label_create(card);
@@ -645,15 +626,9 @@ static void check_update_btn_cb(lv_event_t *e) {
 
     // Navigate to home screen — update overlay shows on lv_layer_top()
     dismiss_about_overlay();
-    lv_scr_load(screen_home);
+    cygm_theme_scr_load(screen_home, screen_menu, &screen_menu);
     home_screen_active = true;
     pause_background_tasks = true;
-
-    // Delete menu screen — reclaims LVGL memory
-    if (screen_menu != NULL) {
-        lv_obj_del(screen_menu);
-        screen_menu = NULL;
-    }
 
     show_update_check_overlay();
 
@@ -781,7 +756,7 @@ static void power_hold_event_cb(lv_event_t *e) {
         }
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         if (!power_off_initiated) {
-            lv_bar_set_value(power_hold_bar, 0, LV_ANIM_OFF);  // LV_ANIM_ON triggers lv_anim_start (freeze risk)
+            lv_bar_set_value(power_hold_bar, 0, LV_ANIM_OFF);  // Animated progress freezes this hardware
         }
     }
 }
@@ -803,11 +778,8 @@ static void show_power_overlay(void) {
     lv_obj_t *card = lv_obj_create(power_overlay);
     lv_obj_set_size(card, 270, 148);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -816,8 +788,7 @@ static void show_power_overlay(void) {
     lv_obj_set_size(close_btn, 32, 32);
     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
     lv_obj_update_layout(close_btn);  // under 34px — helper needs the resolved size
-    cygm_apply_ghost_btn(close_btn);
-    lv_obj_set_style_border_width(close_btn, 0, 0);  // borderless round glyph button
+    cygm_theme_icon_btn(close_btn);
     lv_obj_set_style_radius(close_btn, 16, 0);
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
@@ -850,16 +821,10 @@ static void show_power_overlay(void) {
     lv_obj_remove_style_all(hold_container);
     lv_obj_set_size(hold_container, 220, 34);
     lv_obj_align(hold_container, LV_ALIGN_TOP_MID, 0, 92);
-    lv_obj_set_style_bg_color(hold_container, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(hold_container, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(hold_container, 17, 0);
-    lv_obj_set_style_border_color(hold_container, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(hold_container, 1, 0);
-    lv_obj_set_style_border_opa(hold_container, LV_OPA_COVER, 0);
     lv_obj_clear_flag(hold_container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(hold_container, LV_OBJ_FLAG_CLICKABLE);
-    // Shared pressed feedback + touch box; the pill's own radius/border above win
-    cygm_apply_ghost_btn(hold_container);
+    cygm_theme_glass_btn(hold_container);
+    lv_obj_set_style_radius(hold_container, LV_RADIUS_CIRCLE, 0);
 
     // Progress bar (fills red as you hold)
     power_hold_bar = lv_bar_create(hold_container);
@@ -907,13 +872,13 @@ static void menu_unload_event_cb(lv_event_t *e) {
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *menu_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb, void *user_data) {
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(btn, 36, 36);
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 4, 4);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(lbl);
     if (cb != NULL) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     return btn;
@@ -924,7 +889,7 @@ void create_menu_screen(void) {
     // without this guard orphans the previous menu in the LVGL pool. Deleting
     // the ACTIVE screen synchronously would panic, hence the async branch.
     if (screen_menu != NULL) {
-        if (screen_menu == lv_scr_act()) {
+        if (screen_menu == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_menu);
         } else {
             lv_obj_del(screen_menu);
@@ -933,7 +898,7 @@ void create_menu_screen(void) {
     }
 
     screen_menu = lv_obj_create(NULL);
-    lv_obj_add_style(screen_menu, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_menu);
     // Four fixed rows always fit; without this the screen drag-scrolls and the
     // bottom row bounces against the panel edge.
     lv_obj_clear_flag(screen_menu, LV_OBJ_FLAG_SCROLLABLE);
@@ -942,21 +907,27 @@ void create_menu_screen(void) {
     // --- Header ---
     lv_obj_t *header = lv_label_create(screen_menu);
     lv_label_set_text(header, "Settings");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
     menu_std_back_btn(screen_menu, back_btn_event_cb, NULL);
 
+    lv_obj_t *header_rule = lv_obj_create(screen_menu);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
+
     // Ghost about button (top right, left of power)
     lv_obj_t *about_btn = lv_btn_create(screen_menu);
     lv_obj_set_size(about_btn, CYGM_BTN_H, CYGM_BTN_H);
     lv_obj_align(about_btn, LV_ALIGN_TOP_RIGHT, -44, 4);
-    cygm_apply_ghost_btn(about_btn);
+    cygm_theme_icon_btn(about_btn);
     // Only 3px separates this from the power button, so cap the touch-box growth
     // — a wider one would swallow taps meant for its neighbour.
     lv_obj_set_ext_click_area(about_btn, 3);
-    lv_obj_set_style_border_width(about_btn, 0, 0);  // borderless header glyph button
     lv_obj_t *about_icon = lv_label_create(about_btn);
     lv_label_set_text(about_icon, "?");
     lv_obj_set_style_text_font(about_icon, &lv_font_montserrat_20, 0);
@@ -968,9 +939,8 @@ void create_menu_screen(void) {
     lv_obj_t *power_btn = lv_btn_create(screen_menu);
     lv_obj_set_size(power_btn, CYGM_BTN_H, CYGM_BTN_H);
     lv_obj_align(power_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    cygm_apply_ghost_btn(power_btn);
+    cygm_theme_icon_btn(power_btn);
     lv_obj_set_ext_click_area(power_btn, 3);  // see the about button above
-    lv_obj_set_style_border_width(power_btn, 0, 0);  // borderless header glyph button
     lv_obj_t *pwr_icon = lv_label_create(power_btn);
     lv_label_set_text(pwr_icon, LV_SYMBOL_POWER);
     lv_obj_set_style_text_font(pwr_icon, &lv_font_montserrat_20, 0);
@@ -995,29 +965,18 @@ void create_menu_screen(void) {
         lv_obj_set_size(row, MENU_CARD_W, MENU_CARD_H);
         lv_obj_align(row, LV_ALIGN_TOP_MID, 0, MENU_START_Y + i * (MENU_CARD_H + MENU_CARD_GAP));
 
-        cygm_apply_ghost_btn(row);
+        cygm_theme_glass_card(row);
         // Rows sit MENU_CARD_GAP apart, so the helper's 8px growth would make
         // adjacent hit boxes overlap and the lower sibling would win the gap.
         lv_obj_set_ext_click_area(row, 3);
 
-        // Card styling — a filled card, so the ghost base is overridden here
-        lv_obj_set_style_bg_color(row, lv_color_hex(COLOR_CARD_BG), 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(row, 10, 0);
-        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_border_color(row, lv_color_hex(CYGM_EDGE), 0);
+        lv_obj_set_style_border_opa(row, 220, 0);
         lv_obj_set_style_pad_left(row, 14, 0);
         lv_obj_set_style_pad_right(row, 12, 0);
-        // Press highlight
-        lv_obj_set_style_bg_color(row, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
-
-        // Colored left accent bar
-        lv_obj_t *accent = lv_obj_create(row);
-        lv_obj_remove_style_all(accent);
-        lv_obj_set_size(accent, 3, 26);
-        lv_obj_align(accent, LV_ALIGN_LEFT_MID, -9, 0);
-        lv_obj_set_style_bg_color(accent, lv_color_hex(icon_colors[i]), 0);
-        lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(accent, 2, 0);
+        // The default theme darkens pressed buttons; rows must not change on touch
+        lv_obj_set_style_color_filter_opa(row, LV_OPA_TRANSP, LV_STATE_PRESSED);
 
         // Colored icon
         lv_obj_t *icon = lv_label_create(row);
@@ -1034,7 +993,7 @@ void create_menu_screen(void) {
         // Right arrow
         lv_obj_t *arrow = lv_label_create(row);
         lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
-        lv_obj_set_style_text_color(arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+        lv_obj_set_style_text_color(arrow, lv_color_hex(COLOR_TEXT_GRAY), 0);
         lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, 0, 0);
 
         // Click handler (indices 0-3 match menu_item_event_cb cases)

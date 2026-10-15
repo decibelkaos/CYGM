@@ -3,6 +3,7 @@
  */
 
 #include "wifi_screens.h"
+#include "cygm_theme.h"
 #include "shared_state.h"
 #include "main.h"
 #include "wifi_manager.h"
@@ -37,13 +38,13 @@ void background_set_manual_wifi_active(bool active);
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *wifi_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb, void *user_data) {
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(btn, 36, 36);
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 4, 4);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(lbl);
     if (cb != NULL) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     return btn;
@@ -157,7 +158,6 @@ static void wifi_scanning_overlay_delete_cb(lv_event_t *e) {
     wifi_scanning_bar = NULL;
 }
 
-// Show WiFi scanning overlay — glass-themed, overlays the list semi-transparently
 void show_wifi_scanning_overlay(void) {
     if (!lvgl_port_lock(1)) {
         return;
@@ -170,7 +170,7 @@ void show_wifi_scanning_overlay(void) {
     }
 
     // Full-screen semi-transparent backdrop (blocks clicks to list beneath)
-    wifi_scanning_overlay = lv_obj_create(lv_scr_act());
+    wifi_scanning_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_add_event_cb(wifi_scanning_overlay, wifi_scanning_overlay_delete_cb,
                         LV_EVENT_DELETE, NULL);
     lv_obj_set_size(wifi_scanning_overlay, 320, 240);
@@ -185,13 +185,8 @@ void show_wifi_scanning_overlay(void) {
     lv_obj_t *card = lv_obj_create(wifi_scanning_overlay);
     lv_obj_set_size(card, 240, 110);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_90, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     // WiFi icon + "Scanning..." label
@@ -207,15 +202,20 @@ void show_wifi_scanning_overlay(void) {
     lv_obj_align(wifi_scanning_bar, LV_ALIGN_CENTER, 0, 10);
 
     // Bar track (dark glass)
-    lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(COLOR_MODAL_BG), 0);
+    lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(CYGM_BTN_BG), 0);
     lv_obj_set_style_bg_opa(wifi_scanning_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(wifi_scanning_bar, 8, 0);
+    lv_obj_set_style_border_color(wifi_scanning_bar, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(wifi_scanning_bar, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(wifi_scanning_bar, 1, 0);
+    lv_obj_set_style_radius(wifi_scanning_bar, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_width(wifi_scanning_bar, 0, 0);
 
     // Bar indicator (blue gradient)
     lv_obj_set_style_bg_color(wifi_scanning_bar, lv_color_hex(0x1D4ED8), LV_PART_INDICATOR);
     lv_obj_set_style_bg_grad_color(wifi_scanning_bar, lv_color_hex(COLOR_ACCENT_LIGHT), LV_PART_INDICATOR);
     lv_obj_set_style_bg_grad_dir(wifi_scanning_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(wifi_scanning_bar, 8, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(wifi_scanning_bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_width(wifi_scanning_bar, 0, LV_PART_INDICATOR);
 
     lv_bar_set_range(wifi_scanning_bar, 0, 100);
     lv_bar_set_value(wifi_scanning_bar, 0, LV_ANIM_OFF);
@@ -305,7 +305,7 @@ static void wifi_removal_hold_event_cb(lv_event_t *e) {
         }
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         if (!wifi_removal_initiated) {
-            lv_bar_set_value(wifi_removal_hold_bar, 0, LV_ANIM_OFF);  // LV_ANIM_ON triggers lv_anim_start (freeze risk)
+            lv_bar_set_value(wifi_removal_hold_bar, 0, LV_ANIM_OFF);  // Animated progress can freeze this hardware.
         }
     }
 }
@@ -358,14 +358,12 @@ void show_wifi_removal_overlay(const char *ssid) {
     }
 
     // Create overlay (280x200, centered)
-    wifi_removal_overlay = lv_obj_create(lv_scr_act());
+    wifi_removal_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_add_event_cb(wifi_removal_overlay, wifi_removal_overlay_delete_cb,
                         LV_EVENT_DELETE, NULL);
     lv_obj_set_size(wifi_removal_overlay, 280, 200);
     lv_obj_center(wifi_removal_overlay);
-    lv_obj_set_style_bg_color(wifi_removal_overlay, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_border_color(wifi_removal_overlay, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(wifi_removal_overlay, 2, 0);
+    cygm_theme_panel(wifi_removal_overlay);
     lv_obj_set_style_radius(wifi_removal_overlay, 12, 0);
     lv_obj_clear_flag(wifi_removal_overlay, LV_OBJ_FLAG_SCROLLABLE);
     // Pinned to 0 so every child offset below measures from a known origin:
@@ -395,19 +393,14 @@ void show_wifi_removal_overlay(const char *ssid) {
     lv_obj_set_style_text_color(instruction, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(instruction, LV_ALIGN_TOP_MID, 0, 82);
 
-    // Hold-to-confirm container (replaces slider)
     lv_obj_t *hold_container = lv_obj_create(wifi_removal_overlay);
     lv_obj_remove_style_all(hold_container);
     lv_obj_set_size(hold_container, 240, 30);
     lv_obj_align(hold_container, LV_ALIGN_TOP_MID, 0, 105);
-    lv_obj_set_style_bg_color(hold_container, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(hold_container, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(hold_container, 15, 0);
-    lv_obj_set_style_border_color(hold_container, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(hold_container, 1, 0);
+    cygm_theme_glass_btn(hold_container);
+    lv_obj_set_style_radius(hold_container, LV_RADIUS_CIRCLE, 0);
     lv_obj_clear_flag(hold_container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(hold_container, LV_OBJ_FLAG_CLICKABLE);
-    cygm_apply_ghost_btn(hold_container);
 
     // Progress bar (fills red as you hold)
     wifi_removal_hold_bar = lv_bar_create(hold_container);
@@ -418,8 +411,8 @@ void show_wifi_removal_overlay(const char *ssid) {
     lv_obj_set_style_bg_opa(wifi_removal_hold_bar, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_bg_color(wifi_removal_hold_bar, lv_color_hex(COLOR_RED), LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(wifi_removal_hold_bar, LV_OPA_80, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(wifi_removal_hold_bar, 14, LV_PART_MAIN);
-    lv_obj_set_style_radius(wifi_removal_hold_bar, 14, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(wifi_removal_hold_bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_radius(wifi_removal_hold_bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
     lv_obj_set_style_anim_time(wifi_removal_hold_bar, 300, LV_PART_MAIN);
     lv_obj_clear_flag(wifi_removal_hold_bar, LV_OBJ_FLAG_CLICKABLE);
 
@@ -442,8 +435,7 @@ void show_wifi_removal_overlay(const char *ssid) {
     lv_obj_set_size(cancel_btn, CYGM_BTN_W_TEXT, CYGM_BTN_H);
     lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_MID, 0, -14);
     // Neutral border — this is the "do nothing" action, not the accent one.
-    lv_obj_set_style_border_color(cancel_btn, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    cygm_apply_ghost_btn(cancel_btn);
+    cygm_theme_glass_btn(cancel_btn);
 
     lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_lbl, "Cancel");
@@ -531,13 +523,15 @@ void wifi_scan_and_show_networks(void) {
     // Tear down the overlay and build the list in ONE locked transaction, and
     // retry the try-lock: a silent skip leaves the bar stuck and lets a later
     // lv_obj_clean() free the overlay behind the statics' back.
+    // The budget is long on purpose: a screenshot or a long press can hold the
+    // lock for twenty seconds, and giving up here strands the scanning card.
     bool ui_locked = false;
-    for (int retry = 0; retry < 50 && !ui_locked; retry++) {
+    for (int retry = 0; retry < 3000 && !ui_locked; retry++) {
         ui_locked = lvgl_port_lock(1);
         if (!ui_locked) vTaskDelay(pdMS_TO_TICKS(10));
     }
     if (!ui_locked) {
-        ESP_LOGW(TAG, "LVGL busy for 500ms — scan results not displayed");
+        ESP_LOGW(TAG, "LVGL busy for 30 s — scan results not displayed");
         return;
     }
 
@@ -564,9 +558,8 @@ void wifi_scan_and_show_networks(void) {
         lv_obj_t *list = lv_obj_create(screen_wifi_list);
         lv_obj_set_size(list, 300, 180);
         lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -10);
-        lv_obj_set_style_bg_color(list, lv_color_hex(COLOR_CARD_BG), 0);
+        cygm_theme_glass_card(list);
         lv_obj_set_style_radius(list, 12, 0);
-        lv_obj_set_style_border_width(list, 0, 0);
         lv_obj_set_style_pad_all(list, 5, 0);
         // Rows tile with no gap, so scrolled to the end the last one lands hard
         // against the card edge. Reserve a strip of clearance under it.
@@ -613,13 +606,14 @@ void wifi_scan_and_show_networks(void) {
             lv_obj_t *row = lv_btn_create(list);
             lv_obj_set_width(row, 290);
             lv_obj_set_height(row, 40);
-            lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_radius(row, 0, 0);
-            lv_obj_set_style_border_width(row, 0, 0);
-            cygm_apply_ghost_btn(row);
+            cygm_theme_glass_btn(row);
             // Rows already tile without gaps, so the shared touch-box growth
             // would make neighbours overlap and select the wrong network.
             lv_obj_set_ext_click_area(row, 0);
+            lv_obj_remove_local_style_prop(row, LV_STYLE_BG_COLOR, LV_STATE_PRESSED);
+            lv_obj_remove_local_style_prop(row, LV_STYLE_BG_OPA, LV_STATE_PRESSED);
+            lv_obj_remove_local_style_prop(row, LV_STYLE_BORDER_OPA, LV_STATE_PRESSED);
+            lv_obj_set_style_color_filter_opa(row, LV_OPA_TRANSP, LV_STATE_PRESSED);
 
             // Left offset: saved networks get a status dot, so shift content right
             int left_offset = is_saved ? 12 : 0;
@@ -707,25 +701,15 @@ void wifi_scan_and_show_networks(void) {
                 lv_obj_set_size(switch_btn, 26, 26);
                 lv_obj_align(switch_btn, LV_ALIGN_RIGHT_MID, -38, 0);
 
-                if (network_visible) {
-                    lv_obj_set_style_bg_color(switch_btn, lv_color_hex(COLOR_GREEN), 0);
-                    lv_obj_add_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
-                } else {
-                    lv_obj_set_style_bg_color(switch_btn, lv_color_hex(COLOR_TEXT_DIM), 0);
-                    lv_obj_clear_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
-                }
-                lv_obj_set_style_radius(switch_btn, 4, 0);
-                lv_obj_set_style_border_width(switch_btn, 0, 0);
+                if (network_visible) lv_obj_add_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
+                else lv_obj_clear_flag(switch_btn, LV_OBJ_FLAG_CLICKABLE);
                 lv_obj_set_style_pad_all(switch_btn, 0, 0);
-                // Explicit local opacity: the shared ghost style is transparent
-                // and would otherwise erase this square's fill.
-                lv_obj_set_style_bg_opa(switch_btn, LV_OPA_COVER, 0);
-                cygm_apply_ghost_btn(switch_btn);
+                cygm_theme_icon_btn(switch_btn);
                 lv_obj_set_ext_click_area(switch_btn, 4);
 
                 lv_obj_t *check_icon = lv_label_create(switch_btn);
                 lv_label_set_text(check_icon, LV_SYMBOL_OK);
-                lv_obj_set_style_text_color(check_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
+                lv_obj_set_style_text_color(check_icon, lv_color_hex(COLOR_GREEN), 0);
                 lv_obj_set_style_text_font(check_icon, &lv_font_montserrat_12, 0);
                 lv_obj_center(check_icon);
 
@@ -738,18 +722,14 @@ void wifi_scan_and_show_networks(void) {
                 lv_obj_t *delete_btn = lv_obj_create(row);
                 lv_obj_set_size(delete_btn, 26, 26);
                 lv_obj_align(delete_btn, LV_ALIGN_RIGHT_MID, -4, 0);
-                lv_obj_set_style_bg_color(delete_btn, lv_color_hex(COLOR_RED), 0);
-                lv_obj_set_style_bg_opa(delete_btn, LV_OPA_COVER, 0);
-                lv_obj_set_style_radius(delete_btn, 4, 0);
-                lv_obj_set_style_border_width(delete_btn, 0, 0);
                 lv_obj_set_style_pad_all(delete_btn, 0, 0);
                 lv_obj_add_flag(delete_btn, LV_OBJ_FLAG_CLICKABLE);
-                cygm_apply_ghost_btn(delete_btn);
+                cygm_theme_icon_btn(delete_btn);
                 lv_obj_set_ext_click_area(delete_btn, 4);
 
                 lv_obj_t *x_icon = lv_label_create(delete_btn);
                 lv_label_set_text(x_icon, LV_SYMBOL_CLOSE);
-                lv_obj_set_style_text_color(x_icon, lv_color_hex(COLOR_TEXT_WHITE), 0);
+                lv_obj_set_style_text_color(x_icon, lv_color_hex(COLOR_RED), 0);
                 lv_obj_set_style_text_font(x_icon, &lv_font_montserrat_12, 0);
                 lv_obj_center(x_icon);
 
@@ -762,7 +742,7 @@ void wifi_scan_and_show_networks(void) {
                 // Arrow for unsaved networks (password entry)
                 lv_obj_t *arrow = lv_label_create(row);
                 lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
-                lv_obj_set_style_text_color(arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+                lv_obj_set_style_text_color(arrow, lv_color_hex(COLOR_TEXT_GRAY), 0);
                 lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -5, 0);
 
                 // Row click opens password screen
@@ -771,7 +751,7 @@ void wifi_scan_and_show_networks(void) {
         }
 
         // Load the WiFi list screen
-        lv_scr_load(screen_wifi_list);
+        cygm_theme_scr_load(screen_wifi_list, NULL, NULL);
         lvgl_port_unlock();
     }
 }
@@ -789,22 +769,29 @@ static void wifi_list_add_header(lv_obj_t *parent) {
     // Header
     lv_obj_t *header = lv_label_create(parent);
     lv_label_set_text(header, "WiFi Networks");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
     wifi_std_back_btn(parent, back_btn_event_cb, NULL);
 
-    // Ghost refresh button (top-right)
+    lv_obj_t *rule = lv_obj_create(parent);
+    lv_obj_remove_style_all(rule);
+    lv_obj_set_size(rule, 304, 1);
+    lv_obj_align(rule, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_set_style_bg_color(rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(rule, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(rule, 0, 0);
+
     lv_obj_t *refresh_btn = lv_btn_create(parent);
     lv_obj_set_size(refresh_btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
     lv_obj_align(refresh_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    cygm_apply_ghost_btn(refresh_btn);
+    cygm_theme_icon_btn(refresh_btn);
 
     lv_obj_t *refresh_lbl = lv_label_create(refresh_btn);
     lv_label_set_text(refresh_lbl, LV_SYMBOL_REFRESH);
     lv_obj_set_style_text_font(refresh_lbl, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(refresh_lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(refresh_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(refresh_lbl);
     lv_obj_add_event_cb(refresh_btn, wifi_refresh_btn_event_cb, LV_EVENT_CLICKED, NULL);
 }
@@ -824,7 +811,7 @@ void create_wifi_list_screen(void) {
     // without this guard orphans the previous one in the LVGL pool. Deleting
     // the ACTIVE screen synchronously would panic, hence the branch.
     if (screen_wifi_list != NULL) {
-        if (screen_wifi_list == lv_scr_act()) {
+        if (screen_wifi_list == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_wifi_list);
         } else {
             lv_obj_del(screen_wifi_list);
@@ -833,7 +820,7 @@ void create_wifi_list_screen(void) {
     }
 
     screen_wifi_list = lv_obj_create(NULL);
-    lv_obj_add_style(screen_wifi_list, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_wifi_list);
     // Outer screen only — the network list built inside it stays scrollable.
     lv_obj_clear_flag(screen_wifi_list, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(screen_wifi_list, wifi_list_screen_delete_cb, LV_EVENT_DELETE, NULL);
@@ -859,7 +846,7 @@ static void wifi_password_screen_delete_cb(lv_event_t *e) {
 // Create WiFi password entry screen
 void create_wifi_password_screen(void) {
     if (screen_wifi_password != NULL) {
-        if (screen_wifi_password == lv_scr_act()) {
+        if (screen_wifi_password == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_wifi_password);
         } else {
             lv_obj_del(screen_wifi_password);
@@ -872,7 +859,7 @@ void create_wifi_password_screen(void) {
         ESP_LOGE(TAG, "Failed to create WiFi password screen - out of memory!");
         return;
     }
-    lv_obj_add_style(screen_wifi_password, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_wifi_password);
     lv_obj_clear_flag(screen_wifi_password, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(screen_wifi_password, wifi_password_screen_delete_cb,
                         LV_EVENT_DELETE, NULL);
@@ -894,10 +881,7 @@ void create_wifi_password_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_wifi_password);
     lv_obj_set_size(ok_btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(ok_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    cygm_apply_ghost_btn(ok_btn);
+    cygm_theme_primary_btn(ok_btn);
 
     lv_obj_t *ok_lbl = lv_label_create(ok_btn);
     lv_label_set_text(ok_lbl, LV_SYMBOL_OK);
@@ -909,10 +893,9 @@ void create_wifi_password_screen(void) {
     // Eye toggle button. Sits a full touch-box clear of OK so the enlarged hit
     // areas never overlap — a mis-tap here would fire a connect attempt.
     lv_obj_t *eye_btn = lv_btn_create(screen_wifi_password);
-    lv_obj_set_size(eye_btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(eye_btn, 36, 36);
     lv_obj_align(eye_btn, LV_ALIGN_TOP_RIGHT, -62, 4);
-    lv_obj_set_style_border_color(eye_btn, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    cygm_apply_ghost_btn(eye_btn);
+    cygm_theme_icon_btn(eye_btn);
 
     wifi_eye_label = lv_label_create(eye_btn);
     lv_label_set_text(wifi_eye_label, LV_SYMBOL_EYE_CLOSE);
@@ -932,13 +915,17 @@ void create_wifi_password_screen(void) {
     lv_textarea_set_max_length(password_field, 63);
     lv_obj_set_style_text_font(password_field, &lv_font_montserrat_14, 0);
     lv_obj_set_style_bg_color(password_field, lv_color_hex(COLOR_INPUT_BG), 0);
-    lv_obj_set_style_bg_opa(password_field, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(password_field, 180, 0);
     lv_obj_set_style_text_color(password_field, lv_color_hex(COLOR_TEXT_WHITE), 0);
-    lv_obj_set_style_border_color(password_field, lv_color_hex(COLOR_ACCENT_BLUE), LV_STATE_FOCUSED);
-    lv_obj_set_style_border_width(password_field, 2, LV_STATE_FOCUSED);
-    lv_obj_set_style_border_color(password_field, lv_color_hex(COLOR_MODAL_BORDER), 0);
+    lv_obj_set_style_border_color(password_field, lv_color_hex(COLOR_ACCENT_LIGHT), LV_STATE_FOCUSED);
+    lv_obj_set_style_border_opa(password_field, LV_OPA_COVER, LV_STATE_FOCUSED);
+    lv_obj_set_style_border_width(password_field, 1, LV_STATE_FOCUSED);
+    lv_obj_set_style_border_color(password_field, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(password_field, CYGM_EDGE_OPA, 0);
     lv_obj_set_style_border_width(password_field, 1, 0);
     lv_obj_set_style_radius(password_field, 8, 0);
+    lv_obj_set_style_shadow_width(password_field, 0, 0);
+    lv_obj_set_style_shadow_width(password_field, 0, LV_STATE_FOCUSED);
     lv_obj_add_event_cb(password_field, password_field_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     // Blue accent underline
@@ -954,26 +941,8 @@ void create_wifi_password_screen(void) {
     keyboard = lv_keyboard_create(screen_wifi_password);
     lv_obj_set_size(keyboard, 320, 130);
     lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(keyboard);
     lv_keyboard_set_textarea(keyboard, password_field);
-
-    // Glass keyboard background
-    lv_obj_set_style_bg_color(keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(keyboard, 0, 0);
-    lv_obj_set_style_pad_all(keyboard, 2, 0);
-
-    // Glass key styling
-    lv_obj_set_style_bg_color(keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(keyboard, 0, LV_PART_ITEMS);
-
-    // Pressed key highlight (accent blue)
-    lv_obj_set_style_bg_color(keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(keyboard, keyboard_event_cb, LV_EVENT_ALL, NULL);
 }
@@ -1013,7 +982,7 @@ static void network_item_event_cb(lv_event_t *e) {
             shift_waiting_for_char = false;
             lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
 
-            lv_scr_load(screen_wifi_password);
+            cygm_theme_scr_load(screen_wifi_password, NULL, NULL);
             lvgl_port_unlock();
         }
     }
@@ -1145,7 +1114,7 @@ static void wifi_password_cancel_btn_cb(lv_event_t *e) {
     if (code == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Password entry cancelled, returning to network list");
         if (lvgl_port_lock(1)) {
-            lv_scr_load(screen_wifi_list);
+            cygm_theme_scr_load(screen_wifi_list, NULL, NULL);
             lvgl_port_unlock();
         }
     }
@@ -1183,14 +1152,12 @@ static void show_wifi_connecting_overlay(void) {
     }
 
     // Overlay card (centered)
-    wifi_connecting_overlay = lv_obj_create(lv_scr_act());
+    wifi_connecting_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_add_event_cb(wifi_connecting_overlay, wifi_connecting_overlay_delete_cb,
                         LV_EVENT_DELETE, NULL);
     lv_obj_set_size(wifi_connecting_overlay, 260, 170);
     lv_obj_center(wifi_connecting_overlay);
-    lv_obj_set_style_bg_color(wifi_connecting_overlay, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_border_color(wifi_connecting_overlay, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(wifi_connecting_overlay, 2, 0);
+    cygm_theme_panel(wifi_connecting_overlay);
     lv_obj_set_style_radius(wifi_connecting_overlay, 12, 0);
     lv_obj_clear_flag(wifi_connecting_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1214,15 +1181,20 @@ static void show_wifi_connecting_overlay(void) {
     lv_obj_align(wifi_connecting_bar, LV_ALIGN_CENTER, 0, 8);
 
     // Bar track (dark background)
-    lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(COLOR_INPUT_BG), 0);
+    lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(CYGM_BTN_BG), 0);
     lv_obj_set_style_bg_opa(wifi_connecting_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(wifi_connecting_bar, 10, 0);
+    lv_obj_set_style_border_color(wifi_connecting_bar, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(wifi_connecting_bar, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(wifi_connecting_bar, 1, 0);
+    lv_obj_set_style_radius(wifi_connecting_bar, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_width(wifi_connecting_bar, 0, 0);
 
     // Bar indicator (blue gradient - darker left, brighter right edge)
     lv_obj_set_style_bg_color(wifi_connecting_bar, lv_color_hex(0x1D4ED8), LV_PART_INDICATOR);
     lv_obj_set_style_bg_grad_color(wifi_connecting_bar, lv_color_hex(COLOR_ACCENT_LIGHT), LV_PART_INDICATOR);
     lv_obj_set_style_bg_grad_dir(wifi_connecting_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(wifi_connecting_bar, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(wifi_connecting_bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_width(wifi_connecting_bar, 0, LV_PART_INDICATOR);
 
     lv_bar_set_range(wifi_connecting_bar, 0, 100);
     lv_bar_set_value(wifi_connecting_bar, 0, LV_ANIM_OFF);
@@ -1244,10 +1216,7 @@ static void show_wifi_connecting_overlay(void) {
     wifi_connecting_ok_btn = lv_btn_create(wifi_connecting_overlay);
     lv_obj_set_size(wifi_connecting_ok_btn, CYGM_BTN_W_TEXT, CYGM_BTN_H);
     lv_obj_align(wifi_connecting_ok_btn, LV_ALIGN_BOTTOM_MID, 0, -8);
-    lv_obj_set_style_bg_color(wifi_connecting_ok_btn, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(wifi_connecting_ok_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(wifi_connecting_ok_btn, 0, 0);
-    cygm_apply_ghost_btn(wifi_connecting_ok_btn);
+    cygm_theme_primary_btn(wifi_connecting_ok_btn);
     lv_obj_add_event_cb(wifi_connecting_ok_btn, wifi_connecting_ok_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(wifi_connecting_ok_btn, LV_OBJ_FLAG_HIDDEN);
 
@@ -1284,7 +1253,18 @@ static void wifi_connecting_ok_btn_cb(lv_event_t *e) {
 
         // Load home screen first before deleting any WiFi screens
         if (screen_home != NULL) {
-            lv_scr_load(screen_home);
+            if (cygm_theme_scr_act() == screen_wifi_password) {
+                cygm_theme_scr_load(screen_home, screen_wifi_password,
+                                    &screen_wifi_password);
+                password_field = NULL;
+                keyboard = NULL;
+                wifi_eye_label = NULL;
+            } else if (cygm_theme_scr_act() == screen_wifi_list) {
+                cygm_theme_scr_load(screen_home, screen_wifi_list,
+                                    &screen_wifi_list);
+            } else {
+                cygm_theme_scr_load(screen_home, NULL, NULL);
+            }
             home_screen_active = true;
             pause_background_tasks = false;
             ESP_LOGI(TAG, "Home screen loaded successfully");
@@ -1631,7 +1611,7 @@ static void keyboard_event_cb(lv_event_t *e) {
     if (code == LV_EVENT_CANCEL) {
         ESP_LOGI(TAG, "Password entry cancelled, returning to network list");
         if (lvgl_port_lock(1)) {
-            lv_scr_load(screen_wifi_list);
+            cygm_theme_scr_load(screen_wifi_list, NULL, NULL);
             lvgl_port_unlock();
         }
         return;

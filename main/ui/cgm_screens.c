@@ -4,6 +4,7 @@
  */
 
 #include "cgm_screens.h"
+#include "cygm_theme.h"
 #include "shared_state.h"
 #include "main.h"
 #include "dexcom_api.h"
@@ -65,16 +66,49 @@ static void cgm_restart_glucose_task(void) {
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *cgm_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb, void *user_data) {
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(btn, 36, 36);
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 4, 4);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(lbl);
     if (cb != NULL) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     return btn;
+}
+
+// Provider rows show no press change: drop the glass button's pressed shade
+// and the default theme's pressed darken filter.
+static void cgm_row_no_press(lv_obj_t *row) {
+    lv_obj_remove_local_style_prop(row, LV_STYLE_BG_COLOR, LV_STATE_PRESSED);
+    lv_obj_remove_local_style_prop(row, LV_STYLE_BG_OPA, LV_STATE_PRESSED);
+    lv_obj_remove_local_style_prop(row, LV_STYLE_BORDER_OPA, LV_STATE_PRESSED);
+    lv_obj_set_style_color_filter_opa(row, LV_OPA_TRANSP, LV_STATE_PRESSED);
+}
+
+static void cgm_add_header_rule(lv_obj_t *parent) {
+    lv_obj_t *rule = lv_obj_create(parent);
+    lv_obj_remove_style_all(rule);
+    lv_obj_set_size(rule, 304, 1);
+    lv_obj_align(rule, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_set_style_bg_color(rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(rule, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(rule, 0, 0);
+}
+
+static void cgm_style_input(lv_obj_t *ta) {
+    lv_obj_set_style_bg_color(ta, lv_color_hex(COLOR_INPUT_BG), 0);
+    lv_obj_set_style_bg_opa(ta, 180, 0);
+    lv_obj_set_style_border_color(ta, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(ta, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(ta, 1, 0);
+    lv_obj_set_style_radius(ta, 8, 0);
+    lv_obj_set_style_shadow_width(ta, 0, 0);
+    lv_obj_set_style_border_color(ta, lv_color_hex(COLOR_ACCENT_LIGHT), LV_STATE_FOCUSED);
+    lv_obj_set_style_border_opa(ta, LV_OPA_COVER, LV_STATE_FOCUSED);
+    lv_obj_set_style_border_width(ta, 1, LV_STATE_FOCUSED);
+    lv_obj_set_style_shadow_width(ta, 0, LV_STATE_FOCUSED);
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +127,7 @@ static void show_connecting_overlay(const char *provider_name) {
     if (connecting_overlay != NULL) return;
 
     // Dimmed backdrop
-    connecting_overlay = lv_obj_create(lv_scr_act());
+    connecting_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_add_event_cb(connecting_overlay, connecting_overlay_delete_cb,
                         LV_EVENT_DELETE, NULL);
     lv_obj_remove_style_all(connecting_overlay);
@@ -103,17 +137,11 @@ static void show_connecting_overlay(const char *provider_name) {
     lv_obj_clear_flag(connecting_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(connecting_overlay);
 
-    // Glass card — themed connecting overlay
     lv_obj_t *card = lv_obj_create(connecting_overlay);
     lv_obj_set_size(card, 220, 130);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -123,7 +151,7 @@ static void show_connecting_overlay(const char *provider_name) {
     lv_obj_align(spinner, LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_arc_color(spinner, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(spinner, 4, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(spinner, lv_color_hex(COLOR_CARD_BG), 0);
+    lv_obj_set_style_arc_color(spinner, lv_color_hex(CYGM_BTN_BG), 0);
     lv_obj_set_style_arc_width(spinner, 4, 0);
 
     // Title
@@ -238,7 +266,7 @@ static void wifi_required_setup_cb(lv_event_t *e) {
         screen_wifi_list = NULL;
     }
     create_wifi_list_screen();
-    lv_scr_load(screen_wifi_list);
+    cygm_theme_scr_load(screen_wifi_list, NULL, NULL);
 }
 
 static void wifi_required_cancel_cb(lv_event_t *e) {
@@ -250,7 +278,7 @@ static void show_wifi_required_prompt(void) {
     if (wifi_required_overlay != NULL) return;
 
     // Dimmed backdrop
-    wifi_required_overlay = lv_obj_create(lv_scr_act());
+    wifi_required_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_add_event_cb(wifi_required_overlay, wifi_required_overlay_delete_cb,
                         LV_EVENT_DELETE, NULL);
     lv_obj_remove_style_all(wifi_required_overlay);
@@ -264,13 +292,8 @@ static void show_wifi_required_prompt(void) {
     lv_obj_t *card = lv_obj_create(wifi_required_overlay);
     lv_obj_set_size(card, 250, 165);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -300,22 +323,17 @@ static void show_wifi_required_prompt(void) {
     lv_obj_t *setup_btn = lv_btn_create(card);
     lv_obj_set_size(setup_btn, 130, 36);
     lv_obj_align(setup_btn, LV_ALIGN_BOTTOM_LEFT, 10, -10);
-    lv_obj_set_style_bg_color(setup_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(setup_btn, 8, 0);
-    lv_obj_set_style_shadow_width(setup_btn, 0, 0);
+    cygm_theme_primary_btn(setup_btn);
     lv_obj_add_event_cb(setup_btn, wifi_required_setup_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *setup_lbl = lv_label_create(setup_btn);
     lv_label_set_text(setup_lbl, LV_SYMBOL_WIFI "  Set Up");
     lv_obj_set_style_text_font(setup_lbl, &lv_font_montserrat_14, 0);
     lv_obj_center(setup_lbl);
 
-    // "Cancel" — ghost dismiss
     lv_obj_t *cancel_btn = lv_btn_create(card);
     lv_obj_set_size(cancel_btn, 90, 36);
     lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
-    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(COLOR_PRESSED), 0);
-    lv_obj_set_style_radius(cancel_btn, 8, 0);
-    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+    cygm_theme_glass_btn(cancel_btn);
     lv_obj_add_event_cb(cancel_btn, wifi_required_cancel_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_lbl, "Cancel");
@@ -405,9 +423,9 @@ static void dexcom_login_task(void *pvParameters) {
 
         if (cgm_lvgl_lock_insistent(1000)) {
             hide_connecting_overlay();
-            lv_scr_load(screen_home);
+            cygm_theme_scr_load(screen_home, screen_dexcom_login,
+                                &screen_dexcom_login);
             // Clean up all CGM screens
-            if (screen_dexcom_login != NULL) { lv_obj_del(screen_dexcom_login); screen_dexcom_login = NULL; }
             if (screen_dexcom_auth != NULL) { lv_obj_del(screen_dexcom_auth); screen_dexcom_auth = NULL; }
             if (screen_cgm_menu != NULL) { lv_obj_del(screen_cgm_menu); screen_cgm_menu = NULL; }
             home_screen_active = true;
@@ -463,11 +481,8 @@ static void dexcom_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_cgm_menu_screen();
-            lv_scr_load(screen_cgm_menu);
-            if (screen_dexcom_auth != NULL) {
-                lv_obj_del(screen_dexcom_auth);
-                screen_dexcom_auth = NULL;
-            }
+            cygm_theme_scr_load(screen_cgm_menu, screen_dexcom_auth,
+                                &screen_dexcom_auth);
             lvgl_port_unlock();
         }
     }
@@ -505,12 +520,8 @@ static void dexcom_logout_btn_event_cb(lv_event_t *e) {
                 screen_dexcom_auth = NULL;
             }
             create_dexcom_auth_screen();
-            lv_scr_load(screen_dexcom_auth);
-            // Delete status screen we came from
-            if (screen_dexcom_status != NULL) {
-                lv_obj_del(screen_dexcom_status);
-                screen_dexcom_status = NULL;
-            }
+            cygm_theme_scr_load(screen_dexcom_auth, screen_dexcom_status,
+                                &screen_dexcom_status);
             lvgl_port_unlock();
         }
     }
@@ -520,11 +531,8 @@ static void cgm_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_menu_screen();
-            lv_scr_load(screen_menu);
-            if (screen_cgm_menu != NULL) {
-                lv_obj_del(screen_cgm_menu);
-                screen_cgm_menu = NULL;
-            }
+            cygm_theme_scr_load(screen_menu, screen_cgm_menu,
+                                &screen_cgm_menu);
             lvgl_port_unlock();
         }
     }
@@ -538,12 +546,8 @@ static void dexcom_btn_event_cb(lv_event_t *e) {
                 screen_dexcom_auth = NULL;
             }
             create_dexcom_auth_screen();
-            lv_scr_load(screen_dexcom_auth);
-            // Single-screen rule: delete cgm_menu after loading auth
-            if (screen_cgm_menu != NULL) {
-                lv_obj_del(screen_cgm_menu);
-                screen_cgm_menu = NULL;
-            }
+            cygm_theme_scr_load(screen_dexcom_auth, screen_cgm_menu,
+                                &screen_cgm_menu);
             lvgl_port_unlock();
         }
     }
@@ -554,11 +558,8 @@ static void librelinkup_btn_event_cb(lv_event_t *e) {
         ESP_LOGI(TAG, "LibreLinkUp button pressed");
         if (lvgl_port_lock(1)) {
             create_libre_auth_screen();
-            lv_scr_load(screen_libre_auth);
-            if (screen_cgm_menu != NULL) {
-                lv_obj_del(screen_cgm_menu);
-                screen_cgm_menu = NULL;
-            }
+            cygm_theme_scr_load(screen_libre_auth, screen_cgm_menu,
+                                &screen_cgm_menu);
             lvgl_port_unlock();
         }
     }
@@ -572,12 +573,8 @@ static void dexcom_view_status_btn_event_cb(lv_event_t *e) {
                 screen_dexcom_status = NULL;
             }
             create_dexcom_status_screen();
-            lv_scr_load(screen_dexcom_status);
-            // Single-screen rule: delete auth after loading status
-            if (screen_dexcom_auth != NULL) {
-                lv_obj_del(screen_dexcom_auth);
-                screen_dexcom_auth = NULL;
-            }
+            cygm_theme_scr_load(screen_dexcom_status, screen_dexcom_auth,
+                                &screen_dexcom_auth);
             lvgl_port_unlock();
         }
     }
@@ -591,12 +588,8 @@ static void dexcom_open_login_event_cb(lv_event_t *e) {
                 screen_dexcom_login = NULL;
             }
             create_dexcom_login_screen();
-            lv_scr_load(screen_dexcom_login);
-            // Single-screen rule: delete auth after loading login
-            if (screen_dexcom_auth != NULL) {
-                lv_obj_del(screen_dexcom_auth);
-                screen_dexcom_auth = NULL;
-            }
+            cygm_theme_scr_load(screen_dexcom_login, screen_dexcom_auth,
+                                &screen_dexcom_auth);
             lvgl_port_unlock();
         }
     }
@@ -610,14 +603,10 @@ static void dexcom_username_tap_event_cb(lv_event_t *e) {
                 screen_dexcom_username_entry = NULL;
             }
             create_dexcom_username_entry_screen();
-            lv_scr_load(screen_dexcom_username_entry);
-            // Single-screen rule: delete login after loading entry
-            if (screen_dexcom_login != NULL) {
-                lv_obj_del(screen_dexcom_login);
-                screen_dexcom_login = NULL;
-                dexcom_username_label = NULL;
-                dexcom_password_label = NULL;
-            }
+            cygm_theme_scr_load(screen_dexcom_username_entry, screen_dexcom_login,
+                                &screen_dexcom_login);
+            dexcom_username_label = NULL;
+            dexcom_password_label = NULL;
             lvgl_port_unlock();
         }
     }
@@ -631,14 +620,10 @@ static void dexcom_password_tap_event_cb(lv_event_t *e) {
                 screen_dexcom_password_entry = NULL;
             }
             create_dexcom_password_entry_screen();
-            lv_scr_load(screen_dexcom_password_entry);
-            // Single-screen rule: delete login after loading entry
-            if (screen_dexcom_login != NULL) {
-                lv_obj_del(screen_dexcom_login);
-                screen_dexcom_login = NULL;
-                dexcom_username_label = NULL;
-                dexcom_password_label = NULL;
-            }
+            cygm_theme_scr_load(screen_dexcom_password_entry, screen_dexcom_login,
+                                &screen_dexcom_login);
+            dexcom_username_label = NULL;
+            dexcom_password_label = NULL;
             lvgl_port_unlock();
         }
     }
@@ -680,11 +665,9 @@ static void dexcom_username_entry_keyboard_event_cb(lv_event_t *e) {
             if (lvgl_port_lock(1)) {
                 // Recreate login (was deleted; labels auto-populate from buffers)
                 create_dexcom_login_screen();
-                lv_scr_load(screen_dexcom_login);
-                if (screen_dexcom_username_entry != NULL) {
-                    lv_obj_del(screen_dexcom_username_entry);
-                    screen_dexcom_username_entry = NULL;
-                }
+                cygm_theme_scr_load(screen_dexcom_login,
+                                    screen_dexcom_username_entry,
+                                    &screen_dexcom_username_entry);
                 lvgl_port_unlock();
             }
         }
@@ -733,11 +716,9 @@ static void dexcom_password_entry_keyboard_event_cb(lv_event_t *e) {
             if (lvgl_port_lock(1)) {
                 // Recreate login (was deleted; labels auto-populate from buffers)
                 create_dexcom_login_screen();
-                lv_scr_load(screen_dexcom_login);
-                if (screen_dexcom_password_entry != NULL) {
-                    lv_obj_del(screen_dexcom_password_entry);
-                    screen_dexcom_password_entry = NULL;
-                }
+                cygm_theme_scr_load(screen_dexcom_login,
+                                    screen_dexcom_password_entry,
+                                    &screen_dexcom_password_entry);
                 lvgl_port_unlock();
             }
         }
@@ -815,11 +796,12 @@ static void dexcom_to_auth_event_cb(lv_event_t *e) {
                 screen_dexcom_auth = NULL;
             }
             create_dexcom_auth_screen();
-            lv_scr_load(screen_dexcom_auth);
-            // Delete whichever screen we came from
-            if (screen_dexcom_login != NULL) {
-                lv_obj_del(screen_dexcom_login);
-                screen_dexcom_login = NULL;
+            if (cygm_theme_scr_act() == screen_dexcom_login) {
+                cygm_theme_scr_load(screen_dexcom_auth, screen_dexcom_login,
+                                    &screen_dexcom_login);
+            } else {
+                cygm_theme_scr_load(screen_dexcom_auth, screen_dexcom_status,
+                                    &screen_dexcom_status);
             }
             if (screen_dexcom_status != NULL) {
                 lv_obj_del(screen_dexcom_status);
@@ -836,7 +818,7 @@ static void dexcom_to_auth_event_cb(lv_event_t *e) {
 // screen synchronously would panic, hence the async branch.
 void create_cgm_menu_screen(void) {
     if (screen_cgm_menu != NULL) {
-        if (screen_cgm_menu == lv_scr_act()) {
+        if (screen_cgm_menu == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_cgm_menu);
         } else {
             lv_obj_del(screen_cgm_menu);
@@ -845,29 +827,27 @@ void create_cgm_menu_screen(void) {
     }
 
     screen_cgm_menu = lv_obj_create(NULL);
-    lv_obj_add_style(screen_cgm_menu, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_cgm_menu);
     lv_obj_clear_flag(screen_cgm_menu, LV_OBJ_FLAG_SCROLLABLE);
 
     // Header
     lv_obj_t *title = lv_label_create(screen_cgm_menu);
     lv_label_set_text(title, "CGM Settings");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_cgm_menu, cgm_back_event_cb, NULL);
+    cgm_add_header_rule(screen_cgm_menu);
 
     // Dexcom button card
     lv_obj_t *dexcom_btn = lv_btn_create(screen_cgm_menu);
     lv_obj_set_size(dexcom_btn, 290, 50);
     lv_obj_align(dexcom_btn, LV_ALIGN_TOP_MID, 0, 55);
-    lv_obj_set_style_bg_color(dexcom_btn, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(dexcom_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(dexcom_btn, 10, 0);
-    lv_obj_set_style_border_width(dexcom_btn, 0, 0);
-    lv_obj_set_style_shadow_width(dexcom_btn, 0, 0);
+    cygm_theme_glass_btn(dexcom_btn);
+    cygm_theme_card_edge(dexcom_btn, lv_color_hex(COLOR_ACCENT_BLUE));
+    cgm_row_no_press(dexcom_btn);
     lv_obj_set_style_pad_left(dexcom_btn, 14, 0);
-    lv_obj_set_style_bg_color(dexcom_btn, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
 
     lv_obj_t *dexcom_icon = lv_label_create(dexcom_btn);
     lv_label_set_text(dexcom_icon, LV_SYMBOL_REFRESH);
@@ -882,7 +862,7 @@ void create_cgm_menu_screen(void) {
 
     lv_obj_t *dexcom_arrow = lv_label_create(dexcom_btn);
     lv_label_set_text(dexcom_arrow, LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(dexcom_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_color(dexcom_arrow, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_align(dexcom_arrow, LV_ALIGN_RIGHT_MID, -12, 0);
 
     lv_obj_add_event_cb(dexcom_btn, dexcom_btn_event_cb, LV_EVENT_CLICKED, NULL);
@@ -891,13 +871,10 @@ void create_cgm_menu_screen(void) {
     lv_obj_t *libre_btn = lv_btn_create(screen_cgm_menu);
     lv_obj_set_size(libre_btn, 290, 50);
     lv_obj_align(libre_btn, LV_ALIGN_TOP_MID, 0, 112);
-    lv_obj_set_style_bg_color(libre_btn, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(libre_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(libre_btn, 10, 0);
-    lv_obj_set_style_border_width(libre_btn, 0, 0);
-    lv_obj_set_style_shadow_width(libre_btn, 0, 0);
+    cygm_theme_glass_btn(libre_btn);
+    cygm_theme_card_edge(libre_btn, lv_color_hex(COLOR_ACCENT_BLUE));
+    cgm_row_no_press(libre_btn);
     lv_obj_set_style_pad_left(libre_btn, 14, 0);
-    lv_obj_set_style_bg_color(libre_btn, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
 
     lv_obj_t *libre_icon = lv_label_create(libre_btn);
     lv_label_set_text(libre_icon, LV_SYMBOL_EYE_OPEN);
@@ -912,7 +889,7 @@ void create_cgm_menu_screen(void) {
 
     lv_obj_t *libre_arrow = lv_label_create(libre_btn);
     lv_label_set_text(libre_arrow, LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(libre_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_color(libre_arrow, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_align(libre_arrow, LV_ALIGN_RIGHT_MID, -12, 0);
 
     lv_obj_add_event_cb(libre_btn, librelinkup_btn_event_cb, LV_EVENT_CLICKED, NULL);
@@ -921,13 +898,10 @@ void create_cgm_menu_screen(void) {
     lv_obj_t *nightscout_btn = lv_btn_create(screen_cgm_menu);
     lv_obj_set_size(nightscout_btn, 290, 50);
     lv_obj_align(nightscout_btn, LV_ALIGN_TOP_MID, 0, 169);
-    lv_obj_set_style_bg_color(nightscout_btn, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(nightscout_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(nightscout_btn, 10, 0);
-    lv_obj_set_style_border_width(nightscout_btn, 0, 0);
-    lv_obj_set_style_shadow_width(nightscout_btn, 0, 0);
+    cygm_theme_glass_btn(nightscout_btn);
+    cygm_theme_card_edge(nightscout_btn, lv_color_hex(COLOR_ACCENT_BLUE));
+    cgm_row_no_press(nightscout_btn);
     lv_obj_set_style_pad_left(nightscout_btn, 14, 0);
-    lv_obj_set_style_bg_color(nightscout_btn, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
 
     lv_obj_t *nightscout_icon = lv_label_create(nightscout_btn);
     lv_label_set_text(nightscout_icon, LV_SYMBOL_UPLOAD);
@@ -942,7 +916,7 @@ void create_cgm_menu_screen(void) {
 
     lv_obj_t *nightscout_arrow = lv_label_create(nightscout_btn);
     lv_label_set_text(nightscout_arrow, LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(nightscout_arrow, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_color(nightscout_arrow, lv_color_hex(COLOR_TEXT_GRAY), 0);
     lv_obj_align(nightscout_arrow, LV_ALIGN_RIGHT_MID, -12, 0);
 
     lv_obj_add_event_cb(nightscout_btn, nightscout_btn_event_cb, LV_EVENT_CLICKED, NULL);
@@ -950,7 +924,7 @@ void create_cgm_menu_screen(void) {
 
 void create_dexcom_auth_screen(void) {
     if (screen_dexcom_auth != NULL) {
-        if (screen_dexcom_auth == lv_scr_act()) {
+        if (screen_dexcom_auth == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_dexcom_auth);
         } else {
             lv_obj_del(screen_dexcom_auth);
@@ -959,7 +933,7 @@ void create_dexcom_auth_screen(void) {
     }
 
     screen_dexcom_auth = lv_obj_create(NULL);
-    lv_obj_add_style(screen_dexcom_auth, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_dexcom_auth);
     lv_obj_clear_flag(screen_dexcom_auth, LV_OBJ_FLAG_SCROLLABLE);
 
     cgm_std_back_btn(screen_dexcom_auth, dexcom_back_event_cb, NULL);
@@ -970,9 +944,10 @@ void create_dexcom_auth_screen(void) {
         // Title
         lv_obj_t *title = lv_label_create(screen_dexcom_auth);
         lv_label_set_text(title, "Dexcom");
-        lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+        cgm_add_header_rule(screen_dexcom_auth);
 
         // Green hero circle with checkmark
         lv_obj_t *hero = lv_obj_create(screen_dexcom_auth);
@@ -983,7 +958,7 @@ void create_dexcom_auth_screen(void) {
         lv_obj_set_style_bg_opa(hero, LV_OPA_20, 0);
         lv_obj_set_style_radius(hero, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_color(hero, lv_color_hex(COLOR_GREEN), 0);
-        lv_obj_set_style_border_width(hero, 2, 0);
+        lv_obj_set_style_border_width(hero, 1, 0);
         lv_obj_set_style_border_opa(hero, LV_OPA_COVER, 0);
 
         lv_obj_t *hero_icon = lv_label_create(hero);
@@ -1010,13 +985,8 @@ void create_dexcom_auth_screen(void) {
         lv_obj_t *view_btn = lv_btn_create(screen_dexcom_auth);
         lv_obj_set_size(view_btn, 290, 44);
         lv_obj_align(view_btn, LV_ALIGN_TOP_MID, 0, 164);
-        lv_obj_set_style_bg_color(view_btn, lv_color_hex(COLOR_CARD_BG), 0);
-        lv_obj_set_style_bg_opa(view_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(view_btn, 10, 0);
-        lv_obj_set_style_border_width(view_btn, 0, 0);
-        lv_obj_set_style_shadow_width(view_btn, 0, 0);
+        cygm_theme_glass_btn(view_btn);
         lv_obj_set_style_pad_left(view_btn, 14, 0);
-        lv_obj_set_style_bg_color(view_btn, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
 
         lv_obj_t *view_icon = lv_label_create(view_btn);
         lv_label_set_text(view_icon, LV_SYMBOL_EYE_OPEN);
@@ -1070,11 +1040,7 @@ void create_dexcom_auth_screen(void) {
         lv_obj_t *login_btn = lv_btn_create(screen_dexcom_auth);
         lv_obj_set_size(login_btn, 260, 36);
         lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 156);
-        lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-        lv_obj_set_style_bg_opa(login_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(login_btn, 10, 0);
-        lv_obj_set_style_shadow_width(login_btn, 0, 0);
-        lv_obj_set_style_border_width(login_btn, 0, 0);
+        cygm_theme_primary_btn(login_btn);
 
         lv_obj_t *login_label = lv_label_create(login_btn);
         lv_label_set_text(login_label, "Sign In");
@@ -1094,7 +1060,7 @@ void create_dexcom_auth_screen(void) {
 
 void create_dexcom_login_screen(void) {
     if (screen_dexcom_login != NULL) {
-        if (screen_dexcom_login == lv_scr_act()) {
+        if (screen_dexcom_login == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_dexcom_login);
         } else {
             lv_obj_del(screen_dexcom_login);
@@ -1103,26 +1069,24 @@ void create_dexcom_login_screen(void) {
     }
 
     screen_dexcom_login = lv_obj_create(NULL);
-    lv_obj_add_style(screen_dexcom_login, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_dexcom_login);
     lv_obj_clear_flag(screen_dexcom_login, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_dexcom_login);
     lv_label_set_text(title, "Sign In");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_dexcom_login, dexcom_to_auth_event_cb, NULL);
+    cgm_add_header_rule(screen_dexcom_login);
 
     // Unified form card with username + password rows
     lv_obj_t *form_card = lv_obj_create(screen_dexcom_login);
     lv_obj_set_size(form_card, 290, 88);
     lv_obj_align(form_card, LV_ALIGN_TOP_MID, 0, 52);
-    lv_obj_set_style_bg_color(form_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(form_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(form_card, 10, 0);
-    lv_obj_set_style_border_width(form_card, 0, 0);
+    cygm_theme_glass_card(form_card);
     lv_obj_set_style_pad_all(form_card, 0, 0);
     lv_obj_clear_flag(form_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1132,8 +1096,6 @@ void create_dexcom_login_screen(void) {
     lv_obj_set_size(user_row, 290, 43);
     lv_obj_align(user_row, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_add_flag(user_row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(user_row, lv_color_hex(COLOR_INPUT_BG), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(user_row, LV_OPA_COVER, LV_STATE_PRESSED);
 
     lv_obj_t *user_icon = lv_label_create(user_row);
     lv_label_set_text(user_icon, LV_SYMBOL_EDIT);
@@ -1165,8 +1127,8 @@ void create_dexcom_login_screen(void) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 258, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 43);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     // Password row (bottom half, clickable)
     lv_obj_t *pass_row = lv_obj_create(form_card);
@@ -1174,8 +1136,6 @@ void create_dexcom_login_screen(void) {
     lv_obj_set_size(pass_row, 290, 44);
     lv_obj_align(pass_row, LV_ALIGN_TOP_MID, 0, 44);
     lv_obj_add_flag(pass_row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(pass_row, lv_color_hex(COLOR_INPUT_BG), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(pass_row, LV_OPA_COVER, LV_STATE_PRESSED);
 
     lv_obj_t *pass_icon = lv_label_create(pass_row);
     lv_label_set_text(pass_icon, LV_SYMBOL_EYE_CLOSE);
@@ -1212,11 +1172,7 @@ void create_dexcom_login_screen(void) {
     lv_obj_t *login_btn = lv_btn_create(screen_dexcom_login);
     lv_obj_set_size(login_btn, 260, 36);
     lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 152);
-    lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(login_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(login_btn, 10, 0);
-    lv_obj_set_style_shadow_width(login_btn, 0, 0);
-    lv_obj_set_style_border_width(login_btn, 0, 0);
+    cygm_theme_primary_btn(login_btn);
 
     lv_obj_t *login_icon = lv_label_create(login_btn);
     lv_label_set_text(login_icon, LV_SYMBOL_RIGHT);
@@ -1240,7 +1196,7 @@ void create_dexcom_login_screen(void) {
 
 void create_dexcom_username_entry_screen(void) {
     if (screen_dexcom_username_entry != NULL) {
-        if (screen_dexcom_username_entry == lv_scr_act()) {
+        if (screen_dexcom_username_entry == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_dexcom_username_entry);
         } else {
             lv_obj_del(screen_dexcom_username_entry);
@@ -1249,7 +1205,7 @@ void create_dexcom_username_entry_screen(void) {
     }
 
     screen_dexcom_username_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_dexcom_username_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_dexcom_username_entry);
     lv_obj_clear_flag(screen_dexcom_username_entry, LV_OBJ_FLAG_SCROLLABLE);
 
     // Section header
@@ -1266,10 +1222,7 @@ void create_dexcom_username_entry_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_dexcom_username_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(ok_btn, 8, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    cygm_theme_primary_btn(ok_btn);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -1304,6 +1257,7 @@ void create_dexcom_username_entry_screen(void) {
 
     // Hidden textarea for keyboard input
     dexcom_username_entry_ta = lv_textarea_create(screen_dexcom_username_entry);
+    cgm_style_input(dexcom_username_entry_ta);
     lv_obj_set_size(dexcom_username_entry_ta, 1, 1);
     lv_obj_set_pos(dexcom_username_entry_ta, -100, -100);
     lv_obj_add_flag(dexcom_username_entry_ta, LV_OBJ_FLAG_HIDDEN);
@@ -1315,34 +1269,16 @@ void create_dexcom_username_entry_screen(void) {
     dexcom_username_entry_keyboard = lv_keyboard_create(screen_dexcom_username_entry);
     lv_obj_set_size(dexcom_username_entry_keyboard, 320, 175);
     lv_obj_align(dexcom_username_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(dexcom_username_entry_keyboard);
     lv_keyboard_set_textarea(dexcom_username_entry_keyboard, dexcom_username_entry_ta);
     lv_keyboard_set_mode(dexcom_username_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard background
-    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(dexcom_username_entry_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(dexcom_username_entry_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(dexcom_username_entry_keyboard, 2, 0);
-
-    // Glass key styling
-    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(dexcom_username_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(dexcom_username_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(dexcom_username_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(dexcom_username_entry_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(dexcom_username_entry_keyboard, 0, LV_PART_ITEMS);
-
-    // Pressed key highlight
-    lv_obj_set_style_bg_color(dexcom_username_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(dexcom_username_entry_ta, dexcom_username_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, dexcom_username_entry_label);
 }
 
 void create_dexcom_password_entry_screen(void) {
     if (screen_dexcom_password_entry != NULL) {
-        if (screen_dexcom_password_entry == lv_scr_act()) {
+        if (screen_dexcom_password_entry == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_dexcom_password_entry);
         } else {
             lv_obj_del(screen_dexcom_password_entry);
@@ -1351,7 +1287,7 @@ void create_dexcom_password_entry_screen(void) {
     }
 
     screen_dexcom_password_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_dexcom_password_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_dexcom_password_entry);
     lv_obj_clear_flag(screen_dexcom_password_entry, LV_OBJ_FLAG_SCROLLABLE);
 
     // Reset password visibility state
@@ -1371,12 +1307,8 @@ void create_dexcom_password_entry_screen(void) {
     lv_obj_t *eye_btn = lv_btn_create(screen_dexcom_password_entry);
     lv_obj_set_size(eye_btn, 30, 30);
     lv_obj_align(eye_btn, LV_ALIGN_TOP_RIGHT, -42, 7);
-    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(eye_btn, lv_color_hex(COLOR_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(eye_btn, 0, 0);
-    lv_obj_set_style_shadow_width(eye_btn, 0, 0);
-    lv_obj_set_style_radius(eye_btn, 8, 0);
+    cygm_theme_icon_btn(eye_btn);
+    lv_obj_set_ext_click_area(eye_btn, 0);
 
     dexcom_pwd_eye_label = lv_label_create(eye_btn);
     lv_label_set_text(dexcom_pwd_eye_label, LV_SYMBOL_EYE_CLOSE);
@@ -1388,10 +1320,8 @@ void create_dexcom_password_entry_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_dexcom_password_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(ok_btn, 8, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    cygm_theme_primary_btn(ok_btn);
+    lv_obj_set_ext_click_area(ok_btn, 0);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -1432,6 +1362,7 @@ void create_dexcom_password_entry_screen(void) {
 
     // Hidden textarea for keyboard input
     dexcom_password_entry_ta = lv_textarea_create(screen_dexcom_password_entry);
+    cgm_style_input(dexcom_password_entry_ta);
     lv_obj_set_size(dexcom_password_entry_ta, 1, 1);
     lv_obj_set_pos(dexcom_password_entry_ta, -100, -100);
     lv_obj_add_flag(dexcom_password_entry_ta, LV_OBJ_FLAG_HIDDEN);
@@ -1444,34 +1375,16 @@ void create_dexcom_password_entry_screen(void) {
     dexcom_password_entry_keyboard = lv_keyboard_create(screen_dexcom_password_entry);
     lv_obj_set_size(dexcom_password_entry_keyboard, 320, 175);
     lv_obj_align(dexcom_password_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(dexcom_password_entry_keyboard);
     lv_keyboard_set_textarea(dexcom_password_entry_keyboard, dexcom_password_entry_ta);
     lv_keyboard_set_mode(dexcom_password_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard background
-    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(dexcom_password_entry_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(dexcom_password_entry_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(dexcom_password_entry_keyboard, 2, 0);
-
-    // Glass key styling
-    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(dexcom_password_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(dexcom_password_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(dexcom_password_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(dexcom_password_entry_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(dexcom_password_entry_keyboard, 0, LV_PART_ITEMS);
-
-    // Pressed key highlight
-    lv_obj_set_style_bg_color(dexcom_password_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(dexcom_password_entry_ta, dexcom_password_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, dexcom_password_entry_label);
 }
 
 void create_dexcom_status_screen(void) {
     if (screen_dexcom_status != NULL) {
-        if (screen_dexcom_status == lv_scr_act()) {
+        if (screen_dexcom_status == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_dexcom_status);
         } else {
             lv_obj_del(screen_dexcom_status);
@@ -1480,36 +1393,26 @@ void create_dexcom_status_screen(void) {
     }
 
     screen_dexcom_status = lv_obj_create(NULL);
-    lv_obj_add_style(screen_dexcom_status, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_dexcom_status);
     lv_obj_clear_flag(screen_dexcom_status, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_dexcom_status);
     lv_label_set_text(title, "Account");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_dexcom_status, dexcom_to_auth_event_cb, NULL);
+    cgm_add_header_rule(screen_dexcom_status);
 
     // Profile card with avatar, username, and status
     lv_obj_t *profile_card = lv_obj_create(screen_dexcom_status);
     lv_obj_set_size(profile_card, 290, 60);
     lv_obj_align(profile_card, LV_ALIGN_TOP_MID, 0, 46);
-    lv_obj_set_style_bg_color(profile_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(profile_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(profile_card, 10, 0);
-    lv_obj_set_style_border_width(profile_card, 0, 0);
+    cygm_theme_glass_card(profile_card);
+    cygm_theme_card_edge(profile_card, lv_color_hex(COLOR_GREEN));
     lv_obj_clear_flag(profile_card, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Green accent bar
-    lv_obj_t *accent = lv_obj_create(profile_card);
-    lv_obj_remove_style_all(accent);
-    lv_obj_set_size(accent, 3, 40);
-    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(accent, 2, 0);
 
     // Avatar circle with initial letter
     lv_obj_t *avatar = lv_obj_create(profile_card);
@@ -1553,10 +1456,7 @@ void create_dexcom_status_screen(void) {
     lv_obj_t *info_card = lv_obj_create(screen_dexcom_status);
     lv_obj_set_size(info_card, 290, 80);
     lv_obj_align(info_card, LV_ALIGN_TOP_MID, 0, 112);
-    lv_obj_set_style_bg_color(info_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(info_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(info_card, 10, 0);
-    lv_obj_set_style_border_width(info_card, 0, 0);
+    cygm_theme_glass_card(info_card);
     lv_obj_set_style_pad_all(info_card, 0, 0);
     lv_obj_clear_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1578,8 +1478,8 @@ void create_dexcom_status_screen(void) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 262, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     lv_obj_t *user_title = lv_label_create(info_card);
     lv_label_set_text(user_title, "ACCOUNT");
@@ -1596,18 +1496,10 @@ void create_dexcom_status_screen(void) {
     lv_obj_set_width(user_value, 260);
     lv_obj_align(user_value, LV_ALIGN_TOP_LEFT, 14, 60);
 
-    // Ghost red logout button
     lv_obj_t *logout_btn = lv_btn_create(screen_dexcom_status);
     lv_obj_set_size(logout_btn, 180, 38);
     lv_obj_align(logout_btn, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_color(logout_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_border_width(logout_btn, 1, 0);
-    lv_obj_set_style_border_opa(logout_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(logout_btn, 10, 0);
-    lv_obj_set_style_shadow_width(logout_btn, 0, 0);
-    lv_obj_set_style_bg_color(logout_btn, lv_color_hex(COLOR_RED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_30, LV_STATE_PRESSED);
+    cygm_theme_glass_btn(logout_btn);
 
     lv_obj_t *logout_lbl = lv_label_create(logout_btn);
     lv_label_set_text(logout_lbl, "Sign Out");
@@ -1726,7 +1618,8 @@ static void libre_login_task(void *pvParameters) {
 
         if (cgm_lvgl_lock_insistent(1000)) {
             hide_connecting_overlay();
-            lv_scr_load(screen_home);
+            cygm_theme_scr_load(screen_home, screen_libre_login,
+                                &screen_libre_login);
             libre_cleanup_screens();
             if (screen_cgm_menu != NULL) { lv_obj_del(screen_cgm_menu); screen_cgm_menu = NULL; }
             home_screen_active = true;
@@ -1760,7 +1653,8 @@ static void libre_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_cgm_menu_screen();
-            lv_scr_load(screen_cgm_menu);
+            cygm_theme_scr_load(screen_cgm_menu, screen_libre_auth,
+                                &screen_libre_auth);
             libre_cleanup_screens();
             lvgl_port_unlock();
         }
@@ -1772,8 +1666,13 @@ static void libre_to_auth_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_libre_auth_screen();
-            lv_scr_load(screen_libre_auth);
-            if (screen_libre_login != NULL) { lv_obj_del(screen_libre_login); screen_libre_login = NULL; }
+            if (cygm_theme_scr_act() == screen_libre_login) {
+                cygm_theme_scr_load(screen_libre_auth, screen_libre_login,
+                                    &screen_libre_login);
+            } else {
+                cygm_theme_scr_load(screen_libre_auth, screen_libre_status,
+                                    &screen_libre_status);
+            }
             if (screen_libre_status != NULL) { lv_obj_del(screen_libre_status); screen_libre_status = NULL; }
             lvgl_port_unlock();
         }
@@ -1785,8 +1684,8 @@ static void libre_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_libre_login_screen();
-            lv_scr_load(screen_libre_login);
-            if (screen_libre_auth != NULL) { lv_obj_del(screen_libre_auth); screen_libre_auth = NULL; }
+            cygm_theme_scr_load(screen_libre_login, screen_libre_auth,
+                                &screen_libre_auth);
             lvgl_port_unlock();
         }
     }
@@ -1797,8 +1696,8 @@ static void libre_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_libre_status_screen();
-            lv_scr_load(screen_libre_status);
-            if (screen_libre_auth != NULL) { lv_obj_del(screen_libre_auth); screen_libre_auth = NULL; }
+            cygm_theme_scr_load(screen_libre_status, screen_libre_auth,
+                                &screen_libre_auth);
             lvgl_port_unlock();
         }
     }
@@ -1809,8 +1708,8 @@ static void libre_email_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_libre_email_entry_screen();
-            lv_scr_load(screen_libre_email_entry);
-            if (screen_libre_login != NULL) { lv_obj_del(screen_libre_login); screen_libre_login = NULL; }
+            cygm_theme_scr_load(screen_libre_email_entry, screen_libre_login,
+                                &screen_libre_login);
             lvgl_port_unlock();
         }
     }
@@ -1821,8 +1720,8 @@ static void libre_password_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_libre_password_entry_screen();
-            lv_scr_load(screen_libre_password_entry);
-            if (screen_libre_login != NULL) { lv_obj_del(screen_libre_login); screen_libre_login = NULL; }
+            cygm_theme_scr_load(screen_libre_password_entry, screen_libre_login,
+                                &screen_libre_login);
             lvgl_port_unlock();
         }
     }
@@ -1867,8 +1766,8 @@ static void libre_email_entry_keyboard_event_cb(lv_event_t *e) {
         // Both OK and Cancel go back to login
         if (lvgl_port_lock(1)) {
             create_libre_login_screen();
-            lv_scr_load(screen_libre_login);
-            if (screen_libre_email_entry != NULL) { lv_obj_del(screen_libre_email_entry); screen_libre_email_entry = NULL; }
+            cygm_theme_scr_load(screen_libre_login, screen_libre_email_entry,
+                                &screen_libre_email_entry);
             lvgl_port_unlock();
         }
     }
@@ -1901,8 +1800,8 @@ static void libre_password_entry_keyboard_event_cb(lv_event_t *e) {
         }
         if (lvgl_port_lock(1)) {
             create_libre_login_screen();
-            lv_scr_load(screen_libre_login);
-            if (screen_libre_password_entry != NULL) { lv_obj_del(screen_libre_password_entry); screen_libre_password_entry = NULL; }
+            cygm_theme_scr_load(screen_libre_login, screen_libre_password_entry,
+                                &screen_libre_password_entry);
             lvgl_port_unlock();
         }
     }
@@ -1983,8 +1882,8 @@ static void libre_logout_btn_event_cb(lv_event_t *e) {
 
         if (lvgl_port_lock(1)) {
             create_libre_auth_screen();
-            lv_scr_load(screen_libre_auth);
-            if (screen_libre_status != NULL) { lv_obj_del(screen_libre_status); screen_libre_status = NULL; }
+            cygm_theme_scr_load(screen_libre_auth, screen_libre_status,
+                                &screen_libre_status);
             lvgl_port_unlock();
         }
     }
@@ -1994,7 +1893,7 @@ static void libre_logout_btn_event_cb(lv_event_t *e) {
 
 void create_libre_auth_screen(void) {
     if (screen_libre_auth != NULL) {
-        if (screen_libre_auth == lv_scr_act()) {
+        if (screen_libre_auth == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_libre_auth);
         } else {
             lv_obj_del(screen_libre_auth);
@@ -2003,7 +1902,7 @@ void create_libre_auth_screen(void) {
     }
 
     screen_libre_auth = lv_obj_create(NULL);
-    lv_obj_add_style(screen_libre_auth, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_libre_auth);
     lv_obj_clear_flag(screen_libre_auth, LV_OBJ_FLAG_SCROLLABLE);
 
     cgm_std_back_btn(screen_libre_auth, libre_back_event_cb, NULL);
@@ -2014,9 +1913,10 @@ void create_libre_auth_screen(void) {
         // Title
         lv_obj_t *title = lv_label_create(screen_libre_auth);
         lv_label_set_text(title, "LibreLinkUp");
-        lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+        cgm_add_header_rule(screen_libre_auth);
 
         // Green hero circle
         lv_obj_t *hero = lv_obj_create(screen_libre_auth);
@@ -2027,7 +1927,7 @@ void create_libre_auth_screen(void) {
         lv_obj_set_style_bg_opa(hero, LV_OPA_20, 0);
         lv_obj_set_style_radius(hero, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_color(hero, lv_color_hex(COLOR_GREEN), 0);
-        lv_obj_set_style_border_width(hero, 2, 0);
+        lv_obj_set_style_border_width(hero, 1, 0);
         lv_obj_set_style_border_opa(hero, LV_OPA_COVER, 0);
 
         lv_obj_t *hero_icon = lv_label_create(hero);
@@ -2054,13 +1954,8 @@ void create_libre_auth_screen(void) {
         lv_obj_t *view_btn = lv_btn_create(screen_libre_auth);
         lv_obj_set_size(view_btn, 290, 44);
         lv_obj_align(view_btn, LV_ALIGN_TOP_MID, 0, 164);
-        lv_obj_set_style_bg_color(view_btn, lv_color_hex(COLOR_CARD_BG), 0);
-        lv_obj_set_style_bg_opa(view_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(view_btn, 10, 0);
-        lv_obj_set_style_border_width(view_btn, 0, 0);
-        lv_obj_set_style_shadow_width(view_btn, 0, 0);
+        cygm_theme_glass_btn(view_btn);
         lv_obj_set_style_pad_left(view_btn, 14, 0);
-        lv_obj_set_style_bg_color(view_btn, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
 
         lv_obj_t *view_icon = lv_label_create(view_btn);
         lv_label_set_text(view_icon, LV_SYMBOL_EYE_OPEN);
@@ -2114,11 +2009,7 @@ void create_libre_auth_screen(void) {
         lv_obj_t *login_btn = lv_btn_create(screen_libre_auth);
         lv_obj_set_size(login_btn, 260, 36);
         lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 156);
-        lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-        lv_obj_set_style_bg_opa(login_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(login_btn, 10, 0);
-        lv_obj_set_style_shadow_width(login_btn, 0, 0);
-        lv_obj_set_style_border_width(login_btn, 0, 0);
+        cygm_theme_primary_btn(login_btn);
 
         lv_obj_t *login_label = lv_label_create(login_btn);
         lv_label_set_text(login_label, "Sign In");
@@ -2140,7 +2031,7 @@ void create_libre_auth_screen(void) {
 
 void create_libre_login_screen(void) {
     if (screen_libre_login != NULL) {
-        if (screen_libre_login == lv_scr_act()) {
+        if (screen_libre_login == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_libre_login);
         } else {
             lv_obj_del(screen_libre_login);
@@ -2149,26 +2040,24 @@ void create_libre_login_screen(void) {
     }
 
     screen_libre_login = lv_obj_create(NULL);
-    lv_obj_add_style(screen_libre_login, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_libre_login);
     lv_obj_clear_flag(screen_libre_login, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_libre_login);
     lv_label_set_text(title, "Sign In");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_libre_login, libre_to_auth_event_cb, NULL);
+    cgm_add_header_rule(screen_libre_login);
 
     // Unified form card
     lv_obj_t *form_card = lv_obj_create(screen_libre_login);
     lv_obj_set_size(form_card, 290, 88);
     lv_obj_align(form_card, LV_ALIGN_TOP_MID, 0, 52);
-    lv_obj_set_style_bg_color(form_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(form_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(form_card, 10, 0);
-    lv_obj_set_style_border_width(form_card, 0, 0);
+    cygm_theme_glass_card(form_card);
     lv_obj_set_style_pad_all(form_card, 0, 0);
     lv_obj_clear_flag(form_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -2178,8 +2067,6 @@ void create_libre_login_screen(void) {
     lv_obj_set_size(email_row, 290, 43);
     lv_obj_align(email_row, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_add_flag(email_row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(email_row, lv_color_hex(COLOR_INPUT_BG), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(email_row, LV_OPA_COVER, LV_STATE_PRESSED);
 
     lv_obj_t *email_icon = lv_label_create(email_row);
     lv_label_set_text(email_icon, LV_SYMBOL_EDIT);
@@ -2211,8 +2098,8 @@ void create_libre_login_screen(void) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 258, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 43);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     // Password row (bottom half)
     lv_obj_t *pass_row = lv_obj_create(form_card);
@@ -2220,8 +2107,6 @@ void create_libre_login_screen(void) {
     lv_obj_set_size(pass_row, 290, 44);
     lv_obj_align(pass_row, LV_ALIGN_TOP_MID, 0, 44);
     lv_obj_add_flag(pass_row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(pass_row, lv_color_hex(COLOR_INPUT_BG), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(pass_row, LV_OPA_COVER, LV_STATE_PRESSED);
 
     lv_obj_t *pass_icon = lv_label_create(pass_row);
     lv_label_set_text(pass_icon, LV_SYMBOL_EYE_CLOSE);
@@ -2256,11 +2141,7 @@ void create_libre_login_screen(void) {
     lv_obj_t *login_btn = lv_btn_create(screen_libre_login);
     lv_obj_set_size(login_btn, 260, 36);
     lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 152);
-    lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(login_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(login_btn, 10, 0);
-    lv_obj_set_style_shadow_width(login_btn, 0, 0);
-    lv_obj_set_style_border_width(login_btn, 0, 0);
+    cygm_theme_primary_btn(login_btn);
 
     lv_obj_t *login_icon = lv_label_create(login_btn);
     lv_label_set_text(login_icon, LV_SYMBOL_RIGHT);
@@ -2286,7 +2167,7 @@ void create_libre_login_screen(void) {
 
 void create_libre_email_entry_screen(void) {
     if (screen_libre_email_entry != NULL) {
-        if (screen_libre_email_entry == lv_scr_act()) {
+        if (screen_libre_email_entry == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_libre_email_entry);
         } else {
             lv_obj_del(screen_libre_email_entry);
@@ -2295,7 +2176,7 @@ void create_libre_email_entry_screen(void) {
     }
 
     screen_libre_email_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_libre_email_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_libre_email_entry);
     lv_obj_clear_flag(screen_libre_email_entry, LV_OBJ_FLAG_SCROLLABLE);
 
     // Section header
@@ -2312,10 +2193,7 @@ void create_libre_email_entry_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_libre_email_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(ok_btn, 8, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    cygm_theme_primary_btn(ok_btn);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -2350,6 +2228,7 @@ void create_libre_email_entry_screen(void) {
 
     // Hidden textarea
     libre_email_entry_ta = lv_textarea_create(screen_libre_email_entry);
+    cgm_style_input(libre_email_entry_ta);
     lv_obj_set_size(libre_email_entry_ta, 1, 1);
     lv_obj_set_pos(libre_email_entry_ta, -100, -100);
     lv_obj_add_flag(libre_email_entry_ta, LV_OBJ_FLAG_HIDDEN);
@@ -2361,23 +2240,9 @@ void create_libre_email_entry_screen(void) {
     libre_email_entry_keyboard = lv_keyboard_create(screen_libre_email_entry);
     lv_obj_set_size(libre_email_entry_keyboard, 320, 175);
     lv_obj_align(libre_email_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(libre_email_entry_keyboard);
     lv_keyboard_set_textarea(libre_email_entry_keyboard, libre_email_entry_ta);
     lv_keyboard_set_mode(libre_email_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard styling
-    lv_obj_set_style_bg_color(libre_email_entry_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(libre_email_entry_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(libre_email_entry_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(libre_email_entry_keyboard, 2, 0);
-    lv_obj_set_style_bg_color(libre_email_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(libre_email_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(libre_email_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(libre_email_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(libre_email_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(libre_email_entry_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(libre_email_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(libre_email_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(libre_email_entry_ta, libre_email_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, libre_email_entry_label);
 }
@@ -2386,7 +2251,7 @@ void create_libre_email_entry_screen(void) {
 
 void create_libre_password_entry_screen(void) {
     if (screen_libre_password_entry != NULL) {
-        if (screen_libre_password_entry == lv_scr_act()) {
+        if (screen_libre_password_entry == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_libre_password_entry);
         } else {
             lv_obj_del(screen_libre_password_entry);
@@ -2395,7 +2260,7 @@ void create_libre_password_entry_screen(void) {
     }
 
     screen_libre_password_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_libre_password_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_libre_password_entry);
     lv_obj_clear_flag(screen_libre_password_entry, LV_OBJ_FLAG_SCROLLABLE);
 
     libre_pwd_visible = false;
@@ -2414,12 +2279,8 @@ void create_libre_password_entry_screen(void) {
     lv_obj_t *eye_btn = lv_btn_create(screen_libre_password_entry);
     lv_obj_set_size(eye_btn, 30, 30);
     lv_obj_align(eye_btn, LV_ALIGN_TOP_RIGHT, -42, 7);
-    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(eye_btn, lv_color_hex(COLOR_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(eye_btn, 0, 0);
-    lv_obj_set_style_shadow_width(eye_btn, 0, 0);
-    lv_obj_set_style_radius(eye_btn, 8, 0);
+    cygm_theme_icon_btn(eye_btn);
+    lv_obj_set_ext_click_area(eye_btn, 0);
 
     libre_pwd_eye_label = lv_label_create(eye_btn);
     lv_label_set_text(libre_pwd_eye_label, LV_SYMBOL_EYE_CLOSE);
@@ -2431,10 +2292,8 @@ void create_libre_password_entry_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_libre_password_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(ok_btn, 8, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    cygm_theme_primary_btn(ok_btn);
+    lv_obj_set_ext_click_area(ok_btn, 0);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -2473,6 +2332,7 @@ void create_libre_password_entry_screen(void) {
 
     // Hidden textarea
     libre_password_entry_ta = lv_textarea_create(screen_libre_password_entry);
+    cgm_style_input(libre_password_entry_ta);
     lv_obj_set_size(libre_password_entry_ta, 1, 1);
     lv_obj_set_pos(libre_password_entry_ta, -100, -100);
     lv_obj_add_flag(libre_password_entry_ta, LV_OBJ_FLAG_HIDDEN);
@@ -2484,23 +2344,9 @@ void create_libre_password_entry_screen(void) {
     libre_password_entry_keyboard = lv_keyboard_create(screen_libre_password_entry);
     lv_obj_set_size(libre_password_entry_keyboard, 320, 175);
     lv_obj_align(libre_password_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(libre_password_entry_keyboard);
     lv_keyboard_set_textarea(libre_password_entry_keyboard, libre_password_entry_ta);
     lv_keyboard_set_mode(libre_password_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard styling
-    lv_obj_set_style_bg_color(libre_password_entry_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(libre_password_entry_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(libre_password_entry_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(libre_password_entry_keyboard, 2, 0);
-    lv_obj_set_style_bg_color(libre_password_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(libre_password_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(libre_password_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(libre_password_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(libre_password_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(libre_password_entry_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(libre_password_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(libre_password_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(libre_password_entry_ta, libre_password_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, libre_password_entry_label);
 }
@@ -2509,7 +2355,7 @@ void create_libre_password_entry_screen(void) {
 
 void create_libre_status_screen(void) {
     if (screen_libre_status != NULL) {
-        if (screen_libre_status == lv_scr_act()) {
+        if (screen_libre_status == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_libre_status);
         } else {
             lv_obj_del(screen_libre_status);
@@ -2518,36 +2364,26 @@ void create_libre_status_screen(void) {
     }
 
     screen_libre_status = lv_obj_create(NULL);
-    lv_obj_add_style(screen_libre_status, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_libre_status);
     lv_obj_clear_flag(screen_libre_status, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_libre_status);
     lv_label_set_text(title, "Account");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_libre_status, libre_to_auth_event_cb, NULL);
+    cgm_add_header_rule(screen_libre_status);
 
     // Profile card
     lv_obj_t *profile_card = lv_obj_create(screen_libre_status);
     lv_obj_set_size(profile_card, 290, 60);
     lv_obj_align(profile_card, LV_ALIGN_TOP_MID, 0, 46);
-    lv_obj_set_style_bg_color(profile_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(profile_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(profile_card, 10, 0);
-    lv_obj_set_style_border_width(profile_card, 0, 0);
+    cygm_theme_glass_card(profile_card);
+    cygm_theme_card_edge(profile_card, lv_color_hex(COLOR_GREEN));
     lv_obj_clear_flag(profile_card, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Green accent bar
-    lv_obj_t *accent_bar = lv_obj_create(profile_card);
-    lv_obj_remove_style_all(accent_bar);
-    lv_obj_set_size(accent_bar, 3, 40);
-    lv_obj_align(accent_bar, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_set_style_bg_color(accent_bar, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(accent_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(accent_bar, 2, 0);
 
     // Avatar circle
     lv_obj_t *avatar = lv_obj_create(profile_card);
@@ -2591,10 +2427,7 @@ void create_libre_status_screen(void) {
     lv_obj_t *info_card = lv_obj_create(screen_libre_status);
     lv_obj_set_size(info_card, 290, 80);
     lv_obj_align(info_card, LV_ALIGN_TOP_MID, 0, 112);
-    lv_obj_set_style_bg_color(info_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(info_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(info_card, 10, 0);
-    lv_obj_set_style_border_width(info_card, 0, 0);
+    cygm_theme_glass_card(info_card);
     lv_obj_set_style_pad_all(info_card, 0, 0);
     lv_obj_clear_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -2616,8 +2449,8 @@ void create_libre_status_screen(void) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 262, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     lv_obj_t *acct_title = lv_label_create(info_card);
     lv_label_set_text(acct_title, "ACCOUNT");
@@ -2634,18 +2467,10 @@ void create_libre_status_screen(void) {
     lv_obj_set_width(acct_value, 260);
     lv_obj_align(acct_value, LV_ALIGN_TOP_LEFT, 14, 60);
 
-    // Ghost red logout button
     lv_obj_t *logout_btn = lv_btn_create(screen_libre_status);
     lv_obj_set_size(logout_btn, 180, 38);
     lv_obj_align(logout_btn, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_color(logout_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_border_width(logout_btn, 1, 0);
-    lv_obj_set_style_border_opa(logout_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(logout_btn, 10, 0);
-    lv_obj_set_style_shadow_width(logout_btn, 0, 0);
-    lv_obj_set_style_bg_color(logout_btn, lv_color_hex(COLOR_RED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_30, LV_STATE_PRESSED);
+    cygm_theme_glass_btn(logout_btn);
 
     lv_obj_t *logout_lbl = lv_label_create(logout_btn);
     lv_label_set_text(logout_lbl, "Sign Out");
@@ -2771,7 +2596,8 @@ static void nightscout_login_task(void *pvParameters) {
 
         if (cgm_lvgl_lock_insistent(1000)) {
             hide_connecting_overlay();
-            lv_scr_load(screen_home);
+            cygm_theme_scr_load(screen_home, screen_nightscout_login,
+                                &screen_nightscout_login);
             nightscout_cleanup_screens();
             if (screen_cgm_menu != NULL) { lv_obj_del(screen_cgm_menu); screen_cgm_menu = NULL; }
             home_screen_active = true;
@@ -2805,7 +2631,8 @@ static void nightscout_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_cgm_menu_screen();
-            lv_scr_load(screen_cgm_menu);
+            cygm_theme_scr_load(screen_cgm_menu, screen_nightscout_auth,
+                                &screen_nightscout_auth);
             nightscout_cleanup_screens();
             lvgl_port_unlock();
         }
@@ -2817,8 +2644,15 @@ static void nightscout_to_auth_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_nightscout_auth_screen();
-            lv_scr_load(screen_nightscout_auth);
-            if (screen_nightscout_login != NULL) { lv_obj_del(screen_nightscout_login); screen_nightscout_login = NULL; }
+            if (cygm_theme_scr_act() == screen_nightscout_login) {
+                cygm_theme_scr_load(screen_nightscout_auth,
+                                    screen_nightscout_login,
+                                    &screen_nightscout_login);
+            } else {
+                cygm_theme_scr_load(screen_nightscout_auth,
+                                    screen_nightscout_status,
+                                    &screen_nightscout_status);
+            }
             if (screen_nightscout_status != NULL) { lv_obj_del(screen_nightscout_status); screen_nightscout_status = NULL; }
             lvgl_port_unlock();
         }
@@ -2831,11 +2665,8 @@ static void nightscout_btn_event_cb(lv_event_t *e) {
         ESP_LOGI(TAG, "Nightscout button pressed");
         if (lvgl_port_lock(1)) {
             create_nightscout_auth_screen();
-            lv_scr_load(screen_nightscout_auth);
-            if (screen_cgm_menu != NULL) {
-                lv_obj_del(screen_cgm_menu);
-                screen_cgm_menu = NULL;
-            }
+            cygm_theme_scr_load(screen_nightscout_auth, screen_cgm_menu,
+                                &screen_cgm_menu);
             lvgl_port_unlock();
         }
     }
@@ -2846,8 +2677,8 @@ static void nightscout_open_login_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_nightscout_login_screen();
-            lv_scr_load(screen_nightscout_login);
-            if (screen_nightscout_auth != NULL) { lv_obj_del(screen_nightscout_auth); screen_nightscout_auth = NULL; }
+            cygm_theme_scr_load(screen_nightscout_login, screen_nightscout_auth,
+                                &screen_nightscout_auth);
             lvgl_port_unlock();
         }
     }
@@ -2858,8 +2689,8 @@ static void nightscout_view_status_btn_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_nightscout_status_screen();
-            lv_scr_load(screen_nightscout_status);
-            if (screen_nightscout_auth != NULL) { lv_obj_del(screen_nightscout_auth); screen_nightscout_auth = NULL; }
+            cygm_theme_scr_load(screen_nightscout_status, screen_nightscout_auth,
+                                &screen_nightscout_auth);
             lvgl_port_unlock();
         }
     }
@@ -2870,8 +2701,9 @@ static void nightscout_url_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_nightscout_url_entry_screen();
-            lv_scr_load(screen_nightscout_url_entry);
-            if (screen_nightscout_login != NULL) { lv_obj_del(screen_nightscout_login); screen_nightscout_login = NULL; }
+            cygm_theme_scr_load(screen_nightscout_url_entry,
+                                screen_nightscout_login,
+                                &screen_nightscout_login);
             lvgl_port_unlock();
         }
     }
@@ -2882,8 +2714,9 @@ static void nightscout_token_tap_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         if (lvgl_port_lock(1)) {
             create_nightscout_token_entry_screen();
-            lv_scr_load(screen_nightscout_token_entry);
-            if (screen_nightscout_login != NULL) { lv_obj_del(screen_nightscout_login); screen_nightscout_login = NULL; }
+            cygm_theme_scr_load(screen_nightscout_token_entry,
+                                screen_nightscout_login,
+                                &screen_nightscout_login);
             lvgl_port_unlock();
         }
     }
@@ -2928,8 +2761,9 @@ static void nightscout_url_entry_keyboard_event_cb(lv_event_t *e) {
         // Both OK and Cancel go back to login
         if (lvgl_port_lock(1)) {
             create_nightscout_login_screen();
-            lv_scr_load(screen_nightscout_login);
-            if (screen_nightscout_url_entry != NULL) { lv_obj_del(screen_nightscout_url_entry); screen_nightscout_url_entry = NULL; }
+            cygm_theme_scr_load(screen_nightscout_login,
+                                screen_nightscout_url_entry,
+                                &screen_nightscout_url_entry);
             lvgl_port_unlock();
         }
     }
@@ -2962,8 +2796,9 @@ static void nightscout_token_entry_keyboard_event_cb(lv_event_t *e) {
         }
         if (lvgl_port_lock(1)) {
             create_nightscout_login_screen();
-            lv_scr_load(screen_nightscout_login);
-            if (screen_nightscout_token_entry != NULL) { lv_obj_del(screen_nightscout_token_entry); screen_nightscout_token_entry = NULL; }
+            cygm_theme_scr_load(screen_nightscout_login,
+                                screen_nightscout_token_entry,
+                                &screen_nightscout_token_entry);
             lvgl_port_unlock();
         }
     }
@@ -3044,8 +2879,9 @@ static void nightscout_logout_btn_event_cb(lv_event_t *e) {
 
         if (lvgl_port_lock(1)) {
             create_nightscout_auth_screen();
-            lv_scr_load(screen_nightscout_auth);
-            if (screen_nightscout_status != NULL) { lv_obj_del(screen_nightscout_status); screen_nightscout_status = NULL; }
+            cygm_theme_scr_load(screen_nightscout_auth,
+                                screen_nightscout_status,
+                                &screen_nightscout_status);
             lvgl_port_unlock();
         }
     }
@@ -3055,7 +2891,7 @@ static void nightscout_logout_btn_event_cb(lv_event_t *e) {
 
 void create_nightscout_auth_screen(void) {
     if (screen_nightscout_auth != NULL) {
-        if (screen_nightscout_auth == lv_scr_act()) {
+        if (screen_nightscout_auth == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_nightscout_auth);
         } else {
             lv_obj_del(screen_nightscout_auth);
@@ -3064,7 +2900,7 @@ void create_nightscout_auth_screen(void) {
     }
 
     screen_nightscout_auth = lv_obj_create(NULL);
-    lv_obj_add_style(screen_nightscout_auth, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_nightscout_auth);
     lv_obj_clear_flag(screen_nightscout_auth, LV_OBJ_FLAG_SCROLLABLE);
 
     cgm_std_back_btn(screen_nightscout_auth, nightscout_back_event_cb, NULL);
@@ -3075,9 +2911,10 @@ void create_nightscout_auth_screen(void) {
         // Title
         lv_obj_t *title = lv_label_create(screen_nightscout_auth);
         lv_label_set_text(title, "Nightscout");
-        lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+        cgm_add_header_rule(screen_nightscout_auth);
 
         // Green hero circle
         lv_obj_t *hero = lv_obj_create(screen_nightscout_auth);
@@ -3088,7 +2925,7 @@ void create_nightscout_auth_screen(void) {
         lv_obj_set_style_bg_opa(hero, LV_OPA_20, 0);
         lv_obj_set_style_radius(hero, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_color(hero, lv_color_hex(COLOR_GREEN), 0);
-        lv_obj_set_style_border_width(hero, 2, 0);
+        lv_obj_set_style_border_width(hero, 1, 0);
         lv_obj_set_style_border_opa(hero, LV_OPA_COVER, 0);
 
         lv_obj_t *hero_icon = lv_label_create(hero);
@@ -3118,13 +2955,8 @@ void create_nightscout_auth_screen(void) {
         lv_obj_t *view_btn = lv_btn_create(screen_nightscout_auth);
         lv_obj_set_size(view_btn, 290, 44);
         lv_obj_align(view_btn, LV_ALIGN_TOP_MID, 0, 164);
-        lv_obj_set_style_bg_color(view_btn, lv_color_hex(COLOR_CARD_BG), 0);
-        lv_obj_set_style_bg_opa(view_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(view_btn, 10, 0);
-        lv_obj_set_style_border_width(view_btn, 0, 0);
-        lv_obj_set_style_shadow_width(view_btn, 0, 0);
+        cygm_theme_glass_btn(view_btn);
         lv_obj_set_style_pad_left(view_btn, 14, 0);
-        lv_obj_set_style_bg_color(view_btn, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
 
         lv_obj_t *view_icon = lv_label_create(view_btn);
         lv_label_set_text(view_icon, LV_SYMBOL_EYE_OPEN);
@@ -3178,11 +3010,7 @@ void create_nightscout_auth_screen(void) {
         lv_obj_t *login_btn = lv_btn_create(screen_nightscout_auth);
         lv_obj_set_size(login_btn, 260, 36);
         lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 156);
-        lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-        lv_obj_set_style_bg_opa(login_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(login_btn, 10, 0);
-        lv_obj_set_style_shadow_width(login_btn, 0, 0);
-        lv_obj_set_style_border_width(login_btn, 0, 0);
+        cygm_theme_primary_btn(login_btn);
 
         lv_obj_t *login_label = lv_label_create(login_btn);
         lv_label_set_text(login_label, "Sign In");
@@ -3204,7 +3032,7 @@ void create_nightscout_auth_screen(void) {
 
 void create_nightscout_login_screen(void) {
     if (screen_nightscout_login != NULL) {
-        if (screen_nightscout_login == lv_scr_act()) {
+        if (screen_nightscout_login == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_nightscout_login);
         } else {
             lv_obj_del(screen_nightscout_login);
@@ -3213,26 +3041,24 @@ void create_nightscout_login_screen(void) {
     }
 
     screen_nightscout_login = lv_obj_create(NULL);
-    lv_obj_add_style(screen_nightscout_login, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_nightscout_login);
     lv_obj_clear_flag(screen_nightscout_login, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_nightscout_login);
     lv_label_set_text(title, "Sign In");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_nightscout_login, nightscout_to_auth_event_cb, NULL);
+    cgm_add_header_rule(screen_nightscout_login);
 
     // Unified form card
     lv_obj_t *form_card = lv_obj_create(screen_nightscout_login);
     lv_obj_set_size(form_card, 290, 88);
     lv_obj_align(form_card, LV_ALIGN_TOP_MID, 0, 52);
-    lv_obj_set_style_bg_color(form_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(form_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(form_card, 10, 0);
-    lv_obj_set_style_border_width(form_card, 0, 0);
+    cygm_theme_glass_card(form_card);
     lv_obj_set_style_pad_all(form_card, 0, 0);
     lv_obj_clear_flag(form_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -3242,8 +3068,6 @@ void create_nightscout_login_screen(void) {
     lv_obj_set_size(url_row, 290, 43);
     lv_obj_align(url_row, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_add_flag(url_row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(url_row, lv_color_hex(COLOR_INPUT_BG), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(url_row, LV_OPA_COVER, LV_STATE_PRESSED);
 
     lv_obj_t *url_icon = lv_label_create(url_row);
     lv_label_set_text(url_icon, LV_SYMBOL_UPLOAD);
@@ -3275,8 +3099,8 @@ void create_nightscout_login_screen(void) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 258, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 43);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     // Token row (bottom half)
     lv_obj_t *token_row = lv_obj_create(form_card);
@@ -3284,8 +3108,6 @@ void create_nightscout_login_screen(void) {
     lv_obj_set_size(token_row, 290, 44);
     lv_obj_align(token_row, LV_ALIGN_TOP_MID, 0, 44);
     lv_obj_add_flag(token_row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(token_row, lv_color_hex(COLOR_INPUT_BG), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(token_row, LV_OPA_COVER, LV_STATE_PRESSED);
 
     lv_obj_t *token_icon = lv_label_create(token_row);
     lv_label_set_text(token_icon, LV_SYMBOL_EYE_CLOSE);
@@ -3320,11 +3142,7 @@ void create_nightscout_login_screen(void) {
     lv_obj_t *login_btn = lv_btn_create(screen_nightscout_login);
     lv_obj_set_size(login_btn, 260, 36);
     lv_obj_align(login_btn, LV_ALIGN_TOP_MID, 0, 152);
-    lv_obj_set_style_bg_color(login_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(login_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(login_btn, 10, 0);
-    lv_obj_set_style_shadow_width(login_btn, 0, 0);
-    lv_obj_set_style_border_width(login_btn, 0, 0);
+    cygm_theme_primary_btn(login_btn);
 
     lv_obj_t *login_icon = lv_label_create(login_btn);
     lv_label_set_text(login_icon, LV_SYMBOL_RIGHT);
@@ -3350,7 +3168,7 @@ void create_nightscout_login_screen(void) {
 
 void create_nightscout_url_entry_screen(void) {
     if (screen_nightscout_url_entry != NULL) {
-        if (screen_nightscout_url_entry == lv_scr_act()) {
+        if (screen_nightscout_url_entry == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_nightscout_url_entry);
         } else {
             lv_obj_del(screen_nightscout_url_entry);
@@ -3359,7 +3177,7 @@ void create_nightscout_url_entry_screen(void) {
     }
 
     screen_nightscout_url_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_nightscout_url_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_nightscout_url_entry);
     lv_obj_clear_flag(screen_nightscout_url_entry, LV_OBJ_FLAG_SCROLLABLE);
 
     // Section header
@@ -3376,10 +3194,7 @@ void create_nightscout_url_entry_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_nightscout_url_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(ok_btn, 8, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    cygm_theme_primary_btn(ok_btn);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -3414,6 +3229,7 @@ void create_nightscout_url_entry_screen(void) {
 
     // Hidden textarea
     nightscout_url_entry_ta = lv_textarea_create(screen_nightscout_url_entry);
+    cgm_style_input(nightscout_url_entry_ta);
     lv_obj_set_size(nightscout_url_entry_ta, 1, 1);
     lv_obj_set_pos(nightscout_url_entry_ta, -100, -100);
     lv_obj_add_flag(nightscout_url_entry_ta, LV_OBJ_FLAG_HIDDEN);
@@ -3425,23 +3241,9 @@ void create_nightscout_url_entry_screen(void) {
     nightscout_url_entry_keyboard = lv_keyboard_create(screen_nightscout_url_entry);
     lv_obj_set_size(nightscout_url_entry_keyboard, 320, 175);
     lv_obj_align(nightscout_url_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(nightscout_url_entry_keyboard);
     lv_keyboard_set_textarea(nightscout_url_entry_keyboard, nightscout_url_entry_ta);
     lv_keyboard_set_mode(nightscout_url_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard styling
-    lv_obj_set_style_bg_color(nightscout_url_entry_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(nightscout_url_entry_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(nightscout_url_entry_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(nightscout_url_entry_keyboard, 2, 0);
-    lv_obj_set_style_bg_color(nightscout_url_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(nightscout_url_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(nightscout_url_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(nightscout_url_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(nightscout_url_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(nightscout_url_entry_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(nightscout_url_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(nightscout_url_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(nightscout_url_entry_ta, nightscout_url_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, nightscout_url_entry_label);
 }
@@ -3450,7 +3252,7 @@ void create_nightscout_url_entry_screen(void) {
 
 void create_nightscout_token_entry_screen(void) {
     if (screen_nightscout_token_entry != NULL) {
-        if (screen_nightscout_token_entry == lv_scr_act()) {
+        if (screen_nightscout_token_entry == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_nightscout_token_entry);
         } else {
             lv_obj_del(screen_nightscout_token_entry);
@@ -3459,7 +3261,7 @@ void create_nightscout_token_entry_screen(void) {
     }
 
     screen_nightscout_token_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_nightscout_token_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_nightscout_token_entry);
     lv_obj_clear_flag(screen_nightscout_token_entry, LV_OBJ_FLAG_SCROLLABLE);
 
     nightscout_token_visible = false;
@@ -3478,12 +3280,8 @@ void create_nightscout_token_entry_screen(void) {
     lv_obj_t *eye_btn = lv_btn_create(screen_nightscout_token_entry);
     lv_obj_set_size(eye_btn, 30, 30);
     lv_obj_align(eye_btn, LV_ALIGN_TOP_RIGHT, -42, 7);
-    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(eye_btn, lv_color_hex(COLOR_PRESSED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(eye_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(eye_btn, 0, 0);
-    lv_obj_set_style_shadow_width(eye_btn, 0, 0);
-    lv_obj_set_style_radius(eye_btn, 8, 0);
+    cygm_theme_icon_btn(eye_btn);
+    lv_obj_set_ext_click_area(eye_btn, 0);
 
     nightscout_token_eye_label = lv_label_create(eye_btn);
     lv_label_set_text(nightscout_token_eye_label, LV_SYMBOL_EYE_CLOSE);
@@ -3495,10 +3293,8 @@ void create_nightscout_token_entry_screen(void) {
     lv_obj_t *ok_btn = lv_btn_create(screen_nightscout_token_entry);
     lv_obj_set_size(ok_btn, 36, 36);
     lv_obj_align(ok_btn, LV_ALIGN_TOP_RIGHT, -5, 4);
-    lv_obj_set_style_bg_color(ok_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_radius(ok_btn, 8, 0);
-    lv_obj_set_style_border_width(ok_btn, 0, 0);
-    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    cygm_theme_primary_btn(ok_btn);
+    lv_obj_set_ext_click_area(ok_btn, 0);
 
     lv_obj_t *ok_label = lv_label_create(ok_btn);
     lv_label_set_text(ok_label, LV_SYMBOL_OK);
@@ -3537,6 +3333,7 @@ void create_nightscout_token_entry_screen(void) {
 
     // Hidden textarea
     nightscout_token_entry_ta = lv_textarea_create(screen_nightscout_token_entry);
+    cgm_style_input(nightscout_token_entry_ta);
     lv_obj_set_size(nightscout_token_entry_ta, 1, 1);
     lv_obj_set_pos(nightscout_token_entry_ta, -100, -100);
     lv_obj_add_flag(nightscout_token_entry_ta, LV_OBJ_FLAG_HIDDEN);
@@ -3548,23 +3345,9 @@ void create_nightscout_token_entry_screen(void) {
     nightscout_token_entry_keyboard = lv_keyboard_create(screen_nightscout_token_entry);
     lv_obj_set_size(nightscout_token_entry_keyboard, 320, 175);
     lv_obj_align(nightscout_token_entry_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(nightscout_token_entry_keyboard);
     lv_keyboard_set_textarea(nightscout_token_entry_keyboard, nightscout_token_entry_ta);
     lv_keyboard_set_mode(nightscout_token_entry_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard styling
-    lv_obj_set_style_bg_color(nightscout_token_entry_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(nightscout_token_entry_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(nightscout_token_entry_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(nightscout_token_entry_keyboard, 2, 0);
-    lv_obj_set_style_bg_color(nightscout_token_entry_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(nightscout_token_entry_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(nightscout_token_entry_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(nightscout_token_entry_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(nightscout_token_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(nightscout_token_entry_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(nightscout_token_entry_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(nightscout_token_entry_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(nightscout_token_entry_ta, nightscout_token_entry_field_event_cb, LV_EVENT_VALUE_CHANGED, nightscout_token_entry_label);
 }
@@ -3573,7 +3356,7 @@ void create_nightscout_token_entry_screen(void) {
 
 void create_nightscout_status_screen(void) {
     if (screen_nightscout_status != NULL) {
-        if (screen_nightscout_status == lv_scr_act()) {
+        if (screen_nightscout_status == cygm_theme_scr_act()) {
             lv_obj_del_async(screen_nightscout_status);
         } else {
             lv_obj_del(screen_nightscout_status);
@@ -3582,36 +3365,26 @@ void create_nightscout_status_screen(void) {
     }
 
     screen_nightscout_status = lv_obj_create(NULL);
-    lv_obj_add_style(screen_nightscout_status, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_nightscout_status);
     lv_obj_clear_flag(screen_nightscout_status, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title
     lv_obj_t *title = lv_label_create(screen_nightscout_status);
     lv_label_set_text(title, "Account");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
 
     cgm_std_back_btn(screen_nightscout_status, nightscout_to_auth_event_cb, NULL);
+    cgm_add_header_rule(screen_nightscout_status);
 
     // Profile card
     lv_obj_t *profile_card = lv_obj_create(screen_nightscout_status);
     lv_obj_set_size(profile_card, 290, 60);
     lv_obj_align(profile_card, LV_ALIGN_TOP_MID, 0, 46);
-    lv_obj_set_style_bg_color(profile_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(profile_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(profile_card, 10, 0);
-    lv_obj_set_style_border_width(profile_card, 0, 0);
+    cygm_theme_glass_card(profile_card);
+    cygm_theme_card_edge(profile_card, lv_color_hex(COLOR_GREEN));
     lv_obj_clear_flag(profile_card, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Green accent bar
-    lv_obj_t *accent_bar = lv_obj_create(profile_card);
-    lv_obj_remove_style_all(accent_bar);
-    lv_obj_set_size(accent_bar, 3, 40);
-    lv_obj_align(accent_bar, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_set_style_bg_color(accent_bar, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(accent_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(accent_bar, 2, 0);
 
     // Avatar circle
     lv_obj_t *avatar = lv_obj_create(profile_card);
@@ -3648,10 +3421,7 @@ void create_nightscout_status_screen(void) {
     lv_obj_t *info_card = lv_obj_create(screen_nightscout_status);
     lv_obj_set_size(info_card, 290, 80);
     lv_obj_align(info_card, LV_ALIGN_TOP_MID, 0, 112);
-    lv_obj_set_style_bg_color(info_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(info_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(info_card, 10, 0);
-    lv_obj_set_style_border_width(info_card, 0, 0);
+    cygm_theme_glass_card(info_card);
     lv_obj_set_style_pad_all(info_card, 0, 0);
     lv_obj_clear_flag(info_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -3673,8 +3443,8 @@ void create_nightscout_status_screen(void) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 262, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     lv_obj_t *url_title = lv_label_create(info_card);
     lv_label_set_text(url_title, "URL");
@@ -3691,18 +3461,10 @@ void create_nightscout_status_screen(void) {
     lv_obj_set_width(url_value, 260);
     lv_obj_align(url_value, LV_ALIGN_TOP_LEFT, 14, 60);
 
-    // Ghost red logout button
     lv_obj_t *logout_btn = lv_btn_create(screen_nightscout_status);
     lv_obj_set_size(logout_btn, 180, 38);
     lv_obj_align(logout_btn, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_color(logout_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_border_width(logout_btn, 1, 0);
-    lv_obj_set_style_border_opa(logout_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(logout_btn, 10, 0);
-    lv_obj_set_style_shadow_width(logout_btn, 0, 0);
-    lv_obj_set_style_bg_color(logout_btn, lv_color_hex(COLOR_RED), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_30, LV_STATE_PRESSED);
+    cygm_theme_glass_btn(logout_btn);
 
     lv_obj_t *logout_lbl = lv_label_create(logout_btn);
     lv_label_set_text(logout_lbl, "Sign Out");

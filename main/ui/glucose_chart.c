@@ -5,6 +5,7 @@
  */
 
 #include "glucose_chart.h"
+#include "cygm_theme.h"
 #include "shared_state.h"
 #include "features/glucose_history.h"
 #include "esp_lvgl_port.h"
@@ -45,7 +46,7 @@ static const chart_range_t RANGES[] = {
 #define CHART_GAP_COLOR   0x4B5563  // Dashed bridge line for gaps
 // One flat wash under the line. Much above this swamps the target band it
 // overlaps, and any per-column variation of it hatches on RGB565.
-#define CHART_FILL_OPA    36
+#define CHART_FILL_OPA    20
 
 // ==================== Layout Constants ====================
 #define OVERLAY_W       310
@@ -90,7 +91,8 @@ static lv_obj_t *stats_container = NULL;
 static lv_obj_t *stat_value_labels[CHART_STAT_COUNT] = {0};
 static lv_obj_t *stat_title_labels[CHART_STAT_COUNT] = {0};
 static lv_obj_t *time_labels[7] = {0};
-static lv_obj_t *y_labels[5] = {0};
+static lv_obj_t *y_labels[3] = {0};
+static lv_obj_t *selected_value_label = NULL;
 static lv_obj_t *no_data_label = NULL;
 static lv_obj_t *tab_btns[RANGE_COUNT] = {0};
 static int current_range_index = DEFAULT_RANGE_INDEX;
@@ -103,6 +105,8 @@ static int filtered_count = 0;
 // ==================== Forward Declarations ====================
 static void populate_chart(void);
 static void update_time_labels(void);
+static void update_y_labels(void);
+static void update_selected_value_label(void);
 static void update_tab_styles(void);
 static void tab_btn_cb(lv_event_t *e);
 static void close_btn_cb(lv_event_t *e);
@@ -132,17 +136,14 @@ void create_glucose_chart_overlay(void) {
     ESP_LOGI(TAG, "Creating glucose chart (%d total readings)", total_count);
 
     // ---- Glass overlay container ----
-    chart_overlay = lv_obj_create(lv_scr_act());
+    chart_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_set_size(chart_overlay, OVERLAY_W, OVERLAY_H);
     lv_obj_center(chart_overlay);
-    lv_obj_set_style_bg_color(chart_overlay, lv_color_hex(COLOR_MODAL_BG), 0);
-    // Opaque: at anything less the home screen behind it bleeds into the tabs,
-    // the stats bar and the x-axis (ghost "100%" merging with the "12h" tab).
-    lv_obj_set_style_bg_opa(chart_overlay, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(chart_overlay, 16, 0);
+    cygm_theme_panel(chart_overlay);
+    lv_obj_set_style_radius(chart_overlay, 12, 0);
     lv_obj_set_style_border_width(chart_overlay, OVERLAY_BORDER, 0);
-    lv_obj_set_style_border_color(chart_overlay, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(chart_overlay, LV_OPA_50, 0);
+    lv_obj_set_style_border_color(chart_overlay, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(chart_overlay, CYGM_EDGE_OPA, 0);
     lv_obj_set_style_shadow_width(chart_overlay, 0, 0);
     lv_obj_set_style_pad_all(chart_overlay, OVERLAY_PAD, 0);
     lv_obj_clear_flag(chart_overlay, LV_OBJ_FLAG_SCROLLABLE);
@@ -159,13 +160,17 @@ void create_glucose_chart_overlay(void) {
     for (int i = 0; i < RANGE_COUNT; i++) {
         lv_obj_t *btn = lv_btn_create(tab_row);
         lv_obj_set_size(btn, 44, 20);
-        cygm_apply_ghost_btn(btn);
+        cygm_theme_glass_btn(btn);
         // Tabs sit ~8px apart, so cap the touch box: overlapping click areas
         // would make the left-hand tabs unreachable.
         lv_obj_set_ext_click_area(btn, CYGM_BTN_EXT_CLICK);
-        lv_obj_set_style_radius(btn, 6, 0);        // tighter pill than the canonical radius
-        lv_obj_set_style_border_width(btn, 0, 0);  // tabs read as fills, not outlines
+        lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_pad_all(btn, 0, 0);
+        // Range pills show no press change; the accent marks the active one
+        lv_obj_remove_local_style_prop(btn, LV_STYLE_BG_COLOR, LV_STATE_PRESSED);
+        lv_obj_remove_local_style_prop(btn, LV_STYLE_BG_OPA, LV_STATE_PRESSED);
+        lv_obj_remove_local_style_prop(btn, LV_STYLE_BORDER_OPA, LV_STATE_PRESSED);
+        lv_obj_set_style_color_filter_opa(btn, LV_OPA_TRANSP, LV_STATE_PRESSED);
 
         lv_obj_t *lbl = lv_label_create(btn);
         lv_label_set_text(lbl, RANGES[i].label);
@@ -182,10 +187,13 @@ void create_glucose_chart_overlay(void) {
     lv_obj_align(chart, LV_ALIGN_TOP_LEFT, CHART_X, CHART_TOP);
 
     // Chart background
-    lv_obj_set_style_bg_color(chart, lv_color_hex(COLOR_CHART_BG), 0);
+    lv_obj_set_style_bg_color(chart, lv_color_hex(CYGM_BTN_BG), 0);
     lv_obj_set_style_bg_opa(chart, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(chart, 0, 0);
+    lv_obj_set_style_border_color(chart, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(chart, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(chart, 1, 0);
     lv_obj_set_style_radius(chart, 8, 0);
+    lv_obj_set_style_shadow_width(chart, 0, 0);
     lv_obj_set_style_pad_top(chart, CHART_PAD_TOP, 0);
     lv_obj_set_style_pad_bottom(chart, CHART_PAD_BOT, 0);
     lv_obj_set_style_pad_left(chart, CHART_PAD_X, 0);
@@ -193,7 +201,8 @@ void create_glucose_chart_overlay(void) {
 
     // Grid lines
     lv_chart_set_div_line_count(chart, 5, 0);
-    lv_obj_set_style_line_color(chart, lv_color_hex(COLOR_CHART_GRID), LV_PART_MAIN);
+    lv_obj_set_style_line_color(chart, lv_color_hex(0x1B2433), LV_PART_MAIN);
+    lv_obj_set_style_line_opa(chart, (lv_opa_t)150, LV_PART_MAIN);
     lv_obj_set_style_line_width(chart, 1, LV_PART_MAIN);
 
     // Y-axis range
@@ -211,6 +220,7 @@ void create_glucose_chart_overlay(void) {
 
     // Draw event for target band + per-segment coloring + selected dot
     lv_obj_add_event_cb(chart, chart_draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
+    lv_obj_add_event_cb(chart, chart_draw_event_cb, LV_EVENT_DRAW_PART_END, NULL);
 
     // Touch interaction (tap-to-inspect)
     lv_obj_add_flag(chart, LV_OBJ_FLAG_CLICKABLE);
@@ -221,26 +231,27 @@ void create_glucose_chart_overlay(void) {
     lv_obj_add_event_cb(chart_overlay, chart_gesture_event_cb, LV_EVENT_GESTURE, NULL);
 
     // ---- Y-axis labels (left of chart) ----
-    // Plotting stays in mg/dL (Y_MIN/Y_MAX); only the printed tick TEXT is
-    // localized so the axis matches the home screen after a mmol toggle.
-    static const int y_vals[] = {400, 300, 200, 100, 40};
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
         y_labels[i] = lv_label_create(chart_overlay);
-        char buf[8];
-        cygm_format_glucose(y_vals[i], buf, sizeof(buf));
-        lv_label_set_text(y_labels[i], buf);
+        lv_label_set_text(y_labels[i], "");
         lv_obj_set_style_text_font(y_labels[i], &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_color(y_labels[i], lv_color_hex(COLOR_TEXT_DIM), 0);
-        // Fixed gutter, flush right: mmol ticks run to 4 glyphs ("22.2") and
-        // would otherwise butt straight against the plot.
         lv_obj_set_width(y_labels[i], Y_LABEL_W);
         lv_obj_set_style_text_align(y_labels[i], LV_TEXT_ALIGN_RIGHT, 0);
-
-        // Map value to pixel Y within chart area
-        lv_coord_t y_frac = CHART_TOP + CHART_PAD_TOP +
-            (CHART_H - CHART_PAD_TOP - CHART_PAD_BOT) * (Y_MAX - y_vals[i]) / (Y_MAX - Y_MIN);
-        lv_obj_align(y_labels[i], LV_ALIGN_TOP_LEFT, 0, y_frac - 5);
     }
+
+    selected_value_label = lv_label_create(chart_overlay);
+    lv_obj_set_width(selected_value_label, 44);
+    lv_label_set_text(selected_value_label, "");
+    lv_obj_set_style_text_font(selected_value_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(selected_value_label, lv_color_hex(COLOR_TEXT_WHITE), 0);
+    lv_obj_set_style_text_align(selected_value_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(selected_value_label, lv_color_hex(CYGM_BTN_BG), 0);
+    lv_obj_set_style_bg_opa(selected_value_label, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(selected_value_label, 4, 0);
+    lv_obj_set_style_pad_ver(selected_value_label, 1, 0);
+    lv_obj_set_style_shadow_width(selected_value_label, 0, 0);
+    lv_obj_add_flag(selected_value_label, LV_OBJ_FLAG_HIDDEN);
 
     // ---- Time labels (below chart) ----
     for (int i = 0; i < 7; i++) {
@@ -283,6 +294,8 @@ void create_glucose_chart_overlay(void) {
         lv_label_set_text(stat_title_labels[i], stat_titles[i]);
         lv_obj_set_style_text_font(stat_title_labels[i], &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_color(stat_title_labels[i], lv_color_hex(COLOR_TEXT_DIM), 0);
+        /* 40 px columns: "IN RNG" at montserrat_10 fills them with no room to space */
+        lv_obj_set_style_text_letter_space(stat_title_labels[i], 0, 0);
         lv_obj_align(stat_title_labels[i], LV_ALIGN_TOP_MID, 0, 0);
 
         stat_value_labels[i] = lv_label_create(col);
@@ -292,20 +305,15 @@ void create_glucose_chart_overlay(void) {
         lv_obj_align(stat_value_labels[i], LV_ALIGN_BOTTOM_MID, 0, 0);
     }
 
-    // Close button (ghost style, right side)
     lv_obj_t *close_btn = lv_btn_create(chart_overlay);
-    lv_obj_set_size(close_btn, 50, 28);
+    lv_obj_set_size(close_btn, 32, 32);
     lv_obj_align(close_btn, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-    lv_obj_update_layout(close_btn);  // 28px tall — helper needs the resolved size
-    cygm_apply_ghost_btn(close_btn);
-    // Local tint survives the shared ghost base (local beats added at same state)
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(close_btn, LV_OPA_20, 0);
-    lv_obj_set_style_border_opa(close_btn, LV_OPA_40, 0);
+    lv_obj_update_layout(close_btn);
+    cygm_theme_icon_btn(close_btn);
 
     lv_obj_t *close_lbl = lv_label_create(close_btn);
-    lv_label_set_text(close_lbl, "Close");
-    lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_12, 0);
+    lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(close_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(close_lbl);
     lv_obj_add_event_cb(close_btn, close_btn_cb, LV_EVENT_CLICKED, NULL);
@@ -327,11 +335,12 @@ static void update_tab_styles(void) {
         if (i == current_range_index) {
             // Active tab: accent blue bg, white text
             lv_obj_set_style_bg_color(btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-            lv_obj_set_style_bg_opa(btn, LV_OPA_30, 0);
+            lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
             lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
         } else {
             // Inactive tab: transparent, dim text
-            lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_bg_color(btn, lv_color_hex(CYGM_BTN_BG), 0);
+            lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
             lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
         }
     }
@@ -341,6 +350,8 @@ static void update_tab_styles(void) {
 static void populate_chart(void) {
     hide_reading_popup();
     selected_point_idx = -1;
+    lv_obj_add_flag(selected_value_label, LV_OBJ_FLAG_HIDDEN);
+    update_y_labels();
 
     const chart_range_t *range = &RANGES[current_range_index];
 
@@ -499,6 +510,57 @@ static void populate_chart(void) {
     update_time_labels();
 }
 
+static void update_y_labels(void) {
+    int y_vals[] = {
+        current_alarm_settings.low_warning.threshold,
+        current_alarm_settings.high_warning.threshold,
+        300
+    };
+
+    for (int i = 0; i < 3; i++) {
+        char buf[8];
+        cygm_format_glucose(y_vals[i], buf, sizeof(buf));
+        lv_label_set_text(y_labels[i], buf);
+
+        int plotted = y_vals[i];
+        if (plotted < Y_MIN) plotted = Y_MIN;
+        if (plotted > Y_MAX) plotted = Y_MAX;
+        lv_coord_t y = CHART_TOP + CHART_PAD_TOP +
+            (CHART_H - CHART_PAD_TOP - CHART_PAD_BOT) *
+            (Y_MAX - plotted) / (Y_MAX - Y_MIN);
+        lv_obj_align(y_labels[i], LV_ALIGN_TOP_LEFT, 0, y - 5);
+    }
+}
+
+static void update_selected_value_label(void) {
+    if (selected_point_idx < 0 || selected_point_idx >= filtered_count ||
+        !filtered_points[selected_point_idx].valid || filtered_count < 2) {
+        lv_obj_add_flag(selected_value_label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    int glucose = filtered_points[selected_point_idx].glucose;
+    char buf[8];
+    cygm_format_glucose(glucose, buf, sizeof(buf));
+    lv_label_set_text(selected_value_label, buf);
+
+    int plotted = glucose;
+    if (plotted < Y_MIN) plotted = Y_MIN;
+    if (plotted > Y_MAX) plotted = Y_MAX;
+    lv_coord_t data_w = CHART_W - CHART_PAD_X * 2;
+    lv_coord_t x = CHART_X + CHART_PAD_X +
+        (selected_point_idx * data_w) / (filtered_count - 1) - 22;
+    lv_coord_t y = CHART_TOP + CHART_PAD_TOP +
+        (CHART_H - CHART_PAD_TOP - CHART_PAD_BOT) *
+        (Y_MAX - plotted) / (Y_MAX - Y_MIN) - 17;
+    if (x < CHART_X) x = CHART_X;
+    if (x > CONTENT_W - 44) x = CONTENT_W - 44;
+    if (y < CHART_TOP) y = CHART_TOP;
+    lv_obj_set_pos(selected_value_label, x, y);
+    lv_obj_clear_flag(selected_value_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(selected_value_label);
+}
+
 // ==================== Time Labels Along Bottom ====================
 static void update_time_labels(void) {
     if (filtered_count < 2) return;
@@ -559,9 +621,11 @@ static void update_time_labels(void) {
 // ==================== Draw Event: Target Band + Line Colors + Selected Dot ====================
 static void chart_draw_event_cb(lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
+    lv_event_code_t code = lv_event_get_code(e);
 
     // --- Draw target range band on first horizontal div line ---
-    if (dsc->part == LV_PART_MAIN && dsc->type == LV_CHART_DRAW_PART_DIV_LINE_HOR) {
+    if (code == LV_EVENT_DRAW_PART_BEGIN && dsc->part == LV_PART_MAIN &&
+        dsc->type == LV_CHART_DRAW_PART_DIV_LINE_HOR) {
         if (dsc->id == 0) {
             lv_obj_t *obj = lv_event_get_target(e);
             lv_coord_t pad_t = lv_obj_get_style_pad_top(obj, 0);
@@ -625,18 +689,18 @@ static void chart_draw_event_cb(lv_event_t *e) {
 
             lv_draw_rect(dsc->draw_ctx, &rect_dsc, &band);
 
-            // Thin border lines at target edges
-            lv_draw_rect_dsc_t line_dsc;
-            lv_draw_rect_dsc_init(&line_dsc);
-            line_dsc.bg_color = lv_color_hex(CHART_TARGET_GREEN);
-            line_dsc.bg_opa = LV_OPA_30;
-            line_dsc.border_width = 0;
-            line_dsc.radius = 0;
+            lv_draw_line_dsc_t threshold_dsc;
+            lv_draw_line_dsc_init(&threshold_dsc);
+            threshold_dsc.color = lv_color_hex(0x6496DC);
+            threshold_dsc.opa = (lv_opa_t)90;
+            threshold_dsc.width = 1;
+            threshold_dsc.dash_width = 4;
+            threshold_dsc.dash_gap = 4;
 
-            lv_area_t top_line = { band.x1, y_high, band.x2, y_high + 1 };
-            lv_draw_rect(dsc->draw_ctx, &line_dsc, &top_line);
-            lv_area_t bot_line = { band.x1, y_low - 1, band.x2, y_low };
-            lv_draw_rect(dsc->draw_ctx, &line_dsc, &bot_line);
+            lv_point_t high_line[] = {{band.x1, y_high}, {band.x2, y_high}};
+            lv_draw_line(dsc->draw_ctx, &threshold_dsc, &high_line[0], &high_line[1]);
+            lv_point_t low_line[] = {{band.x1, y_low}, {band.x2, y_low}};
+            lv_draw_line(dsc->draw_ctx, &threshold_dsc, &low_line[0], &low_line[1]);
 
             // --- Flat area fill under the chart line ---
             // Swept per pixel column, then merged into runs of equal height.
@@ -709,6 +773,26 @@ static void chart_draw_event_cb(lv_event_t *e) {
                 }
             }
 
+            if (selected_point_idx >= 0 && selected_point_idx < filtered_count &&
+                filtered_points[selected_point_idx].valid && filtered_count > 1) {
+                int plotted = filtered_points[selected_point_idx].glucose;
+                if (plotted < Y_MIN) plotted = Y_MIN;
+                if (plotted > Y_MAX) plotted = Y_MAX;
+                lv_coord_t x = obj->coords.x1 + pad_l +
+                    (selected_point_idx * w_area) / (filtered_count - 1);
+                lv_coord_t y = obj->coords.y1 + pad_t +
+                    h - ((plotted - Y_MIN) * h / (Y_MAX - Y_MIN));
+                lv_draw_line_dsc_t cross_dsc;
+                lv_draw_line_dsc_init(&cross_dsc);
+                cross_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
+                cross_dsc.width = 1;
+                cross_dsc.opa = (lv_opa_t)76;
+                cross_dsc.dash_width = 3;
+                cross_dsc.dash_gap = 2;
+                lv_point_t cross[] = {{x, y + 4}, {x, obj->coords.y1 + pad_t + h}};
+                lv_draw_line(dsc->draw_ctx, &cross_dsc, &cross[0], &cross[1]);
+            }
+
             // --- Draw dashed bridge lines for data gaps ---
             if (filtered_count > 1) {
                 lv_coord_t data_w = w_area;
@@ -755,60 +839,12 @@ static void chart_draw_event_cb(lv_event_t *e) {
                 }
             }
 
-            // --- Draw selected point dot ---
-            if (selected_point_idx >= 0 && selected_point_idx < filtered_count &&
-                filtered_points[selected_point_idx].valid) {
-                int g = filtered_points[selected_point_idx].glucose;
-                if (g < Y_MIN) g = Y_MIN;
-                if (g > Y_MAX) g = Y_MAX;
-
-                lv_coord_t px = obj->coords.x1 + pad_l +
-                    (selected_point_idx * w_area) / (filtered_count - 1);
-                lv_coord_t py = obj->coords.y1 + pad_t +
-                    h - ((g - Y_MIN) * h / (Y_MAX - Y_MIN));
-
-                uint32_t dot_color = get_color_for_glucose(g);
-
-                // Outer glow circle (8px diameter)
-                lv_draw_rect_dsc_t glow_dot;
-                lv_draw_rect_dsc_init(&glow_dot);
-                glow_dot.bg_color = lv_color_hex(dot_color);
-                glow_dot.bg_opa = LV_OPA_40;
-                glow_dot.border_width = 0;
-                glow_dot.radius = LV_RADIUS_CIRCLE;
-                lv_area_t glow_area = { px - 5, py - 5, px + 5, py + 5 };
-                lv_draw_rect(dsc->draw_ctx, &glow_dot, &glow_area);
-
-                // Inner solid circle (4px diameter)
-                lv_draw_rect_dsc_t inner_dot;
-                lv_draw_rect_dsc_init(&inner_dot);
-                inner_dot.bg_color = lv_color_hex(dot_color);
-                inner_dot.bg_opa = LV_OPA_COVER;
-                inner_dot.border_width = 0;
-                inner_dot.radius = LV_RADIUS_CIRCLE;
-                lv_area_t inner_area = { px - 3, py - 3, px + 3, py + 3 };
-                lv_draw_rect(dsc->draw_ctx, &inner_dot, &inner_area);
-
-                // Vertical crosshair line from dot to chart bottom
-                lv_draw_line_dsc_t cross_dsc;
-                lv_draw_line_dsc_init(&cross_dsc);
-                cross_dsc.color = lv_color_hex(COLOR_ACCENT_BLUE);
-                cross_dsc.width = 1;
-                cross_dsc.opa = (lv_opa_t)76;  // ~30% opacity
-                cross_dsc.dash_width = 3;
-                cross_dsc.dash_gap = 2;
-
-                lv_point_t cross_pts[2] = {
-                    {px, py + 4},  // Start just below dot
-                    {px, obj->coords.y1 + pad_t + h}  // Bottom of chart
-                };
-                lv_draw_line(dsc->draw_ctx, &cross_dsc, &cross_pts[0], &cross_pts[1]);
-            }
         }
     }
 
     // --- Per-segment line coloring based on glucose value ---
-    if (dsc->part == LV_PART_ITEMS) {
+    if (code == LV_EVENT_DRAW_PART_BEGIN && dsc->part == LV_PART_ITEMS &&
+        dsc->type == LV_CHART_DRAW_PART_LINE_AND_POINT) {
         if (dsc->p1 && dsc->p2) {
             lv_obj_t *obj = lv_event_get_target(e);
             lv_coord_t pad_t = lv_obj_get_style_pad_top(obj, 0);
@@ -822,6 +858,46 @@ static void chart_draw_event_cb(lv_event_t *e) {
             uint32_t color = get_color_for_glucose(glucose_val);
             dsc->line_dsc->color = lv_color_hex(color);
         }
+    }
+
+    if (code == LV_EVENT_DRAW_PART_END && dsc->part == LV_PART_ITEMS &&
+        dsc->type == LV_CHART_DRAW_PART_LINE_AND_POINT &&
+        selected_point_idx >= 0 && dsc->id == (uint32_t)selected_point_idx &&
+        selected_point_idx < filtered_count && filtered_points[selected_point_idx].valid) {
+        lv_obj_t *obj = lv_event_get_target(e);
+        lv_coord_t pad_t = lv_obj_get_style_pad_top(obj, 0);
+        lv_coord_t pad_b = lv_obj_get_style_pad_bottom(obj, 0);
+        lv_coord_t pad_l = lv_obj_get_style_pad_left(obj, 0);
+        lv_coord_t pad_r = lv_obj_get_style_pad_right(obj, 0);
+        lv_coord_t h = lv_obj_get_height(obj) - pad_t - pad_b;
+        lv_coord_t w = lv_obj_get_width(obj) - pad_l - pad_r;
+        int g = filtered_points[selected_point_idx].glucose;
+        int plotted = g;
+        if (plotted < Y_MIN) plotted = Y_MIN;
+        if (plotted > Y_MAX) plotted = Y_MAX;
+        lv_coord_t px = obj->coords.x1 + pad_l +
+            (selected_point_idx * w) / (filtered_count - 1);
+        lv_coord_t py = obj->coords.y1 + pad_t +
+            h - ((plotted - Y_MIN) * h / (Y_MAX - Y_MIN));
+        uint32_t dot_color = get_color_for_glucose(g);
+
+        lv_draw_rect_dsc_t glow_dot;
+        lv_draw_rect_dsc_init(&glow_dot);
+        glow_dot.bg_color = lv_color_hex(dot_color);
+        glow_dot.bg_opa = LV_OPA_40;
+        glow_dot.border_width = 0;
+        glow_dot.radius = LV_RADIUS_CIRCLE;
+        lv_area_t glow_area = {px - 5, py - 5, px + 5, py + 5};
+        lv_draw_rect(dsc->draw_ctx, &glow_dot, &glow_area);
+
+        lv_draw_rect_dsc_t inner_dot;
+        lv_draw_rect_dsc_init(&inner_dot);
+        inner_dot.bg_color = lv_color_hex(dot_color);
+        inner_dot.bg_opa = LV_OPA_COVER;
+        inner_dot.border_width = 0;
+        inner_dot.radius = LV_RADIUS_CIRCLE;
+        lv_area_t inner_area = {px - 3, py - 3, px + 3, py + 3};
+        lv_draw_rect(dsc->draw_ctx, &inner_dot, &inner_area);
     }
 }
 
@@ -919,11 +995,13 @@ static void chart_touch_event_cb(lv_event_t *e) {
                               point_index,
                               touch_point.x, touch_point.y);
         }
+        update_selected_value_label();
         lv_obj_invalidate(chart);  // Trigger redraw for dot
     } else {
         // Tapped empty space — deselect
         selected_point_idx = -1;
         hide_reading_popup();
+        update_selected_value_label();
         lv_obj_invalidate(chart);
     }
 }
@@ -935,11 +1013,9 @@ static void show_reading_popup(int glucose, int64_t timestamp,
 
     info_popup = lv_obj_create(chart_overlay);
     lv_obj_remove_style_all(info_popup);
-    lv_obj_set_style_bg_color(info_popup, lv_color_hex(0x1a2332), 0);
-    lv_obj_set_style_bg_opa(info_popup, LV_OPA_90, 0);
-    lv_obj_set_style_radius(info_popup, 6, 0);
+    cygm_theme_panel(info_popup);
+    lv_obj_set_style_radius(info_popup, 8, 0);
     lv_obj_set_style_pad_all(info_popup, 3, 0);
-    lv_obj_set_style_shadow_width(info_popup, 0, 0);
     lv_obj_set_size(info_popup, POPUP_W, POPUP_H);
     lv_obj_clear_flag(info_popup, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1048,13 +1124,14 @@ void close_glucose_chart_overlay(void) {
         chart = NULL;
         glucose_series = NULL;
         stats_container = NULL;
+        selected_value_label = NULL;
         for (int i = 0; i < CHART_STAT_COUNT; i++) {
             stat_value_labels[i] = NULL;
             stat_title_labels[i] = NULL;
         }
         no_data_label = NULL;
         for (int i = 0; i < 7; i++) time_labels[i] = NULL;
-        for (int i = 0; i < 5; i++) y_labels[i] = NULL;
+        for (int i = 0; i < 3; i++) y_labels[i] = NULL;
         for (int i = 0; i < RANGE_COUNT; i++) tab_btns[i] = NULL;
         filtered_count = 0;
         selected_point_idx = -1;

@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ui/menu_screen.h"
+#include "ui/cygm_theme.h"
 
 static const char *TAG = "ALARM_SCREENS";
 
@@ -28,13 +29,13 @@ static const char *TAG = "ALARM_SCREENS";
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *alarm_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb, void *user_data) {
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(btn, 36, 36);
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 4, 4);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(lbl);
     if (cb != NULL) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     return btn;
@@ -72,9 +73,9 @@ static const char *tone_short_names[] = {
 
 // Header shown under the picker title, one per page.
 static const char *tone_page_categories[TONE_PAGES] = {
-    "Basic Tones", "Melodies", "Alerts & Signals",
-    "Gentle Tones", "Rhythms & Calls", "Urgent Alerts",
-    "More Tones"
+    "BASIC TONES", "MELODIES", "ALERTS & SIGNALS",
+    "GENTLE TONES", "RHYTHMS & CALLS", "URGENT ALERTS",
+    "MORE TONES"
 };
 
 // Picker slot -> tone. The enum order is frozen because every index is
@@ -170,28 +171,6 @@ static void opt_mask_switch_event_cb(lv_event_t *e);
 static void alarm_options_clear_refs(void);
 static void time_picker_close(void);
 
-// Strips the theme styles first: the default theme animates the knob via a
-// style transition, and animations freeze this hardware.
-static void alarm_style_switch(lv_obj_t *sw, int w, int h) {
-    lv_obj_remove_style_all(sw);
-    lv_obj_set_size(sw, w, h);
-    int radius = h / 2;
-
-    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_PRESSED), LV_PART_MAIN);
-    lv_obj_set_style_radius(sw, radius, LV_PART_MAIN);
-
-    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_PRESSED), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_GREEN), LV_PART_INDICATOR | LV_STATE_CHECKED);
-    lv_obj_set_style_radius(sw, radius, LV_PART_INDICATOR);
-
-    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(0xf0f0f0), LV_PART_KNOB);
-    lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(sw, -3, LV_PART_KNOB);
-}
-
 static lv_timer_t *alarm_inactivity_timer = NULL;
 #define ALARM_UI_INACTIVITY_RETURN_MS 30000
 #define ALARM_VERBOSE_LOG 0
@@ -269,7 +248,7 @@ void create_alarm_settings_screen(void) {
 
     // Idempotent: never build a second screen on top of a live one.
     if (screen_alarm_settings != NULL) {
-        if (screen_alarm_settings == lv_scr_act()) {
+        if (screen_alarm_settings == cygm_theme_scr_act()) {
             ESP_LOGW(TAG, "Alarm settings screen already loaded - reusing");
             return;
         }
@@ -283,24 +262,31 @@ void create_alarm_settings_screen(void) {
         ESP_LOGE(TAG, "Failed to create alarm settings screen - out of memory!");
         return;
     }
+    cygm_theme_bg_gradient(screen_alarm_settings);
     lv_obj_add_event_cb(screen_alarm_settings, alarm_settings_screen_delete_cb, LV_EVENT_DELETE, NULL);
-    lv_obj_add_style(screen_alarm_settings, &style_bg, 0);
     lv_obj_clear_flag(screen_alarm_settings, LV_OBJ_FLAG_SCROLLABLE);
 
     // ---- Header (y=0-30) ----
     lv_obj_t *header = lv_label_create(screen_alarm_settings);
     lv_label_set_text(header, "Alarms");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 6);
 
     alarm_std_back_btn(screen_alarm_settings, alarm_settings_back_event_cb, NULL);
 
+    lv_obj_t *header_rule = lv_obj_create(screen_alarm_settings);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
+
     // Advanced alert options (quiet hours, escalation, data gap, predictive)
     lv_obj_t *opts_btn = lv_btn_create(screen_alarm_settings);
     lv_obj_set_size(opts_btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
     lv_obj_align(opts_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
-    cygm_apply_ghost_btn(opts_btn);
+    cygm_theme_icon_btn(opts_btn);
     lv_obj_t *opts_lbl = lv_label_create(opts_btn);
     lv_label_set_text(opts_lbl, LV_SYMBOL_SETTINGS);
     lv_obj_set_style_text_font(opts_lbl, &lv_font_montserrat_18, 0);
@@ -486,17 +472,16 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y_pos);
 
     // Card styling (matches menu cards)
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(card);
     lv_obj_set_style_radius(card, 10, 0);
-    lv_obj_set_style_border_width(card, 0, 0);
+    cygm_theme_card_edge(card, lv_color_hex(alarm->text_color));
     lv_obj_set_style_shadow_width(card, 0, 0);
     lv_obj_set_style_pad_left(card, 14, 0);
     lv_obj_set_style_pad_right(card, 12, 0);
-    // Press highlight
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BORDER), LV_STATE_PRESSED);
+    // The default theme darkens pressed buttons; cards must not change on touch
+    lv_obj_set_style_color_filter_opa(card, LV_OPA_TRANSP, LV_STATE_PRESSED);
 
-    // Deliberately NOT routed through cygm_apply_ghost_btn: the cards stack 4px
+    // The cards stack 4px
     // apart, so growing each ext_click_area would overlap adjacent alarms. At
     // this size they already clear the minimum touch target on both axes.
     lv_obj_add_event_cb(card, alarm_card_click_event_cb, LV_EVENT_CLICKED, alarm);
@@ -531,7 +516,8 @@ void create_alarm_card(lv_obj_t *parent, const char *title, alarm_config_t *alar
 
     // Toggle switch (right side, before arrow)
     lv_obj_t *sw = lv_switch_create(card);
-    alarm_style_switch(sw, 40, 20);
+    cygm_theme_switch(sw);
+    lv_obj_set_size(sw, 40, 20);
     lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -22, 0);
 
     if (alarm->enabled) {
@@ -721,7 +707,7 @@ static void open_threshold_keypad(alarm_config_t *alarm, lv_obj_t *slider) {
     thresh_keypad_alarm = alarm;
     thresh_keypad_slider = slider;
 
-    thresh_keypad_overlay = lv_obj_create(lv_scr_act());
+    thresh_keypad_overlay = lv_obj_create(cygm_theme_scr_act());
     if (thresh_keypad_overlay == NULL) {
         ESP_LOGE(TAG, "Failed to create threshold keypad overlay!");
         thresh_keypad_alarm = NULL;
@@ -740,11 +726,8 @@ static void open_threshold_keypad(alarm_config_t *alarm, lv_obj_t *slider) {
     lv_obj_t *panel = lv_obj_create(thresh_keypad_overlay);
     lv_obj_set_size(panel, THRESH_KEYPAD_PANEL_W, THRESH_KEYPAD_PANEL_H);
     lv_obj_center(panel);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(0x141c2b), 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(panel, 16, 0);
-    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(panel, 1, 0);
+    cygm_theme_panel(panel);
+    lv_obj_set_style_radius(panel, 12, 0);
     lv_obj_set_style_pad_all(panel, 0, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -758,12 +741,9 @@ static void open_threshold_keypad(alarm_config_t *alarm, lv_obj_t *slider) {
     lv_obj_t *close_btn = lv_btn_create(panel);
     lv_obj_set_size(close_btn, 30, 30);
     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
-    lv_obj_set_style_border_color(close_btn, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(close_btn, 1, 0);
-    lv_obj_set_style_border_opa(close_btn, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(close_btn, 15, 0);
     lv_obj_update_layout(close_btn);
-    cygm_apply_ghost_btn(close_btn);
+    cygm_theme_icon_btn(close_btn);
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
     lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_16, 0);
@@ -790,16 +770,22 @@ static void open_threshold_keypad(alarm_config_t *alarm, lv_obj_t *slider) {
     lv_obj_set_style_pad_all(mtx, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_row(mtx, THRESH_KEYPAD_GAP, LV_PART_MAIN);
     lv_obj_set_style_pad_column(mtx, THRESH_KEYPAD_GAP, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(mtx, lv_color_hex(COLOR_PRESSED), LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(mtx, lv_color_hex(CYGM_BTN_BG), LV_PART_ITEMS);
     lv_obj_set_style_bg_opa(mtx, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(mtx, lv_color_hex(COLOR_MODAL_BORDER), LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(mtx, 0, LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(mtx, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(mtx, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(mtx, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(mtx, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(mtx, lv_color_hex(CYGM_EDGE), LV_PART_ITEMS);
+    lv_obj_set_style_border_opa(mtx, CYGM_EDGE_OPA, LV_PART_ITEMS);
+    lv_obj_set_style_border_width(mtx, 1, LV_PART_ITEMS);
     // The light theme puts a drop shadow on every button style, including these
     // matrix cells; shadows freeze this hardware.
     lv_obj_set_style_shadow_width(mtx, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(mtx, 8, LV_PART_ITEMS);
+    lv_obj_set_style_radius(mtx, 6, LV_PART_ITEMS);
     lv_obj_set_style_text_font(mtx, &lv_font_montserrat_18, LV_PART_ITEMS);
     lv_obj_set_style_text_color(mtx, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
+    lv_btnmatrix_set_btn_ctrl(mtx, user_glucose_mmol ? 12 : 11, LV_BTNMATRIX_CTRL_CHECKED);
     lv_obj_add_event_cb(mtx, thresh_keypad_matrix_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     thresh_keypad_buf[0] = '\0';
@@ -834,7 +820,7 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
         ESP_LOGE(TAG, "Failed to create alarm detail editor screen - out of memory!");
         return;
     }
-    lv_obj_add_style(screen_alarm_detail_editor, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_alarm_detail_editor);
     lv_obj_clear_flag(screen_alarm_detail_editor, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(screen_alarm_detail_editor, alarm_detail_editor_delete_cb, LV_EVENT_DELETE, NULL);
 
@@ -860,6 +846,13 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
 
     alarm_std_back_btn(screen_alarm_detail_editor, alarm_detail_editor_back_event_cb, NULL);
 
+    lv_obj_t *header_rule = lv_obj_create(screen_alarm_detail_editor);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
+
     // ---- Card stack ----
     // The back button's touch box grows to y=48, so the first card starts at 44
     // and its first control sits below that. The cards have nothing to tap, so
@@ -883,22 +876,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *thresh_card = lv_obj_create(screen_alarm_detail_editor);
     lv_obj_set_size(thresh_card, AED_CARD_W, AED_THRESH_H);
     lv_obj_align(thresh_card, LV_ALIGN_TOP_MID, 0, AED_THRESH_Y);
-    lv_obj_set_style_bg_color(thresh_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(thresh_card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(thresh_card);
     lv_obj_set_style_radius(thresh_card, 12, 0);
-    lv_obj_set_style_border_width(thresh_card, 0, 0);
+    cygm_theme_card_edge(thresh_card, lv_color_hex(alarm->text_color));
     lv_obj_set_style_pad_all(thresh_card, 0, 0);
     lv_obj_clear_flag(thresh_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(thresh_card, LV_OBJ_FLAG_CLICKABLE);
-
-    // Left accent bar (alarm color)
-    lv_obj_t *thresh_accent = lv_obj_create(thresh_card);
-    lv_obj_remove_style_all(thresh_accent);
-    lv_obj_set_size(thresh_accent, 3, 44);
-    lv_obj_align(thresh_accent, LV_ALIGN_LEFT_MID, 5, 0);
-    lv_obj_set_style_bg_color(thresh_accent, lv_color_hex(alarm->text_color), 0);
-    lv_obj_set_style_bg_opa(thresh_accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(thresh_accent, 2, 0);
 
     lv_obj_t *thresh_label = lv_label_create(thresh_card);
     lv_label_set_text(thresh_label, "Threshold");
@@ -913,7 +896,7 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_set_size(thresh_value_btn, 110, 34);
     lv_obj_align(thresh_value_btn, LV_ALIGN_TOP_RIGHT, -8, 2);
     lv_obj_update_layout(thresh_value_btn);
-    cygm_apply_ghost_btn(thresh_value_btn);
+    cygm_theme_glass_btn(thresh_value_btn);
     lv_obj_add_event_cb(thresh_value_btn, alarm_threshold_value_event_cb, LV_EVENT_CLICKED, alarm);
 
     lv_obj_t *thresh_value = lv_label_create(thresh_value_btn);
@@ -928,6 +911,7 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     // Threshold slider
     lv_obj_t *thresh_slider = lv_slider_create(thresh_card);
     lv_obj_set_size(thresh_slider, AED_ROW_W, 12);
+    cygm_theme_slider(thresh_slider, lv_color_hex(alarm->text_color));
     lv_obj_align(thresh_slider, LV_ALIGN_TOP_LEFT, AED_PAD_L, 44);
     // In mmol mode the slider operates in tenths-of-mmol so each knob step is a
     // clean 0.1 mmol/L; the stored alarm->threshold stays canonical mg/dL.
@@ -939,18 +923,6 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
         lv_slider_set_value(thresh_slider, alarm->threshold, LV_ANIM_OFF);
     }
 
-    lv_obj_set_style_bg_color(thresh_slider, lv_color_hex(0x0d1520), LV_PART_MAIN);
-    lv_obj_set_style_radius(thresh_slider, 6, LV_PART_MAIN);
-    lv_obj_set_style_border_color(thresh_slider, lv_color_hex(0x1e2d3d), LV_PART_MAIN);
-    lv_obj_set_style_border_width(thresh_slider, 1, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(thresh_slider, lv_color_hex(alarm->text_color), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(thresh_slider, LV_OPA_80, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(thresh_slider, 6, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(thresh_slider, lv_color_hex(0xf0f0f0), LV_PART_KNOB);
-    lv_obj_set_style_radius(thresh_slider, 6, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(thresh_slider, 2, LV_PART_KNOB);
-    // NO knob shadow — shadows cause intermittent freezes on this hardware.
-
     lv_obj_set_user_data(thresh_slider, thresh_value);
     lv_obj_add_event_cb(thresh_slider, alarm_threshold_slider_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
     thresh_keypad_slider = thresh_slider;
@@ -959,22 +931,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *audio_card = lv_obj_create(screen_alarm_detail_editor);
     lv_obj_set_size(audio_card, AED_CARD_W, AED_AUDIO_H);
     lv_obj_align(audio_card, LV_ALIGN_TOP_MID, 0, AED_AUDIO_Y);
-    lv_obj_set_style_bg_color(audio_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(audio_card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(audio_card);
     lv_obj_set_style_radius(audio_card, 12, 0);
-    lv_obj_set_style_border_width(audio_card, 0, 0);
+    cygm_theme_card_edge(audio_card, lv_color_hex(COLOR_ACCENT_BLUE));
     lv_obj_set_style_pad_all(audio_card, 0, 0);
     lv_obj_clear_flag(audio_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(audio_card, LV_OBJ_FLAG_CLICKABLE);
-
-    // Left accent bar (blue)
-    lv_obj_t *audio_accent = lv_obj_create(audio_card);
-    lv_obj_remove_style_all(audio_accent);
-    lv_obj_set_size(audio_accent, 3, 58);
-    lv_obj_align(audio_accent, LV_ALIGN_LEFT_MID, 5, 0);
-    lv_obj_set_style_bg_color(audio_accent, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(audio_accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(audio_accent, 2, 0);
 
     // Audio Alert label + switch (row 1, y=4)
     lv_obj_t *audio_label = lv_label_create(audio_card);
@@ -984,7 +946,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_align(audio_label, LV_ALIGN_TOP_LEFT, 16, 4);
 
     lv_obj_t *audio_sw = lv_switch_create(audio_card);
-    alarm_style_switch(audio_sw, 36, 16);
+    cygm_theme_switch(audio_sw);
+    lv_obj_set_size(audio_sw, 36, 16);
     lv_obj_align(audio_sw, LV_ALIGN_TOP_RIGHT, -12, 4);
     if (alarm->audio_enabled) lv_obj_add_state(audio_sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(audio_sw, alarm_audio_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
@@ -994,8 +957,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_remove_style_all(audio_div);
     lv_obj_set_size(audio_div, AED_ROW_W, 1);
     lv_obj_align(audio_div, LV_ALIGN_TOP_LEFT, AED_PAD_L, 22);
-    lv_obj_set_style_bg_color(audio_div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(audio_div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(audio_div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(audio_div, 90, 0);
 
     // Row 2: Tone button (left) + Volume slider (right) on same line (y=26)
     int tone_idx = (alarm->tone >= 0 && alarm->tone < ALARM_TONE_COUNT) ? alarm->tone : 0;
@@ -1005,11 +968,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *tone_btn = lv_btn_create(audio_card);
     lv_obj_set_size(tone_btn, 130, 24);
     lv_obj_align(tone_btn, LV_ALIGN_TOP_LEFT, AED_PAD_L, 26);
-    lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_bg_opa(tone_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(tone_btn, 0, 0);
     lv_obj_update_layout(tone_btn);
-    cygm_apply_ghost_btn(tone_btn);
+    cygm_theme_glass_btn(tone_btn);
 
     lv_obj_t *tone_lbl = lv_label_create(tone_btn);
     lv_label_set_text(tone_lbl, tone_text);
@@ -1021,20 +981,10 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     // Volume slider: 10px clear of the tone button and vertically centred on it.
     lv_obj_t *vol_slider = lv_slider_create(audio_card);
     lv_obj_set_size(vol_slider, 90, 10);
+    cygm_theme_slider(vol_slider, lv_color_hex(COLOR_ACCENT_BLUE));
     lv_obj_align(vol_slider, LV_ALIGN_TOP_LEFT, 156, 33);
     lv_slider_set_range(vol_slider, 0, 100);
     lv_slider_set_value(vol_slider, alarm->volume, LV_ANIM_OFF);
-
-    lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x0d1520), LV_PART_MAIN);
-    lv_obj_set_style_radius(vol_slider, 5, LV_PART_MAIN);
-    lv_obj_set_style_border_color(vol_slider, lv_color_hex(0x1e2d3d), LV_PART_MAIN);
-    lv_obj_set_style_border_width(vol_slider, 1, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(vol_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(vol_slider, 5, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0xf0f0f0), LV_PART_KNOB);
-    lv_obj_set_style_radius(vol_slider, 5, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(vol_slider, 1, LV_PART_KNOB);
-    // NO knob shadow — see threshold slider note (shadows freeze this hardware).
 
     // Volume percentage label (right of slider)
     lv_obj_t *vol_value = lv_label_create(audio_card);
@@ -1053,8 +1003,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_remove_style_all(persist_div);
     lv_obj_set_size(persist_div, AED_ROW_W, 1);
     lv_obj_align(persist_div, LV_ALIGN_TOP_LEFT, AED_PAD_L, 52);
-    lv_obj_set_style_bg_color(persist_div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(persist_div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(persist_div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(persist_div, 90, 0);
 
     // Keep Sounding label + switch (row 3, y=56). This tier's bit of the alarm
     // extension blob, not a field of alarm_config_t, so it is flushed by
@@ -1068,7 +1018,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_align(persist_label, LV_ALIGN_TOP_LEFT, 16, 56);
 
     lv_obj_t *persist_sw = lv_switch_create(audio_card);
-    alarm_style_switch(persist_sw, 36, 16);
+    cygm_theme_switch(persist_sw);
+    lv_obj_set_size(persist_sw, 36, 16);
     lv_obj_align(persist_sw, LV_ALIGN_TOP_RIGHT, -12, 56);  // Row-centred with the label
     if (alarm_ext_settings.persistent_mask & persist_bit) lv_obj_add_state(persist_sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(persist_sw, opt_mask_switch_event_cb, LV_EVENT_VALUE_CHANGED,
@@ -1078,22 +1029,12 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_t *visual_card = lv_obj_create(screen_alarm_detail_editor);
     lv_obj_set_size(visual_card, AED_CARD_W, AED_VISUAL_H);
     lv_obj_align(visual_card, LV_ALIGN_TOP_MID, 0, AED_VISUAL_Y);
-    lv_obj_set_style_bg_color(visual_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(visual_card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(visual_card);
     lv_obj_set_style_radius(visual_card, 12, 0);
-    lv_obj_set_style_border_width(visual_card, 0, 0);
+    cygm_theme_card_edge(visual_card, lv_color_hex(COLOR_GREEN));
     lv_obj_set_style_pad_all(visual_card, 0, 0);
     lv_obj_clear_flag(visual_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(visual_card, LV_OBJ_FLAG_CLICKABLE);
-
-    // Left accent bar (green)
-    lv_obj_t *vis_accent = lv_obj_create(visual_card);
-    lv_obj_remove_style_all(vis_accent);
-    lv_obj_set_size(vis_accent, 3, 30);
-    lv_obj_align(vis_accent, LV_ALIGN_LEFT_MID, 5, 0);
-    lv_obj_set_style_bg_color(vis_accent, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(vis_accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(vis_accent, 2, 0);
 
     // Screen Flash label + switch
     lv_obj_t *screen_label = lv_label_create(visual_card);
@@ -1103,7 +1044,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_align(screen_label, LV_ALIGN_TOP_LEFT, 16, 3);
 
     lv_obj_t *vis_sw = lv_switch_create(visual_card);
-    alarm_style_switch(vis_sw, 36, 16);
+    cygm_theme_switch(vis_sw);
+    lv_obj_set_size(vis_sw, 36, 16);
     lv_obj_align(vis_sw, LV_ALIGN_TOP_RIGHT, -12, 3);
     if (alarm->visual_enabled) lv_obj_add_state(vis_sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(vis_sw, alarm_visual_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
@@ -1113,8 +1055,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_remove_style_all(vis_div);
     lv_obj_set_size(vis_div, AED_ROW_W, 1);
     lv_obj_align(vis_div, LV_ALIGN_TOP_LEFT, AED_PAD_L, 22);
-    lv_obj_set_style_bg_color(vis_div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(vis_div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(vis_div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(vis_div, 90, 0);
 
     // LED Flash label + switch
     lv_obj_t *led_label = lv_label_create(visual_card);
@@ -1124,7 +1066,8 @@ void create_alarm_detail_editor_screen(alarm_config_t *alarm) {
     lv_obj_align(led_label, LV_ALIGN_TOP_LEFT, 16, 25);
 
     lv_obj_t *led_sw = lv_switch_create(visual_card);
-    alarm_style_switch(led_sw, 36, 16);
+    cygm_theme_switch(led_sw);
+    lv_obj_set_size(led_sw, 36, 16);
     lv_obj_align(led_sw, LV_ALIGN_TOP_RIGHT, -12, 25);
     if (alarm->led_enabled) lv_obj_add_state(led_sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(led_sw, alarm_led_toggle_event_cb, LV_EVENT_VALUE_CHANGED, alarm);
@@ -1147,17 +1090,17 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
     tone_display_order_validate();
 
     // Dimmed backdrop (fullscreen, clickable to dismiss)
-    screen_tone_picker = lv_obj_create(lv_scr_act());
+    screen_tone_picker = lv_obj_create(cygm_theme_scr_act());
     if (screen_tone_picker == NULL) {
         ESP_LOGE(TAG, "Failed to create tone picker overlay!");
         return;
     }
     lv_obj_add_event_cb(screen_tone_picker, tone_picker_delete_cb, LV_EVENT_DELETE, NULL);
     lv_obj_remove_style_all(screen_tone_picker);
-    lv_obj_set_size(screen_tone_picker, 320, 240);
-    lv_obj_set_pos(screen_tone_picker, 0, 0);
     lv_obj_set_style_bg_color(screen_tone_picker, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(screen_tone_picker, LV_OPA_60, 0);
+    lv_obj_set_size(screen_tone_picker, 320, 240);
+    lv_obj_set_pos(screen_tone_picker, 0, 0);
     lv_obj_clear_flag(screen_tone_picker, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(screen_tone_picker, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(screen_tone_picker, tone_picker_close_event_cb, LV_EVENT_CLICKED, NULL);
@@ -1166,26 +1109,17 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
     lv_obj_t *card = lv_obj_create(screen_tone_picker);
     lv_obj_set_size(card, 296, 224);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // A ring plus a full-size glyph, so the control reads as a 34px target
-    // rather than a loose 9px mark; the local border and radius survive the
-    // shared ghost style.
+    // The close control must remain a 34px target.
     lv_obj_t *close_btn = lv_btn_create(card);
     lv_obj_set_size(close_btn, 34, 34);
     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
-    lv_obj_set_style_border_color(close_btn, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(close_btn, 1, 0);
-    lv_obj_set_style_border_opa(close_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(close_btn, 17, 0);
     lv_obj_update_layout(close_btn);   // resolve the size so the helper can size the touch box
-    cygm_apply_ghost_btn(close_btn);
+    cygm_theme_icon_btn(close_btn);
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
     lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_18, 0);
@@ -1208,6 +1142,7 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
     lv_label_set_text(cat_lbl, category);
     lv_obj_set_style_text_font(cat_lbl, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(cat_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
+    lv_obj_set_style_text_letter_space(cat_lbl, 2, 0);
     lv_obj_align(cat_lbl, LV_ALIGN_TOP_LEFT, 16, 32);
 
     // The picker serves two owners: a per-tier alarm_config_t, or the data-gap
@@ -1234,19 +1169,17 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
         lv_obj_t *tone_btn = lv_btn_create(card);
         lv_obj_set_size(tone_btn, TONE_ROW_W, TONE_ROW_H);
         lv_obj_align(tone_btn, LV_ALIGN_TOP_MID, 0, row_y);
+        cygm_theme_glass_card(tone_btn);
         lv_obj_set_style_radius(tone_btn, 10, 0);
-        lv_obj_set_style_border_width(tone_btn, 0, 0);
         lv_obj_set_style_shadow_width(tone_btn, 0, 0);
         lv_obj_set_style_pad_left(tone_btn, 12, 0);
         lv_obj_set_style_pad_right(tone_btn, 6, 0);
 
-        // Selected tone gets blue bg; others get dark
         if (selected_tone == tone_id) {
             lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-        } else {
-            lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_PRESSED), 0);
+            lv_obj_set_style_bg_opa(tone_btn, 120, 0);
         }
-        lv_obj_set_style_bg_color(tone_btn, lv_color_hex(COLOR_PRESSED), LV_STATE_PRESSED);
+        lv_obj_set_style_color_filter_opa(tone_btn, LV_OPA_TRANSP, LV_STATE_PRESSED);
 
         // Checkmark for selected item
         if (selected_tone == tone_id) {
@@ -1268,12 +1201,8 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
         lv_obj_t *play_btn = lv_btn_create(tone_btn);
         lv_obj_set_size(play_btn, 30, 28);
         lv_obj_align(play_btn, LV_ALIGN_RIGHT_MID, 0, 0);
-        lv_obj_set_style_bg_color(play_btn, lv_color_hex(COLOR_GREEN), 0);
-        lv_obj_set_style_bg_opa(play_btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(play_btn, lv_color_hex(0x1a9a4a), LV_STATE_PRESSED);
-        lv_obj_set_style_border_width(play_btn, 0, 0);
         lv_obj_update_layout(play_btn);
-        cygm_apply_ghost_btn(play_btn);
+        cygm_theme_icon_btn(play_btn);
 
         lv_obj_t *play_lbl = lv_label_create(play_btn);
         lv_label_set_text(play_lbl, LV_SYMBOL_PLAY);
@@ -1292,11 +1221,8 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
     lv_obj_t *prev_btn = lv_btn_create(card);
     lv_obj_set_size(prev_btn, 44, 26);
     lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 16, -4);
-    lv_obj_set_style_bg_color(prev_btn, lv_color_hex(COLOR_PRESSED), 0);
-    lv_obj_set_style_bg_opa(prev_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(prev_btn, 0, 0);
     lv_obj_update_layout(prev_btn);
-    cygm_apply_ghost_btn(prev_btn);
+    cygm_theme_icon_btn(prev_btn);
     lv_obj_t *prev_lbl = lv_label_create(prev_btn);
     lv_label_set_text(prev_lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_color(prev_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
@@ -1316,11 +1242,8 @@ void create_tone_picker_screen(alarm_config_t *alarm) {
     lv_obj_t *next_btn = lv_btn_create(card);
     lv_obj_set_size(next_btn, 44, 26);
     lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -16, -4);
-    lv_obj_set_style_bg_color(next_btn, lv_color_hex(COLOR_PRESSED), 0);
-    lv_obj_set_style_bg_opa(next_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(next_btn, 0, 0);
     lv_obj_update_layout(next_btn);
-    cygm_apply_ghost_btn(next_btn);
+    cygm_theme_icon_btn(next_btn);
     lv_obj_t *next_lbl = lv_label_create(next_btn);
     lv_label_set_text(next_lbl, LV_SYMBOL_RIGHT);
     lv_obj_set_style_text_color(next_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
@@ -1338,7 +1261,7 @@ static void alarm_preview_screen_delete_cb(lv_event_t *e) {
 void create_alarm_preview_screen(void) {
     // Idempotent — see alarm_settings_screen_delete_cb for why.
     if (screen_alarm_preview != NULL) {
-        if (screen_alarm_preview == lv_scr_act()) {
+        if (screen_alarm_preview == cygm_theme_scr_act()) {
             ESP_LOGW(TAG, "Alarm preview screen already loaded - reusing");
             return;
         }
@@ -1352,8 +1275,8 @@ void create_alarm_preview_screen(void) {
         ESP_LOGE(TAG, "Failed to create alarm preview screen - out of memory!");
         return;
     }
+    cygm_theme_bg_gradient(screen_alarm_preview);
     lv_obj_add_event_cb(screen_alarm_preview, alarm_preview_screen_delete_cb, LV_EVENT_DELETE, NULL);
-    lv_obj_add_style(screen_alarm_preview, &style_bg, 0);
     lv_obj_clear_flag(screen_alarm_preview, LV_OBJ_FLAG_SCROLLABLE);
 
     // Header
@@ -1364,6 +1287,13 @@ void create_alarm_preview_screen(void) {
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 10);
 
     alarm_std_back_btn(screen_alarm_preview, alarm_preview_back_event_cb, NULL);
+
+    lv_obj_t *header_rule = lv_obj_create(screen_alarm_preview);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
 
     // Preview cards
     create_alarm_preview_card(screen_alarm_preview, "High Alarm", 280,
@@ -1390,18 +1320,16 @@ void create_alarm_preview_screen(void) {
 void create_alarm_preview_card(lv_obj_t *parent, const char *title, int glucose_value,
                                alarm_config_t *alarm, lv_color_t color_low, lv_color_t color_high) {
     int child_count = lv_obj_get_child_cnt(parent);
-    int card_idx = (child_count > 2) ? child_count - 2 : 0;
+    int card_idx = (child_count > 3) ? child_count - 3 : 0;
 
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, 290, 42);
     // 48 + 47*idx ends the fourth card at 231, clear of the bottom bezel —
     // any taller and the screen becomes scrollable.
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 48 + card_idx * 47);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(card);
     lv_obj_set_style_radius(card, 10, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    cygm_theme_card_edge(card, color_low);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title (left)
@@ -1574,10 +1502,8 @@ static lv_obj_t *opt_row_create(int row, const char *title, const char *subtitle
     lv_obj_t *card = lv_obj_create(alarm_options_page_body);
     lv_obj_set_size(card, ALARM_OPT_ROW_W, ALARM_OPT_ROW_H);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, row * ALARM_OPT_ROW_STEP);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(card);
     lv_obj_set_style_radius(card, 10, 0);
-    lv_obj_set_style_border_width(card, 0, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1598,7 +1524,8 @@ static lv_obj_t *opt_row_create(int row, const char *title, const char *subtitle
 
 static void opt_row_add_switch(lv_obj_t *row, uint8_t *field) {
     lv_obj_t *sw = lv_switch_create(row);
-    alarm_style_switch(sw, 40, 20);
+    cygm_theme_switch(sw);
+    lv_obj_set_size(sw, 40, 20);
     lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -14, 0);
     if (*field) lv_obj_add_state(sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(sw, opt_switch_event_cb, LV_EVENT_VALUE_CHANGED, field);
@@ -1609,7 +1536,8 @@ static void opt_row_add_switch(lv_obj_t *row, uint8_t *field) {
 // the new default. The switch still shows the user-facing sense.
 static void opt_row_add_inverted_switch(lv_obj_t *row, uint8_t *field) {
     lv_obj_t *sw = lv_switch_create(row);
-    alarm_style_switch(sw, 40, 20);
+    cygm_theme_switch(sw);
+    lv_obj_set_size(sw, 40, 20);
     lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -14, 0);
     if (!*field) lv_obj_add_state(sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(sw, opt_inverted_switch_event_cb, LV_EVENT_VALUE_CHANGED, field);
@@ -1622,7 +1550,7 @@ static void opt_row_add_stepper(lv_obj_t *row, int idx) {
     lv_obj_set_size(minus, 30, 26);
     lv_obj_align(minus, LV_ALIGN_RIGHT_MID, -118, 0);
     lv_obj_update_layout(minus);
-    cygm_apply_ghost_btn(minus);
+    cygm_theme_icon_btn(minus);
     lv_obj_t *minus_lbl = lv_label_create(minus);
     lv_label_set_text(minus_lbl, LV_SYMBOL_MINUS);
     lv_obj_set_style_text_color(minus_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -1633,7 +1561,7 @@ static void opt_row_add_stepper(lv_obj_t *row, int idx) {
     lv_obj_set_size(plus, 30, 26);
     lv_obj_align(plus, LV_ALIGN_RIGHT_MID, -6, 0);
     lv_obj_update_layout(plus);
-    cygm_apply_ghost_btn(plus);
+    cygm_theme_icon_btn(plus);
     lv_obj_t *plus_lbl = lv_label_create(plus);
     lv_label_set_text(plus_lbl, LV_SYMBOL_PLUS);
     lv_obj_set_style_text_color(plus_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -1656,7 +1584,7 @@ static lv_obj_t *opt_row_add_action(lv_obj_t *row, const char *text, lv_event_cb
     lv_obj_set_size(btn, 96, 28);
     lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -10, 0);
     lv_obj_update_layout(btn);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
 
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
@@ -1830,7 +1758,7 @@ static void alarm_options_build_page(void) {
             lv_obj_set_size(btn, 96, 28);
             lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -10, 0);
             lv_obj_update_layout(btn);
-            cygm_apply_ghost_btn(btn);
+            cygm_theme_glass_btn(btn);
             lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_PRESSED, NULL);
             lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_PRESSING, NULL);
             lv_obj_add_event_cb(btn, auto_snooze_hold_event_cb, LV_EVENT_RELEASED, NULL);
@@ -1893,7 +1821,7 @@ static void create_alarm_options_screen(void) {
 
     // Idempotent — see alarm_settings_screen_delete_cb for why.
     if (screen_alarm_options != NULL) {
-        if (screen_alarm_options == lv_scr_act()) {
+        if (screen_alarm_options == cygm_theme_scr_act()) {
             ESP_LOGW(TAG, "Alert options screen already loaded - reusing");
             return;
         }
@@ -1907,18 +1835,25 @@ static void create_alarm_options_screen(void) {
         ESP_LOGE(TAG, "Failed to create alarm options screen - out of memory!");
         return;
     }
+    cygm_theme_bg_gradient(screen_alarm_options);
     lv_obj_add_event_cb(screen_alarm_options, alarm_options_screen_delete_cb, LV_EVENT_DELETE, NULL);
-    lv_obj_add_style(screen_alarm_options, &style_bg, 0);
     lv_obj_clear_flag(screen_alarm_options, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *header = lv_label_create(screen_alarm_options);
     // Keep this title short: a longer one runs into the top-right page caption.
     lv_label_set_text(header, "Alerts");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 8);
 
     alarm_std_back_btn(screen_alarm_options, alarm_options_back_event_cb, NULL);
+
+    lv_obj_t *header_rule = lv_obj_create(screen_alarm_options);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
 
     lv_obj_t *cat_lbl = lv_label_create(screen_alarm_options);
     lv_label_set_text(cat_lbl, alarm_options_page_title(alarm_options_page));
@@ -1939,7 +1874,7 @@ static void create_alarm_options_screen(void) {
     lv_obj_set_size(prev_btn, 44, 28);
     lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 14, -6);
     lv_obj_update_layout(prev_btn);
-    cygm_apply_ghost_btn(prev_btn);
+    cygm_theme_icon_btn(prev_btn);
     lv_obj_t *prev_lbl = lv_label_create(prev_btn);
     lv_label_set_text(prev_lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_color(prev_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -1958,7 +1893,7 @@ static void create_alarm_options_screen(void) {
     lv_obj_set_size(next_btn, 44, 28);
     lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -14, -6);
     lv_obj_update_layout(next_btn);
-    cygm_apply_ghost_btn(next_btn);
+    cygm_theme_icon_btn(next_btn);
     lv_obj_t *next_lbl = lv_label_create(next_btn);
     lv_label_set_text(next_lbl, LV_SYMBOL_RIGHT);
     lv_obj_set_style_text_color(next_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -2016,7 +1951,7 @@ static void alarm_options_close(bool return_to_settings) {
         }
         create_alarm_settings_screen();
         if (screen_alarm_settings != NULL) {
-            lv_scr_load(screen_alarm_settings);
+            cygm_theme_scr_load(screen_alarm_settings, screen_alarm_options, &screen_alarm_options);
         }
     }
 
@@ -2077,7 +2012,7 @@ static void time_picker_add_step_btn(lv_obj_t *parent, const char *symbol,
     lv_obj_set_size(btn, TIME_PICKER_BTN_W, TIME_PICKER_BTN_H);
     lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, x_offset, y_offset);
     lv_obj_update_layout(btn);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_icon_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, symbol);
     lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -2094,7 +2029,7 @@ static void open_time_picker(const char *title, uint8_t *hour_field, uint8_t *mi
     time_picker_min_field = min_field;
     time_picker_row_lbl = row_lbl;
 
-    time_picker_overlay = lv_obj_create(lv_scr_act());
+    time_picker_overlay = lv_obj_create(cygm_theme_scr_act());
     if (time_picker_overlay == NULL) {
         ESP_LOGE(TAG, "Failed to create time picker overlay!");
         time_picker_hour_field = NULL;
@@ -2115,11 +2050,8 @@ static void open_time_picker(const char *title, uint8_t *hour_field, uint8_t *mi
     lv_obj_t *card = lv_obj_create(time_picker_overlay);
     lv_obj_set_size(card, 262, 214);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -2154,11 +2086,11 @@ static void open_time_picker(const char *title, uint8_t *hour_field, uint8_t *mi
     lv_obj_set_size(done_btn, CYGM_BTN_W_TEXT, 32);
     lv_obj_align(done_btn, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_obj_update_layout(done_btn);
-    cygm_apply_ghost_btn(done_btn);
+    cygm_theme_primary_btn(done_btn);
     lv_obj_t *done_lbl = lv_label_create(done_btn);
     lv_label_set_text(done_lbl, "Done");
     lv_obj_set_style_text_font(done_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(done_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_set_style_text_color(done_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(done_lbl);
     lv_obj_add_event_cb(done_btn, time_picker_done_event_cb, LV_EVENT_CLICKED, NULL);
 
@@ -2233,12 +2165,7 @@ static void alarm_options_open_event_cb(lv_event_t *e) {
         return;
     }
 
-    lv_scr_load(screen_alarm_options);
-
-    if (screen_alarm_settings != NULL) {
-        lv_obj_del(screen_alarm_settings);
-        screen_alarm_settings = NULL;
-    }
+    cygm_theme_scr_load(screen_alarm_options, screen_alarm_settings, &screen_alarm_settings);
 }
 
 static void alarm_options_back_event_cb(lv_event_t *e) {
@@ -2357,12 +2284,7 @@ static void alarm_card_click_event_cb(lv_event_t *e) {
     create_alarm_detail_editor_screen(alarm);
 
     if (screen_alarm_detail_editor != NULL) {
-        lv_scr_load(screen_alarm_detail_editor);
-
-        if (screen_alarm_settings != NULL) {
-            lv_obj_del(screen_alarm_settings);
-            screen_alarm_settings = NULL;
-        }
+        cygm_theme_scr_load(screen_alarm_detail_editor, screen_alarm_settings, &screen_alarm_settings);
     } else {
         ESP_LOGE(TAG, "Failed to create detail editor screen!");
     }
@@ -2454,12 +2376,7 @@ static void alarm_settings_back_event_cb(lv_event_t *e) {
 
         // Recreate menu (was deleted when entering alarms)
         create_menu_screen();
-        lv_scr_load(screen_menu);
-
-        if (screen_alarm_settings != NULL) {
-            lv_obj_del(screen_alarm_settings);
-            screen_alarm_settings = NULL;
-        }
+        cygm_theme_scr_load(screen_menu, screen_alarm_settings, &screen_alarm_settings);
 
         editing_alarm = NULL;
         home_screen_active = false;
@@ -2567,7 +2484,7 @@ static void tone_select_btn_event_cb(lv_event_t *e) {
         create_alarm_settings_screen();
 
         if (screen_alarm_settings != NULL) {
-            lv_scr_load(screen_alarm_settings);
+            cygm_theme_scr_load(screen_alarm_settings, NULL, NULL);
         }
     }
 }
@@ -2597,12 +2514,8 @@ static void alarm_detail_editor_back_event_cb(lv_event_t *e) {
         create_alarm_settings_screen();
 
         if (screen_alarm_settings != NULL) {
-            lv_scr_load(screen_alarm_settings);
-        }
-
-        if (screen_alarm_detail_editor != NULL) {
-            lv_obj_del(screen_alarm_detail_editor);
-            screen_alarm_detail_editor = NULL;
+            cygm_theme_scr_load(screen_alarm_settings, screen_alarm_detail_editor,
+                                &screen_alarm_detail_editor);
         }
 
         editing_alarm = NULL;
@@ -2628,12 +2541,7 @@ static void alarm_tone_btn_event_cb(lv_event_t *e) {
 static void alarm_preview_back_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         ESP_LOGI(TAG, "Alarm preview back");
-        lv_scr_load(screen_alarm_settings);
-
-        if (screen_alarm_preview != NULL) {
-            lv_obj_del(screen_alarm_preview);
-            screen_alarm_preview = NULL;
-        }
+        cygm_theme_scr_load(screen_alarm_settings, screen_alarm_preview, &screen_alarm_preview);
     }
 }
 
@@ -2643,7 +2551,7 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
     // the raw flag — the hold self-expires.
     if (cygm_ui_hold_active()) return;
 
-    lv_obj_t *active = lv_scr_act();
+    lv_obj_t *active = cygm_theme_scr_act();
     bool alarm_ui_active =
         (active == screen_alarm_settings) ||
         (active == screen_alarm_detail_editor) ||
@@ -2665,7 +2573,7 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
         return;
     }
 
-    // A takeover is parented to lv_scr_act(), so deleting these screens under a
+    // A takeover is parented to cygm_theme_scr_act(), so deleting these screens under a
     // live alert would free the overlay out from under its pulse timer. The
     // timer keeps ticking; teardown resumes once stop_visual_alarm() clears it.
     if (visual_alarm_active) return;
@@ -2688,26 +2596,38 @@ static void alarm_inactivity_timer_cb(lv_timer_t *timer) {
         tone_picker_ext_ref = NULL;
     }
 
-    // Load home FIRST (never delete active screen before lv_scr_load)
-    lv_scr_load(screen_home);
+    lv_obj_t **old_slot = NULL;
+    if (active == screen_alarm_preview) old_slot = &screen_alarm_preview;
+    else if (active == screen_alarm_detail_editor) old_slot = &screen_alarm_detail_editor;
+    else if (active == screen_alarm_settings) old_slot = &screen_alarm_settings;
+    else if (active == screen_alarm_options) old_slot = &screen_alarm_options;
 
-    // Persists the alarm extension blob and drops the options screen; a no-op
-    // when the user never opened it.
-    alarm_options_close(false);
+    if (screen_alarm_options != active) {
+        alarm_options_close(false);
+    } else {
+        time_picker_close();
+        alarm_ext_flush();
+        alarm_options_clear_refs();
+        alarm_options_page_body = NULL;
+        alarm_options_page_header = NULL;
+        alarm_options_page_counter = NULL;
+        alarm_options_page = 0;
+    }
 
-    // Now safe to clean up alarm screens
-    if (screen_alarm_preview != NULL) {
+    if (screen_alarm_preview != NULL && screen_alarm_preview != active) {
         lv_obj_del(screen_alarm_preview);
         screen_alarm_preview = NULL;
     }
-    if (screen_alarm_detail_editor != NULL) {
+    if (screen_alarm_detail_editor != NULL && screen_alarm_detail_editor != active) {
         lv_obj_del(screen_alarm_detail_editor);
         screen_alarm_detail_editor = NULL;
     }
-    if (screen_alarm_settings != NULL) {
+    if (screen_alarm_settings != NULL && screen_alarm_settings != active) {
         lv_obj_del(screen_alarm_settings);
         screen_alarm_settings = NULL;
     }
+
+    cygm_theme_scr_load(screen_home, old_slot != NULL ? active : NULL, old_slot);
 
     editing_alarm = NULL;
     home_screen_active = true;

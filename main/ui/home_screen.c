@@ -11,6 +11,7 @@
 #include "features/time_system.h"
 #include "hardware/display.h"
 #include "hardware/battery.h"
+#include "hardware/buzzer.h"
 #include "hardware/screenshot.h"
 #include "nvs_config.h"
 #include "whats_new.h"
@@ -18,6 +19,7 @@
 #include "ui/wifi_screens.h"
 #include "ui/cgm_screens.h"
 #include "ui/time_weather_screens.h"
+#include "ui/cygm_theme.h"
 #include "dexcom_api.h"
 #include "libre_api.h"
 #include "sd_logger.h"
@@ -55,8 +57,8 @@ static lv_obj_t *label_demo_badge = NULL;       // Marks a trend arrow driven by
 #define CANVAS_BUF_TC(w, h)   CANVAS_ELEMS(LV_CANVAS_BUF_SIZE_TRUE_COLOR(w, h))
 #define CANVAS_BUF_TCA(w, h)  CANVAS_ELEMS(LV_CANVAS_BUF_SIZE_TRUE_COLOR_ALPHA(w, h))
 
-static lv_color_t canvas_buf_trend[CANVAS_BUF_TC(HOME_TREND_SIZE_EXPANDED,
-                                                 HOME_TREND_SIZE_EXPANDED)];
+static lv_color_t canvas_buf_trend[CANVAS_BUF_TCA(HOME_TREND_SIZE_EXPANDED,
+                                                  HOME_TREND_SIZE_EXPANDED)];
 
 #define HOME_NIGHT_RED          0x8B0000  // Dim red: readable in the dark, few lit pixels
 #define HOME_STALE_MIN          12        // Two missed 5-min fetch cycles
@@ -153,9 +155,9 @@ static void home_reset_change_caches(void) {
     night_prev_hidden_mask = 0;
 }
 
-// Pressed feedback for the bare clickable labels and canvases used here instead
-// of buttons: the shared ghost border would box in the glucose digits and the
-// trend arrow, so only its pressed half and the touch-target growth apply.
+// Touch-target growth for the bare clickable labels and canvases used here
+// instead of buttons. They take no pressed style: the owner does not want a
+// tap on them to highlight anything.
 // ext_cap bounds that growth — the left card packs clickable labels close
 // enough that an uncapped touch box would swallow a neighbour's taps.
 #define HOME_EXT_UNCAPPED CYGM_HIT_TARGET_MIN
@@ -167,8 +169,6 @@ static void home_apply_tap_feedback(lv_obj_t *obj, lv_coord_t ext_cap) {
     if (obj == NULL) return;
 
     lv_obj_update_layout(obj);  // ext_click_area is computed from the drawn size
-    lv_obj_add_style(obj, &style_btn_pressed, LV_STATE_PRESSED);
-    lv_obj_set_style_radius(obj, CYGM_BTN_RADIUS, 0);
 
     lv_coord_t ext = CYGM_BTN_EXT_CLICK;
     lv_coord_t w = lv_obj_get_width(obj);
@@ -301,7 +301,7 @@ void show_nodata_overlay(void) {
     nodata_overlay_shown_this_cycle = true;
 
     // Dimmed backdrop
-    nodata_overlay = lv_obj_create(lv_scr_act());
+    nodata_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_remove_style_all(nodata_overlay);
     lv_obj_set_size(nodata_overlay, 320, 240);
     lv_obj_set_style_bg_color(nodata_overlay, lv_color_black(), 0);
@@ -313,12 +313,9 @@ void show_nodata_overlay(void) {
     lv_obj_t *card = lv_obj_create(nodata_overlay);
     lv_obj_set_size(card, 280, 170);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ORANGE));
     lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
@@ -334,8 +331,8 @@ void show_nodata_overlay(void) {
     lv_obj_t *div = lv_obj_create(card);
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 250, 1);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 42);
 
     // Question
@@ -349,12 +346,10 @@ void show_nodata_overlay(void) {
     lv_obj_t *btn_yes = lv_btn_create(card);
     lv_obj_set_size(btn_yes, 110, CYGM_BTN_H);
     lv_obj_align(btn_yes, LV_ALIGN_BOTTOM_LEFT, 20, -14);
-    lv_obj_set_style_bg_color(btn_yes, lv_color_hex(COLOR_PRESSED_GREEN), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(btn_yes, lv_color_hex(COLOR_GREEN), 0);
-    cygm_apply_ghost_btn(btn_yes);
+    cygm_theme_primary_btn(btn_yes);
     lv_obj_t *lbl_yes = lv_label_create(btn_yes);
     lv_label_set_text(lbl_yes, "Yes");
-    lv_obj_set_style_text_color(lbl_yes, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_text_color(lbl_yes, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(lbl_yes);
     lv_obj_add_event_cb(btn_yes, nodata_yes_cb, LV_EVENT_CLICKED, NULL);
 
@@ -362,9 +357,7 @@ void show_nodata_overlay(void) {
     lv_obj_t *btn_no = lv_btn_create(card);
     lv_obj_set_size(btn_no, 110, CYGM_BTN_H);
     lv_obj_align(btn_no, LV_ALIGN_BOTTOM_RIGHT, -20, -14);
-    lv_obj_set_style_bg_color(btn_no, lv_color_hex(COLOR_PRESSED_RED), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(btn_no, lv_color_hex(COLOR_RED), 0);
-    cygm_apply_ghost_btn(btn_no);
+    cygm_theme_glass_btn(btn_no);
     lv_obj_t *lbl_no = lv_label_create(btn_no);
     lv_label_set_text(lbl_no, "No");
     lv_obj_set_style_text_color(lbl_no, lv_color_hex(COLOR_RED), 0);
@@ -426,7 +419,7 @@ static void wifi_disc_settings_cb(lv_event_t *e) {
         screen_wifi_list = NULL;
     }
     create_wifi_list_screen();
-    lv_scr_load(screen_wifi_list);
+    cygm_theme_scr_load(screen_wifi_list, NULL, NULL);
 
     // Start scan
     show_wifi_scanning_overlay();
@@ -438,7 +431,7 @@ void show_wifi_disconnected_overlay(void) {
     if (wifi_disc_overlay != NULL || !home_screen_active) return;
 
     // Dimmed backdrop
-    wifi_disc_overlay = lv_obj_create(lv_scr_act());
+    wifi_disc_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_remove_style_all(wifi_disc_overlay);
     lv_obj_set_size(wifi_disc_overlay, 320, 240);
     lv_obj_set_style_bg_color(wifi_disc_overlay, lv_color_black(), 0);
@@ -450,12 +443,9 @@ void show_wifi_disconnected_overlay(void) {
     lv_obj_t *card = lv_obj_create(wifi_disc_overlay);
     lv_obj_set_size(card, 260, 155);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ORANGE), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ORANGE));
     lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
@@ -485,19 +475,18 @@ void show_wifi_disconnected_overlay(void) {
     lv_obj_t *div = lv_obj_create(card);
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 230, 1);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 88);
 
     // "WiFi Settings" button (ghost-blue, primary action)
     lv_obj_t *btn_settings = lv_btn_create(card);
     lv_obj_set_size(btn_settings, 115, 34);
     lv_obj_align(btn_settings, LV_ALIGN_BOTTOM_LEFT, 15, -12);
-    lv_obj_set_style_bg_color(btn_settings, lv_color_hex(COLOR_PRESSED_BLUE), LV_STATE_PRESSED);
-    cygm_apply_ghost_btn(btn_settings);
+    cygm_theme_primary_btn(btn_settings);
     lv_obj_t *lbl_settings = lv_label_create(btn_settings);
     lv_label_set_text(lbl_settings, LV_SYMBOL_SETTINGS " Settings");
-    lv_obj_set_style_text_color(lbl_settings, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl_settings, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(lbl_settings);
     lv_obj_add_event_cb(btn_settings, wifi_disc_settings_cb, LV_EVENT_CLICKED, NULL);
 
@@ -505,8 +494,7 @@ void show_wifi_disconnected_overlay(void) {
     lv_obj_t *btn_dismiss = lv_btn_create(card);
     lv_obj_set_size(btn_dismiss, 100, 34);
     lv_obj_align(btn_dismiss, LV_ALIGN_BOTTOM_RIGHT, -15, -12);
-    lv_obj_set_style_border_color(btn_dismiss, lv_color_hex(COLOR_TEXT_DIM), 0);
-    cygm_apply_ghost_btn(btn_dismiss);
+    cygm_theme_glass_btn(btn_dismiss);
     lv_obj_t *lbl_dismiss = lv_label_create(btn_dismiss);
     lv_label_set_text(lbl_dismiss, "Dismiss");
     lv_obj_set_style_text_color(lbl_dismiss, lv_color_hex(COLOR_TEXT_DIM), 0);
@@ -559,7 +547,7 @@ void show_login_success_overlay_ui(void) {
     if (login_success_overlay != NULL) return;
 
     // Dimmed backdrop
-    login_success_overlay = lv_obj_create(lv_scr_act());
+    login_success_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_remove_style_all(login_success_overlay);
     lv_obj_set_size(login_success_overlay, 320, 240);
     lv_obj_set_style_bg_color(login_success_overlay, lv_color_black(), 0);
@@ -573,12 +561,9 @@ void show_login_success_overlay_ui(void) {
     lv_obj_t *card = lv_obj_create(login_success_overlay);
     lv_obj_set_size(card, 250, 140);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_GREEN));
     lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
@@ -641,7 +626,7 @@ static void login_error_dismiss_cb(lv_event_t *e) {
 void show_login_error_overlay_ui(const char *reason) {
     if (login_error_overlay != NULL) return;
 
-    login_error_overlay = lv_obj_create(lv_scr_act());
+    login_error_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_remove_style_all(login_error_overlay);
     lv_obj_set_size(login_error_overlay, 320, 240);
     lv_obj_set_style_bg_color(login_error_overlay, lv_color_black(), 0);
@@ -654,12 +639,9 @@ void show_login_error_overlay_ui(const char *reason) {
     lv_obj_t *card = lv_obj_create(login_error_overlay);
     lv_obj_set_size(card, 280, 170);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_RED));
     lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
@@ -729,11 +711,11 @@ void show_disclaimer_overlay(void) {
     if (disclaimer_overlay != NULL) return;
 
     // Full-screen dark backdrop (no dismiss on tap — must press button)
-    disclaimer_overlay = lv_obj_create(lv_scr_act());
+    disclaimer_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_remove_style_all(disclaimer_overlay);
     lv_obj_set_size(disclaimer_overlay, 320, 240);
     lv_obj_set_style_bg_color(disclaimer_overlay, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(disclaimer_overlay, LV_OPA_80, 0);
+    lv_obj_set_style_bg_opa(disclaimer_overlay, LV_OPA_60, 0);
     lv_obj_clear_flag(disclaimer_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(disclaimer_overlay);
 
@@ -741,13 +723,9 @@ void show_disclaimer_overlay(void) {
     lv_obj_t *card = lv_obj_create(disclaimer_overlay);
     lv_obj_set_size(card, 300, 220);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -769,8 +747,8 @@ void show_disclaimer_overlay(void) {
     lv_obj_t *div = lv_obj_create(card);
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 270, 1);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 54);
 
     // Legal text
@@ -792,20 +770,25 @@ void show_disclaimer_overlay(void) {
     lv_checkbox_set_text(disclaimer_checkbox, "Don't show again");
     lv_obj_set_style_text_font(disclaimer_checkbox, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(disclaimer_checkbox, lv_color_hex(COLOR_TEXT_DIM), 0);
-    lv_obj_set_style_border_color(disclaimer_checkbox, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(disclaimer_checkbox, lv_color_hex(CYGM_BTN_BG), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(disclaimer_checkbox, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_border_color(disclaimer_checkbox, lv_color_hex(CYGM_EDGE), LV_PART_INDICATOR);
+    lv_obj_set_style_border_opa(disclaimer_checkbox, CYGM_EDGE_OPA, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(disclaimer_checkbox, 1, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(disclaimer_checkbox, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_width(disclaimer_checkbox, 0, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(disclaimer_checkbox, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(disclaimer_checkbox, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_align(disclaimer_checkbox, LV_ALIGN_BOTTOM_LEFT, 16, -48);
 
     // "I Agree" button (ghost-green)
     lv_obj_t *btn_agree = lv_btn_create(card);
     lv_obj_set_size(btn_agree, 268, CYGM_BTN_H);
     lv_obj_align(btn_agree, LV_ALIGN_BOTTOM_MID, 0, -8);
-    lv_obj_set_style_bg_color(btn_agree, lv_color_hex(COLOR_PRESSED_GREEN), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(btn_agree, lv_color_hex(COLOR_GREEN), 0);
-    cygm_apply_ghost_btn(btn_agree);
+    cygm_theme_primary_btn(btn_agree);
     lv_obj_t *lbl_agree = lv_label_create(btn_agree);
     lv_label_set_text(lbl_agree, LV_SYMBOL_OK "  I Understand & Agree");
-    lv_obj_set_style_text_color(lbl_agree, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_text_color(lbl_agree, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(lbl_agree);
     lv_obj_add_event_cb(btn_agree, disclaimer_agree_cb, LV_EVENT_CLICKED, NULL);
 
@@ -832,11 +815,11 @@ void show_welcome_overlay(void) {
     if (welcome_overlay != NULL) return;
 
     // Full-screen dark backdrop (dismiss only via button)
-    welcome_overlay = lv_obj_create(lv_scr_act());
+    welcome_overlay = lv_obj_create(cygm_theme_scr_act());
     lv_obj_remove_style_all(welcome_overlay);
     lv_obj_set_size(welcome_overlay, 320, 240);
     lv_obj_set_style_bg_color(welcome_overlay, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(welcome_overlay, LV_OPA_80, 0);
+    lv_obj_set_style_bg_opa(welcome_overlay, LV_OPA_60, 0);
     lv_obj_clear_flag(welcome_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(welcome_overlay);
     // Parented to whatever screen is active, which the menu deletes on the way
@@ -847,13 +830,9 @@ void show_welcome_overlay(void) {
     lv_obj_t *card = lv_obj_create(welcome_overlay);
     lv_obj_set_size(card, 300, 232);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
-    lv_obj_set_style_border_opa(card, LV_OPA_50, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);  // NEVER use shadows — causes device freeze
+    cygm_theme_panel(card);
+    lv_obj_set_style_radius(card, 12, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -875,8 +854,8 @@ void show_welcome_overlay(void) {
     lv_obj_t *div = lv_obj_create(card);
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 270, 1);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 48);
 
     // Instructions
@@ -899,19 +878,17 @@ void show_welcome_overlay(void) {
     lv_qrcode_update(qr, guide_url, strlen(guide_url));
     lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 100);
     lv_obj_set_style_border_color(qr, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_border_width(qr, 2, 0);
+    lv_obj_set_style_border_width(qr, 1, 0);
 
     // "Get Started" button — ghost-green
     lv_obj_t *btn = lv_btn_create(card);
     lv_obj_set_size(btn, 268, 28);
     lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -6);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(COLOR_PRESSED_GREEN), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(btn, lv_color_hex(COLOR_GREEN), 0);
     lv_obj_update_layout(btn);  // 28px tall — the touch box grows from the drawn size
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_primary_btn(btn);
     lv_obj_t *btn_lbl = lv_label_create(btn);
     lv_label_set_text(btn_lbl, LV_SYMBOL_OK "  Get Started");
-    lv_obj_set_style_text_color(btn_lbl, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_text_color(btn_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(btn_lbl);
     lv_obj_add_event_cb(btn, welcome_close_cb, LV_EVENT_CLICKED, NULL);
 
@@ -1080,11 +1057,14 @@ void home_location_scroll_sync(void) {
     loc_scroll_timer = lv_timer_create(loc_scroll_tick_cb, LOC_SCROLL_TICK_MS, NULL);
 }
 
-// The glow pass bakes the canvas fill colour into its pixels, so the fill must
-// match what is behind it: card navy by day, pure black on the night face
-// (where the navy reads as a dirty box around the arrow).
+// The night face requires an opaque black arrow canvas; the glass face requires
+// the chroma key so the card remains visible through untouched pixels.
 static lv_color_t home_trend_bg(void) {
-    return lv_color_hex(night_face_active ? 0x000000 : COLOR_CARD_BG);
+    return lv_color_black();
+}
+
+static lv_opa_t home_trend_bg_opa(void) {
+    return night_face_active ? LV_OPA_COVER : LV_OPA_TRANSP;
 }
 
 bool home_night_face_is_active(void) {
@@ -1138,6 +1118,49 @@ static unsigned home_night_hide_set(lv_obj_t **objs) {
     return n;
 }
 
+static void draw_mini_weather_icon(lv_obj_t *canvas, int weather_code);
+
+// Clears the alpha of every pixel inside a circle; a drawn shape cannot erase a
+// TRUE_COLOR_ALPHA canvas, so the crescent's bite is punched out this way.
+static void home_canvas_punch_circle(lv_obj_t *canvas, int cx, int cy, int r) {
+    lv_img_dsc_t *img = lv_canvas_get_img(canvas);
+    int w = img->header.w;
+    int h = img->header.h;
+    for (int y = cy - r; y <= cy + r; y++) {
+        if (y < 0 || y >= h) continue;
+        for (int x = cx - r; x <= cx + r; x++) {
+            if (x < 0 || x >= w) continue;
+            int dx = x - cx, dy = y - cy;
+            if (dx * dx + dy * dy <= r * r) {
+                lv_img_buf_set_px_alpha(img, x, y, LV_OPA_TRANSP);
+            }
+        }
+    }
+    lv_obj_invalidate(canvas);
+}
+
+// The night face's moon: the 20x20 top-bar weather canvas, redrawn as a crescent.
+static void home_draw_night_moon(lv_obj_t *canvas) {
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
+    lv_draw_rect_dsc_t r;
+    lv_draw_rect_dsc_init(&r);
+    r.bg_color = lv_color_hex(0xE8ECF5);
+    r.bg_opa = LV_OPA_COVER;
+    r.radius = LV_RADIUS_CIRCLE;
+    lv_canvas_draw_rect(canvas, 3, 3, 14, 14, &r);
+    home_canvas_punch_circle(canvas, 14, 7, 6);
+}
+
+// Reached from the night face's moon and from the big weather icon whenever it
+// is showing a moon (clear or partly cloudy after dark). By day the same tap is
+// nothing, so the weather card keeps its other gestures.
+static void home_night_moon_tap_cb(lv_event_t *e) {
+    (void)e;
+    bool weather_moon = is_night_time() && current_weather_code <= 1;
+    if (!night_face_active && !weather_moon) return;
+    buzzer_play_lullaby();
+}
+
 static void home_enter_night_face(void) {
     // The night face IS the expanded card: the big glucose value alone, with
     // the time small in the top bar, so a sleepy reader can never mistake the
@@ -1145,6 +1168,12 @@ static void home_enter_night_face(void) {
     // that the hide loop below then puts back to sleep.
     night_prev_expanded = cgm_expanded;
     if (!cgm_expanded) expand_cgm_card();
+
+    if (screen_home != NULL) {
+        lv_obj_set_style_bg_color(screen_home, lv_color_black(), 0);
+        lv_obj_set_style_bg_grad_color(screen_home, lv_color_black(), 0);
+        lv_obj_set_style_bg_grad_dir(screen_home, LV_GRAD_DIR_NONE, 0);
+    }
 
     lv_obj_t *objs[HOME_NIGHT_HIDE_MAX];
     unsigned n = home_night_hide_set(objs);
@@ -1156,9 +1185,17 @@ static void home_enter_night_face(void) {
         home_set_hidden(objs[i], true);
     }
 
-    // The card dissolves into the black background the screen style already
-    // paints. The left card stays hidden: expand hid it, and the point of this
-    // face is that no big clock shows.
+    // The top-bar weather canvas comes back as a dim moon. It is clickable only
+    // here: by day a tap on it must keep reaching the card underneath.
+    if (expanded_weather_icon != NULL) {
+        home_draw_night_moon(expanded_weather_icon);
+        lv_obj_set_style_opa(expanded_weather_icon, LV_OPA_60, 0);
+        lv_obj_add_flag(expanded_weather_icon, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ext_click_area(expanded_weather_icon, 10);
+        home_set_hidden(expanded_weather_icon, false);
+    }
+
+    // The night face requires the expanded card to dissolve into pure black.
     if (right_card != NULL) {
         lv_obj_set_style_bg_opa(right_card, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_opa(right_card, LV_OPA_TRANSP, 0);
@@ -1178,7 +1215,7 @@ static void home_enter_night_face(void) {
 
     // Repaint on a black canvas — see home_trend_bg().
     if (trend_canvas != NULL) {
-        lv_canvas_fill_bg(trend_canvas, lv_color_hex(0x000000), LV_OPA_0);
+        lv_canvas_fill_bg(trend_canvas, home_trend_bg(), home_trend_bg_opa());
         draw_trend_arrow_sized(trend_canvas, current_trend, HOME_TREND_SIZE_EXPANDED);
     }
 
@@ -1194,19 +1231,29 @@ static void home_exit_night_face(void) {
         home_set_hidden(objs[i], (night_prev_hidden_mask & (1u << i)) != 0);
     }
 
+    if (expanded_weather_icon != NULL) {
+        lv_obj_clear_flag(expanded_weather_icon, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ext_click_area(expanded_weather_icon, 0);
+        lv_obj_set_style_opa(expanded_weather_icon, LV_OPA_COVER, 0);
+        draw_mini_weather_icon(expanded_weather_icon, current_weather_code);
+    }
+
     // Give back the layout the user had before night fell.
     if (!night_prev_expanded && cgm_expanded) collapse_cgm_card();
 
-    // Dropping the local override hands the card back to style_card.
+    // Removing opacity overrides falls back to the opaque default theme, so the
+    // complete glass style must be restored before the zone border is repainted.
     if (right_card != NULL) {
-        lv_obj_remove_local_style_prop(right_card, LV_STYLE_BG_OPA, 0);
-        lv_obj_remove_local_style_prop(right_card, LV_STYLE_BORDER_OPA, 0);
+        cygm_theme_glass_card(right_card);
     }
     if (trend_canvas != NULL) {
         lv_obj_remove_local_style_prop(trend_canvas, LV_STYLE_IMG_OPA, 0);
     }
     if (brightness_btn_ref != NULL) {
         lv_obj_remove_local_style_prop(brightness_btn_ref, LV_STYLE_OPA, 0);
+    }
+    if (screen_home != NULL) {
+        cygm_theme_bg_gradient(screen_home);
     }
 
     home_set_text_color(label_clock_h, COLOR_TEXT_WHITE);
@@ -1421,6 +1468,7 @@ static void sd_format_poll(void) {
     // pinned to the left edge reads as though its partner failed to draw.
     if (sd_format_close_lbl != NULL) lv_label_set_text(sd_format_close_lbl, "OK");
     if (sd_format_close_btn != NULL) {
+        cygm_theme_primary_btn(sd_format_close_btn);
         lv_obj_align(sd_format_close_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
     }
 }
@@ -1441,12 +1489,8 @@ static void sd_format_show(sd_card_state_t st) {
     lv_obj_t *panel = lv_obj_create(sd_format_overlay);
     lv_obj_set_size(panel, 292, 190);
     lv_obj_center(panel);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    cygm_theme_panel(panel);
     lv_obj_set_style_radius(panel, 12, 0);
-    lv_obj_set_style_border_width(panel, 1, 0);
-    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
     lv_obj_set_style_pad_all(panel, 0, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1504,7 +1548,11 @@ static void sd_format_show(sd_card_state_t st) {
     sd_format_close_btn = not_now;
     lv_obj_set_size(not_now, 110, CYGM_BTN_H);
     lv_obj_align(not_now, LV_ALIGN_BOTTOM_LEFT, 12, -10);
-    cygm_apply_ghost_btn(not_now);
+    if (formattable) {
+        cygm_theme_glass_btn(not_now);
+    } else {
+        cygm_theme_primary_btn(not_now);
+    }
     lv_obj_add_event_cb(not_now, sd_format_close_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *nl = lv_label_create(not_now);
     sd_format_close_lbl = nl;
@@ -1524,9 +1572,7 @@ static void sd_format_show(sd_card_state_t st) {
     sd_format_go_btn = lv_btn_create(panel);
     lv_obj_set_size(sd_format_go_btn, 110, CYGM_BTN_H);
     lv_obj_align(sd_format_go_btn, LV_ALIGN_BOTTOM_RIGHT, -12, -10);
-    cygm_apply_ghost_btn(sd_format_go_btn);
-    lv_obj_set_style_bg_color(sd_format_go_btn, lv_color_hex(COLOR_RED), 0);
-    lv_obj_set_style_bg_opa(sd_format_go_btn, LV_OPA_COVER, 0);
+    cygm_theme_primary_btn(sd_format_go_btn);
     lv_obj_add_event_cb(sd_format_go_btn, sd_format_go_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *gl = lv_label_create(sd_format_go_btn);
     lv_label_set_text(gl, "Format");
@@ -1592,12 +1638,9 @@ static void whats_new_show(void) {
     lv_obj_t *panel = lv_obj_create(whats_new_overlay);
     lv_obj_set_size(panel, 292, 206);
     lv_obj_center(panel);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    cygm_theme_panel(panel);
     lv_obj_set_style_radius(panel, 12, 0);
-    lv_obj_set_style_border_width(panel, 1, 0);
-    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
+    lv_obj_set_style_shadow_width(panel, 0, 0);
     lv_obj_set_style_pad_all(panel, 0, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1677,12 +1720,12 @@ static void whats_new_show(void) {
     lv_obj_set_size(ok_btn, 120, 36);
     lv_obj_align(ok_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_update_layout(ok_btn);
-    cygm_apply_ghost_btn(ok_btn);
+    cygm_theme_primary_btn(ok_btn);
     lv_obj_add_event_cb(ok_btn, whats_new_ok_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *ok_lbl = lv_label_create(ok_btn);
     lv_label_set_text(ok_lbl, "OK");
     lv_obj_set_style_text_font(ok_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(ok_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
+    lv_obj_set_style_text_color(ok_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(ok_lbl);
 
     ESP_LOGI(TAG, "What's New card shown for %s", CYGM_VERSION_STRING);
@@ -1837,7 +1880,7 @@ static void setup_primary_cb(lv_event_t *e) {
                 screen_wifi_list = NULL;
             }
             create_wifi_list_screen();
-            lv_scr_load(screen_wifi_list);
+            cygm_theme_scr_load(screen_wifi_list, NULL, NULL);
             show_wifi_scanning_overlay();   // the scan task hides it when done
             xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 5, NULL);
             break;
@@ -1850,7 +1893,7 @@ static void setup_primary_cb(lv_event_t *e) {
                 screen_zipcode_entry = NULL;
             }
             create_time_weather_settings_screen();
-            lv_scr_load(screen_time_weather_settings);
+            cygm_theme_scr_load(screen_time_weather_settings, NULL, NULL);
             break;
 
         default:
@@ -1860,7 +1903,7 @@ static void setup_primary_cb(lv_event_t *e) {
                 screen_cgm_menu = NULL;
             }
             create_cgm_menu_screen();
-            lv_scr_load(screen_cgm_menu);
+            cygm_theme_scr_load(screen_cgm_menu, NULL, NULL);
             break;
     }
 }
@@ -1899,16 +1942,13 @@ static void setup_card_show(uint8_t step) {
     if (panel == NULL) goto fail;
     lv_obj_set_size(panel, 292, 176);
     lv_obj_center(panel);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(panel, 16, 0);
-    lv_obj_set_style_border_width(panel, 1, 0);
-    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
+    cygm_theme_panel(panel);
+    lv_obj_set_style_radius(panel, 12, 0);
+    lv_obj_set_style_shadow_width(panel, 0, 0);
     lv_obj_set_style_pad_all(panel, 0, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
 
-    snprintf(caption_text, sizeof(caption_text), "SETUP  step %d of 3", idx + 1);
+    snprintf(caption_text, sizeof(caption_text), "SETUP  STEP %d OF 3", idx + 1);
     caption = lv_label_create(panel);
     if (caption == NULL) goto fail;
     lv_label_set_text(caption, caption_text);
@@ -1944,16 +1984,14 @@ static void setup_card_show(uint8_t step) {
     if (go_btn == NULL) goto fail;
     lv_obj_set_size(go_btn, CYGM_BTN_W_TEXT, CYGM_BTN_H);
     lv_obj_align(go_btn, LV_ALIGN_BOTTOM_LEFT, 26, -14);
-    lv_obj_set_style_border_color(go_btn, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_color(go_btn, lv_color_hex(COLOR_PRESSED_GREEN), LV_STATE_PRESSED);
     lv_obj_update_layout(go_btn);
-    cygm_apply_ghost_btn(go_btn);
+    cygm_theme_primary_btn(go_btn);
     lv_obj_add_event_cb(go_btn, setup_primary_cb, LV_EVENT_CLICKED, NULL);
     go_lbl = lv_label_create(go_btn);
     if (go_lbl == NULL) goto fail;
     lv_label_set_text(go_lbl, setup_actions[idx]);
     lv_obj_set_style_text_font(go_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(go_lbl, lv_color_hex(COLOR_GREEN), 0);
+    lv_obj_set_style_text_color(go_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(go_lbl);
 
     skip_btn = lv_btn_create(panel);
@@ -1961,8 +1999,7 @@ static void setup_card_show(uint8_t step) {
     lv_obj_set_size(skip_btn, 96, CYGM_BTN_H);
     lv_obj_align(skip_btn, LV_ALIGN_BOTTOM_RIGHT, -26, -14);
     lv_obj_update_layout(skip_btn);
-    cygm_apply_ghost_btn(skip_btn);
-    lv_obj_set_style_border_color(skip_btn, lv_color_hex(COLOR_DIVIDER), 0);
+    cygm_theme_glass_btn(skip_btn);
     lv_obj_add_event_cb(skip_btn, setup_skip_cb, LV_EVENT_CLICKED, NULL);
     skip_lbl = lv_label_create(skip_btn);
     if (skip_lbl == NULL) goto fail;
@@ -2140,7 +2177,7 @@ static void glucose_timer_update_cb(lv_timer_t *timer) {
 
 // Draw custom lightbulb icon on canvas
 static void draw_lightbulb_icon(lv_obj_t *canvas, uint32_t color) {
-    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
 
     lv_draw_rect_dsc_t r;
     lv_draw_rect_dsc_init(&r);
@@ -2211,7 +2248,7 @@ static void battery_tap_event_cb(lv_event_t *e) {
 
 // Draw battery icon with smooth fill based on actual percentage (0-100)
 void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent) {
-    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
 
     lv_draw_rect_dsc_t dsc;
     lv_draw_rect_dsc_init(&dsc);
@@ -2254,7 +2291,7 @@ void draw_battery_icon(lv_obj_t *canvas, uint32_t color, int percent) {
 
 // Mains plug with a cable tail, drawn in place of the gauge when no cell is fitted.
 void draw_plug_icon(lv_obj_t *canvas, uint32_t color) {
-    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
 
     lv_draw_rect_dsc_t dsc;
     lv_draw_rect_dsc_init(&dsc);
@@ -2348,15 +2385,11 @@ static void toast_timer_cb(lv_timer_t *timer) {
 
 static void show_no_data_toast(void) {
     // Glass-themed toast overlay
-    lv_obj_t *toast = lv_obj_create(lv_scr_act());
+    lv_obj_t *toast = lv_obj_create(cygm_theme_scr_act());
     lv_obj_set_size(toast, 220, 70);
     lv_obj_align(toast, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(toast, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(toast, LV_OPA_90, 0);
-    lv_obj_set_style_radius(toast, 14, 0);
-    lv_obj_set_style_border_width(toast, 1, 0);
-    lv_obj_set_style_border_color(toast, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(toast, LV_OPA_50, 0);
+    cygm_theme_panel(toast);
+    lv_obj_set_style_radius(toast, 12, 0);
     lv_obj_set_style_shadow_width(toast, 0, 0);  // NEVER use shadows — causes device freeze
     lv_obj_set_style_pad_all(toast, 10, 0);
     lv_obj_clear_flag(toast, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
@@ -2407,9 +2440,8 @@ static void trend_arrow_event_cb(lv_event_t *e) {
 // pool. These looks repeat across both pages, so they are shared file statics —
 // which must outlive every object using them, as LVGL keeps the pointer.
 static lv_style_t ds_card;      // settings card shell
-static lv_style_t ds_accent;    // 3px accent bar (colour stays per-object)
 static lv_style_t ds_rule;      // 1px hairline divider
-static lv_style_t ds_section;   // 12pt dim all-caps section header
+static lv_style_t ds_section;   // 10pt dim all-caps section header
 static lv_style_t ds_value;     // 14pt white value text
 static lv_style_t ds_time;      // 16pt accent-light centred time value
 static bool ds_styles_ready = false;
@@ -2419,25 +2451,16 @@ static void disp_init_styles(void) {
     ds_styles_ready = true;
 
     lv_style_init(&ds_card);
-    lv_style_set_bg_color(&ds_card, lv_color_hex(COLOR_CARD_BG));
-    lv_style_set_bg_opa(&ds_card, LV_OPA_COVER);
     lv_style_set_radius(&ds_card, 12);
-    lv_style_set_border_width(&ds_card, 1);
-    lv_style_set_border_color(&ds_card, lv_color_hex(COLOR_MODAL_BORDER));
-    lv_style_set_border_opa(&ds_card, LV_OPA_30);
     lv_style_set_shadow_width(&ds_card, 0);
     lv_style_set_pad_all(&ds_card, 0);
 
-    lv_style_init(&ds_accent);
-    lv_style_set_bg_opa(&ds_accent, LV_OPA_COVER);
-    lv_style_set_radius(&ds_accent, 2);
-
     lv_style_init(&ds_rule);
-    lv_style_set_bg_color(&ds_rule, lv_color_hex(COLOR_DIVIDER));
-    lv_style_set_bg_opa(&ds_rule, LV_OPA_COVER);
+    lv_style_set_bg_color(&ds_rule, lv_color_hex(CYGM_EDGE));
+    lv_style_set_bg_opa(&ds_rule, 90);
 
     lv_style_init(&ds_section);
-    lv_style_set_text_font(&ds_section, &lv_font_montserrat_12);
+    lv_style_set_text_font(&ds_section, &lv_font_montserrat_10);
     lv_style_set_text_color(&ds_section, lv_color_hex(COLOR_TEXT_DIM));
     lv_style_set_text_letter_space(&ds_section, 2);
 
@@ -2468,27 +2491,14 @@ static lv_obj_t *disp_chip(lv_obj_t *parent, const char *txt, const lv_font_t *f
     lv_coord_t pad = (h - lv_font_get_line_height(font)) / 2 - CYGM_BTN_BORDER_W;
     lv_obj_set_style_pad_top(chip, pad > 0 ? pad : 0, 0);
     lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-    cygm_apply_ghost_btn(chip);
+    cygm_theme_glass_btn(chip);
     return chip;
 }
 
-// The stock theme's switch styles carry a state transition, and animations
-// freeze this hardware, so they are stripped before the look is rebuilt.
 static lv_obj_t *disp_switch(lv_obj_t *parent, bool on, lv_event_cb_t cb) {
     lv_obj_t *sw = lv_switch_create(parent);
-    lv_obj_remove_style_all(sw);
+    cygm_theme_switch(sw);
     lv_obj_set_size(sw, 44, 22);
-    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_PRESSED), LV_PART_MAIN);
-    lv_obj_set_style_radius(sw, 11, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_PRESSED), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_GREEN), LV_PART_INDICATOR | LV_STATE_CHECKED);
-    lv_obj_set_style_radius(sw, 11, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_KNOB);
-    lv_obj_set_style_bg_color(sw, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_KNOB);
-    lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(sw, -3, LV_PART_KNOB);
     lv_obj_set_ext_click_area(sw, 12);
     if (on) lv_obj_add_state(sw, LV_STATE_CHECKED);
     lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, NULL);
@@ -2499,13 +2509,13 @@ static lv_obj_t *disp_switch(lv_obj_t *parent, bool on, lv_event_cb_t cb) {
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *disp_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb) {
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(btn, 36, 36);
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 4, 4);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(lbl);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
     return btn;
@@ -2656,15 +2666,10 @@ static void create_brightness_card(lv_obj_t *parent) {
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, 296, 92);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 0);
+    cygm_theme_glass_card(card);
     lv_obj_add_style(card, &ds_card, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ACCENT_BLUE));
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *accent = lv_obj_create(card);
-    lv_obj_remove_style_all(accent);
-    lv_obj_add_style(accent, &ds_accent, 0);
-    lv_obj_set_size(accent, 3, 24);
-    lv_obj_align(accent, LV_ALIGN_TOP_LEFT, 6, 6);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_ACCENT_BLUE), 0);
 
     lv_obj_t *title = lv_label_create(card);
     lv_label_set_text(title, "BRIGHTNESS");
@@ -2685,20 +2690,10 @@ static void create_brightness_card(lv_obj_t *parent) {
 
     brightness_slider = lv_slider_create(card);
     lv_obj_set_size(brightness_slider, 244, 14);
+    cygm_theme_slider(brightness_slider, lv_color_hex(COLOR_ACCENT_BLUE));
     lv_obj_align(brightness_slider, LV_ALIGN_TOP_MID, 0, 56);
     lv_slider_set_range(brightness_slider, 1, 100);  // 0% would black the panel out
     lv_slider_set_value(brightness_slider, screen_brightness_percent, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_BG), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(brightness_slider, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(brightness_slider, 7, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(brightness_slider, 7, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_KNOB);
-    lv_obj_set_style_radius(brightness_slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);
-    // Pinned rather than inherited: the stock knob padding is theme-dependent
-    // and the card only has 10 rows of slack under the track.
-    lv_obj_set_style_pad_all(brightness_slider, 3, LV_PART_KNOB);
-    lv_obj_set_style_shadow_width(brightness_slider, 0, LV_PART_KNOB);
     // A 14px track is well under the minimum touch target; nothing clickable
     // sits within 12px of it on this card.
     lv_obj_set_ext_click_area(brightness_slider, 12);
@@ -2711,15 +2706,10 @@ static void create_dim_charge_card(lv_obj_t *parent) {
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, 296, 48);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 104);
+    cygm_theme_glass_card(card);
     lv_obj_add_style(card, &ds_card, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_GREEN));
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *accent = lv_obj_create(card);
-    lv_obj_remove_style_all(accent);
-    lv_obj_add_style(accent, &ds_accent, 0);
-    lv_obj_set_size(accent, 3, 24);
-    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 6, 0);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_GREEN), 0);
 
     // Dim-on-charger opt-in: by default a plugged-in device never idle-dims.
     lv_obj_t *label = lv_label_create(card);
@@ -2740,15 +2730,10 @@ static void create_night_card(lv_obj_t *parent) {
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, 296, 166);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 0);
+    cygm_theme_glass_card(card);
     lv_obj_add_style(card, &ds_card, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ACCENT_LIGHT));
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *accent = lv_obj_create(card);
-    lv_obj_remove_style_all(accent);
-    lv_obj_add_style(accent, &ds_accent, 0);
-    lv_obj_set_size(accent, 3, 24);
-    lv_obj_align(accent, LV_ALIGN_TOP_LEFT, 6, 6);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
 
     lv_obj_t *title = lv_label_create(card);
     lv_label_set_text(title, "NIGHT DIM");
@@ -2934,10 +2919,8 @@ static void create_brightness_overlay(void) {
     brightness_overlay = lv_obj_create(screen_home);
     lv_obj_set_size(brightness_overlay, 320, 240);
     lv_obj_set_pos(brightness_overlay, 0, 0);
-    lv_obj_set_style_bg_color(brightness_overlay, lv_color_hex(COLOR_BG), 0);
-    lv_obj_set_style_bg_opa(brightness_overlay, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(brightness_overlay, 0, 0);
-    lv_obj_set_style_radius(brightness_overlay, 0, 0);
+    cygm_theme_panel(brightness_overlay);
+    lv_obj_set_style_radius(brightness_overlay, 12, 0);
     lv_obj_set_style_pad_all(brightness_overlay, 0, 0);
     lv_obj_set_style_shadow_width(brightness_overlay, 0, 0);
     lv_obj_clear_flag(brightness_overlay, LV_OBJ_FLAG_SCROLLABLE);
@@ -2947,9 +2930,16 @@ static void create_brightness_overlay(void) {
 
     lv_obj_t *title = lv_label_create(brightness_overlay);
     lv_label_set_text(title, "Display");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
+    lv_obj_t *header_rule = lv_obj_create(brightness_overlay);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 300, 1);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 36);
 
     lv_obj_t *cat_lbl = lv_label_create(brightness_overlay);
     lv_label_set_text(cat_lbl, disp_page_title(disp_page));
@@ -2970,7 +2960,7 @@ static void create_brightness_overlay(void) {
     lv_obj_set_size(prev_btn, 44, 28);
     lv_obj_align(prev_btn, LV_ALIGN_BOTTOM_LEFT, 14, -6);
     lv_obj_update_layout(prev_btn);
-    cygm_apply_ghost_btn(prev_btn);
+    cygm_theme_glass_btn(prev_btn);
     lv_obj_t *prev_lbl = lv_label_create(prev_btn);
     lv_label_set_text(prev_lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_color(prev_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -2989,7 +2979,7 @@ static void create_brightness_overlay(void) {
     lv_obj_set_size(next_btn, 44, 28);
     lv_obj_align(next_btn, LV_ALIGN_BOTTOM_RIGHT, -14, -6);
     lv_obj_update_layout(next_btn);
-    cygm_apply_ghost_btn(next_btn);
+    cygm_theme_glass_btn(next_btn);
     lv_obj_t *next_lbl = lv_label_create(next_btn);
     lv_label_set_text(next_lbl, LV_SYMBOL_RIGHT);
     lv_obj_set_style_text_color(next_lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
@@ -3032,10 +3022,24 @@ static void home_gesture_event_cb(lv_event_t *e) {
     }
 }
 
+// Mini cloud from three overlapping discs on a flat base, shaded underneath.
+static void home_mini_cloud(lv_obj_t *canvas, int x, int y) {
+    lv_draw_rect_dsc_t r;
+    lv_draw_rect_dsc_init(&r);
+    r.bg_opa = LV_OPA_COVER;
+    r.radius = LV_RADIUS_CIRCLE;
+    r.bg_color = lv_color_hex(0x8FA0C2);
+    lv_canvas_draw_rect(canvas, x, y + 4, 16, 6, &r);
+    r.bg_color = lv_color_hex(0xC9D3E6);
+    lv_canvas_draw_rect(canvas, x, y + 3, 15, 6, &r);
+    lv_canvas_draw_rect(canvas, x + 1, y + 1, 7, 7, &r);
+    lv_canvas_draw_rect(canvas, x + 6, y - 1, 8, 8, &r);
+}
+
 // Draw a tiny weather condition icon on a 20x20 canvas
 static void draw_mini_weather_icon(lv_obj_t *canvas, int weather_code) {
     if (canvas == NULL) return;
-    lv_canvas_fill_bg(canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
 
     lv_draw_rect_dsc_t r;
     lv_draw_rect_dsc_init(&r);
@@ -3048,83 +3052,69 @@ static void draw_mini_weather_icon(lv_obj_t *canvas, int weather_code) {
     l.round_start = 1;
     l.round_end = 1;
 
+    bool night = is_night_time();
+
     switch (weather_code) {
-        case 0: // Clear — sun (yellow circle)
-            r.bg_color = lv_color_hex(0xFBBF24);
-            lv_canvas_draw_rect(canvas, 5, 5, 10, 10, &r);
+        case 0: // Clear — sun disc, or a crescent at night
+            if (night) {
+                home_draw_night_moon(canvas);
+            } else {
+                r.bg_color = lv_color_hex(COLOR_YELLOW);
+                lv_canvas_draw_rect(canvas, 5, 5, 10, 10, &r);
+            }
             break;
-        case 1: // Partly cloudy — small sun + cloud
-            r.bg_color = lv_color_hex(0xFBBF24);
-            lv_canvas_draw_rect(canvas, 2, 3, 8, 8, &r);
-            r.bg_color = lv_color_hex(0xCBD5E1);
-            lv_canvas_draw_rect(canvas, 7, 8, 11, 8, &r);
+        case 1: // Partly cloudy — sun or moon behind a cloud
+            r.bg_color = lv_color_hex(night ? 0xE8ECF5 : COLOR_YELLOW);
+            lv_canvas_draw_rect(canvas, 2, 1, 9, 9, &r);
+            home_mini_cloud(canvas, 3, 8);
             break;
-        case 2: // Cloudy — cloud
-            r.bg_color = lv_color_hex(0x94A3B8);
-            lv_canvas_draw_rect(canvas, 2, 4, 16, 10, &r);
-            r.bg_color = lv_color_hex(0xCBD5E1);
-            lv_canvas_draw_rect(canvas, 5, 2, 10, 10, &r);
+        case 2: // Cloudy
+            home_mini_cloud(canvas, 2, 5);
             break;
-        case 3: { // Rain — cloud + drops
-            r.bg_color = lv_color_hex(0x94A3B8);
-            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
-            l.color = lv_color_hex(0x60A5FA);
-            lv_point_t d1[] = {{5, 12}, {4, 16}};
+        case 3:   // Rain
+        case 7: { // Freezing rain
+            home_mini_cloud(canvas, 2, 2);
+            l.color = lv_color_hex(weather_code == 7 ? 0xFFFFFF : COLOR_ACCENT_LIGHT);
+            lv_point_t d1[] = {{6, 14}, {5, 17}};
             lv_canvas_draw_line(canvas, d1, 2, &l);
-            lv_point_t d2[] = {{10, 12}, {9, 16}};
+            lv_point_t d2[] = {{10, 14}, {9, 17}};
             lv_canvas_draw_line(canvas, d2, 2, &l);
-            lv_point_t d3[] = {{15, 12}, {14, 16}};
+            lv_point_t d3[] = {{14, 14}, {13, 17}};
             lv_canvas_draw_line(canvas, d3, 2, &l);
             break;
         }
         case 4: // Snow — cloud + dots
-            r.bg_color = lv_color_hex(0x94A3B8);
-            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
-            r.bg_color = lv_color_hex(0xE2E8F0);
-            r.radius = LV_RADIUS_CIRCLE;
-            lv_canvas_draw_rect(canvas, 4, 13, 3, 3, &r);
-            lv_canvas_draw_rect(canvas, 9, 13, 3, 3, &r);
-            lv_canvas_draw_rect(canvas, 14, 13, 3, 3, &r);
+            home_mini_cloud(canvas, 2, 2);
+            r.bg_color = lv_color_hex(0xFFFFFF);
+            lv_canvas_draw_rect(canvas, 4, 14, 3, 3, &r);
+            lv_canvas_draw_rect(canvas, 9, 16, 3, 3, &r);
+            lv_canvas_draw_rect(canvas, 14, 14, 3, 3, &r);
             break;
         case 5: { // Thunderstorm — cloud + bolt
-            r.bg_color = lv_color_hex(0x64748B);
-            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
-            l.color = lv_color_hex(0xFBBF24);
-            l.width = 2;
-            lv_point_t b1[] = {{10, 10}, {8, 14}};
-            lv_canvas_draw_line(canvas, b1, 2, &l);
-            lv_point_t b2[] = {{8, 14}, {12, 14}};
-            lv_canvas_draw_line(canvas, b2, 2, &l);
-            lv_point_t b3[] = {{12, 14}, {9, 18}};
-            lv_canvas_draw_line(canvas, b3, 2, &l);
+            home_mini_cloud(canvas, 2, 2);
+            lv_draw_rect_dsc_t b;
+            lv_draw_rect_dsc_init(&b);
+            b.bg_color = lv_color_hex(COLOR_YELLOW);
+            b.bg_opa = LV_OPA_COVER;
+            // Two convex halves: the v8 polygon fill does not handle concave shapes.
+            lv_point_t upper[] = {{12, 10}, {7, 16}, {11, 16}};
+            lv_canvas_draw_polygon(canvas, upper, 3, &b);
+            lv_point_t lower[] = {{9, 14}, {13, 14}, {8, 20}};
+            lv_canvas_draw_polygon(canvas, lower, 3, &b);
             break;
         }
-        case 6: { // Fog — horizontal lines
-            l.color = lv_color_hex(0x94A3B8);
-            l.width = 2;
-            lv_point_t f1[] = {{2, 5}, {18, 5}};
+        case 6: { // Fog — three bars
+            l.color = lv_color_hex(0xC9D3E6);
+            lv_point_t f1[] = {{3, 5}, {17, 5}};
             lv_canvas_draw_line(canvas, f1, 2, &l);
-            lv_point_t f2[] = {{4, 10}, {16, 10}};
+            lv_point_t f2[] = {{5, 10}, {15, 10}};
             lv_canvas_draw_line(canvas, f2, 2, &l);
-            lv_point_t f3[] = {{2, 15}, {18, 15}};
+            lv_point_t f3[] = {{3, 15}, {17, 15}};
             lv_canvas_draw_line(canvas, f3, 2, &l);
             break;
         }
-        case 7: { // Freezing rain — cloud + blue drops
-            r.bg_color = lv_color_hex(0x94A3B8);
-            lv_canvas_draw_rect(canvas, 2, 2, 16, 8, &r);
-            l.color = lv_color_hex(0x93C5FD);
-            lv_point_t d1[] = {{5, 12}, {4, 16}};
-            lv_canvas_draw_line(canvas, d1, 2, &l);
-            lv_point_t d2[] = {{10, 12}, {9, 16}};
-            lv_canvas_draw_line(canvas, d2, 2, &l);
-            lv_point_t d3[] = {{15, 12}, {14, 16}};
-            lv_canvas_draw_line(canvas, d3, 2, &l);
-            break;
-        }
-        default: // Unknown — small cloud
-            r.bg_color = lv_color_hex(0x94A3B8);
-            lv_canvas_draw_rect(canvas, 3, 4, 14, 10, &r);
+        default: // Unknown — cloud
+            home_mini_cloud(canvas, 2, 5);
             break;
     }
 }
@@ -3186,8 +3176,8 @@ static void expand_cgm_card(void) {
     // Resize the trend canvas to match the large digits
     if (trend_canvas != NULL) {
         lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE_EXPANDED,
-                             HOME_TREND_SIZE_EXPANDED, LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(trend_canvas, home_trend_bg(), LV_OPA_0);
+                             HOME_TREND_SIZE_EXPANDED, LV_IMG_CF_TRUE_COLOR_ALPHA);
+        lv_canvas_fill_bg(trend_canvas, home_trend_bg(), home_trend_bg_opa());
         draw_trend_arrow_sized(trend_canvas, current_trend, HOME_TREND_SIZE_EXPANDED);
     }
 
@@ -3254,8 +3244,9 @@ static void collapse_cgm_card(void) {
         lv_obj_align(label_unit, LV_ALIGN_TOP_MID, 0, 65);
     }
     if (trend_canvas != NULL) {
-        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE, HOME_TREND_SIZE, LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(trend_canvas, home_trend_bg(), LV_OPA_0);
+        lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE, HOME_TREND_SIZE,
+                             LV_IMG_CF_TRUE_COLOR_ALPHA);
+        lv_canvas_fill_bg(trend_canvas, home_trend_bg(), home_trend_bg_opa());
         draw_trend_arrow_sized(trend_canvas, current_trend, HOME_TREND_SIZE);
         lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, HOME_TREND_Y_OFS);
     }
@@ -3272,14 +3263,14 @@ static void collapse_cgm_card(void) {
 
 void create_home_screen(void) {
     screen_home = lv_obj_create(NULL);
-    lv_obj_add_style(screen_home, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_home);
     lv_obj_clear_flag(screen_home, LV_OBJ_FLAG_SCROLLABLE);
 
     // --- LEFT CARD: Time, Weather & WiFi Status ---
     left_card = lv_obj_create(screen_home);
     lv_obj_set_size(left_card, NORMAL_LEFT_W, CARD_H);
     lv_obj_set_pos(left_card, NORMAL_LEFT_X, 10);
-    lv_obj_add_style(left_card, &style_card, 0);
+    cygm_theme_glass_card(left_card);
     lv_obj_clear_flag(left_card, LV_OBJ_FLAG_SCROLLABLE);
 
     // WiFi status icon (very top left corner, clickable to open WiFi setup)
@@ -3385,8 +3376,10 @@ void create_home_screen(void) {
     lv_canvas_set_buffer(home_weather_canvas, weather_buf, 60, 50, LV_IMG_CF_TRUE_COLOR_ALPHA);
     lv_obj_align(home_weather_canvas, LV_ALIGN_CENTER, 0, 11);
     lv_obj_set_style_bg_opa(home_weather_canvas, LV_OPA_TRANSP, 0);
-    lv_canvas_fill_bg(home_weather_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_fill_bg(home_weather_canvas, lv_color_black(), LV_OPA_TRANSP);
     draw_weather_icon(home_weather_canvas, current_weather_code);
+    lv_obj_add_flag(home_weather_canvas, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(home_weather_canvas, home_night_moon_tap_cb, LV_EVENT_CLICKED, NULL);
 
     // Temperature, below the weather icon
     home_temp_label = lv_label_create(left_card);
@@ -3450,10 +3443,11 @@ void create_home_screen(void) {
     home_location_scroll_sync();
 
     // Sunrise time with icon (very bottom left)
-    static lv_color_t canvas_buf_sunrise[CANVAS_BUF_TC(12, 12)];
+    static lv_color_t canvas_buf_sunrise[CANVAS_BUF_TCA(12, 12)];
     home_sunrise_canvas = lv_canvas_create(left_card);
-    lv_canvas_set_buffer(home_sunrise_canvas, canvas_buf_sunrise, 12, 12, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(home_sunrise_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_set_buffer(home_sunrise_canvas, canvas_buf_sunrise, 12, 12,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_canvas_fill_bg(home_sunrise_canvas, lv_color_black(), LV_OPA_TRANSP);
     draw_sunrise_icon(home_sunrise_canvas);
     lv_obj_align(home_sunrise_canvas, LV_ALIGN_BOTTOM_LEFT, 8, 6);
 
@@ -3464,10 +3458,11 @@ void create_home_screen(void) {
     lv_obj_align(home_sunrise_label, LV_ALIGN_BOTTOM_LEFT, 22, 6);
 
     // Sunset time with icon (very bottom right)
-    static lv_color_t canvas_buf_sunset[CANVAS_BUF_TC(12, 12)];
+    static lv_color_t canvas_buf_sunset[CANVAS_BUF_TCA(12, 12)];
     home_sunset_canvas = lv_canvas_create(left_card);
-    lv_canvas_set_buffer(home_sunset_canvas, canvas_buf_sunset, 12, 12, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(home_sunset_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_set_buffer(home_sunset_canvas, canvas_buf_sunset, 12, 12,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_canvas_fill_bg(home_sunset_canvas, lv_color_black(), LV_OPA_TRANSP);
     draw_sunset_icon(home_sunset_canvas);
     lv_obj_align(home_sunset_canvas, LV_ALIGN_BOTTOM_RIGHT, -34, 6);
 
@@ -3481,15 +3476,16 @@ void create_home_screen(void) {
     right_card = lv_obj_create(screen_home);
     lv_obj_set_size(right_card, NORMAL_RIGHT_W, CARD_H);
     lv_obj_set_pos(right_card, NORMAL_RIGHT_X, 10);
-    lv_obj_add_style(right_card, &style_card, 0);
+    cygm_theme_glass_card(right_card);
     lv_obj_clear_flag(right_card, LV_OBJ_FLAG_SCROLLABLE);
 
     // Battery canvas - gauge, or the plug icon when no cell is fitted.
     // Tappable to toggle the percentage display.
-    static lv_color_t canvas_buf_battery[CANVAS_BUF_TC(30, 14)];
+    static lv_color_t canvas_buf_battery[CANVAS_BUF_TCA(30, 14)];
     battery_canvas = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 30, 14, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(battery_canvas, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_set_buffer(battery_canvas, canvas_buf_battery, 30, 14,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_canvas_fill_bg(battery_canvas, lv_color_black(), LV_OPA_TRANSP);
     if (battery_present) {
         draw_battery_icon(battery_canvas, COLOR_GREEN, 100);  // Start full
     } else {
@@ -3513,20 +3509,15 @@ void create_home_screen(void) {
     lv_obj_t *brightness_btn = brightness_btn_ref;
     lv_obj_set_size(brightness_btn, 24, 24);
     lv_obj_align(brightness_btn, LV_ALIGN_TOP_MID, 22, 0);
-    // Borderless icon button: these local props outrank the shared ghost look
-    // at the default state, so only its pressed half and touch box show up.
-    lv_obj_set_style_bg_opa(brightness_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(brightness_btn, 0, 0);
-    lv_obj_set_style_shadow_width(brightness_btn, 0, 0);
-    lv_obj_set_style_pad_all(brightness_btn, 0, 0);
     lv_obj_add_event_cb(brightness_btn, brightness_icon_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_update_layout(brightness_btn);  // 24x24 — the touch box must grow past it
-    cygm_apply_ghost_btn(brightness_btn);
+    cygm_theme_icon_btn(brightness_btn);
 
     // Canvas for lightbulb drawing (inside button)
-    static lv_color_t brightness_icon_buf[CANVAS_BUF_TC(20, 24)];
+    static lv_color_t brightness_icon_buf[CANVAS_BUF_TCA(20, 24)];
     brightness_icon = lv_canvas_create(brightness_btn);
-    lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 20, 24, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(brightness_icon, brightness_icon_buf, 20, 24,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
     lv_obj_set_style_bg_opa(brightness_icon, LV_OPA_TRANSP, 0);
     draw_lightbulb_icon(brightness_icon, COLOR_ACCENT_BLUE);
     lv_obj_center(brightness_icon);
@@ -3558,9 +3549,10 @@ void create_home_screen(void) {
     // so its crown must clear the unit label while its inert lower half is free
     // to overlap the canvas and the delta.
     trend_canvas = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE, HOME_TREND_SIZE, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(trend_canvas, canvas_buf_trend, HOME_TREND_SIZE, HOME_TREND_SIZE,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
     lv_obj_set_style_bg_opa(trend_canvas, LV_OPA_TRANSP, 0);
-    lv_canvas_fill_bg(trend_canvas, home_trend_bg(), LV_OPA_0);
+    lv_canvas_fill_bg(trend_canvas, home_trend_bg(), home_trend_bg_opa());
     lv_obj_align(trend_canvas, LV_ALIGN_CENTER, 0, HOME_TREND_Y_OFS);
 
     // Tap opens the history chart. The canvas already clears the minimum touch
@@ -3609,12 +3601,6 @@ void create_home_screen(void) {
     lv_obj_t *menu_btn = lv_btn_create(screen_home);
     lv_obj_set_size(menu_btn, 36, 36);
     lv_obj_align(menu_btn, LV_ALIGN_TOP_RIGHT, -10, 10);
-    // Borderless icon button — see the brightness button for why the local
-    // transparent props are kept alongside the shared ghost style.
-    lv_obj_set_style_bg_opa(menu_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(menu_btn, 0, 0);
-    lv_obj_set_style_shadow_width(menu_btn, 0, 0);
-    lv_obj_set_style_pad_all(menu_btn, 0, 0);
 
     menu_icon_ref = lv_label_create(menu_btn);
     lv_label_set_text(menu_icon_ref, LV_SYMBOL_SETTINGS);
@@ -3624,7 +3610,7 @@ void create_home_screen(void) {
     // Attach event handler
     lv_obj_add_event_cb(menu_btn, menu_btn_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_update_layout(menu_btn);
-    cygm_apply_ghost_btn(menu_btn);
+    cygm_theme_icon_btn(menu_btn);
 
     // --- Serial log indicator (below right card, only visible when logging) ---
     serial_log_indicator = lv_label_create(screen_home);
@@ -3698,12 +3684,14 @@ void create_home_screen(void) {
     lv_obj_add_flag(expanded_temp_label, LV_OBJ_FLAG_HIDDEN);
 
     // Mini weather condition icon (20x20 canvas, right of temp label)
-    static lv_color_t mini_weather_buf[CANVAS_BUF_TC(20, 20)];
+    static lv_color_t mini_weather_buf[CANVAS_BUF_TCA(20, 20)];
     expanded_weather_icon = lv_canvas_create(right_card);
-    lv_canvas_set_buffer(expanded_weather_icon, mini_weather_buf, 20, 20, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(expanded_weather_icon, lv_color_hex(COLOR_CARD_BG), LV_OPA_0);
+    lv_canvas_set_buffer(expanded_weather_icon, mini_weather_buf, 20, 20,
+                         LV_IMG_CF_TRUE_COLOR_ALPHA);
+    lv_canvas_fill_bg(expanded_weather_icon, lv_color_black(), LV_OPA_TRANSP);
     lv_obj_align(expanded_weather_icon, LV_ALIGN_TOP_MID, 42, 0);
     lv_obj_add_flag(expanded_weather_icon, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(expanded_weather_icon, home_night_moon_tap_cb, LV_EVENT_CLICKED, NULL);
 
     // Register gesture handler on home screen for swipe expand/collapse
     lv_obj_add_event_cb(screen_home, home_gesture_event_cb, LV_EVENT_GESTURE, NULL);

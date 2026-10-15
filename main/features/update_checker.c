@@ -29,6 +29,7 @@
 #include "nightscout_api.h"
 #include "time_system.h"
 #include "weather_system.h"
+#include "ui/cygm_theme.h"
 #include "esp_http_client.h"
 #include "esp_ota_ops.h"
 #include "esp_crt_bundle.h"
@@ -385,18 +386,15 @@ void show_ota_overlay(const char *status) {
     lv_obj_remove_style_all(ota_overlay);
     lv_obj_set_size(ota_overlay, 320, 240);
     lv_obj_set_style_bg_color(ota_overlay, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(ota_overlay, LV_OPA_80, 0);
+    lv_obj_set_style_bg_opa(ota_overlay, LV_OPA_60, 0);
     lv_obj_clear_flag(ota_overlay, LV_OBJ_FLAG_SCROLLABLE);
     // NOT clickable — can't dismiss during OTA
 
     lv_obj_t *card = lv_obj_create(ota_overlay);
     lv_obj_set_size(card, 280, 160);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    cygm_theme_panel(card);
     lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -417,12 +415,19 @@ void show_ota_overlay(const char *status) {
     lv_obj_align(ota_bar, LV_ALIGN_CENTER, 0, 10);
     lv_bar_set_range(ota_bar, 0, 100);
     lv_bar_set_value(ota_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(ota_bar, lv_color_hex(0x1e2d3d), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(ota_bar, lv_color_hex(CYGM_BTN_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(ota_bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(ota_bar, 7, LV_PART_MAIN);
+    lv_obj_set_style_border_color(ota_bar, lv_color_hex(CYGM_EDGE), LV_PART_MAIN);
+    lv_obj_set_style_border_opa(ota_bar, CYGM_EDGE_OPA, LV_PART_MAIN);
+    lv_obj_set_style_border_width(ota_bar, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(ota_bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(ota_bar, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_color(ota_bar, lv_color_hex(COLOR_ACCENT_BLUE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(ota_bar, lv_color_hex(COLOR_ACCENT_LIGHT), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(ota_bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(ota_bar, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(ota_bar, 7, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(ota_bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_shadow_width(ota_bar, 0, LV_PART_INDICATOR);
 
     ota_pct_label = lv_label_create(card);
     lv_label_set_text(ota_pct_label, "0%");
@@ -449,7 +454,7 @@ static void dismiss_ota_overlay(void) {
 
 static void ota_update_progress(int pct, const char *status) {
     if (lvgl_port_lock(1)) {
-        if (ota_bar) lv_bar_set_value(ota_bar, pct, LV_ANIM_OFF);  // LV_ANIM_ON triggers lv_anim_start (freeze risk)
+        if (ota_bar) lv_bar_set_value(ota_bar, pct, LV_ANIM_OFF);  // Progress must remain non-animated.
         if (ota_pct_label) {
             char buf[8];
             snprintf(buf, sizeof(buf), "%d%%", pct);
@@ -485,7 +490,7 @@ static void ota_show_result(bool success, const char *msg) {
         lv_obj_remove_style_all(ota_overlay);
         lv_obj_set_size(ota_overlay, 320, 240);
         lv_obj_set_style_bg_color(ota_overlay, lv_color_black(), 0);
-        lv_obj_set_style_bg_opa(ota_overlay, LV_OPA_80, 0);
+        lv_obj_set_style_bg_opa(ota_overlay, LV_OPA_60, 0);
         lv_obj_clear_flag(ota_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
         // Tap backdrop to dismiss (failure only — success restarts)
@@ -497,11 +502,9 @@ static void ota_show_result(bool success, const char *msg) {
         lv_obj_t *card = lv_obj_create(ota_overlay);
         lv_obj_set_size(card, 270, 130);
         lv_obj_center(card);
-        lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+        cygm_theme_panel(card);
         lv_obj_set_style_radius(card, 16, 0);
-        lv_obj_set_style_border_color(card, success ? lv_color_hex(COLOR_GREEN) : lv_color_hex(COLOR_RED), 0);
-        lv_obj_set_style_border_width(card, 1, 0);
+        cygm_theme_card_edge(card, success ? lv_color_hex(COLOR_GREEN) : lv_color_hex(COLOR_RED));
         lv_obj_set_style_pad_all(card, 0, 0);
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -1171,7 +1174,7 @@ static void show_beta_consent_overlay(void)
     lv_obj_remove_style_all(beta_consent_overlay);
     lv_obj_set_size(beta_consent_overlay, 320, 240);
     lv_obj_set_style_bg_color(beta_consent_overlay, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(beta_consent_overlay, LV_OPA_70, 0);
+    lv_obj_set_style_bg_opa(beta_consent_overlay, LV_OPA_60, 0);
     lv_obj_clear_flag(beta_consent_overlay, LV_OBJ_FLAG_SCROLLABLE);
     // Deliberately not dismissable by tapping the backdrop: this is a decision,
     // and a stray touch must not read as either answer.
@@ -1180,10 +1183,9 @@ static void show_beta_consent_overlay(void)
     lv_obj_t *card = lv_obj_create(beta_consent_overlay);
     lv_obj_set_size(card, 290, 210);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x131a26), 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_ORANGE), 0);
-    lv_obj_set_style_border_width(card, 2, 0);
+    cygm_theme_panel(card);
     lv_obj_set_style_radius(card, 12, 0);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ORANGE));
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *title = lv_label_create(card);
@@ -1203,10 +1205,8 @@ static void show_beta_consent_overlay(void)
     lv_obj_t *no_btn = lv_btn_create(card);
     lv_obj_set_size(no_btn, 110, 34);
     lv_obj_align(no_btn, LV_ALIGN_BOTTOM_MID, -62, -10);
-    lv_obj_set_style_bg_color(no_btn, lv_color_hex(0x1e2d3d), 0);
-    lv_obj_set_style_radius(no_btn, 8, 0);
-    lv_obj_set_style_border_width(no_btn, 0, 0);
-    lv_obj_set_style_shadow_width(no_btn, 0, 0);
+    cygm_theme_glass_btn(no_btn);
+    lv_obj_set_ext_click_area(no_btn, 4);
     lv_obj_t *no_lbl = lv_label_create(no_btn);
     lv_label_set_text(no_lbl, "No thanks");
     lv_obj_set_style_text_color(no_lbl, lv_color_hex(COLOR_TEXT_GRAY), 0);
@@ -1216,13 +1216,11 @@ static void show_beta_consent_overlay(void)
     lv_obj_t *yes_btn = lv_btn_create(card);
     lv_obj_set_size(yes_btn, 110, 34);
     lv_obj_align(yes_btn, LV_ALIGN_BOTTOM_MID, 62, -10);
-    lv_obj_set_style_bg_color(yes_btn, lv_color_hex(COLOR_ORANGE), 0);
-    lv_obj_set_style_radius(yes_btn, 8, 0);
-    lv_obj_set_style_border_width(yes_btn, 0, 0);
-    lv_obj_set_style_shadow_width(yes_btn, 0, 0);
+    cygm_theme_primary_btn(yes_btn);
+    lv_obj_set_ext_click_area(yes_btn, 4);
     lv_obj_t *yes_lbl = lv_label_create(yes_btn);
     lv_label_set_text(yes_lbl, "I understand");
-    lv_obj_set_style_text_color(yes_lbl, lv_color_hex(0x06121a), 0);
+    lv_obj_set_style_text_color(yes_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_center(yes_lbl);
     lv_obj_add_event_cb(yes_btn, beta_consent_yes_cb, LV_EVENT_CLICKED, NULL);
 
@@ -1299,22 +1297,15 @@ void show_update_overlay(void) {
     lv_obj_t *card = lv_obj_create(update_overlay);
     lv_obj_set_size(card, 270, card_h);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x141c2b), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    cygm_theme_panel(card);
     lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_border_color(card, lv_color_hex(0x263040), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_pad_all(card, 0, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *close_btn = lv_btn_create(card);
     lv_obj_set_size(close_btn, 32, 32);
     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -4, 4);
-    lv_obj_set_style_bg_opa(close_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x2a3545), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(close_btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(close_btn, 0, 0);
-    lv_obj_set_style_shadow_width(close_btn, 0, 0);
+    cygm_theme_icon_btn(close_btn);
     lv_obj_set_style_radius(close_btn, 16, 0);
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
@@ -1366,8 +1357,8 @@ void show_update_overlay(void) {
         lv_obj_t *div = lv_obj_create(card);
         lv_obj_remove_style_all(div);
         lv_obj_set_size(div, 230, 1);
-        lv_obj_set_style_bg_color(div, lv_color_hex(0x263040), 0);
-        lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+        lv_obj_set_style_bg_opa(div, 90, 0);
         lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 82);
 
         if (has_ota) {
@@ -1375,10 +1366,7 @@ void show_update_overlay(void) {
             lv_obj_t *install_btn = lv_btn_create(card);
             lv_obj_set_size(install_btn, 110, 34);
             lv_obj_align(install_btn, LV_ALIGN_BOTTOM_MID, -60, -66);
-            lv_obj_set_style_bg_color(install_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-            lv_obj_set_style_radius(install_btn, 8, 0);
-            lv_obj_set_style_border_width(install_btn, 0, 0);
-            lv_obj_set_style_shadow_width(install_btn, 0, 0);
+            cygm_theme_primary_btn(install_btn);
             lv_obj_t *install_lbl = lv_label_create(install_btn);
             lv_label_set_text(install_lbl, LV_SYMBOL_DOWNLOAD " Install");
             lv_obj_set_style_text_color(install_lbl, lv_color_hex(COLOR_TEXT_WHITE), 0);
@@ -1388,10 +1376,7 @@ void show_update_overlay(void) {
             lv_obj_t *later_btn = lv_btn_create(card);
             lv_obj_set_size(later_btn, 90, 34);
             lv_obj_align(later_btn, LV_ALIGN_BOTTOM_MID, 60, -66);
-            lv_obj_set_style_bg_color(later_btn, lv_color_hex(0x1e2d3d), 0);
-            lv_obj_set_style_radius(later_btn, 8, 0);
-            lv_obj_set_style_border_width(later_btn, 0, 0);
-            lv_obj_set_style_shadow_width(later_btn, 0, 0);
+            cygm_theme_glass_btn(later_btn);
             lv_obj_t *later_lbl = lv_label_create(later_btn);
             lv_label_set_text(later_lbl, "Later");
             lv_obj_set_style_text_color(later_lbl, lv_color_hex(COLOR_TEXT_GRAY), 0);
@@ -1408,10 +1393,7 @@ void show_update_overlay(void) {
             lv_obj_t *btn = lv_btn_create(card);
             lv_obj_set_size(btn, 100, 28);
             lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -64);
-            lv_obj_set_style_bg_color(btn, lv_color_hex(0x1e2d3d), 0);
-            lv_obj_set_style_radius(btn, 8, 0);
-            lv_obj_set_style_border_width(btn, 0, 0);
-            lv_obj_set_style_shadow_width(btn, 0, 0);
+            cygm_theme_glass_btn(btn);
             lv_obj_t *btn_lbl = lv_label_create(btn);
             lv_label_set_text(btn_lbl, "Dismiss");
             lv_obj_set_style_text_color(btn_lbl, lv_color_hex(COLOR_TEXT_GRAY), 0);

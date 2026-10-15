@@ -19,9 +19,10 @@
 /* #define WHATS_NEW_INTRO "" */
 
 static const char *const whats_new_bullets[] = {
-    "LibreLinkUp sign-in fixed",
-    "Works with larger Libre accounts",
-    "Clearer sign-in error messages",
+    "A fresh look across every screen",
+    "New keyboard, easier to type on",
+    "Clearer trend graph and alarms",
+    "More time zones set correctly",
     "Full release notes on CYGM.me",
 };
 #define WHATS_NEW_COUNT (sizeof(whats_new_bullets) / sizeof(whats_new_bullets[0]))

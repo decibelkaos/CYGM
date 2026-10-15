@@ -3,6 +3,7 @@
  */
 
 #include "time_weather_screens.h"
+#include "cygm_theme.h"
 #include "shared_state.h"
 #include "main.h"
 #include "nvs_config.h"
@@ -53,9 +54,8 @@ static char pending_search_query[128] = {0};
 // pool. These looks repeat across the cards, so they are shared file statics —
 // which must outlive every object using them, as LVGL keeps the pointer.
 static lv_style_t s_card;      // settings card shell
-static lv_style_t s_accent;    // 3px accent bar (colour stays per-object)
 static lv_style_t s_rule;      // 1px hairline divider
-static lv_style_t s_section;   // 12pt dim all-caps section header
+static lv_style_t s_section;   // 10pt dim all-caps section header
 static lv_style_t s_value;     // 14pt white value text
 static bool s_styles_ready = false;
 
@@ -64,25 +64,15 @@ static void tw_init_styles(void) {
     s_styles_ready = true;
 
     lv_style_init(&s_card);
-    lv_style_set_bg_color(&s_card, lv_color_hex(COLOR_CARD_BG));
-    lv_style_set_bg_opa(&s_card, LV_OPA_COVER);
     lv_style_set_radius(&s_card, 12);
-    lv_style_set_border_width(&s_card, 1);
-    lv_style_set_border_color(&s_card, lv_color_hex(COLOR_MODAL_BORDER));
-    lv_style_set_border_opa(&s_card, LV_OPA_30);
-    lv_style_set_shadow_width(&s_card, 0);
     lv_style_set_pad_all(&s_card, 0);
 
-    lv_style_init(&s_accent);
-    lv_style_set_bg_opa(&s_accent, LV_OPA_COVER);
-    lv_style_set_radius(&s_accent, 2);
-
     lv_style_init(&s_rule);
-    lv_style_set_bg_color(&s_rule, lv_color_hex(COLOR_DIVIDER));
-    lv_style_set_bg_opa(&s_rule, LV_OPA_COVER);
+    lv_style_set_bg_color(&s_rule, lv_color_hex(CYGM_EDGE));
+    lv_style_set_bg_opa(&s_rule, 90);
 
     lv_style_init(&s_section);
-    lv_style_set_text_font(&s_section, &lv_font_montserrat_12);
+    lv_style_set_text_font(&s_section, &lv_font_montserrat_10);
     lv_style_set_text_color(&s_section, lv_color_hex(COLOR_TEXT_DIM));
     lv_style_set_text_letter_space(&s_section, 2);
 
@@ -95,7 +85,7 @@ static void tw_init_styles(void) {
 
 // A control whose label IS the object — one pool object instead of a button
 // plus a child label. A label draws its first line at the top of its content
-// box, so vertical centring is pad_top, less the row the ghost border eats.
+// box, so vertical centring accounts for the glass border.
 static lv_obj_t *tw_chip(lv_obj_t *parent, const char *txt, const lv_font_t *font,
                          uint32_t color, lv_coord_t w, lv_coord_t h) {
     lv_obj_t *chip = lv_label_create(parent);
@@ -108,7 +98,7 @@ static lv_obj_t *tw_chip(lv_obj_t *parent, const char *txt, const lv_font_t *fon
     lv_coord_t pad = (h - lv_font_get_line_height(font)) / 2 - CYGM_BTN_BORDER_W;
     lv_obj_set_style_pad_top(chip, pad > 0 ? pad : 0, 0);
     lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-    cygm_apply_ghost_btn(chip);
+    cygm_theme_glass_btn(chip);
     return chip;
 }
 
@@ -116,13 +106,13 @@ static lv_obj_t *tw_chip(lv_obj_t *parent, const char *txt, const lv_font_t *fon
 // "back" never shifts under the thumb. Each UI module keeps its own copy.
 static lv_obj_t *tw_std_back_btn(lv_obj_t *parent, lv_event_cb_t cb, void *user_data) {
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, CYGM_BTN_W_ICON, CYGM_BTN_H);
+    lv_obj_set_size(btn, 36, 36);
     lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 4, 4);
-    cygm_apply_ghost_btn(btn);
+    cygm_theme_glass_btn(btn);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_BLUE), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(COLOR_ACCENT_LIGHT), 0);
     lv_obj_center(lbl);
     if (cb != NULL) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
     return btn;
@@ -420,15 +410,10 @@ static void apply_selected_location(void) {
     update_time_display();
     ESP_LOGI(TAG, "Location saved [%s]", user_timezone);
 
-    // Load the new screen FIRST: deleting the active screen before
-    // lv_scr_load panics.
     clear_search_state();
     create_time_weather_settings_screen();
-    lv_scr_load(screen_time_weather_settings);
-    if (screen_zipcode_entry != NULL) {
-        lv_obj_del_async(screen_zipcode_entry);
-        screen_zipcode_entry = NULL;
-    }
+    cygm_theme_scr_load(screen_time_weather_settings, screen_zipcode_entry,
+                        &screen_zipcode_entry);
 }
 
 // ==================== Location Search Event Handlers ====================
@@ -437,14 +422,9 @@ static void location_back_cb(lv_event_t *e) {
     (void)e;
     ESP_LOGI(TAG, "Location search — back");
     clear_search_state();
-    // Load the new screen FIRST: deleting the active one before lv_scr_load
-    // panics. The delete is async because we may be inside its event callback.
     create_time_weather_settings_screen();
-    lv_scr_load(screen_time_weather_settings);
-    if (screen_zipcode_entry != NULL) {
-        lv_obj_del_async(screen_zipcode_entry);
-        screen_zipcode_entry = NULL;
-    }
+    cygm_theme_scr_load(screen_time_weather_settings, screen_zipcode_entry,
+                        &screen_zipcode_entry);
 }
 
 static void location_kb_ready_cb(lv_event_t *e) {
@@ -486,8 +466,8 @@ static void location_kb_ready_cb(lv_event_t *e) {
         search_overlay = lv_obj_create(screen_zipcode_entry);
         lv_obj_set_size(search_overlay, 320, 240);
         lv_obj_set_pos(search_overlay, 0, 0);
-        lv_obj_set_style_bg_color(search_overlay, lv_color_hex(COLOR_MODAL_BG), 0);
-        lv_obj_set_style_bg_opa(search_overlay, LV_OPA_80, 0);
+        lv_obj_set_style_bg_color(search_overlay, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(search_overlay, LV_OPA_60, 0);
         lv_obj_set_style_border_width(search_overlay, 0, 0);
         lv_obj_set_style_radius(search_overlay, 0, 0);
         lv_obj_set_style_shadow_width(search_overlay, 0, 0);
@@ -596,7 +576,7 @@ static void create_location_search_screen(void) {
     bool degraded = tw_pool_low("location search");
 
     screen_zipcode_entry = lv_obj_create(NULL);
-    lv_obj_add_style(screen_zipcode_entry, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_zipcode_entry);
     lv_obj_clear_flag(screen_zipcode_entry, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(screen_zipcode_entry, search_screen_delete_cb,
                         LV_EVENT_DELETE, NULL);
@@ -606,9 +586,16 @@ static void create_location_search_screen(void) {
     // ---- Title ----
     lv_obj_t *title = lv_label_create(screen_zipcode_entry);
     lv_label_set_text(title, "Search Location");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    lv_obj_t *header_rule = lv_obj_create(screen_zipcode_entry);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
 
     // search_textarea stays NULL, which also stops add_search_keyboard().
     if (degraded) {
@@ -621,12 +608,8 @@ static void create_location_search_screen(void) {
     lv_obj_t *search_card = lv_obj_create(screen_zipcode_entry);
     lv_obj_set_size(search_card, 300, 38);
     lv_obj_align(search_card, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_bg_color(search_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(search_card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(search_card);
     lv_obj_set_style_radius(search_card, 10, 0);
-    lv_obj_set_style_border_width(search_card, 1, 0);
-    lv_obj_set_style_border_color(search_card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(search_card, LV_OPA_40, 0);
     lv_obj_set_style_pad_all(search_card, 0, 0);
     lv_obj_clear_flag(search_card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -647,8 +630,14 @@ static void create_location_search_screen(void) {
     lv_textarea_set_text(search_textarea, "");
 
     // Textarea styling — glass field
-    lv_obj_set_style_bg_opa(search_textarea, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(search_textarea, 0, 0);
+    lv_obj_set_style_bg_color(search_textarea, lv_color_hex(COLOR_INPUT_BG), 0);
+    lv_obj_set_style_bg_opa(search_textarea, 180, 0);
+    lv_obj_set_style_border_color(search_textarea, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_border_opa(search_textarea, CYGM_EDGE_OPA, 0);
+    lv_obj_set_style_border_width(search_textarea, 1, 0);
+    lv_obj_set_style_radius(search_textarea, 8, 0);
+    lv_obj_set_style_border_color(search_textarea, lv_color_hex(COLOR_ACCENT_LIGHT), LV_STATE_FOCUSED);
+    lv_obj_set_style_border_opa(search_textarea, LV_OPA_COVER, LV_STATE_FOCUSED);
     lv_obj_set_style_text_font(search_textarea, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(search_textarea, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_set_style_pad_top(search_textarea, 4, 0);
@@ -678,24 +667,12 @@ static void create_location_search_screen(void) {
     result_card = lv_obj_create(screen_zipcode_entry);
     lv_obj_set_size(result_card, 300, 100);
     lv_obj_align(result_card, LV_ALIGN_TOP_MID, 0, 82);
-    lv_obj_set_style_bg_color(result_card, lv_color_hex(COLOR_CARD_BG), 0);
-    lv_obj_set_style_bg_opa(result_card, LV_OPA_COVER, 0);
+    cygm_theme_glass_card(result_card);
     lv_obj_set_style_radius(result_card, 10, 0);
-    lv_obj_set_style_border_width(result_card, 1, 0);
-    lv_obj_set_style_border_color(result_card, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(result_card, LV_OPA_30, 0);
+    cygm_theme_card_edge(result_card, lv_color_hex(COLOR_GREEN));
     lv_obj_set_style_pad_all(result_card, 8, 0);
     lv_obj_clear_flag(result_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(result_card, LV_OBJ_FLAG_HIDDEN);
-
-    // Green accent bar on result card
-    lv_obj_t *r_accent = lv_obj_create(result_card);
-    lv_obj_remove_style_all(r_accent);
-    lv_obj_set_size(r_accent, 3, 60);
-    lv_obj_align(r_accent, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_style_bg_color(r_accent, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(r_accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(r_accent, 1, 0);
 
     // Result location name — large, prominent
     result_name_label = lv_label_create(result_card);
@@ -720,12 +697,11 @@ static void create_location_search_screen(void) {
     lv_obj_set_style_text_color(result_counter_label, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(result_counter_label, LV_ALIGN_TOP_RIGHT, 0, 0);
 
-    // Prev button (ghost, inside result card)
+    // Prev button inside result card
     prev_btn = lv_btn_create(result_card);
     lv_obj_set_size(prev_btn, 30, 40);
     lv_obj_align(prev_btn, LV_ALIGN_RIGHT_MID, -30, 0);
-    lv_obj_set_style_border_width(prev_btn, 0, 0);
-    cygm_apply_ghost_btn(prev_btn);
+    cygm_theme_icon_btn(prev_btn);
     // Prev and Next abut: any touch-box growth would cross-select.
     lv_obj_set_ext_click_area(prev_btn, 0);
     lv_obj_add_flag(prev_btn, LV_OBJ_FLAG_HIDDEN);
@@ -737,12 +713,11 @@ static void create_location_search_screen(void) {
     lv_obj_center(prev_lbl);
     lv_obj_add_event_cb(prev_btn, location_prev_cb, LV_EVENT_CLICKED, NULL);
 
-    // Next button (ghost, inside result card)
+    // Next button inside result card
     next_btn = lv_btn_create(result_card);
     lv_obj_set_size(next_btn, 30, 40);
     lv_obj_align(next_btn, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_obj_set_style_border_width(next_btn, 0, 0);
-    cygm_apply_ghost_btn(next_btn);
+    cygm_theme_icon_btn(next_btn);
     lv_obj_set_ext_click_area(next_btn, 0);
     lv_obj_add_flag(next_btn, LV_OBJ_FLAG_HIDDEN);
 
@@ -758,10 +733,7 @@ static void create_location_search_screen(void) {
     confirm_btn = lv_btn_create(screen_zipcode_entry);
     lv_obj_set_size(confirm_btn, 148, 36);
     lv_obj_align(confirm_btn, LV_ALIGN_TOP_MID, -77, 188);
-    lv_obj_set_style_bg_color(confirm_btn, lv_color_hex(COLOR_GREEN), 0);
-    lv_obj_set_style_bg_opa(confirm_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(confirm_btn, 0, 0);
-    cygm_apply_ghost_btn(confirm_btn);
+    cygm_theme_primary_btn(confirm_btn);
     // Only 6px separates this pair; keep their touch boxes from crossing.
     lv_obj_set_ext_click_area(confirm_btn, 2);
     lv_obj_add_flag(confirm_btn, LV_OBJ_FLAG_HIDDEN);
@@ -777,7 +749,7 @@ static void create_location_search_screen(void) {
     new_search_btn = lv_btn_create(screen_zipcode_entry);
     lv_obj_set_size(new_search_btn, 148, 36);
     lv_obj_align(new_search_btn, LV_ALIGN_TOP_MID, 77, 188);
-    cygm_apply_ghost_btn(new_search_btn);
+    cygm_theme_glass_btn(new_search_btn);
     lv_obj_set_ext_click_area(new_search_btn, 2);
     lv_obj_add_flag(new_search_btn, LV_OBJ_FLAG_HIDDEN);
 
@@ -822,27 +794,9 @@ static void add_search_keyboard(void) {
 
     lv_obj_set_size(search_keyboard, 320, 130);
     lv_obj_align(search_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    cygm_theme_keyboard(search_keyboard);
     lv_keyboard_set_textarea(search_keyboard, search_textarea);
     lv_keyboard_set_mode(search_keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
-
-    // Glass keyboard background
-    lv_obj_set_style_bg_color(search_keyboard, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(search_keyboard, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(search_keyboard, 0, 0);
-    lv_obj_set_style_pad_all(search_keyboard, 2, 0);
-
-    // Glass key styling
-    lv_obj_set_style_bg_color(search_keyboard, lv_color_hex(COLOR_CARD_BG), LV_PART_ITEMS);
-    lv_obj_set_style_bg_opa(search_keyboard, LV_OPA_COVER, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(search_keyboard, lv_color_hex(COLOR_TEXT_WHITE), LV_PART_ITEMS);
-    lv_obj_set_style_text_font(search_keyboard, &lv_font_montserrat_14, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(search_keyboard, 0, LV_PART_ITEMS);
-    lv_obj_set_style_radius(search_keyboard, 6, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(search_keyboard, 0, LV_PART_ITEMS);
-
-    // Pressed key highlight
-    lv_obj_set_style_bg_color(search_keyboard, lv_color_hex(COLOR_ACCENT_BLUE),
-                               LV_PART_ITEMS | LV_STATE_PRESSED);
 
     // Keyboard events
     lv_obj_add_event_cb(search_keyboard, location_kb_ready_cb, LV_EVENT_READY, NULL);
@@ -866,12 +820,8 @@ static void location_search_event_cb(lv_event_t *e) {
     // free the settings screen to reclaim ~4KB of pool, and only then create
     // the keyboard.
     create_location_search_screen();
-    lv_scr_load(screen_zipcode_entry);
-
-    if (screen_time_weather_settings != NULL) {
-        lv_obj_del(screen_time_weather_settings);
-        screen_time_weather_settings = NULL;
-    }
+    cygm_theme_scr_load(screen_zipcode_entry, screen_time_weather_settings,
+                        &screen_time_weather_settings);
 
     add_search_keyboard();
 
@@ -891,15 +841,11 @@ static void confirm_overlay_close(void) {
     }
     confirm_overlay = NULL;  // Child of settings screen — deleted with parent
 
-    // Load home FIRST: LVGL needs the current screen alive during the swap.
-    lv_scr_load(screen_home);
+    cygm_theme_scr_load(screen_home, screen_time_weather_settings,
+                        &screen_time_weather_settings);
     home_screen_active = true;
     pause_background_tasks = false;
 
-    if (screen_time_weather_settings != NULL) {
-        lv_obj_del(screen_time_weather_settings);
-        screen_time_weather_settings = NULL;
-    }
 }
 
 static void confirm_timer_cb(lv_timer_t *t) {
@@ -960,17 +906,12 @@ static void show_interval_confirm_overlay(uint8_t minutes) {
     lv_obj_clear_flag(confirm_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(confirm_overlay, confirm_overlay_tap_cb, LV_EVENT_CLICKED, NULL);
 
-    // ---- Glass panel (matches glucose chart overlay style) ----
+    // ---- Glass panel ----
     lv_obj_t *panel = lv_obj_create(confirm_overlay);
     lv_obj_set_size(panel, 270, 140);
     lv_obj_align(panel, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(COLOR_MODAL_BG), 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(panel, 16, 0);
-    lv_obj_set_style_border_width(panel, 1, 0);
-    lv_obj_set_style_border_color(panel, lv_color_hex(COLOR_MODAL_BORDER), 0);
-    lv_obj_set_style_border_opa(panel, LV_OPA_50, 0);
-    lv_obj_set_style_shadow_width(panel, 0, 0);
+    cygm_theme_panel(panel);
+    lv_obj_set_style_radius(panel, 12, 0);
     lv_obj_set_style_pad_all(panel, 8, 0);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_CLICKABLE);  // Pass clicks to backdrop
@@ -999,8 +940,8 @@ static void show_interval_confirm_overlay(uint8_t minutes) {
     lv_obj_remove_style_all(div);
     lv_obj_set_size(div, 254, 1);
     lv_obj_align(div, LV_ALIGN_TOP_MID, 0, 30);
-    lv_obj_set_style_bg_color(div, lv_color_hex(COLOR_DIVIDER), 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(div, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(div, 90, 0);
 
     // ---- Interval text (centered, prominent) ----
     const char *interval_text = (minutes == 15) ? "15 minutes" :
@@ -1021,13 +962,11 @@ static void show_interval_confirm_overlay(uint8_t minutes) {
     lv_obj_set_style_text_color(countdown_lbl, lv_color_hex(COLOR_TEXT_DIM), 0);
     lv_obj_align(countdown_lbl, LV_ALIGN_BOTTOM_LEFT, 2, -2);
 
-    // Close button (chart-style ghost)
+    // Close remains non-primary.
     lv_obj_t *close_btn = lv_btn_create(panel);
     lv_obj_set_size(close_btn, 50, 28);
     lv_obj_align(close_btn, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(close_btn, LV_OPA_20, 0);
-    cygm_apply_ghost_btn(close_btn);
+    cygm_theme_glass_btn(close_btn);
 
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, "Close");
@@ -1078,18 +1017,12 @@ static void create_location_card(lv_obj_t *parent) {
     // back button, which is drawn to y=40.
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 46);
     lv_obj_add_style(card, &s_card, 0);
+    cygm_theme_glass_card(card);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ACCENT_BLUE));
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Blue accent bar, bracketing the two text rows.
-    lv_obj_t *accent = lv_obj_create(card);
-    lv_obj_remove_style_all(accent);
-    lv_obj_add_style(accent, &s_accent, 0);
-    lv_obj_set_size(accent, 3, 64);
-    lv_obj_align(accent, LV_ALIGN_TOP_LEFT, 6, 4);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-
     lv_obj_t *headers = tw_stacked_label(card, &s_section,
-                                         &lv_font_montserrat_12, 38);
+                                         &lv_font_montserrat_10, 38);
     lv_label_set_text(headers, "TIMEZONE\nLOCATION");
     lv_obj_align(headers, LV_ALIGN_TOP_LEFT, 16, 3);
 
@@ -1113,8 +1046,6 @@ static void create_location_card(lv_obj_t *parent) {
                                    &lv_font_montserrat_14, COLOR_ACCENT_LIGHT,
                                    264, 34);
     lv_obj_align(search_btn, LV_ALIGN_BOTTOM_MID, 0, -6);
-    lv_obj_set_style_bg_color(search_btn, lv_color_hex(COLOR_ACCENT_BLUE), 0);
-    lv_obj_set_style_bg_opa(search_btn, LV_OPA_20, 0);
     lv_obj_add_event_cb(search_btn, location_search_event_cb, LV_EVENT_CLICKED, NULL);
 }
 
@@ -1127,14 +1058,9 @@ static void create_interval_card(lv_obj_t *parent) {
     lv_obj_set_size(card, 296, 40);
     lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 176);
     lv_obj_add_style(card, &s_card, 0);
+    cygm_theme_glass_card(card);
+    cygm_theme_card_edge(card, lv_color_hex(COLOR_ORANGE));
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *accent = lv_obj_create(card);
-    lv_obj_remove_style_all(accent);
-    lv_obj_add_style(accent, &s_accent, 0);
-    lv_obj_set_size(accent, 3, 28);
-    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 6, 0);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(COLOR_ORANGE), 0);
 
     lv_obj_t *interval_label = lv_label_create(card);
     lv_label_set_text(interval_label, "UPDATE");
@@ -1166,8 +1092,6 @@ static void create_interval_card(lv_obj_t *parent) {
             // the centring or the selected chip's text loses the baseline.
             lv_obj_set_style_pad_top(btn,
                 (btn_h - lv_font_get_line_height(&lv_font_montserrat_14)) / 2, 0);
-        } else {
-            lv_obj_set_style_border_color(btn, lv_color_hex(COLOR_MODAL_BORDER), 0);
         }
         // Three abutting options: keep the touch boxes from overlapping.
         lv_obj_set_ext_click_area(btn, 3);
@@ -1184,11 +1108,8 @@ static void create_interval_card(lv_obj_t *parent) {
 static void settings_back_cb(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     if (screen_menu == NULL) create_menu_screen();
-    lv_scr_load(screen_menu);
-    if (screen_time_weather_settings != NULL) {
-        lv_obj_del_async(screen_time_weather_settings);
-        screen_time_weather_settings = NULL;
-    }
+    cygm_theme_scr_load(screen_menu, screen_time_weather_settings,
+                        &screen_time_weather_settings);
 }
 
 void create_time_weather_settings_screen(void) {
@@ -1204,7 +1125,7 @@ void create_time_weather_settings_screen(void) {
     bool degraded = tw_pool_low("time/weather settings");
 
     screen_time_weather_settings = lv_obj_create(NULL);
-    lv_obj_add_style(screen_time_weather_settings, &style_bg, 0);
+    cygm_theme_bg_gradient(screen_time_weather_settings);
     lv_obj_clear_flag(screen_time_weather_settings, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(screen_time_weather_settings, settings_screen_delete_cb,
                         LV_EVENT_DELETE, NULL);
@@ -1215,9 +1136,16 @@ void create_time_weather_settings_screen(void) {
     // the two in step.
     lv_obj_t *header = lv_label_create(screen_time_weather_settings);
     lv_label_set_text(header, "Time / Weather");
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(header, lv_color_hex(COLOR_TEXT_WHITE), 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 6);
+
+    lv_obj_t *header_rule = lv_obj_create(screen_time_weather_settings);
+    lv_obj_remove_style_all(header_rule);
+    lv_obj_set_size(header_rule, 290, 1);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_bg_color(header_rule, lv_color_hex(CYGM_EDGE), 0);
+    lv_obj_set_style_bg_opa(header_rule, CYGM_EDGE_OPA, 0);
 
     // Nothing below here is worth the risk of an LV_ASSERT_MALLOC while(1):
     // the user keeps a titled screen and a working back button instead.
