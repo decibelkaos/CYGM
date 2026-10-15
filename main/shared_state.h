@@ -34,13 +34,13 @@ extern "C" {
 // Version format: major.minor.patch.YYYY-MM-DD.stage
 #define CYGM_VERSION_MAJOR 1
 #define CYGM_VERSION_MINOR 1
-#define CYGM_VERSION_PATCH 9
+#define CYGM_VERSION_PATCH 10
 #define CYGM_VERSION_BUILD 0
 #define CYGM_VERSION_DATE "2026-10-15"
 #define CYGM_VERSION_STAGE "Release"  // "Alpha", "Beta", or "Release"
 
 // Full version string
-#define CYGM_VERSION_STRING "1.1.9.2026-10-15.Release"
+#define CYGM_VERSION_STRING "1.1.10.2026-10-15.Release"
 
 // UI facelift motion switch (1.1.0 beta). One-shot screen fades and style
 // transitions only; continuous animation stays forbidden (see main.c:1175).

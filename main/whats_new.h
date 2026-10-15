@@ -23,7 +23,7 @@ static const char *const whats_new_bullets[] = {
     "New keyboard, easier to type on",
     "Clearer trend graph and alarms",
     "More time zones set correctly",
-    "Full release notes on CYGM.me",
+    "(Missed one, sorry for double update!)",
 };
 #define WHATS_NEW_COUNT (sizeof(whats_new_bullets) / sizeof(whats_new_bullets[0]))
 

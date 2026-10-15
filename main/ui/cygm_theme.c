@@ -104,7 +104,9 @@ void cygm_theme_bg_gradient(lv_obj_t *obj)
 {
     lv_obj_set_style_bg_color(obj, lv_color_hex(CYGM_BG_TOP), LV_PART_MAIN);
     lv_obj_set_style_bg_grad_color(obj, lv_color_hex(CYGM_BG_BOTTOM), LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, LV_PART_MAIN);
+    /* A flat field needs no gradient pass (and no dither) on every redraw */
+    lv_obj_set_style_bg_grad_dir(obj, CYGM_BG_TOP == CYGM_BG_BOTTOM ? LV_GRAD_DIR_NONE : LV_GRAD_DIR_VER,
+                                 LV_PART_MAIN);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_shadow_width(obj, 0, LV_PART_MAIN);
 }

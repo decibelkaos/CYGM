@@ -29,8 +29,8 @@ extern "C" {
 /* Surface tokens. Deep navy field, cards a step lighter and nearly opaque so
  * white text keeps its contrast; glass is a hint, not a window. On RGB565 the
  * field's 2-stop ramp needs LV_DITHER_GRADIENT or it bands into four steps. */
-#define CYGM_BG_TOP      0x101C3C
-#define CYGM_BG_BOTTOM   0x070D20
+#define CYGM_BG_TOP      0x000000   /* Carl, 2026-10-15: the field is black again */
+#define CYGM_BG_BOTTOM   0x000000
 #define CYGM_CARD_BG     0x1B2A4E
 #define CYGM_CARD_OPA    235
 #define CYGM_PANEL_BG    0x16244A   /* modals: fully opaque */

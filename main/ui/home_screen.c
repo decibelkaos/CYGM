@@ -3660,14 +3660,19 @@ void create_home_screen(void) {
     lv_obj_set_style_text_font(expanded_time_m, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(expanded_time_m, lv_color_hex(COLOR_TEXT_WHITE), 0);
 
-    // Measure widths BEFORE hiding (hidden objects return width 0 in LVGL v8)
-    lv_obj_update_layout(right_card);
-    lv_coord_t ecw = lv_obj_get_width(expanded_time_colon);
-    lv_coord_t ehw = lv_obj_get_width(expanded_time_h);
+    // Widths come from the font, not from a layout pass: a label measured while
+    // its card is still being built can report 0, and a 0 px label wraps every
+    // glyph onto its own line. CLIP keeps "12" on one line whatever happens.
+    lv_coord_t ecw = lv_txt_get_width(":", 1, &lv_font_montserrat_14, 0, LV_TEXT_FLAG_NONE);
+    lv_coord_t ehw = lv_txt_get_width("00", 2, &lv_font_montserrat_14, 0, LV_TEXT_FLAG_NONE);
     lv_obj_set_width(expanded_time_h, ehw);
+    lv_label_set_long_mode(expanded_time_h, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(expanded_time_h, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(expanded_time_m, ehw);
+    lv_label_set_long_mode(expanded_time_m, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(expanded_time_m, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_width(expanded_time_colon, ecw);
+    lv_label_set_long_mode(expanded_time_colon, LV_LABEL_LONG_CLIP);
     lv_obj_align(expanded_time_colon, LV_ALIGN_TOP_MID, -30, 2);
     lv_obj_align(expanded_time_h, LV_ALIGN_TOP_MID, -30 - ecw / 2 - ehw / 2, 2);
     lv_obj_align(expanded_time_m, LV_ALIGN_TOP_MID, -30 + ecw / 2 + ehw / 2, 2);
