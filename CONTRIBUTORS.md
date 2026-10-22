@@ -1,17 +1,15 @@
 # CYGM Contributors
 
-CYGM is an open-source project made better through user reports, testing, discussion, and code contributions. Thanks to everyone who takes time to help.
+CYGM is an open-source project, and the people reporting bugs and testing fixes are a big part of making it better.
 
 ## Community contributions
 
 | Contributor | Contribution | Status |
 | --- | --- | --- |
-| [@monizks-prog](https://github.com/monizks-prog) | Investigated USB-power display dimming, supplied a proposed fix, and reported 72 hours of hardware testing ([issue #3](https://github.com/decibelkaos/CYGM/issues/3), [PR #4](https://github.com/decibelkaos/CYGM/pull/4)). Also investigated duplicate glucose-reading age updates and reported 24 hours of testing ([issue #5](https://github.com/decibelkaos/CYGM/issues/5)). | Proposed fixes; maintainer hardware verification pending |
-| [@steveR-bit](https://github.com/steveR-bit) | Reported LibreLinkUp sign-in problems in the UK and confirmed the fix worked ([issue #2](https://github.com/decibelkaos/CYGM/issues/2)). | Resolved and reporter-confirmed |
-| [@SimonXuku](https://github.com/SimonXuku) | Reported configuration loss after power failure and confirmed the correction ([issue #1](https://github.com/decibelkaos/CYGM/issues/1)). | Resolved and reporter-confirmed |
+| [@monizks-prog](https://github.com/monizks-prog) | Tracked down the USB-power screen dimming problem, submitted the fix in [PR #4](https://github.com/decibelkaos/CYGM/pull/4), and tested it for 72 hours. Also investigated the duplicate glucose-reading age problem in [issue #5](https://github.com/decibelkaos/CYGM/issues/5). | Dimming fix merged October 21, 2026 (UTC: October 22). Reading-age issue still under investigation. |
+| [@steveR-bit](https://github.com/steveR-bit) | Reported LibreLinkUp sign-in trouble in the UK and confirmed the fix ([issue #2](https://github.com/decibelkaos/CYGM/issues/2)). | Fixed and confirmed |
+| [@SimonXuku](https://github.com/SimonXuku) | Reported losing CGM setup after a power cut and confirmed the fix ([issue #1](https://github.com/decibelkaos/CYGM/issues/1)). | Fixed and confirmed |
 
-## How to contribute
+## Want to help?
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for reporting bugs, testing firmware, and proposing code changes.
-
-Contributions are acknowledged without implying an unmerged fix is part of a released build. Release notes will credit code contributions when the relevant changes ship.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reports, hardware testing, and pull requests. Code that's merged but not yet released is credited here as merged; the release notes will say when it reaches firmware users.
