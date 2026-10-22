@@ -1,23 +1,21 @@
 # Helping out
 
-There are plenty of useful ways to help CYGM without writing firmware. Testing a new build, documenting a repeatable bug, or confirming a fix on a different glucose provider all count.
+Testing a new build, reporting something that doesn't work, or finding a fix in the firmware all help. You don't have to write code to contribute.
 
 ## Found a bug?
 
-Search the [issues](https://github.com/decibelkaos/CYGM/issues) first. If it's new, open one with the firmware version, your board and power setup, your CGM provider, and clear steps to reproduce the problem.
+Check the [open issues](https://github.com/decibelkaos/CYGM/issues) first. If nobody's reported it, open one with your firmware version, board and power setup, data source, and steps to reproduce it.
 
-Don't attach API tokens, passwords, or personally identifiable glucose records.
+Please don't attach passwords, tokens, or identifiable glucose history.
 
 ## Have a fix?
 
-Fork the repository and open a focused pull request. Explain the behavior you changed and how you tested it. Please say when something has only been compiled, not run on hardware. Contributors and maintainers can use the repository's [contribution guide](../../CONTRIBUTING.md) for more detail once it is merged.
+Fork the repository and send a focused pull request. Describe what changed and how you tested it. There's more detail in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
-A proposed fix is not automatically included in a beta or stable release. Changes need review and device testing first.
+## People who've helped
 
-## Community contributors
+- **[@monizks-prog](https://github.com/monizks-prog)** found the USB-power display dimming problem, tested a fix for 72 hours, and submitted [PR #4](https://github.com/decibelkaos/CYGM/pull/4), which has now been **merged**. They're also investigating the duplicate-reading age issue in [#5](https://github.com/decibelkaos/CYGM/issues/5); that work is not yet merged.
+- **[@steveR-bit](https://github.com/steveR-bit)** reported a UK LibreLinkUp sign-in issue and confirmed it was fixed ([#2](https://github.com/decibelkaos/CYGM/issues/2)).
+- **[@SimonXuku](https://github.com/SimonXuku)** found the settings-loss problem after power cuts and tested the fix ([#1](https://github.com/decibelkaos/CYGM/issues/1)).
 
-- [@monizks-prog](https://github.com/monizks-prog): investigated USB display dimming ([issue #3](https://github.com/decibelkaos/CYGM/issues/3), [PR #4](https://github.com/decibelkaos/CYGM/pull/4)) and duplicate-reading age behavior ([issue #5](https://github.com/decibelkaos/CYGM/issues/5)). Fixes are pending maintainer verification.
-- [@steveR-bit](https://github.com/steveR-bit): reported and verified the UK LibreLinkUp login fix ([issue #2](https://github.com/decibelkaos/CYGM/issues/2)).
-- [@SimonXuku](https://github.com/SimonXuku): reported and verified the fix for settings after power loss ([issue #1](https://github.com/decibelkaos/CYGM/issues/1)).
-
-Thanks for putting real time into testing and reporting issues. It helps catch problems that don't always show up on the development bench.
+Thanks to everyone who takes time to test CYGM on real hardware and report back. It makes a difference.
