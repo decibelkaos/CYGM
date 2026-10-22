@@ -544,10 +544,11 @@ void ui_task_core1(void *pvParameters) {
             }
         }
 
-        // On the charger the display stays on unless the user opted into
-        // dimming (brightness modal). Charger detection is trend-based, so a
-        // plug-in confirms within a battery-task cycle — also un-dims here.
-        bool charger_holds_wake = !dim_while_charging && battery_is_charging();
+        // Keep the display awake on a detected charger or in USB-only mode
+        // unless the user opted into dimming (brightness modal). Charger
+        // detection is trend-based; battery absence identifies USB-only power.
+        bool charger_holds_wake = !dim_while_charging &&
+                                  (battery_is_charging() || !battery_is_present());
 
         if (display_dimmed) {
             if (charger_holds_wake) {
