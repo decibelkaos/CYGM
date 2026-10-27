@@ -10,7 +10,7 @@ CYGM is a **secondary display**. It reads what your CGM system publishes to its
 cloud, so you keep using your official app or receiver and keep its alerts on.
 
 **Website & device guide:** [cygm.me](https://cygm.me) ·
-[cygm.me/guide.html](https://cygm.me/guide.html)
+[cygm.me/guide/](https://cygm.me/guide/)
 
 ---
 
@@ -76,7 +76,7 @@ build, and firmware images are not separately signed, so install only from a
 source you trust and run **Erase Device** before passing a unit on.
 
 Full detail, including every host the device contacts:
-[cygm.me#privacy](https://cygm.me#privacy).
+[cygm.me/privacy/](https://cygm.me/privacy/).
 
 ## Building from source
 
@@ -109,7 +109,7 @@ main/
 
 ## Documentation
 
-- [Device guide](https://cygm.me/guide.html) — setup, every screen, tips,
+- [Device guide](https://cygm.me/guide/) — setup, every screen, tips,
   troubleshooting
 - [Release notes](https://github.com/decibelkaos/CYGM/releases) — what changed
   in each version
