@@ -14,6 +14,23 @@ cloud, so you keep using your official app or receiver and keep its alerts on.
 
 ---
 
+## Two devices
+
+There are now two CYGM devices. **This repository is the firmware for CYGM**, the 2.8" one, and
+everything below describes it.
+
+| | CYGM | CYGM+ |
+|---|---|---|
+| Status | Released | In beta testing with a small group; not yet available |
+| Screen | 2.8" 320×240 | 3.5" 480×320 |
+| Board | JC2432W328C (ESP32) | A 3.5" ESP32-S3 touch-display board with 8 MB of PSRAM |
+| Firmware | This repository, versions 1.x | Separate firmware, versions 2.x, to be published when it is ready |
+| Extras | | A speaker that reads out the time and the weather, a ten-hour battery, a larger settings area |
+
+CYGM+ is not a replacement. CYGM stays supported and keeps getting updates; the two share the idea, the
+look and the alarm rules, and each has its own firmware because the boards are different. A CYGM+ image
+does not run on a CYGM board, or the other way round.
+
 ## Hardware
 
 | Part | Detail |
